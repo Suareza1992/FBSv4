@@ -1,0 +1,128 @@
+<div class="space-y-6">
+    
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100">Nutrición & Métricas</h2>
+            <p class="text-gray-500 dark:text-gray-400">Controla tu alimentación y medidas corporales.</p>
+        </div>
+        <button id="save-nutrition-btn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg shadow font-semibold transition">
+            Guardar Cambios
+        </button>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">Control de Peso</h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase">Peso Actual (lbs)</label>
+                    <input type="number" id="nutri-weight" value="185" class="w-full mt-1 p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-gray-800 dark:text-white font-bold">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase">% Grasa Corporal</label>
+                    <input type="number" id="nutri-fat" value="18" class="w-full mt-1 p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-gray-800 dark:text-white font-bold">
+                </div>
+                
+                <div class="bg-blue-50 dark:bg-gray-750 p-2 rounded">
+                    <p class="text-xs text-gray-500">Masa Magra</p>
+                    <p class="font-bold text-blue-700 dark:text-blue-300" id="calc-lbm">-- lbs</p>
+                </div>
+                <div class="bg-blue-50 dark:bg-gray-750 p-2 rounded">
+                    <p class="text-xs text-gray-500">IMC (BMI)</p>
+                    <p class="font-bold text-blue-700 dark:text-blue-300" id="calc-bmi">--</p>
+                </div>
+                <div class="col-span-2 bg-green-50 dark:bg-gray-750 p-2 rounded flex justify-between items-center">
+                    <span class="text-xs text-gray-500 font-bold uppercase">Agua Recomendada</span>
+                    <span class="font-bold text-green-700 dark:text-green-300" id="calc-water">-- oz</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">Medidas (cm)</h3>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div><label class="text-xs text-gray-500">Pecho</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-gray-50 dark:bg-gray-700 rounded border border-transparent hover:border-gray-300 dark:text-white"></div>
+                <div><label class="text-xs text-gray-500">Brazos</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-gray-50 dark:bg-gray-700 rounded border border-transparent hover:border-gray-300 dark:text-white"></div>
+                <div><label class="text-xs text-gray-500">Cintura</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-gray-50 dark:bg-gray-700 rounded border border-transparent hover:border-gray-300 dark:text-white"></div>
+                <div><label class="text-xs text-gray-500">Caderas</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-gray-50 dark:bg-gray-700 rounded border border-transparent hover:border-gray-300 dark:text-white"></div>
+                <div><label class="text-xs text-gray-500">Cuádriceps</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-gray-50 dark:bg-gray-700 rounded border border-transparent hover:border-gray-300 dark:text-white"></div>
+                <div><label class="text-xs text-gray-500">Pantorrillas</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-gray-50 dark:bg-gray-700 rounded border border-transparent hover:border-gray-300 dark:text-white"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+        <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-6">Distribución de Calorías y Macros</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-center">
+                <p class="text-sm text-gray-500 dark:text-gray-400">Oxidar Grasa (Cut)</p>
+                <p class="text-2xl font-bold text-gray-800 dark:text-white" id="val-cut">--</p>
+                <p class="text-xs text-gray-400">calorías</p>
+            </div>
+            <div class="p-4 bg-blue-50 dark:bg-blue-900 rounded-lg text-center border border-blue-100 dark:border-blue-800">
+                <p class="text-sm text-blue-600 dark:text-blue-300 font-bold">Mantenimiento</p>
+                <p class="text-3xl font-extrabold text-blue-800 dark:text-white" id="val-main">--</p>
+                <p class="text-xs text-blue-500 dark:text-blue-300">calorías diarias</p>
+            </div>
+            <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-center">
+                <p class="text-sm text-gray-500 dark:text-gray-400">Volumen (Bulk)</p>
+                <p class="text-2xl font-bold text-gray-800 dark:text-white" id="val-bulk">--</p>
+                <p class="text-xs text-gray-400">calorías</p>
+            </div>
+        </div>
+
+        <div class="border-t border-gray-100 dark:border-gray-700 pt-6">
+            <div class="flex justify-between items-center mb-4">
+                <h4 class="font-bold text-gray-700 dark:text-gray-200">Distribución Diaria</h4>
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-500">Comidas al día:</label>
+                    <select id="meals-per-day" class="p-1 bg-gray-100 dark:bg-gray-600 rounded border-none text-sm font-bold dark:text-white">
+                        <option value="3">3 Comidas</option>
+                        <option value="4" selected>4 Comidas</option>
+                        <option value="5">5 Comidas</option>
+                        <option value="6">6 Comidas</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="text-xs text-gray-500 border-b dark:border-gray-700">
+                            <th class="py-2">Macro</th>
+                            <th class="py-2">Calorías Totales</th>
+                            <th class="py-2 bg-blue-50 dark:bg-blue-900 px-2 rounded-t">POR COMIDA (Cal)</th>
+                            <th class="py-2 bg-green-50 dark:bg-green-900 px-2 rounded-t">Gramos (g)</th>
+                            <th class="py-2 bg-yellow-50 dark:bg-yellow-900 px-2 rounded-t">Onzas (oz)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm text-gray-700 dark:text-gray-200">
+                        <tr class="border-b border-gray-50 dark:border-gray-700">
+                            <td class="py-3 font-bold text-red-500">Proteína (40%)</td>
+                            <td id="total-pro-cal">--</td>
+                            <td class="font-bold bg-blue-50 dark:bg-blue-900 bg-opacity-30 px-2" id="meal-pro-cal">--</td>
+                            <td class="font-bold bg-green-50 dark:bg-green-900 bg-opacity-30 px-2" id="meal-pro-g">--</td>
+                            <td class="bg-yellow-50 dark:bg-yellow-900 bg-opacity-30 px-2" id="meal-pro-oz">--</td>
+                        </tr>
+                        <tr class="border-b border-gray-50 dark:border-gray-700">
+                            <td class="py-3 font-bold text-yellow-500">Carbohidratos (40%)</td>
+                            <td id="total-carb-cal">--</td>
+                            <td class="font-bold bg-blue-50 dark:bg-blue-900 bg-opacity-30 px-2" id="meal-carb-cal">--</td>
+                            <td class="font-bold bg-green-50 dark:bg-green-900 bg-opacity-30 px-2" id="meal-carb-g">--</td>
+                            <td class="bg-yellow-50 dark:bg-yellow-900 bg-opacity-30 px-2" id="meal-carb-oz">--</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 font-bold text-blue-500">Grasas (20%)</td>
+                            <td id="total-fat-cal">--</td>
+                            <td class="font-bold bg-blue-50 dark:bg-blue-900 bg-opacity-30 px-2" id="meal-fat-cal">--</td>
+                            <td class="font-bold bg-green-50 dark:bg-green-900 bg-opacity-30 px-2" id="meal-fat-g">--</td>
+                            <td class="bg-yellow-50 dark:bg-yellow-900 bg-opacity-30 px-2" id="meal-fat-oz">--</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,94 @@
+<div class="space-y-8">
+    
+    <div class="flex justify-between items-end">
+        <div>
+            <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100">Mis Programas</h2>
+            <p class="text-gray-500 dark:text-gray-400">Tu ruta hacia el éxito físico.</p>
+        </div>
+        <div class="text-right">
+            <span class="px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-full text-sm font-bold">Semana 4 / 12</span>
+        </div>
+    </div>
+    
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
+        
+        <div>
+            <h3 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">¿Cómo te sientes hoy?</h3>
+            <div class="flex gap-2" id="mood-selector">
+                <button onclick="selectMood('happy')" class="mood-btn text-2xl p-2 rounded-full hover:bg-yellow-100 transition" title="Feliz">😊</button>
+                <button onclick="selectMood('thrilled')" class="mood-btn text-2xl p-2 rounded-full hover:bg-blue-100 transition" title="Entusiasmado">🤩</button>
+                <button onclick="selectMood('stoic')" class="mood-btn text-2xl p-2 rounded-full hover:bg-gray-100 transition" title="Estoico/Enfocado">😐</button>
+                <button onclick="selectMood('tired')" class="mood-btn text-2xl p-2 rounded-full hover:bg-purple-100 transition" title="Cansado">🥱</button>
+                <button onclick="selectMood('angry')" class="mood-btn text-2xl p-2 rounded-full hover:bg-red-100 transition" title="Enojado (Usar Ira)">😡</button>
+                <button onclick="selectMood('scared')" class="mood-btn text-2xl p-2 rounded-full hover:bg-indigo-100 transition" title="Asustado">😨</button>
+            </div>
+            <p id="mood-quote" class="text-xs text-blue-600 dark:text-blue-400 mt-2 font-medium italic h-4"></p>
+        </div>
+
+        <div class="flex items-center gap-3 bg-orange-50 dark:bg-orange-900/30 px-4 py-2 rounded-xl border border-orange-100 dark:border-orange-800">
+            <div class="text-center">
+                <span class="block text-2xl font-black text-orange-500">12</span>
+                <span class="text-xs font-bold text-orange-600 dark:text-orange-400">Días Racha</span>
+            </div>
+            <i class="fas fa-fire text-4xl text-orange-500 animate-pulse"></i>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-6 shadow-xl text-white transform transition hover:scale-[1.01]">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <span class="bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">Hoy</span>
+                <h3 class="text-2xl font-bold mt-2">Día 24: Pierna y Glúteo (Potencia)</h3>
+            </div>
+            <i class="fas fa-dumbbell text-4xl opacity-50"></i>
+        </div>
+        <div class="flex gap-6 text-sm mb-6">
+            <span><i class="far fa-clock mr-1"></i> 65 min</span>
+            <span><i class="fas fa-fire mr-1"></i> Alta Intensidad</span>
+        </div>
+        <button class="w-full bg-white text-blue-700 font-bold py-3 rounded-xl shadow hover:bg-gray-100 transition">
+            Comenzar Entrenamiento
+        </button>
+    </div>
+
+    <div>
+        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Pendientes / Perdidos</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-red-50 dark:bg-gray-800 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm flex justify-between items-center">
+                <div>
+                    <p class="font-bold text-gray-800 dark:text-gray-200">Día 23: Cardio HIIT</p>
+                    <p class="text-xs text-red-500">Debió completarse ayer</p>
+                </div>
+                <button class="text-red-600 dark:text-red-400 hover:underline text-sm font-semibold">Reponer</button>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Próximos Entrenamientos</h3>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+            <div class="divide-y divide-gray-100 dark:divide-gray-700">
+                <div class="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750">
+                    <div class="flex items-center gap-4">
+                        <div class="bg-gray-100 dark:bg-gray-700 w-12 h-12 rounded-lg flex items-center justify-center font-bold text-gray-500">25</div>
+                        <div>
+                            <p class="font-bold text-gray-800 dark:text-gray-100">Espalda y Bíceps</p>
+                            <p class="text-xs text-gray-500">Mañana</p>
+                        </div>
+                    </div>
+                    <span class="text-gray-400"><i class="fas fa-lock"></i></span>
+                </div>
+                <div class="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750">
+                    <div class="flex items-center gap-4">
+                        <div class="bg-gray-100 dark:bg-gray-700 w-12 h-12 rounded-lg flex items-center justify-center font-bold text-gray-500">26</div>
+                        <div>
+                            <p class="font-bold text-gray-800 dark:text-gray-100">Descanso Activo / Yoga</p>
+                            <p class="text-xs text-gray-500">Jueves</p>
+                        </div>
+                    </div>
+                    <span class="text-gray-400"><i class="fas fa-lock"></i></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,61 @@
+<!-- AUTH CARD -->
+<div class="w-full max-w-sm bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl">
+  <h2 class="text-3xl font-bold mb-6 text-gray-800 dark:text-gray-100 text-center" id="auth-title">Sign In</h2>
+  <input type="text" id="auth-name" placeholder="Name" class="w-full p-3 mb-4 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white hidden">
+  <input type="email" id="auth-email" placeholder="Email" class="w-full p-3 mb-4 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+  <input type="password" id="auth-password" placeholder="Password" class="w-full p-3 mb-6 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+  <button id="auth-submit-btn" class="w-full bg-blue-600 text-white p-3 rounded-xl font-semibold hover:bg-blue-700 transition">Sign In</button>
+  <button id="auth-toggle-btn" class="w-full mt-4 text-sm text-gray-600 dark:text-gray-400 hover:underline">Need an account? Sign Up</button>
+  <p id="auth-message" class="text-center mt-4 text-sm text-red-500"></p>
+</div>
+
+<script type="module">
+    // --- AUTH LOGIC ---
+    let isSigningUp = false;
+    const authTitle = document.getElementById('auth-title');
+    const authNameInput = document.getElementById('auth-name');
+    const authSubmitBtn = document.getElementById('auth-submit-btn');
+    const authToggleBtn = document.getElementById('auth-toggle-btn');
+    const authEmailInput = document.getElementById('auth-email');
+    const authPasswordInput = document.getElementById('auth-password');
+    const authMessage = document.getElementById('auth-message');
+
+    authToggleBtn.addEventListener('click', () => {
+        isSigningUp = !isSigningUp;
+        authTitle.textContent = isSigningUp ? 'Sign Up' : 'Sign In';
+        authSubmitBtn.textContent = isSigningUp ? 'Create Account' : 'Sign In';
+        authToggleBtn.textContent = isSigningUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up';
+        authNameInput.classList.toggle('hidden');
+        authMessage.textContent = '';
+    });
+
+    const saveUserData = async (userId, name, role) => {
+        const userDocRef = window.doc(window.db, `artifacts/${window.__app_id}/users/${userId}/profile/data`);
+        await window.setDoc(userDocRef, { name: name, role: role, created: new Date().toISOString() });
+    };
+
+    authSubmitBtn.addEventListener('click', async () => {
+        const email = authEmailInput.value;
+        const password = authPasswordInput.value;
+        const name = authNameInput.value;
+        authMessage.textContent = '';
+
+        if (!email || !password || (isSigningUp && !name)) {
+            authMessage.textContent = 'Please fill in all required fields.';
+            return;
+        }
+
+        try {
+            if (isSigningUp) {
+                const userCredential = await window.createUserWithEmailAndPassword(window.auth, email, password);
+                // Assign role based on form context (we will default all new signups to 'trainer' for now)
+                await saveUserData(userCredential.user.uid, name, 'trainer'); 
+            } else {
+                await window.signInWithEmailAndPassword(window.auth, email, password);
+            }
+        } catch (error) {
+            console.error("Auth Error:", error);
+            authMessage.textContent = error.message.includes('auth/wrong-password') ? 'Invalid credentials.' : error.message;
+        }
+    });
+</script>
