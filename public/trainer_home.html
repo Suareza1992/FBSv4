@@ -1,0 +1,37 @@
+<div class="space-y-6 pb-10">
+
+    <div class="flex flex-col md:flex-row justify-between items-end border-b border-gray-200 dark:border-gray-700 pb-4 gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-4" id="greeting-text">¡Buenos días!</h1>
+            
+            <div class="flex items-center gap-4">
+                <span class="text-sm text-gray-500 dark:text-gray-400 font-bold">Novedades de</span>
+                <div class="relative group">
+                    <button class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white border-b-2 border-gray-300 dark:border-gray-600 pb-1 hover:border-brand-purple transition">
+                        <span id="client-filter-label">Todos</span>
+                        <i class="fas fa-caret-down text-xs"></i>
+                    </button>
+                    <div class="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 hidden group-hover:block z-20">
+                        <div class="py-2">
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 font-bold"><i class="fas fa-check mr-2 text-brand-purple"></i>Todos los clientes</a>
+                            <div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+                            <div class="px-4 py-1 text-xs text-gray-500 uppercase font-bold">Tipo</div>
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">Presencial</a>
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">Remoto</a>
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">Híbrido</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <input type="checkbox" id="show-rest-days" class="w-4 h-4 rounded border-gray-300 text-brand-purple focus:ring-brand-purple bg-gray-100 dark:bg-gray-700 dark:border-gray-600">
+            <label for="show-rest-days" class="text-sm font-bold text-gray-700 dark:text-gray-300">Mostrar días de descanso</label>
+        </div>
+    </div>
+
+    <div id="trainer-feed-container" class="space-y-8">
+        </div>
+
+</div>
