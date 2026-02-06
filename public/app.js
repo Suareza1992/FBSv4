@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. CONFIGURATION & STATE
     // =============================================================================
     
+    // DOM Elements
     const authScreen = document.getElementById('auth-screen');
     const dashboardContainer = document.getElementById('dashboard-container');
     const sidebarPlaceholder = document.getElementById('sidebar-placeholder');
@@ -25,13 +26,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentEditingWeekIndex = 0;
     let currentVideoExerciseBtn = null;
     let currentClientViewId = null;
-    let copiedWorkoutData = null; 
+    let copiedWorkoutData = null; // Store copied workout
 
-    // 🟢 NEW: Workout Editor State
+    // 🟢 NEW: Workout Editor State (For the Orange Modal)
     let editorExercises = []; 
     let editorDateStr = "";
+    let editorWarmup = ""; // 🟢 State for Warmup Text
+    let currentEditorExId = null; // 🟢 Track which exercise is being edited for Video/History
 
-    // 🟢 MUSCLE GROUPS
+    // 🟢 MUSCLE GROUPS DEFINITION
     const muscleGroups = [
         "Pecho", "Espalda", "Piernas", "Quadriceps", "Femorales", "Tibiales", 
         "Pantorrillas", "Glúteos", "Triceps", "Biceps", "Hombros", "Antebrazos", 
@@ -80,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const loadSession = () => { try { return JSON.parse(localStorage.getItem('auth_user')); } catch (e) { return null; } };
 
+
     // =============================================================================
     // 3. THEME LOGIC
     // =============================================================================
@@ -88,7 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const btns = document.querySelectorAll('#theme-toggle');
         const isDark = document.documentElement.classList.contains('dark');
         btns.forEach(btn => {
-            // 🟢 Fix: We set the innerHTML dynamically to avoid the double text glitch
             if (isDark) {
                 btn.innerHTML = `<i class="fas fa-moon text-gray-400 text-xl w-6 text-center"></i><span class="nav-text ml-3 font-medium group-[.w-20]:hidden">Modo oscuro</span>`;
             } else {
@@ -108,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(updateThemeIcon, 50);
     };
 
+
     // =============================================================================
     // 4. VIEW HELPERS & ROUTER
     // =============================================================================
@@ -124,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .autocomplete-item:hover { background-color: #374151; }
             .autocomplete-item strong { color: #a78bfa; }
             
-            /* 🟢 NEW STYLES: Cleaner Calendar Menu */
+            /* 🟢 CALENDAR & EDITOR STYLES */
             .category-pill { cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: all 0.2s; }
             .category-pill:hover { background: rgba(255,255,255,0.1); }
             .category-pill.selected { background: #5e2d91; border-color: #ffde00; color: white; }
@@ -134,22 +138,30 @@ document.addEventListener('DOMContentLoaded', () => {
             
             /* Transparent default, visible on hover */
             .cal-action-btn { 
-                transition: all 0.2s; 
-                padding: 12px; 
-                border-radius: 50%; /* Circle */
+                transition: transform 0.2s; 
+                padding: 10px; 
+                border-radius: 50%; 
                 background: transparent; 
-                color: rgba(255,255,255,0.7);
             }
             .cal-action-btn:hover { 
-                transform: scale(1.1); 
-                background: rgba(0,0,0,0.8); /* Dark background only on hover */
-                color: white; 
-                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                transform: scale(1.15); 
+                text-shadow: 0 2px 4px rgba(0,0,0,0.5); 
             }
             
             .editor-expanded { max-width: 900px !important; }
             .slide-in-right { animation: slideIn 0.3s ease-out forwards; }
             @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+            /* Superset Connector Line */
+            .superset-connector {
+                position: absolute;
+                left: 20px;
+                top: -10px;
+                bottom: -10px;
+                width: 4px;
+                background-color: #3b82f6; /* Blue line */
+                z-index: 0;
+            }
         `;
         document.head.appendChild(style);
     };
@@ -272,9 +284,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const populateTimezones = () => {
         const select = document.getElementById('opt-timezone');
         if (!select || select.options.length > 0) return; 
+
         try {
             const timezones = Intl.supportedValuesOf('timeZone');
             const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            
             timezones.forEach(tz => {
                 const option = document.createElement('option');
                 option.value = tz;
@@ -301,11 +315,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // 🟢 1. DEFINE openClientProfile BEFORE it is called
+    // 🟢 1. OPEN CLIENT PROFILE (Updated with Modals)
     window.openClientProfile = (clientId) => {
         console.log("👇 CLICKED ID:", clientId);
+        // LOOSE MATCHING (==)
         const client = mockClientsDb.find(c => (c._id == clientId) || (c.id == clientId));
-        if (!client) { console.error("❌ Client NOT found"); return; }
+        
+        if (!client) { 
+            console.error("❌ Client NOT found in local DB. Available:", mockClientsDb); 
+            return; 
+        }
+        
+        console.log("✅ Client Found:", client.name);
         currentClientViewId = clientId;
 
         // 🟢 TRUECOACH STYLE CONTINUOUS CALENDAR
@@ -320,17 +341,68 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="px-3 py-1 text-sm font-semibold bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-white transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
                     </div>
                 </div>
+                
                 <div class="grid grid-cols-7 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10 shrink-0">
                     ${['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'].map(d => `<div class="py-3 text-center text-xs font-bold text-gray-400 dark:text-gray-500 tracking-wider">${d}</div>`).join('')}
                 </div>
+
                 <div id="infinite-calendar-scroll" class="flex-grow overflow-y-auto overflow-x-hidden relative bg-gray-100 dark:bg-gray-900 pb-20">
                     <div id="calendar-grid-container" class="grid grid-cols-7 auto-rows-min gap-px bg-gray-200 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
                         ${generateContinuousCalendar(client)}
                     </div>
                 </div>
-                <div id="workout-editor-modal" class="hidden absolute inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-[1px]"></div>
+                
+                <div id="workout-editor-modal" class="hidden absolute inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-[1px]">
+                    </div>
+
+                <div id="history-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div class="bg-white dark:bg-gray-800 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
+                        <div class="bg-gray-100 dark:bg-gray-700 p-4 border-b border-gray-200 dark:border-gray-600 flex justify-between items-center">
+                            <h3 class="font-bold text-lg dark:text-white">Historial de Ejercicio</h3>
+                            <button onclick="document.getElementById('history-modal').classList.add('hidden')" class="text-gray-500 hover:text-red-500 transition"><i class="fas fa-times text-xl"></i></button>
+                        </div>
+                        <div class="p-6">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                                        <tr>
+                                            <th class="px-3 py-2">Fecha</th>
+                                            <th class="px-3 py-2">Peso</th>
+                                            <th class="px-3 py-2">Reps</th>
+                                            <th class="px-3 py-2">Sets</th>
+                                            <th class="px-3 py-2">Notas</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="history-table-body">
+                                        <tr class="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
+                                            <td class="px-3 py-2">01/02/2026</td>
+                                            <td class="px-3 py-2">135 lbs</td>
+                                            <td class="px-3 py-2">10</td>
+                                            <td class="px-3 py-2">3</td>
+                                            <td class="px-3 py-2 italic">Easy</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="video-upload-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                     <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-96 border border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-bold mb-4 dark:text-white">Añadir Video URL</h3>
+                        <input type="text" id="video-url-input" class="w-full p-2 border rounded mb-4 dark:bg-gray-700 dark:text-white dark:border-gray-600 outline-none" placeholder="https://youtube.com/...">
+                        <div class="flex justify-end gap-2">
+                            <button onclick="document.getElementById('video-upload-modal').classList.add('hidden')" class="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400">Cancelar</button>
+                            <button onclick="window.saveEditorVideo()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold">Guardar</button>
+                        </div>
+                     </div>
+                </div>
+
             </div>
         `);
+
+        // Scroll to Today automatically
         setTimeout(() => {
             const todayCell = document.querySelector('.is-today');
             if(todayCell) todayCell.scrollIntoView({ block: "center", behavior: "auto" });
@@ -848,7 +920,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const startDate = new Date(today);
         startDate.setMonth(today.getMonth() - 1);
         startDate.setDate(1); 
-        
         const dayOfWeek = startDate.getDay(); 
         const diff = startDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); 
         startDate.setDate(diff);
@@ -866,13 +937,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // 🟢 5-BUTTON HOVER MENU
             const hoverMenu = `
-                <div class="day-cell-menu absolute inset-0 bg-gray-900/95 flex flex-col items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                    <div class="flex gap-6">
+                <div class="day-cell-menu absolute inset-0 bg-gray-900/95 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                    <div class="flex gap-4">
                         <button class="cal-action-btn text-white" data-action="add" data-date="${cellId}" title="Añadir"><i class="fas fa-plus text-2xl"></i></button>
                         <button class="cal-action-btn text-white" data-action="rest" data-date="${cellId}" title="Descanso"><i class="fas fa-battery-full text-2xl"></i></button>
                         <button class="cal-action-btn text-white" data-action="nutrition" data-date="${cellId}" title="Nutrición"><i class="fab fa-apple text-2xl"></i></button>
                     </div>
-                    <div class="flex gap-6">
+                    <div class="flex gap-4">
                         <button class="cal-action-btn text-white" data-action="paste" data-date="${cellId}" title="Pegar"><i class="fas fa-clipboard text-2xl"></i></button>
                         <button class="cal-action-btn text-white" data-action="program" data-date="${cellId}" title="Programa"><i class="far fa-calendar-plus text-2xl"></i></button>
                     </div>
@@ -899,8 +970,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const handleCalendarAction = (action, dateId) => {
         const dateStr = dateId.replace('day-', '');
         if (action === 'add') {
-            editorExercises = [{ id: Date.now(), name: "", isSuperset: false }];
+            editorExercises = [{ id: Date.now(), name: "", isSuperset: false, videoUrl: "" }];
             editorDateStr = dateStr;
+            editorWarmup = ""; // Reset
             openWorkoutEditor(dateStr); 
         } else if (action === 'rest') {
             const cell = document.getElementById(dateId);
@@ -928,6 +1000,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // Dynamic Exercise List
         const listHtml = editorExercises.map((ex, index) => {
             const letter = getLetter(index, editorExercises); 
+            // 🟢 4. SUPERSET BUTTON: Insert BETWEEN exercises
+            let supersetBtnHtml = '';
+            if (index < editorExercises.length - 1) {
+                const nextEx = editorExercises[index + 1];
+                if (!nextEx.isSuperset) {
+                    supersetBtnHtml = `
+                        <div class="flex justify-center -my-3 z-10 relative">
+                            <button onclick="window.linkSuperset(${index})" class="bg-gray-600 hover:bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full shadow-md transition border border-gray-500 font-bold">
+                                <i class="fas fa-link mr-1"></i> Superset
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+
             return `
             <div class="p-6 border-b border-gray-700 bg-[#32323c] relative">
                 <div class="flex justify-between items-start mb-2">
@@ -937,13 +1024,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h3 class="text-white font-bold text-lg">${letter})</h3> 
                         <input type="text" value="${ex.name}" class="bg-transparent text-white font-bold ml-1 outline-none w-full" placeholder="Exercise title (required)" oninput="window.updateExName(${ex.id}, this.value)">
                     </div>
-                    <i class="fas fa-video text-gray-500 cursor-pointer hover:text-blue-400" onclick="window.openVideoModalForEx(${ex.id})"></i>
+                    <i class="fas fa-video ${ex.videoUrl ? 'text-blue-400' : 'text-gray-500'} cursor-pointer hover:text-blue-400" onclick="window.openVideoModalForEditor(${ex.id})"></i>
                 </div>
-                <button class="w-full py-2 bg-[#3b4c75] text-[#8faae3] font-bold rounded text-sm hover:bg-[#475a87] transition mb-3 flex items-center justify-center gap-2" onclick="alert('Historial')">
+                
+                <button class="w-full py-2 bg-[#3b4c75] text-[#8faae3] font-bold rounded text-sm hover:bg-[#475a87] transition mb-3 flex items-center justify-center gap-2" onclick="window.openHistoryModal(${ex.id})">
                     <i class="fas fa-history"></i> See History
                 </button>
                 <textarea class="w-full bg-transparent text-gray-400 text-xs resize-none outline-none" placeholder="Sets, Reps, Tempo, Rest etc."></textarea>
-            </div>`;
+            </div>
+            ${supersetBtnHtml}
+            `;
         }).join('');
 
         modal.innerHTML = `
@@ -960,15 +1050,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="p-6 border-b border-gray-700 hover:bg-[#363640] transition group relative">
                         <div class="flex items-center gap-3">
                             <div class="w-6 h-6 bg-white rounded flex-shrink-0"></div>
-                            <input type="text" placeholder="Name (optional)" class="bg-transparent text-xl font-bold text-white placeholder-gray-500 w-full outline-none">
+                            <textarea oninput="window.updateWarmup(this.value)" class="bg-transparent text-xl font-bold text-white placeholder-gray-500 w-full outline-none resize-none overflow-hidden" rows="1" placeholder="Calentamiento o Instrucciones">${editorWarmup}</textarea>
                             <i class="fas fa-battery-empty text-gray-500"></i>
                         </div>
-                        <p class="text-gray-500 text-sm mt-2 pl-9 cursor-pointer hover:text-gray-300">Add warmup</p>
                     </div>
                     <div id="editor-exercises-list">${listHtml}</div>
                     <div class="flex justify-center gap-2 p-6">
                         <button class="px-3 py-1 border border-gray-500 rounded text-gray-300 text-xs hover:bg-gray-700 transition" onclick="window.addEditorExercise()">+ Exercise</button>
-                        <button class="px-3 py-1 border border-gray-500 rounded text-gray-300 text-xs hover:bg-gray-700 transition" onclick="window.createSuperset()">+ Superset</button>
                     </div>
                     <div class="p-6"><p class="text-gray-500 text-sm cursor-pointer hover:text-gray-300">Add cooldown</p></div>
                 </div>
@@ -982,50 +1070,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 🟢 SUPERSET LETTER LOGIC
     const getLetter = (index, arr) => {
-        let charCode = 65; // 'A'
+        let charCode = 65; 
         let subIndex = 0;
         let letters = [];
         for(let i=0; i<arr.length; i++) {
-            if(i > 0 && arr[i].isSuperset && arr[i-1].isSuperset) {
-                subIndex++;
-            } else {
-                if(i > 0) charCode++;
-                subIndex = 1;
-            }
-            if(arr[i].isSuperset) {
-               letters.push(String.fromCharCode(charCode) + subIndex);
-            } else {
-               letters.push(String.fromCharCode(charCode));
-            }
+            if(i > 0 && arr[i].isSuperset && arr[i-1].isSuperset) { subIndex++; } 
+            else { if(i > 0) charCode++; subIndex = 1; }
+            if(arr[i].isSuperset) { letters.push(String.fromCharCode(charCode) + subIndex); } 
+            else { letters.push(String.fromCharCode(charCode)); }
         }
         return letters[index];
     };
 
-    // Editor Actions
-    window.addEditorExercise = () => {
-        editorExercises.push({ id: Date.now(), name: "", isSuperset: false });
-        renderWorkoutEditorUI();
+    // 🟢 HELPERS
+    window.updateWarmup = (val) => { editorWarmup = val; };
+    window.addEditorExercise = () => { editorExercises.push({ id: Date.now(), name: "", isSuperset: false, videoUrl: "" }); renderWorkoutEditorUI(); };
+    window.updateExName = (id, val) => { const ex = editorExercises.find(e => e.id === id); if(ex) ex.name = val; };
+    
+    // 🟢 LINK SUPERSET BUTTON ACTION
+    window.linkSuperset = (index) => {
+        if (editorExercises[index + 1]) {
+            editorExercises[index + 1].isSuperset = true;
+            if (index > 0 && editorExercises[index].isSuperset) { /* already in chain */ }
+            else { editorExercises[index].isSuperset = true; } 
+            renderWorkoutEditorUI();
+        }
     };
 
-    window.updateExName = (id, val) => {
+    // 🟢 MODAL ACTIONS
+    window.openVideoModalForEditor = (id) => {
+        currentEditorExId = id;
         const ex = editorExercises.find(e => e.id === id);
-        if(ex) ex.name = val;
+        document.getElementById('video-url-input').value = ex ? ex.videoUrl : "";
+        document.getElementById('video-upload-modal').classList.remove('hidden');
     };
 
-    window.createSuperset = () => {
-        const checkboxes = document.querySelectorAll('.ex-checkbox:checked');
-        if(checkboxes.length < 2) return alert("Selecciona al menos 2 ejercicios para crear un Superset.");
-        checkboxes.forEach(box => {
-            const id = parseInt(box.dataset.id);
-            const ex = editorExercises.find(e => e.id === id);
-            if(ex) ex.isSuperset = true;
-        });
+    window.saveEditorVideo = () => {
+        const url = document.getElementById('video-url-input').value;
+        if(currentEditorExId) {
+            const ex = editorExercises.find(e => e.id === currentEditorExId);
+            if(ex) ex.videoUrl = url;
+        }
+        document.getElementById('video-upload-modal').classList.add('hidden');
         renderWorkoutEditorUI();
+    };
+
+    window.openHistoryModal = (id) => {
+        document.getElementById('history-modal').classList.remove('hidden');
     };
 
     window.saveDayWorkout = async () => {
         if(!currentClientViewId) return;
-        const payload = { clientId: currentClientViewId, date: editorDateStr, programName: "Custom Day", exercises: editorExercises };
+        const payload = { clientId: currentClientViewId, date: editorDateStr, programName: "Custom Day", warmup: editorWarmup, exercises: editorExercises };
         try {
             await fetch('/api/log', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
             const cell = document.getElementById(`day-${editorDateStr}`);
@@ -1037,11 +1133,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) { console.error(e); }
     };
 
-    window.openVideoModalForEx = (id) => {
-        document.getElementById('video-upload-modal').classList.remove('hidden');
-    };
-
-    // 🟢 RENDER SETTINGS (Restored)
     const renderSettings = () => {
         updateContent('Ajustes', `
             <div class="p-8 text-center text-gray-500 dark:text-gray-400">
@@ -1059,23 +1150,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = e.target.closest('a, button, [id], .program-card, .open-video-modal, .client-row, .action-add, .pill-option, .toggle-switch, .cal-action-btn');
         if (!target) return;
 
-        // 🟢 THEME TOGGLE (Top Priority)
         if (target.id === 'theme-toggle' || target.closest('#theme-toggle')) { 
-            e.preventDefault(); // Stop router from catching it
+            e.preventDefault(); 
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.setItem('theme', isDark ? 'dark' : 'light');
             updateThemeIcon();
             return; 
         }
 
-        // 🟢 LOGOUT (Top Priority)
         if (target.id === 'logout-btn' || target.closest('#logout-btn')) { 
             localStorage.removeItem('auth_user'); 
             location.reload(); 
             return; 
         }
 
-        // 🟢 CALENDAR ACTION BUTTONS
         if (target.classList.contains('cal-action-btn')) {
             e.stopPropagation(); 
             handleCalendarAction(target.dataset.action, target.dataset.date);
@@ -1092,9 +1180,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (linkText === 'Inicio' || linkText === document.getElementById('trainer-name')?.textContent.trim()) moduleToLoad = 'trainer_home';
             else if (linkText === 'Clientes') moduleToLoad = 'clientes_content';
             else if (linkText === 'Programas') moduleToLoad = 'library_content'; 
-            else if (linkText === 'Ajustes') {
-                 moduleToLoad = 'ajustes_content'; // 🟢 FIX: Trigger fetch, not function
-            }
+            else if (linkText === 'Ajustes') { moduleToLoad = 'ajustes_content'; } 
             else if (linkText === 'Pagos') moduleToLoad = 'pagos_content';
             else if (linkText.includes('Mis Programas')) moduleToLoad = 'client_programas';
             else if (linkText.includes('Métricas')) moduleToLoad = 'client_metricas';
@@ -1116,41 +1202,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (moduleToLoad === 'client_equipo') renderEquipmentOptions();
                         if (moduleToLoad === 'client_clock') window.initClockModule(); 
                         if (moduleToLoad === 'trainer_home') renderTrainerHome(loadSession().name); 
-                        if (moduleToLoad === 'ajustes_content') {
-                            // Hook for settings specific JS logic if needed
-                            console.log("Settings loaded");
-                        }
+                        if (moduleToLoad === 'ajustes_content') console.log("Settings loaded");
                     }
                 } catch(e) { console.error(e); }
             }
             return;
         }
 
-        // ... (Keep existing Exercise Modal logic, Save Client logic, etc.) ...
-        
+        // ... (Remaining handlers kept)
         if (target.id === 'add-new-exercise-btn') { document.getElementById('add-exercise-modal').classList.remove('hidden'); return; }
         if (target.id === 'close-exercise-modal-x' || target.id === 'cancel-exercise-btn') { document.getElementById('add-exercise-modal').classList.add('hidden'); return; }
         if (target.id === 'save-exercise-db-btn') { window.handleSaveNewExercise(); return; }
-
         if (target.id === 'save-new-client-btn') { window.handleSaveClient(); return; }
-        if (target.id === 'close-add-client-modal' || target.id === 'cancel-add-client') { 
-            document.getElementById('add-client-modal').classList.add('hidden'); 
-            return; 
-        }
-        
-        if (target.id === 'open-add-client-modal') { 
-            currentClientViewId = null;
-            document.querySelector('#add-client-modal h2').textContent = "Nuevo cliente";
-            document.getElementById('save-new-client-btn').textContent = "Guardar cliente";
-            document.getElementById('new-client-name').value = "";
-            document.getElementById('new-client-lastname').value = "";
-            document.getElementById('new-client-email').value = "";
-            document.getElementById('add-client-modal').classList.remove('hidden'); 
-            populateTimezones(); 
-            renderGroupOptions(); 
-            return; 
-        }
-
+        if (target.id === 'close-add-client-modal' || target.id === 'cancel-add-client') { document.getElementById('add-client-modal').classList.add('hidden'); return; }
+        if (target.id === 'open-add-client-modal') { currentClientViewId = null; document.querySelector('#add-client-modal h2').textContent = "Nuevo cliente"; document.getElementById('save-new-client-btn').textContent = "Guardar cliente"; document.getElementById('new-client-name').value = ""; document.getElementById('new-client-lastname').value = ""; document.getElementById('new-client-email').value = ""; document.getElementById('add-client-modal').classList.remove('hidden'); populateTimezones(); renderGroupOptions(); return; }
         if (target.id === 'open-group-modal') { document.getElementById('add-group-modal').classList.remove('hidden'); return; }
         if (target.id === 'close-group-modal') { document.getElementById('add-group-modal').classList.add('hidden'); return; }
         if (target.id === 'save-group-btn') {
@@ -1175,15 +1240,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'cancel-routine-edit' || target.id === 'cancel-routine-btn-footer') { document.getElementById('edit-routine-modal').classList.add('hidden'); return; }
         if (target.id === 'add-exercise-btn') { addExerciseToBuilder(); return; }
         if (target.id === 'save-routine-btn') { saveRoutine(); return; }
-
-        if (target.id === 'logout-btn' || target.closest('#logout-btn')) { localStorage.removeItem('auth_user'); location.reload(); return; }
-        if (target.id === 'theme-toggle') { 
-            const isDark = document.documentElement.classList.toggle('dark');
-            localStorage.setItem('theme', isDark ? 'dark' : 'light');
-            updateThemeIcon();
-            return; 
-        }
-
+        
         if (target.id === 'toggle-optional-info' || target.closest('#toggle-optional-info')) {
             const content = document.getElementById('optional-info-content');
             const icon = document.getElementById('optional-info-icon');
@@ -1270,209 +1327,29 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // ... (Clock Logic kept same) ...
     // 🟢 CLOCK LOGIC
-    let clockIntervalId = null;
-    let stopwatchInterval = null;
-    let timerInterval = null;
-    let clockMode = 'CLOCK';
-    let stopwatchTime = 0;
-    let timerTime = 0;
-    let isClockRunning = false;
-    let clockCanvas = null;
-    let clockCtx = null;
-
-    window.initClockModule = function() {
-        clockCanvas = document.getElementById('clockCanvas');
-        if(!clockCanvas) return;
-        clockCtx = clockCanvas.getContext('2d');
-        clockMode = 'CLOCK';
-        stopwatchTime = 0;
-        timerTime = 0;
-        isClockRunning = false;
-        if(stopwatchInterval) clearInterval(stopwatchInterval);
-        if(timerInterval) clearInterval(timerInterval);
-        if(clockIntervalId) cancelAnimationFrame(clockIntervalId);
-        window.clockDrawLoop();
-    };
-
-    window.clockSetMode = function(mode) {
-        clockMode = mode;
-        const modeLabel = document.getElementById('modeLabel');
-        const timerInputArea = document.getElementById('timerInputArea');
-        const actionBtn = document.getElementById('actionBtn');
-        const timeDisplay = document.getElementById('timeDisplay');
-        if(modeLabel) modeLabel.innerText = mode;
-        window.clockResetLogic();
-        if (mode === 'TIMER') {
-            if(timerInputArea) timerInputArea.style.display = 'block';
-            if(timeDisplay) timeDisplay.innerText = "00:00";
-        } else {
-            if(timerInputArea) timerInputArea.style.display = 'none';
-        }
-        if(actionBtn) actionBtn.innerText = (mode === 'CLOCK') ? "---" : "Start";
-    };
-
-    window.clockHandleAction = function() {
-        if (clockMode === 'CLOCK') return;
-        if (isClockRunning) window.clockStopLogic();
-        else window.clockStartLogic();
-    };
-
-    window.clockStartLogic = function() {
-        const actionBtn = document.getElementById('actionBtn');
-        const timerInput = document.getElementById('timerInput');
-        isClockRunning = true;
-        if(actionBtn) actionBtn.innerText = "Stop";
-        if (clockMode === 'STOPWATCH') {
-            const startTime = Date.now() - stopwatchTime;
-            stopwatchInterval = setInterval(() => {
-                stopwatchTime = Date.now() - startTime;
-                window.clockUpdateDisplay(stopwatchTime);
-            }, 100);
-        } else if (clockMode === 'TIMER') {
-            if (timerTime === 0) timerTime = parseInt(timerInput ? timerInput.value || 0 : 0) * 1000;
-            const endTime = Date.now() + timerTime;
-            timerInterval = setInterval(() => {
-                timerTime = endTime - Date.now();
-                if (timerTime <= 0) {
-                    timerTime = 0;
-                    clearInterval(timerInterval);
-                    alert("Time is up!");
-                    window.clockResetLogic();
-                }
-                window.clockUpdateDisplay(timerTime);
-            }, 100);
-        }
-    };
-
-    window.clockStopLogic = function() {
-        isClockRunning = false;
-        const actionBtn = document.getElementById('actionBtn');
-        if(actionBtn) actionBtn.innerText = "Start";
-        clearInterval(stopwatchInterval);
-        clearInterval(timerInterval);
-    };
-
-    window.clockResetLogic = function() {
-        window.clockStopLogic();
-        stopwatchTime = 0;
-        timerTime = 0;
-        const timeDisplay = document.getElementById('timeDisplay');
-        if (clockMode !== 'CLOCK' && timeDisplay) timeDisplay.innerText = "00:00";
-    };
-
-    window.clockUpdateDisplay = function(ms) {
-        const timeDisplay = document.getElementById('timeDisplay');
-        if(!timeDisplay) return;
-        const totalSeconds = Math.floor(ms / 1000);
-        const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
-        const s = (totalSeconds % 60).toString().padStart(2, '0');
-        timeDisplay.innerText = `${m}:${s}`;
-    };
-
-    window.clockDrawLoop = function() {
-        if(!document.getElementById('clockCanvas')) return; 
-        const centerX = 400; 
-        const centerY = 400;
-        clockCtx.clearRect(0, 0, 800, 800);
-        window.clockDrawGear(clockCtx, centerX, centerY, 12, 360, 320, 40, '#5e2d91');
-        clockCtx.fillStyle = "white";
-        clockCtx.font = "bold 24px Arial";
-        clockCtx.textAlign = "center";
-        for (let i = 0; i < 60; i += 5) {
-            const angle = (i - 15) * (Math.PI * 2 / 60);
-            const x = centerX + Math.cos(angle) * 385;
-            const y = centerY + Math.sin(angle) * 385 + 10;
-            clockCtx.fillText(i, x, y);
-        }
-        const now = new Date();
-        let activeSeconds = 0;
-        if (clockMode === 'CLOCK') {
-            activeSeconds = now.getSeconds();
-            const timeDisplay = document.getElementById('timeDisplay');
-            if(timeDisplay) timeDisplay.innerText = now.toTimeString().split(' ')[0].substring(0, 5);
-        } else if (clockMode === 'STOPWATCH') {
-            activeSeconds = Math.floor(stopwatchTime / 1000) % 60;
-        } else if (clockMode === 'TIMER') {
-            activeSeconds = Math.floor(timerTime / 1000) % 60;
-        }
-        for (let i = 0; i < 60; i++) {
-            window.clockDrawMarker(clockCtx, centerX, centerY, i, i <= activeSeconds);
-        }
-        clockIntervalId = requestAnimationFrame(window.clockDrawLoop);
-    };
-
-    window.clockDrawGear = function(ctx, x, y, teeth, outerRadius, innerRadius, toothHeight, color) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.translate(x, y);
-        ctx.fillStyle = color;
-        ctx.strokeStyle = "rgba(0,0,0,0.3)";
-        ctx.lineWidth = 5;
-        for (let i = 0; i < teeth; i++) {
-            ctx.rotate(Math.PI / teeth);
-            ctx.lineTo(innerRadius, 0);
-            ctx.lineTo(outerRadius, toothHeight);
-            ctx.rotate(Math.PI / teeth);
-            ctx.lineTo(outerRadius, -toothHeight);
-            ctx.lineTo(innerRadius, 0);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-    };
-
-    window.clockDrawMarker = function(ctx, centerX, centerY, index, isActive) {
-        const angle = (index - 15) * (Math.PI * 2 / 60);
-        ctx.beginPath();
-        ctx.strokeStyle = isActive ? "white" : "rgba(255,255,255,0.15)";
-        ctx.lineWidth = 15;
-        ctx.arc(centerX, centerY, 280, angle - 0.04, angle + 0.04);
-        ctx.stroke();
-    };
+    let clockIntervalId = null; let stopwatchInterval = null; let timerInterval = null; let clockMode = 'CLOCK'; let stopwatchTime = 0; let timerTime = 0; let isClockRunning = false; let clockCanvas = null; let clockCtx = null;
+    window.initClockModule = function() { clockCanvas = document.getElementById('clockCanvas'); if(!clockCanvas) return; clockCtx = clockCanvas.getContext('2d'); clockMode = 'CLOCK'; stopwatchTime = 0; timerTime = 0; isClockRunning = false; if(stopwatchInterval) clearInterval(stopwatchInterval); if(timerInterval) clearInterval(timerInterval); if(clockIntervalId) cancelAnimationFrame(clockIntervalId); window.clockDrawLoop(); };
+    window.clockSetMode = function(mode) { clockMode = mode; const modeLabel = document.getElementById('modeLabel'); const timerInputArea = document.getElementById('timerInputArea'); const actionBtn = document.getElementById('actionBtn'); const timeDisplay = document.getElementById('timeDisplay'); if(modeLabel) modeLabel.innerText = mode; window.clockResetLogic(); if (mode === 'TIMER') { if(timerInputArea) timerInputArea.style.display = 'block'; if(timeDisplay) timeDisplay.innerText = "00:00"; } else { if(timerInputArea) timerInputArea.style.display = 'none'; } if(actionBtn) actionBtn.innerText = (mode === 'CLOCK') ? "---" : "Start"; };
+    window.clockHandleAction = function() { if (clockMode === 'CLOCK') return; if (isClockRunning) window.clockStopLogic(); else window.clockStartLogic(); };
+    window.clockStartLogic = function() { const actionBtn = document.getElementById('actionBtn'); const timerInput = document.getElementById('timerInput'); isClockRunning = true; if(actionBtn) actionBtn.innerText = "Stop"; if (clockMode === 'STOPWATCH') { const startTime = Date.now() - stopwatchTime; stopwatchInterval = setInterval(() => { stopwatchTime = Date.now() - startTime; window.clockUpdateDisplay(stopwatchTime); }, 100); } else if (clockMode === 'TIMER') { if (timerTime === 0) timerTime = parseInt(timerInput ? timerInput.value || 0 : 0) * 1000; const endTime = Date.now() + timerTime; timerInterval = setInterval(() => { timerTime = endTime - Date.now(); if (timerTime <= 0) { timerTime = 0; clearInterval(timerInterval); alert("Time is up!"); window.clockResetLogic(); } window.clockUpdateDisplay(timerTime); }, 100); } };
+    window.clockStopLogic = function() { isClockRunning = false; const actionBtn = document.getElementById('actionBtn'); if(actionBtn) actionBtn.innerText = "Start"; clearInterval(stopwatchInterval); clearInterval(timerInterval); };
+    window.clockResetLogic = function() { window.clockStopLogic(); stopwatchTime = 0; timerTime = 0; const timeDisplay = document.getElementById('timeDisplay'); if (clockMode !== 'CLOCK' && timeDisplay) timeDisplay.innerText = "00:00"; };
+    window.clockUpdateDisplay = function(ms) { const timeDisplay = document.getElementById('timeDisplay'); if(!timeDisplay) return; const totalSeconds = Math.floor(ms / 1000); const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0'); const s = (totalSeconds % 60).toString().padStart(2, '0'); timeDisplay.innerText = `${m}:${s}`; };
+    window.clockDrawLoop = function() { if(!document.getElementById('clockCanvas')) return; const centerX = 400; const centerY = 400; clockCtx.clearRect(0, 0, 800, 800); window.clockDrawGear(clockCtx, centerX, centerY, 12, 360, 320, 40, '#5e2d91'); clockCtx.fillStyle = "white"; clockCtx.font = "bold 24px Arial"; clockCtx.textAlign = "center"; for (let i = 0; i < 60; i += 5) { const angle = (i - 15) * (Math.PI * 2 / 60); const x = centerX + Math.cos(angle) * 385; const y = centerY + Math.sin(angle) * 385 + 10; clockCtx.fillText(i, x, y); } const now = new Date(); let activeSeconds = 0; if (clockMode === 'CLOCK') { activeSeconds = now.getSeconds(); const timeDisplay = document.getElementById('timeDisplay'); if(timeDisplay) timeDisplay.innerText = now.toTimeString().split(' ')[0].substring(0, 5); } else if (clockMode === 'STOPWATCH') { activeSeconds = Math.floor(stopwatchTime / 1000) % 60; } else if (clockMode === 'TIMER') { activeSeconds = Math.floor(timerTime / 1000) % 60; } for (let i = 0; i < 60; i++) { window.clockDrawMarker(clockCtx, centerX, centerY, i, i <= activeSeconds); } clockIntervalId = requestAnimationFrame(window.clockDrawLoop); };
+    window.clockDrawGear = function(ctx, x, y, teeth, outerRadius, innerRadius, toothHeight, color) { ctx.save(); ctx.beginPath(); ctx.translate(x, y); ctx.fillStyle = color; ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 5; for (let i = 0; i < teeth; i++) { ctx.rotate(Math.PI / teeth); ctx.lineTo(innerRadius, 0); ctx.lineTo(outerRadius, toothHeight); ctx.rotate(Math.PI / teeth); ctx.lineTo(outerRadius, -toothHeight); ctx.lineTo(innerRadius, 0); } ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); };
+    window.clockDrawMarker = function(ctx, centerX, centerY, index, isActive) { const angle = (index - 15) * (Math.PI * 2 / 60); ctx.beginPath(); ctx.strokeStyle = isActive ? "white" : "rgba(255,255,255,0.15)"; ctx.lineWidth = 15; ctx.arc(centerX, centerY, 280, angle - 0.04, angle + 0.04); ctx.stroke(); };
 
     // 🟢 RENDER TRAINER HOME
     window.renderTrainerHome = (trainerName) => {
         const greetingEl = document.getElementById('greeting-text');
         const feedContainer = document.getElementById('trainer-feed-container');
-        
         if (!feedContainer) return;
-
         const hour = new Date().getHours();
         let greeting = "¡Buenos días";
         if (hour >= 12 && hour < 17) greeting = "¡Buenas tardes";
         else if (hour >= 17) greeting = "¡Buenas noches";
         if(greetingEl) greetingEl.textContent = `${greeting}, ${trainerName.split(' ')[0]}!`;
-
-        const mockFeed = [
-            {
-                clientName: "Gabriel Ciuró",
-                initials: "GC",
-                timeAgo: "hace 4 horas",
-                workoutTitle: "Día 2: Piernas & Core",
-                exercises: [
-                    {
-                        letter: "A",
-                        name: "Plate Decline Sit Ups",
-                        instructions: "4 sets de 15-25 repeticiones. No utilices el momentum del plato para subir. Deja el plato fijo.",
-                        result: "2x25 sin platoncontrolando la bajada\n1x20"
-                    },
-                    {
-                        letter: "B",
-                        name: "Smith Machine Split Squat",
-                        instructions: "4 sets de 15-25 repeticiones. Hagamos un tempo de 3-0-1 (tarda 3 segundos bajando...).",
-                        result: "3x15 25lbs db"
-                    },
-                    {
-                        letter: "C1",
-                        name: "DB Romanian Deadlifts",
-                        instructions: "4 sets de 12 repeticiones. Comienza con los dumbbells de 50 libras.",
-                        result: "3x12 50lbs"
-                    }
-                ]
-            }
-        ];
-
+        const mockFeed = [ { clientName: "Gabriel Ciuró", initials: "GC", timeAgo: "hace 4 horas", workoutTitle: "Día 2: Piernas & Core", exercises: [ { letter: "A", name: "Plate Decline Sit Ups", instructions: "4 sets de 15-25 repeticiones...", result: "2x25 sin plato\n1x20" } ] } ];
         feedContainer.innerHTML = mockFeed.map(item => `
             <div class="bg-gray-800 dark:bg-gray-800 rounded-lg border border-gray-700 overflow-hidden shadow-lg">
                 <div class="p-4 bg-gray-750 dark:bg-gray-750 border-b border-gray-700 flex justify-between items-center">
@@ -1495,19 +1372,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <h4 class="text-xl font-bold text-white">${ex.name}</h4>
                                 <i class="fas fa-check text-green-500 text-lg"></i>
                             </div>
-                            <div class="flex items-center gap-2 mb-3 text-xs">
-                                <i class="fas fa-history text-blue-400"></i>
-                                <span class="text-blue-400 hover:underline cursor-pointer">Ver el historial de este ejercicio.</span>
-                            </div>
-                            <p class="text-gray-300 text-sm mb-4 leading-relaxed">${ex.instructions}</p>
-                            <div class="bg-gray-900 border-l-4 border-green-500 p-4 rounded text-white font-mono text-sm whitespace-pre-line shadow-inner">
-                                ${ex.result}
-                            </div>
-                        </div>
-                    `).join('')}
+                            <div class="bg-gray-900 border-l-4 border-green-500 p-4 rounded text-white font-mono text-sm whitespace-pre-line shadow-inner">${ex.result}</div>
+                        </div>`).join('')}
                 </div>
-            </div>
-        `).join('');
+            </div>`).join('');
     };
 
     // 🟢 UPDATED TIPS (Full List)
@@ -1516,10 +1384,7 @@ document.addEventListener('DOMContentLoaded', () => {
         es: [ "Bebe agua antes de cada comida.", "Prioriza la proteína en cada comida.", "El sueño es tu mejor suplemento.", "La consistencia supera a la intensidad.", "Camina 10 mil pasos diarios.", "No te bebas tus calorías.", "Levanta cosas pesadas.", "Come alimentos enteros el 80% del tiempo.", "Rastrea tu progreso.", "Los días de descanso son días de crecimiento.", "Los ejercicios compuestos dan el mejor ROI.", "Técnica sobre peso, siempre.", "Come más vegetales.", "La creatina es segura y efectiva.", "Los batidos de proteína son solo comida.", "No puedes entrenar para compensar una mala dieta.", "La sobrecarga progresiva es clave.", "Calienta antes de levantar.", "Estira después de levantar.", "Toma fotos de progreso.", "No le temas a los carbohidratos.", "Las grasas son esenciales para las hormonas.", "El azúcar no es veneno, el exceso sí.", "Escucha a tu cuerpo.", "Las semanas de descarga previenen lesiones.", "Entrenar al fallo es opcional.", "El volumen impulsa la hipertrofia.", "La fuerza toma años, no semanas.", "La motivación se desvanece, la disciplina se queda.", "Preparar comidas ahorra tiempo y cintura.", "El alcohol mata las ganancias.", "Duerme 7-9 horas.", "Hidrátate a primera hora de la mañana.", "La cafeína es un potenciador de rendimiento válido.", "No levantes por ego.", "Rastrea tus pasos.", "La actividad no relacionada con el ejercicio importa (NEAT).", "La fibra te mantiene lleno.", "Come despacio.", "Detente cuando estés 80% lleno.", "Pésate diariamente, promedia semanalmente.", "El peso de la báscula fluctúa, no entres en pánico.", "Da paseos después de las comidas.", "La luz solar ayuda al ritmo del sueño.", "El magnesio ayuda a la recuperación.", "Consistencia > Perfección.", "Disfruta tus comidas favoritas con moderación.", "El fitness es un maratón, no un sprint.", "Enfócate en hábitos, no solo en metas.", "Tú puedes con esto." ]
     };
 
-    window.updateFitnessTipLanguage = (lang) => {
-        renderRandomTip(lang);
-    };
-
+    window.updateFitnessTipLanguage = (lang) => { renderRandomTip(lang); };
     const renderRandomTip = (lang = 'es') => {
         const tipEl = document.getElementById('daily-fitness-tip');
         if (tipEl && fitnessTips[lang]) {
@@ -1527,6 +1392,5 @@ document.addEventListener('DOMContentLoaded', () => {
             tipEl.textContent = `"${randomTip}"`;
         }
     };
-
     renderRandomTip('es');
 });
