@@ -162,6 +162,91 @@ document.addEventListener('DOMContentLoaded', () => {
                 background-color: #3b82f6; /* Blue line */
                 z-index: 0;
             }
+                /* 🟢 MOBILE-FRIENDLY CALENDAR STYLES */
+                @media (max-width: 768px) {
+                    /* Make calendar grid single column on mobile */
+                    #calendar-grid-container {
+                        grid-template-columns: 1fr !important;
+                        gap: 8px;
+                    }
+
+                    /* Hide desktop day headers on mobile */
+                    #client-calendar-grid > .grid.grid-cols-7 {
+                        display: none !important;
+                    }
+
+                    /* Make day cells mobile-friendly */
+                    .day-cell {
+                        min-height: 120px !important;
+                        border-radius: 12px;
+                        border: 1px solid rgba(209, 213, 219, 0.3);
+                        margin-bottom: 4px;
+                    }
+
+                    /* Show day name inside each cell on mobile */
+                    .day-cell::before {
+                        content: attr(data-day-name);
+                        display: block;
+                        font-size: 10px;
+                        font-weight: 600;
+                        color: #9ca3af;
+                        text-transform: uppercase;
+                        margin-bottom: 4px;
+                    }
+
+                    /* Mobile: Always show action buttons (no hover needed) */
+                    .day-cell-menu {
+                        display: none !important;
+                    }
+
+                    .mobile-day-actions {
+                        display: flex;
+                        gap: 4px;
+                        margin-top: 8px;
+                        flex-wrap: wrap;
+                    }
+
+                    .mobile-action-btn {
+                        flex: 1;
+                        min-width: 28px;
+                        height: 28px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        background: rgba(107, 114, 128, 0.2);
+                        border-radius: 6px;
+                        font-size: 12px;
+                        color: white;
+                        border: 1px solid rgba(255, 255, 255, 0.1);
+                    }
+
+                    .mobile-action-btn:active {
+                        background: rgba(107, 114, 128, 0.4);
+                        transform: scale(0.95);
+                    }
+
+                    /* Make header more compact on mobile */
+                    #client-calendar-grid > .flex.items-center {
+                        flex-direction: column;
+                        align-items: flex-start !important;
+                        gap: 8px;
+                        padding: 12px !important;
+                    }
+
+                    #client-calendar-grid h2 {
+                        font-size: 18px !important;
+                    }
+
+                    #back-to-clients-btn {
+                        font-size: 14px;
+                    }
+
+                    /* Workout editor - make full width on mobile */
+                    #editor-panel {
+                        max-width: 100% !important;
+                        width: 100% !important;
+                    }
+                }
         `;
         document.head.appendChild(style);
     };
@@ -934,7 +1019,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const isToday = currentDate.toDateString() === new Date().toDateString();
             const isFirstOfMonth = dayNum === 1;
             const cellId = `day-${currentDate.toISOString().split('T')[0]}`;
-            
+            const dayNames = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+            const dayName = dayNames[currentDate.getDay()];
+
             // 🟢 5-BUTTON HOVER MENU
             const hoverMenu = `
                 <div class="day-cell-menu absolute inset-0 bg-gray-900/95 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
@@ -950,18 +1037,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
 
+                const mobileActions = `
+                <div class="mobile-day-actions hidden md:hidden">
+                    <button class="mobile-action-btn" data-action="add" data-date="${cellId}"><i class="fas fa-plus"></i></button>
+                    <button class="mobile-action-btn" data-action="rest" data-date="${cellId}"><i class="fas fa-battery-full"></i></button>
+                    <button class="mobile-action-btn" data-action="nutrition" data-date="${cellId}"><i class="fab fa-apple"></i></button>
+                    <button class="mobile-action-btn" data-action="paste" data-date="${cellId}"><i class="fas fa-clipboard"></i></button>
+                    <button class="mobile-action-btn" data-action="program" data-date="${cellId}"><i class="far fa-calendar-plus"></i></button>
+                </div>
+            `;
+
             const bgClass = isToday ? 'bg-blue-50 dark:bg-gray-800/80 border-t-4 border-blue-500' : 'bg-white dark:bg-gray-800';
             const textClass = isToday ? 'text-blue-600 font-bold' : 'text-gray-500 dark:text-gray-400';
             
             html += `
-                <div id="${cellId}" class="day-cell ${bgClass} min-h-[160px] p-2 relative group transition hover:shadow-inner ${isToday ? 'is-today' : ''}">
+                <div id="${cellId}" class="day-cell ${bgClass} min-h-[160px] p-2 relative group transition hover:shadow-inner ${isToday ? 'is-today' : ''}" data-day-name="${dayName}">
                     <div class="flex justify-between items-start pointer-events-none">
                         <span class="text-xs font-bold ${textClass}">${dayNum} ${isFirstOfMonth ? monthName : ''}</span>
                     </div>
                     <div class="mt-2 space-y-1 content-area"></div>
                     ${hoverMenu}
+                    ${mobileActions}
                 </div>
             `;
+
         }
         return html;
     };
@@ -1166,6 +1265,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (target.classList.contains('cal-action-btn')) {
             e.stopPropagation(); 
+            handleCalendarAction(target.dataset.action, target.dataset.date);
+            return;
+        }
+
+        // 🟢 Handle mobile action button clicks
+        if (target.classList.contains('mobile-action-btn')) {
+            e.stopPropagation();
             handleCalendarAction(target.dataset.action, target.dataset.date);
             return;
         }
