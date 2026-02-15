@@ -5,144 +5,153 @@
 
     <div id="activity-feed" class="space-y-6">
         
-        <!-- HEADER FOR MOCK DATA -->
         <p class="text-sm text-center text-gray-700 dark:text-gray-400 pb-2 border-b dark:border-gray-700">MOCK DATA: Eventos de Clientes Recientes</p>
 
 
-        <!-- 1. MILESTONE: Workout Missed (Missed Milestone) -->
         <div class="flex items-start p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border-l-4 border-red-500">
             <i class="fas fa-calendar-times text-red-700 dark:text-red-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> <span class="font-semibold text-red-700 dark:text-red-400">PERDIÓ</span> el entrenamiento de Pecho/Tríceps.
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    <span class="font-semibold text-red-700 dark:text-red-400">PERDIÓ</span> el entrenamiento de Pecho/Tríceps.
                 </p>
-                <!-- FIX: Ensuring secondary text (darker gray) is readable in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Milestone - Missed:** Racha de 3 días perdida. (Automático: Fin del día).
                 </p>
             </div>
         </div>
         
-        <!-- 2. MILESTONE: Workout Completed (Positive Milestone) -->
         <div class="flex items-start p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border-l-4 border-green-500">
             <i class="fas fa-check-circle text-green-700 dark:text-green-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> marcó su Rutina de Pierna como <span class="text-green-700 dark:text-green-400">Completa.</span>
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    marcó su Rutina de Pierna como <span class="text-green-700 dark:text-green-400">Completa.</span>
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Milestone:** Completó 5 días de entrenamiento consecutivo.
                 </p>
             </div>
         </div>
 
-        <!-- 3. WORKOUT COMMENT: Exercise Set/Reps Update (Metric Update) -->
         <div class="flex items-start p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg border-l-4 border-teal-500">
             <i class="fas fa-chart-line text-teal-700 dark:text-teal-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> actualizó volumen en **Press Militar (3 series x 8 reps a 70kg)**.
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    actualizó volumen en **Press Militar (3 series x 8 reps a 70kg)**.
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Metric Update - Resistance:** Primera vez que completa 8 reps con 70 kg.
                 </p>
             </div>
         </div>
         
-        <!-- 4. METRIC UPDATE: Nutrition Macros/Calories -->
         <div class="flex items-start p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-l-4 border-blue-500">
             <i class="fas fa-utensils text-blue-700 dark:text-blue-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> ha registrado sus macros de Nutrición.
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    ha registrado sus macros de Nutrición.
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Metric Update - Nutrition:** Macros: Proteína 150g, Carbos 250g, Grasas 60g.
                 </p>
             </div>
         </div>
 
-        <!-- 5. PROGRESS PICTURES -->
         <div class="flex items-start p-4 bg-pink-50 dark:bg-pink-900/20 rounded-lg border-l-4 border-pink-500">
             <i class="fas fa-camera text-pink-700 dark:text-pink-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> ha subido <span class="font-semibold">3 nuevas fotos de progreso.</span>
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    ha subido <span class="font-semibold">3 nuevas fotos de progreso.</span>
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Progress Picture:** Listas para revisión visual.
                 </p>
             </div>
         </div>
         
-        <!-- 6. METRIC UPDATE: Weight Check (Evaluation Pending) -->
         <div class="flex items-start p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border-l-4 border-yellow-500">
             <i class="fas fa-weight text-yellow-700 dark:text-yellow-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> registró su peso: **85.5 kg**.
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    registró su peso: **85.5 kg**.
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-yellow-300">
                     **Metric Update - Evaluation Date:** Última fecha evaluada: 2025-11-20.
                 </p>
             </div>
         </div>
 
-        <!-- 7. WORKOUT COMMENT: Exercise/Routine Comment -->
         <div class="flex items-start p-4 bg-gray-100 dark:bg-gray-700 rounded-lg border-l-4 border-gray-400">
             <i class="fas fa-comment-dots text-gray-700 dark:text-gray-300 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> añadió un comentario a la Rutina Semanal.
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    añadió un comentario a la Rutina Semanal.
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Workout Comment - Routine:** "La rutina me está gustando, pero necesito sustituir el press militar."
                 </p>
             </div>
         </div>
 
-        <!-- 8. WORKOUT COMMENT: Video Upload -->
         <div class="flex items-start p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border-l-4 border-indigo-500">
             <i class="fas fa-video text-indigo-700 dark:text-indigo-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> subió un video para revisión del ejercicio "Sentadilla Búlgara."
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    subió un video para revisión del ejercicio "Sentadilla Búlgara."
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Workout Comment - Video Uploaded:** Pendiente tu revisión de la técnica.
                 </p>
             </div>
         </div>
 
-        <!-- 9. REPORT: Video Unavailable -->
         <div class="flex items-start p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border-l-4 border-orange-500">
             <i class="fas fa-exclamation-triangle text-orange-700 dark:text-orange-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> reportó que el video de **"Curl de Bíceps en Polea"** no funciona.
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    reportó que el video de **"Curl de Bíceps en Polea"** no funciona.
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Reported Issue:** Video/recurso no disponible en la rutina. (El entrenador puede editar la fecha de evaluación).
                 </p>
             </div>
         </div>
 
-        <!-- 10. METRIC UPDATE: Nutrition Inactivity Warning -->
-         <div class="flex items-start p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg border-l-4 border-yellow-700">
+        <div class="flex items-start p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg border-l-4 border-yellow-700">
             <i class="fas fa-history text-yellow-800 dark:text-yellow-400 mt-1 mr-4 text-xl"></i>
             <div>
                 <p class="font-medium text-gray-900 dark:text-gray-100">
-                    <span class="font-bold">[Client Name]</span> lleva **5 días sin registrar su Nutrición**.
+                    <span class="text-sm font-medium inline-block">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('CLIENT_ID_HERE')">Gabriel Ciuró</span>
+                    </span> 
+                    lleva **5 días sin registrar su Nutrición**.
                 </p>
-                <!-- FIX: Ensuring secondary text is dark enough in Light Mode -->
                 <p class="text-sm text-gray-700 dark:text-gray-400">
                     **Metric Inactivity:** Último registro de macros: 2025-11-20.
                 </p>

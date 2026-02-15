@@ -1,9 +1,45 @@
 <div class="pb-10">
     <div class="flex justify-between items-center mb-8">
-        <h2 class="text-3xl font-bold text-gray-800 dark:text-white">Librería de Ejercicios</h2>
-        <button id="add-new-exercise-btn" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition transform hover:scale-105">
-            <i class="fas fa-plus mr-2"></i> Nuevo Ejercicio
-        </button>
+        <div>
+            <h2 class="text-3xl font-bold text-gray-800 dark:text-white">Biblioteca</h2>
+            <p class="text-gray-500 dark:text-gray-400 mt-2">Gestiona programas y ejercicios</p>
+        </div>
+        
+        <!-- TOGGLE BETWEEN PROGRAMS AND EXERCISES -->
+        <div class="flex items-center gap-4">
+            <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-1 flex gap-1">
+                <button id="toggle-programs-view" class="px-4 py-2 rounded-lg font-bold transition bg-white dark:bg-gray-700 text-purple-600 dark:text-purple-400 shadow">
+                    <i class="fas fa-calendar-week mr-2"></i>Programas
+                </button>
+                <button id="toggle-exercises-view" class="px-4 py-2 rounded-lg font-bold transition text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <i class="fas fa-dumbbell mr-2"></i>Ejercicios
+                </button>
+            </div>
+            
+            <button id="add-new-item-btn" class="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition transform hover:scale-105">
+                <i class="fas fa-plus mr-2"></i><span id="add-btn-text">Nuevo Programa</span>
+            </button>
+        </div>
+    </div>
+    
+    <!-- PROGRAMS VIEW (Initially visible) -->
+    <div id="programs-view" class="mb-8">
+        <div id="programs-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Programs will be rendered here -->
+        </div>
+    </div>
+    
+    <!-- EXERCISES VIEW (Initially hidden) -->
+    <div id="exercises-view" class="hidden">
+        <!-- Search bar -->
+        <div class="mb-6">
+            <input type="text" id="library-search-input" class="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl dark:text-white focus:ring-2 focus:ring-purple-500 outline-none transition" placeholder="Buscar ejercicio...">
+        </div>
+        
+        <!-- Exercise list -->
+        <div id="exercise-library-list" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg divide-y divide-gray-100 dark:divide-gray-700">
+            <!-- Exercises will be rendered here -->
+        </div>
     </div>
 
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">

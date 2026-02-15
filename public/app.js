@@ -32,6 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let editorExercises = []; 
     let editorDateStr = "";
     let editorWarmup = ""; // 🟢 State for Warmup Text
+    let editorWorkoutTitle = "";
+    let editorCooldown = "";
     let currentEditorExId = null; // 🟢 Track which exercise is being edited for Video/History
 
     // 🟢 MUSCLE GROUPS DEFINITION
@@ -46,19 +48,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // =============================================================================
 
     const saveData = () => {
-        localStorage.setItem('fitbysuarez_programs', JSON.stringify(mockProgramsDb));
+        // Only save groups to localStorage (programs now in MongoDB)
         localStorage.setItem('fitbysuarez_groups', JSON.stringify(mockGroupsDb));
     };
 
     const loadData = () => {
-        const p = localStorage.getItem('fitbysuarez_programs');
-        if(p) mockProgramsDb = JSON.parse(p);
-        
         const g = localStorage.getItem('fitbysuarez_groups');
         if(g) mockGroupsDb = JSON.parse(g);
 
         fetchLibraryFromDB(); 
-        fetchClientsFromDB(); 
+        fetchClientsFromDB();
+        fetchProgramsFromDB(); // 🟢 NEW: Fetch programs from MongoDB
     };
 
     const fetchClientsFromDB = async () => {
@@ -162,6 +162,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 background-color: #3b82f6; /* Blue line */
                 z-index: 0;
             }
+
+            /* 🟢 TABLET/SMALL DESKTOP: Scale down hover menu to prevent overlap */
+            @media (max-width: 1200px) and (min-width: 769px) {
+                .cal-action-btn {
+                    padding: 6px !important;
+                }
+                
+                .cal-action-btn i {
+                    font-size: 16px !important;
+                }
+                
+                .day-cell-menu .flex {
+                    gap: 8px !important;
+                }
+            }
+            
+            @media (max-width: 1024px) and (min-width: 769px) {
+                .cal-action-btn {
+                    padding: 4px !important;
+                }
+                
+                .cal-action-btn i {
+                    font-size: 14px !important;
+                }
+                
+                .day-cell-menu .flex {
+                    gap: 4px !important;
+                }
+            }
+            
+            @media (max-width: 900px) and (min-width: 769px) {
+                .cal-action-btn {
+                    padding: 3px !important;
+                }
+                
+                .cal-action-btn i {
+                    font-size: 12px !important;
+                }
+                
+                .day-cell-menu .flex {
+                    gap: 2px !important;
+                }
+                
+                .day-cell {
+                    min-height: 140px !important;
+                }
+            }
+
                 /* 🟢 MOBILE-FRIENDLY CALENDAR STYLES */
                 @media (max-width: 768px) {
                     /* Make calendar grid single column on mobile */
@@ -201,24 +249,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     .mobile-day-actions {
                         display: flex;
-                        gap: 4px;
+                        gap: 3px;
                         margin-top: 8px;
-                        flex-wrap: wrap;
+                        flex-wrap: nowrap;
+                        justify-content: space-between;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                    }
+    
+                    /* For very small screens */
+                    @media (max-width: 380px) {
+                        .mobile-action-btn {
+                            width: 28px;
+                            height: 28px;
+                            font-size: 10px;
+                        }
+                        
+                        .mobile-day-actions {
+                            gap: 2px;
+                        }
                     }
 
                     .mobile-action-btn {
-                        flex: 1;
-                        min-width: 28px;
-                        height: 28px;
+                        flex: 0 0 auto;
+                        width: 32px;
+                        height: 32px;
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        background: rgba(107, 114, 128, 0.2);
-                        border-radius: 6px;
-                        font-size: 12px;
+                        background: rgba(107, 114, 128, 0.3);
+                        border-radius: 8px;
+                        font-size: 11px;
                         color: white;
-                        border: 1px solid rgba(255, 255, 255, 0.1);
-                    }
+                        border: 1px solid rgba(255, 255, 255, 0.15);
+                        padding: 0;
+                        margin: 0;
+                    }    
 
                     .mobile-action-btn:active {
                         background: rgba(107, 114, 128, 0.4);
@@ -363,6 +429,247 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // =============================================================================
+    // AUTH & PASSWORD RECOVERY LOGIC
+    // =============================================================================
+
+    const showMessage = (elementId, message, type) => {
+        const msgEl = document.getElementById(elementId);
+        if(!msgEl) return;
+        
+        msgEl.className = `p-3 rounded-lg text-sm ${
+            type === 'error' ? 'bg-red-100 text-red-700 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800' :
+            type === 'success' ? 'bg-green-100 text-green-700 border border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800' :
+            'bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800'
+        }`;
+        msgEl.textContent = message;
+        msgEl.classList.remove('hidden');
+        
+        setTimeout(() => {
+            msgEl.classList.add('hidden');
+        }, 5000);
+    };
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        
+        const email = document.getElementById('login-email')?.value.trim();
+        const password = document.getElementById('login-password')?.value;
+        const remember = document.getElementById('remember-me')?.checked;
+
+        if(!email || !password) {
+            showMessage('auth-message', 'Por favor completa todos los campos', 'error');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await res.json();
+
+            if(res.ok) {
+                const userSession = {
+                    id: data.userId,
+                    name: data.name,
+                    email: data.email,
+                    role: data.role,
+                    isFirstLogin: data.isFirstLogin || false
+                };
+
+                localStorage.setItem('auth_user', JSON.stringify(userSession));
+                
+                if(remember) {
+                    localStorage.setItem('remember_email', email);
+                }
+
+                showMessage('auth-message', '✅ Inicio de sesión exitoso', 'success');
+                
+                setTimeout(() => {
+                    router(userSession);
+                }, 500);
+            } else {
+                showMessage('auth-message', data.message || 'Email o contraseña incorrectos', 'error');
+            }
+        } catch(error) {
+            console.error('Login error:', error);
+            showMessage('auth-message', 'Error de conexión. Intenta nuevamente.', 'error');
+        }
+    };
+
+    const handleForgotPassword = async (e) => {
+        e.preventDefault();
+        
+        const email = document.getElementById('forgot-email')?.value.trim();
+
+        if(!email) {
+            showMessage('forgot-message', 'Por favor ingresa tu email', 'error');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/auth/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+
+            const data = await res.json();
+
+            if(res.ok) {
+                showMessage('forgot-message', '✅ Hemos enviado un enlace de recuperación a tu email', 'success');
+                document.getElementById('forgot-email').value = '';
+            } else {
+                showMessage('forgot-message', data.message || 'No encontramos una cuenta con ese email', 'error');
+            }
+        } catch(error) {
+            console.error('Forgot password error:', error);
+            showMessage('forgot-message', 'Error de conexión. Intenta nuevamente.', 'error');
+        }
+    };
+
+    const handleResetPassword = async (e) => {
+        e.preventDefault();
+        
+        const newPassword = document.getElementById('new-password')?.value;
+        const confirmPassword = document.getElementById('confirm-password')?.value;
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const resetToken = urlParams.get('token');
+
+        if(!resetToken) {
+            showMessage('reset-message', 'Enlace de recuperación inválido', 'error');
+            return;
+        }
+
+        if(newPassword.length < 6) {
+            showMessage('reset-message', 'La contraseña debe tener al menos 6 caracteres', 'error');
+            return;
+        }
+
+        if(newPassword !== confirmPassword) {
+            showMessage('reset-message', 'Las contraseñas no coinciden', 'error');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/auth/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: resetToken, newPassword })
+            });
+
+            const data = await res.json();
+
+            if(res.ok) {
+                showMessage('reset-message', '✅ Contraseña actualizada exitosamente', 'success');
+                
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            } else {
+                showMessage('reset-message', data.message || 'Error al actualizar contraseña', 'error');
+            }
+        } catch(error) {
+            console.error('Reset password error:', error);
+            showMessage('reset-message', 'Error de conexión. Intenta nuevamente.', 'error');
+        }
+    };
+
+    const togglePasswordVisibility = () => {
+        const passwordInput = document.getElementById('login-password');
+        const toggleBtn = document.getElementById('toggle-password');
+        
+        if(!passwordInput || !toggleBtn) return;
+        
+        if(passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+        } else {
+            passwordInput.type = 'password';
+            toggleBtn.innerHTML = '<i class="fas fa-eye"></i>';
+        }
+    };
+
+    const showCard = (cardToShow) => {
+        const cards = ['login-card', 'forgot-password-card', 'reset-password-card'];
+        cards.forEach(card => {
+            const el = document.getElementById(card);
+            if(el) {
+                if(card === cardToShow) {
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
+            }
+        });
+    };
+
+    const checkResetToken = () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const resetToken = urlParams.get('token');
+        
+        if(resetToken) {
+            showCard('reset-password-card');
+        }
+    };
+
+    const initAuthListeners = () => {
+        const loginForm = document.getElementById('login-form');
+        if(loginForm) {
+            loginForm.addEventListener('submit', handleLogin);
+        }
+
+        const forgotLink = document.getElementById('forgot-password-link');
+        if(forgotLink) {
+            forgotLink.addEventListener('click', () => showCard('forgot-password-card'));
+        }
+
+        const backBtn = document.getElementById('back-to-login');
+        if(backBtn) {
+            backBtn.addEventListener('click', () => showCard('login-card'));
+        }
+
+        const forgotForm = document.getElementById('forgot-password-form');
+        if(forgotForm) {
+            forgotForm.addEventListener('submit', handleForgotPassword);
+        }
+
+        const resetForm = document.getElementById('reset-password-form');
+        if(resetForm) {
+            resetForm.addEventListener('submit', handleResetPassword);
+        }
+
+        const toggleBtn = document.getElementById('toggle-password');
+        if(toggleBtn) {
+            toggleBtn.addEventListener('click', togglePasswordVisibility);
+        }
+
+        const supportLink = document.getElementById('contact-support-link');
+        if(supportLink) {
+            supportLink.addEventListener('click', () => {
+                alert('Contacta a: soporte@fitbysuarez.com');
+            });
+        }
+
+        const rememberedEmail = localStorage.getItem('remember_email');
+        if(rememberedEmail) {
+            const emailInput = document.getElementById('login-email');
+            if(emailInput) {
+                emailInput.value = rememberedEmail;
+                const rememberCheckbox = document.getElementById('remember-me');
+                if(rememberCheckbox) {
+                    rememberCheckbox.checked = true;
+                }
+            }
+        }
+
+        checkResetToken();
+    };
+
+    // =============================================================================
     // 5. CLIENT & TRAINER LOGIC (PERSISTENT CLIENTS)
     // =============================================================================
 
@@ -413,6 +720,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         console.log("✅ Client Found:", client.name);
         currentClientViewId = clientId;
+        console.log("✅ currentClientViewId SET TO:", currentClientViewId);
 
         // 🟢 TRUECOACH STYLE CONTINUOUS CALENDAR
         updateContent(`Perfil: ${client.name} ${client.lastName}`, `
@@ -486,6 +794,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
             </div>
         `);
+
+        const loadClientWorkoutsToCalendar = async (clientId) => {
+            try {
+                const response = await fetch(`/api/client-workouts/${clientId}`);
+                if(response.ok) {
+                    const workouts = await response.json();
+                    
+                    // Display each workout in its calendar cell
+                    workouts.forEach(workout => {
+                        const cell = document.getElementById(`day-${workout.date}`);
+                        if(cell) {
+                            const area = cell.querySelector('.content-area');
+                            area.innerHTML = `
+                                <div class="bg-gray-800 text-white text-[10px] p-1 rounded border-l-2 border-orange-500 mb-1 pl-2 cursor-pointer hover:bg-gray-700" onclick="window.loadWorkoutForEditing('${workout.date}', '${clientId}')">
+                                    <div class="font-bold">${workout.title}</div>
+                                    <div class="text-gray-400">${workout.exercises.length} ejercicios</div>
+                                </div>
+                            `;
+                        }
+                    });
+                }
+            } catch(e) {
+                console.error('Error loading workouts:', e);
+            }
+        };        
 
         // Scroll to Today automatically
         setTimeout(() => {
@@ -690,6 +1023,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) { console.error(error); alert("Error de conexión con el servidor"); }
     };
 
+    window.makeClientNameClickable = (clientId, displayName) => {
+        return `<span class="client-name-link cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold" onclick="window.openClientProfile('${clientId}')">${displayName}</span>`;
+    };
+
+
     // 🟢 RENDER CLIENTS TABLE
     window.renderClientsTable = () => {
         const tbody = document.getElementById('clients-table-body');
@@ -798,19 +1136,57 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) { console.error(e); }
     };
 
+    window.copyWorkout = async (dateStr, clientId) => {
+        try {
+            const response = await fetch(`/api/client-workouts/${clientId}/${dateStr}`);
+            if(response.ok) {
+                copiedWorkoutData = await response.json();
+                alert('✅ Workout copiado! Usa el botón "Pegar" en cualquier otro día.');
+            } else {
+                alert('⚠️ No hay workout en este día para copiar.');
+            }
+        } catch(e) {
+            console.error(e);
+            alert('❌ Error al copiar workout');
+        }
+    };
+
     // =============================================================================
     // 7. PROGRAMS, CALENDAR & BUILDER (MODIFIED SECTION)
     // =============================================================================
 
-    const handleCreateProgram = () => { /* ... (Existing Logic) ... */
+    const handleCreateProgram = async () => {
         const name = document.getElementById('program-name-input').value.trim();
         if(!name) { alert("Nombre requerido"); return; }
-        const newProg = { id: Date.now(), name: name, description: "", weeks: [], clientCount: 0, tags: "Borrador" };
-        mockProgramsDb.push(newProg);
-        saveData(); 
-        document.getElementById('create-program-modal').classList.add('hidden');
-        renderProgramsList();
-        openProgramBuilder(newProg.id);
+        
+        try {
+            const res = await fetch('/api/programs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    name: name, 
+                    description: "", 
+                    weeks: [], 
+                    clientCount: 0, 
+                    tags: "Borrador" 
+                })
+            });
+            
+            if(res.ok) {
+                const newProg = await res.json();
+                mockProgramsDb.push(newProg);
+                document.getElementById('create-program-modal').classList.add('hidden');
+                document.getElementById('program-name-input').value = '';
+                renderProgramsList();
+                openProgramBuilder(newProg._id); // Use MongoDB _id
+                alert("✅ Programa creado!");
+            } else {
+                alert("❌ Error creando programa");
+            }
+        } catch(e) {
+            console.error(e);
+            alert("❌ Error de conexión");
+        }
     };
 
     const renderProgramsList = () => { /* ... (Existing Logic) ... */
@@ -820,7 +1196,7 @@ document.addEventListener('DOMContentLoaded', () => {
         mockProgramsDb.forEach(prog => {
             const card = document.createElement('div');
             card.className = "program-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg hover:shadow-xl transition duration-300 border-t-4 border-blue-500 cursor-pointer relative group";
-            card.dataset.id = prog.id;
+            card.dataset.id = prog._id || prog.id;
             card.innerHTML = `
                 <div class="pointer-events-none">
                     <h3 class="font-bold text-lg text-gray-800 dark:text-white">${prog.name}</h3>
@@ -831,8 +1207,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const openProgramBuilder = (id) => { /* ... (Existing Logic) ... */
-        const prog = mockProgramsDb.find(p => p.id == id);
+    const openProgramBuilder = (id) => {
+        const prog = mockProgramsDb.find(p => (p.id == id) || (p._id == id));
         if (!prog) return;
         currentProgramId = id;
         document.getElementById('programs-main-view').classList.add('hidden');
@@ -968,7 +1344,58 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         document.getElementById('edit-routine-modal').classList.add('hidden');
-        if(currentClientViewId) openClientProfile(currentClientViewId); 
+        if(currentClientViewId) openClientProfile(currentClientViewId);
+
+        const saveRoutine = async () => {
+            const name = document.getElementById('routine-name-input').value;
+            const exercises = [];
+            document.querySelectorAll('.exercise-item').forEach(item => {
+                const nameInput = item.querySelector('.exercise-name-input');
+                const statsInput = item.querySelector('.exercise-stats-input');
+                const videoBtn = item.querySelector('.open-video-modal');
+                exercises.push({ name: nameInput.value, stats: statsInput.value, video: videoBtn.dataset.video || "" });
+            });
+    
+            if(currentProgramId) {
+                const prog = mockProgramsDb.find(p => (p.id == currentProgramId) || (p._id == currentProgramId));
+                if(prog) {
+                    if (!prog.weeks[currentEditingWeekIndex]) {
+                        prog.weeks[currentEditingWeekIndex] = { weekNumber: currentEditingWeekIndex + 1, days: {} };
+                    }
+                    if (!prog.weeks[currentEditingWeekIndex].days) {
+                        prog.weeks[currentEditingWeekIndex].days = {};
+                    }
+                    
+                    const dayData = {
+                        name: name,
+                        exercises: exercises,
+                        isRest: false
+                    };
+                    
+                    prog.weeks[currentEditingWeekIndex].days[currentEditingDay] = dayData;
+                    
+                    // 🟢 SAVE TO DATABASE
+                    try {
+                        const res = await fetch(`/api/programs/${prog._id || prog.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(prog)
+                        });
+                        
+                        if(res.ok) {
+                            console.log("✅ Program saved to database");
+                        } else {
+                            console.error("❌ Error saving program");
+                        }
+                    } catch(e) {
+                        console.error("❌ Database save error:", e);
+                    }
+                }
+            }
+            
+            document.getElementById('edit-routine-modal').classList.add('hidden');
+            if(currentClientViewId) openClientProfile(currentClientViewId); 
+        };
     };
 
     const renderPaymentsView = () => { 
@@ -982,34 +1409,46 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '';
         mockClientsDb.forEach(client => {
             const tr = document.createElement('tr');
-            tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition";
+            tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer";
+            
+            // 🟢 Make entire row clickable
+            tr.onclick = () => window.openClientProfile(client._id);
+            
             const statusBadge = client.isActive 
                 ? `<span class="px-3 py-1 inline-flex items-center text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"><i class="fas fa-check mr-2"></i> Al día</span>`
                 : `<span class="px-3 py-1 inline-flex items-center text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"><i class="fas fa-exclamation-triangle mr-2"></i> Pendiente</span>`;
             const waLink = `https://wa.me/?text=${encodeURIComponent(`Hola ${client.name}, recordatorio de pago.`)}`;
+            
             tr.innerHTML = `
-                <td class="p-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-gray-100">${client.name} ${client.lastName || ''}</td>
+                <td class="p-4 whitespace-nowrap text-sm font-bold">
+                    <span class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">${client.name} ${client.lastName || ''}</span>
+                </td>
                 <td class="p-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${client.dueDate || 'N/A'}</td>
                 <td class="p-4 whitespace-nowrap text-center">${statusBadge}</td>
                 <td class="p-4 whitespace-nowrap text-right text-sm font-medium">
-                    <a href="${waLink}" target="_blank" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 font-bold flex items-center justify-end gap-2"><i class="fab fa-whatsapp text-lg"></i> <span class="hidden md:inline">Notificar</span></a>
+                    <a href="${waLink}" target="_blank" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 font-bold flex items-center justify-end gap-2" onclick="event.stopPropagation()"><i class="fab fa-whatsapp text-lg"></i> <span class="hidden md:inline">Notificar</span></a>
                 </td>`;
             tbody.appendChild(tr);
         });
     };
 
-    // 🟢 HELPER: Generate Continuous Calendar Days (6 Months)
+    // HELPER: Generate Continuous Calendar Days (6 Months)
     const generateContinuousCalendar = (client) => {
         let html = '';
         const today = new Date();
         const startDate = new Date(today);
-        startDate.setMonth(today.getMonth() - 1);
+    
+    // Start 3 months in the past
+        startDate.setMonth(today.getMonth() - 3);
         startDate.setDate(1); 
+    
+    // Find the Monday of the week containing the 1st
         const dayOfWeek = startDate.getDay(); 
         const diff = startDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); 
         startDate.setDate(diff);
-
-        const totalDays = 26 * 7; 
+    
+    // Show 12 months total (3 past + 9 future)
+        const totalDays = 52 * 7; // 52 weeks = ~1 year 
         
         for(let i=0; i < totalDays; i++) {
             const currentDate = new Date(startDate);
@@ -1066,13 +1505,18 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // 🟢 CALENDAR ACTIONS HANDLER
-    const handleCalendarAction = (action, dateId) => {
+    const handleCalendarAction = async (action, dateId) => {
         const dateStr = dateId.replace('day-', '');
+        
         if (action === 'add') {
-            editorExercises = [{ id: Date.now(), name: "", isSuperset: false, videoUrl: "" }];
+            console.log("🔍 Opening workout editor for client:", currentClientViewId)
+            editorExercises = [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
             editorDateStr = dateStr;
-            editorWarmup = ""; // Reset
+            editorWarmup = ""; 
+            editorCooldown = "";
+            editorWorkoutTitle = dateStr;
             openWorkoutEditor(dateStr); 
+            
         } else if (action === 'rest') {
             const cell = document.getElementById(dateId);
             if(cell) {
@@ -1081,13 +1525,84 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(exists) exists.remove();
                 else content.insertAdjacentHTML('beforeend', `<div class="rest-badge bg-green-100 text-green-800 text-xs px-2 py-1 rounded text-center font-bold mt-2 border border-green-200">REST DAY</div>`);
             }
-        } else {
-            alert(`Acción: ${action} para ${dateStr} (Próximamente)`);
+            
+        } else if (action === 'nutrition') {
+            alert('Nutrición feature - Coming soon!');
+            
+        } else if (action === 'paste') {
+            // 🟢 PASTE copied workout
+            if(!copiedWorkoutData) {
+                alert('⚠️ No hay workout copiado. Primero haz clic derecho en un día con workout y selecciona "Copiar".');
+                return;
+            }
+            
+            // Paste the workout to this new date
+            const pastedWorkout = {
+                ...copiedWorkoutData,
+                clientId: currentClientViewId,
+                date: dateStr,
+                title: copiedWorkoutData.title + ' (Copia)'
+            };
+            
+            try {
+                const response = await fetch('/api/client-workouts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(pastedWorkout)
+                });
+                
+                if(response.ok) {
+                    // Refresh the calendar cell
+                    const cell = document.getElementById(dateId);
+                    if(cell) {
+                        const area = cell.querySelector('.content-area');
+                        area.innerHTML = `
+                            <div class="bg-gray-800 text-white text-[10px] p-1 rounded border-l-2 border-purple-500 mb-1 pl-2 cursor-pointer hover:bg-gray-700" onclick="window.loadWorkoutForEditing('${dateStr}', '${currentClientViewId}')">
+                                <div class="font-bold">${pastedWorkout.title}</div>
+                                <div class="text-gray-400">${pastedWorkout.exercises.length} ejercicios</div>
+                            </div>
+                        `;
+                    }
+                    alert('✅ Workout pegado exitosamente!');
+                }
+            } catch(e) {
+                console.error(e);
+                alert('❌ Error al pegar workout');
+            }
+            
+        } else if (action === 'program') {
+            // 🟢 ASSIGN PROGRAM (Show program selector)
+            showProgramAssignmentModal(dateStr);
         }
     };
 
     // 🟢 NEW WORKOUT EDITOR UI
-    const openWorkoutEditor = (dateStr) => {
+    const openWorkoutEditor = async (dateStr) => {
+        editorDateStr = dateStr;
+        
+        // Try to load existing workout for this date
+        if(currentClientViewId) {
+            try {
+                const response = await fetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`);
+                if(response.ok) {
+                    const workout = await response.json();
+                    editorWarmup = workout.warmup || '';
+                    editorCooldown = workout.cooldown || '';
+                    editorExercises = workout.exercises || [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
+                } else {
+                    // New workout - initialize empty
+                    editorExercises = [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
+                    editorWarmup = "";
+                    editorCooldown = "";
+                }
+            } catch(e) {
+                // Network error - initialize empty
+                editorExercises = [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
+                editorWarmup = "";
+                editorCooldown = "";
+            }
+        }
+        
         const modal = document.getElementById('workout-editor-modal');
         modal.classList.remove('hidden');
         renderWorkoutEditorUI();
@@ -1129,7 +1644,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="w-full py-2 bg-[#3b4c75] text-[#8faae3] font-bold rounded text-sm hover:bg-[#475a87] transition mb-3 flex items-center justify-center gap-2" onclick="window.openHistoryModal(${ex.id})">
                     <i class="fas fa-history"></i> See History
                 </button>
-                <textarea class="w-full bg-transparent text-gray-400 text-xs resize-none outline-none" placeholder="Sets, Reps, Tempo, Rest etc."></textarea>
+                <textarea oninput="window.updateExInstructions(${ex.id}, this.value)" class="w-full bg-transparent text-gray-400 text-xs resize-none outline-none" placeholder="Sets, Reps, Tempo, Rest etc." rows="2">${ex.instructions || ''}</textarea>
             </div>
             ${supersetBtnHtml}
             `;
@@ -1145,19 +1660,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button onclick="document.getElementById('workout-editor-modal').classList.add('hidden')"><i class="fas fa-times"></i></button>
                     </div>
                 </div>
-                <div class="flex-grow overflow-y-auto p-0 custom-scrollbar">
-                    <div class="p-6 border-b border-gray-700 hover:bg-[#363640] transition group relative">
-                        <div class="flex items-center gap-3">
-                            <div class="w-6 h-6 bg-white rounded flex-shrink-0"></div>
-                            <textarea oninput="window.updateWarmup(this.value)" class="bg-transparent text-xl font-bold text-white placeholder-gray-500 w-full outline-none resize-none overflow-hidden" rows="1" placeholder="Calentamiento o Instrucciones">${editorWarmup}</textarea>
-                            <i class="fas fa-battery-empty text-gray-500"></i>
-                        </div>
+                <!-- 🟢 WORKOUT TITLE (Separate from warmup) -->
+                <div class="p-6 border-b border-gray-700 bg-[#26262c]">
+                    <input type="text" id="workout-title-input" value="${editorDateStr}" oninput="window.updateWorkoutTitle(this.value)" class="bg-transparent text-2xl font-bold text-white placeholder-gray-400 w-full outline-none" placeholder="Nombre del Entrenamiento">
+                </div>
+            
+                <!-- 🟢 WARMUP/INSTRUCTIONS (Separate section) -->
+                <div class="p-6 border-b border-gray-700 hover:bg-[#363640] transition group relative">
+                    <div class="flex items-center gap-3">
+                        <div class="w-6 h-6 bg-orange-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">🔥</div>
+                        <textarea oninput="window.updateWarmup(this.value)" class="bg-transparent text-base text-gray-300 placeholder-gray-500 w-full outline-none resize-none" rows="2" placeholder="Calentamiento o instrucciones generales...">${editorWarmup}</textarea>
                     </div>
+                </div>
                     <div id="editor-exercises-list">${listHtml}</div>
                     <div class="flex justify-center gap-2 p-6">
                         <button class="px-3 py-1 border border-gray-500 rounded text-gray-300 text-xs hover:bg-gray-700 transition" onclick="window.addEditorExercise()">+ Exercise</button>
                     </div>
-                    <div class="p-6"><p class="text-gray-500 text-sm cursor-pointer hover:text-gray-300">Add cooldown</p></div>
+                    <div class="p-6 border-t border-gray-700">
+                    <div class="flex items-center gap-3">
+                        <div class="w-6 h-6 bg-blue-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">❄️</div>
+                        <textarea oninput="window.updateCooldown(this.value)" class="bg-transparent text-base text-gray-300 placeholder-gray-500 w-full outline-none resize-none" rows="2" placeholder="Enfriamiento (estiramientos, cardio ligero...)">${editorCooldown || ''}</textarea>
+                    </div>
+                </div>
                 </div>
                 <div class="p-4 border-t border-gray-700 flex gap-4 bg-[#26262c] shrink-0">
                     <button class="px-6 py-2 bg-[#4a6399] text-white font-bold rounded hover:bg-[#5a73a9] transition shadow-lg" onclick="window.saveDayWorkout()">Save</button>
@@ -1165,6 +1689,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
+    };
+
+    const showProgramAssignmentModal = async (startDate) => {
+        if(!currentClientViewId) return;
+        
+        // Fetch all available programs
+        try {
+            const response = await fetch('/api/programs');
+            if(!response.ok) {
+                alert('Error loading programs');
+                return;
+            }
+            
+            const programs = await response.json();
+            
+            if(programs.length === 0) {
+                alert('⚠️ No hay programas creados. Ve a la sección "Programas" para crear uno primero.');
+                return;
+            }
+            
+            // Create modal
+            const modal = document.createElement('div');
+            modal.id = 'program-assignment-modal';
+            modal.className = 'fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4';
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6">
+                    <h3 class="text-xl font-bold mb-4 dark:text-white">Asignar Programa</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Selecciona un programa para asignar a partir del ${startDate}</p>
+                    
+                    <div class="space-y-3 max-h-96 overflow-y-auto mb-6">
+                        ${programs.map(prog => `
+                            <div class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition" onclick="window.assignProgramToClient('${prog._id}', '${startDate}')">
+                                <div class="font-bold dark:text-white">${prog.name}</div>
+                                <div class="text-xs text-gray-500">${prog.weeks?.length || 0} semanas · ${prog.clientCount || 0} clientes</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <button onclick="document.getElementById('program-assignment-modal').remove()" class="w-full py-2 bg-gray-200 dark:bg-gray-700 rounded-lg font-bold dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600">Cancelar</button>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+        } catch(e) {
+            console.error(e);
+            alert('Error loading programs');
+        }
     };
 
     // 🟢 SUPERSET LETTER LOGIC
@@ -1185,6 +1757,17 @@ document.addEventListener('DOMContentLoaded', () => {
     window.updateWarmup = (val) => { editorWarmup = val; };
     window.addEditorExercise = () => { editorExercises.push({ id: Date.now(), name: "", isSuperset: false, videoUrl: "" }); renderWorkoutEditorUI(); };
     window.updateExName = (id, val) => { const ex = editorExercises.find(e => e.id === id); if(ex) ex.name = val; };
+    window.updateExInstructions = (id, val) => {
+        const ex = editorExercises.find(e => e.id === id);
+        if(ex) ex.instructions = val;
+    };
+    window.updateCooldown = (val) => { editorCooldown = val; };
+    window.updateWorkoutTitle = (val) => { editorWorkoutTitle = val; };
+    window.updateExInstructions = (id, val) => { 
+        const ex = editorExercises.find(e => e.id === id); 
+        if(ex) ex.instructions = val; 
+    };
+    window.updateCooldown = (val) => { editorCooldown = val; };
     
     // 🟢 LINK SUPERSET BUTTON ACTION
     window.linkSuperset = (index) => {
@@ -1195,6 +1778,8 @@ document.addEventListener('DOMContentLoaded', () => {
             renderWorkoutEditorUI();
         }
     };
+
+    window.updateWorkoutTitle = (val) => { editorWorkoutTitle = val; };
 
     // 🟢 MODAL ACTIONS
     window.openVideoModalForEditor = (id) => {
@@ -1219,17 +1804,74 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.saveDayWorkout = async () => {
-        if(!currentClientViewId) return;
-        const payload = { clientId: currentClientViewId, date: editorDateStr, programName: "Custom Day", warmup: editorWarmup, exercises: editorExercises };
+        console.log("🔍 DEBUG: Save clicked");
+        console.log("🔍 currentClientViewId:", currentClientViewId);
+        console.log("🔍 editorDateStr:", editorDateStr);
+        console.log("🔍 editorExercises:", editorExercises);
+        
+        if(!currentClientViewId) {
+            alert('❌ Error: No hay cliente seleccionado. Por favor abre el calendario de un cliente primero.');
+            console.error("❌ currentClientViewId is null/undefined");
+            return;
+        }
+        
+        const titleInput = document.getElementById('workout-title-input');
+        console.log("🔍 titleInput element:", titleInput);
+        console.log("🔍 titleInput value:", titleInput?.value);
+        
+        const workoutData = {
+            clientId: currentClientViewId,
+            date: editorDateStr,
+            title: titleInput?.value || editorDateStr,
+            warmup: editorWarmup,
+            cooldown: editorCooldown,
+            exercises: editorExercises.map(ex => ({
+                id: ex.id,
+                name: ex.name,
+                instructions: ex.instructions || '',
+                videoUrl: ex.videoUrl || '',
+                isSuperset: ex.isSuperset || false
+            }))
+        };
+        
+        console.log("📤 Sending workout data:", workoutData);
+        
         try {
-            await fetch('/api/log', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-            const cell = document.getElementById(`day-${editorDateStr}`);
-            if(cell) {
-                const area = cell.querySelector('.content-area');
-                area.innerHTML = `<div class="bg-gray-800 text-white text-[10px] p-1 rounded border-l-2 border-orange-500 mb-1 pl-2">${editorExercises.length} Exercises</div>`;
+            const response = await fetch('/api/client-workouts', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify(workoutData) 
+            });
+            
+            console.log("📥 Response status:", response.status);
+            console.log("📥 Response ok:", response.ok);
+            
+            if(response.ok) {
+                const savedWorkout = await response.json();
+                console.log("✅ Workout saved:", savedWorkout);
+                
+                const cell = document.getElementById(`day-${editorDateStr}`);
+                if(cell) {
+                    const area = cell.querySelector('.content-area');
+                    area.innerHTML = `
+                        <div class="bg-gray-800 text-white text-[10px] p-1 rounded border-l-2 border-orange-500 mb-1 pl-2 cursor-pointer hover:bg-gray-700" onclick="window.loadWorkoutForEditing('${editorDateStr}', '${currentClientViewId}')">
+                            <div class="font-bold">${workoutData.title}</div>
+                            <div class="text-gray-400">${editorExercises.length} ejercicios</div>
+                        </div>
+                    `;
+                }
+                
+                document.getElementById('workout-editor-modal').classList.add('hidden');
+                alert('✅ Workout guardado exitosamente!');
+            } else {
+                const errorText = await response.text();
+                console.error("❌ Server error:", errorText);
+                alert('❌ Error al guardar workout: ' + errorText);
             }
-            document.getElementById('workout-editor-modal').classList.add('hidden');
-        } catch(e) { console.error(e); }
+        } catch(e) { 
+            console.error("❌ Fetch error:", e); 
+            alert('❌ Error de conexión: ' + e.message);
+        }
     };
 
     const renderSettings = () => {
@@ -1239,6 +1881,96 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p>Configuración en construcción...</p>
             </div>
         `);
+    };
+
+    window.loadWorkoutForEditing = async (dateStr, clientId) => {
+        try {
+            const response = await fetch(`/api/client-workouts/${clientId}/${dateStr}`);
+            if(response.ok) {
+                const workout = await response.json();
+                
+                // Populate editor state
+                editorDateStr = dateStr;
+                editorWarmup = workout.warmup || '';
+                editorCooldown = workout.cooldown || '';
+                editorExercises = workout.exercises || [];
+                
+                // Open editor with loaded data
+                openWorkoutEditor(dateStr);
+            }
+        } catch(e) {
+            console.error('Error loading workout:', e);
+        }
+    };
+
+    window.assignProgramToClient = async (programId, startDate) => {
+        try {
+            // Fetch the program
+            const progResponse = await fetch('/api/programs');
+            const programs = await progResponse.json();
+            const program = programs.find(p => p._id === programId);
+            
+            if(!program) {
+                alert('Programa no encontrado');
+                return;
+            }
+            
+            // Convert program weeks into client workouts
+            const startDateObj = new Date(startDate);
+            let currentDate = new Date(startDateObj);
+            let workoutsCreated = 0;
+            
+            for(let weekIndex = 0; weekIndex < program.weeks.length; weekIndex++) {
+                const week = program.weeks[weekIndex];
+                
+                // Each week has 7 days
+                for(let dayNum = 1; dayNum <= 7; dayNum++) {
+                    const dayData = week.days?.[dayNum];
+                    
+                    if(dayData && dayData.exercises && dayData.exercises.length > 0) {
+                        const dateStr = currentDate.toISOString().split('T')[0];
+                        
+                        const workout = {
+                            clientId: currentClientViewId,
+                            date: dateStr,
+                            title: dayData.name || `Semana ${weekIndex + 1} - Día ${dayNum}`,
+                            warmup: '',
+                            cooldown: '',
+                            exercises: dayData.exercises.map((ex, idx) => ({
+                                id: Date.now() + idx,
+                                name: ex.name,
+                                instructions: ex.stats || '',
+                                videoUrl: ex.video || '',
+                                isSuperset: false
+                            }))
+                        };
+                        
+                        // Save workout
+                        await fetch('/api/client-workouts', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(workout)
+                        });
+                        
+                        workoutsCreated++;
+                    }
+                    
+                    // Move to next day
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+            }
+            
+            // Close modal and refresh calendar
+            document.getElementById('program-assignment-modal').remove();
+            alert(`✅ Programa asignado! ${workoutsCreated} workouts creados.`);
+            
+            // Reload client profile to show new workouts
+            openClientProfile(currentClientViewId);
+            
+        } catch(e) {
+            console.error(e);
+            alert('❌ Error asignando programa');
+        }
     };
 
     // =============================================================================
@@ -1264,12 +1996,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (target.classList.contains('cal-action-btn')) {
-            e.stopPropagation(); 
+              
             handleCalendarAction(target.dataset.action, target.dataset.date);
             return;
         }
 
-        // 🟢 Handle mobile action button clicks
+        // Handle mobile action button clicks
         if (target.classList.contains('mobile-action-btn')) {
             e.stopPropagation();
             handleCalendarAction(target.dataset.action, target.dataset.date);
@@ -1302,8 +2034,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         const html = await res.text();
                         updateContent(linkText, html);
                         if (moduleToLoad === 'clientes_content') renderClientsTable();
-                        if (moduleToLoad === 'library_content') window.renderExerciseLibrary();
-                        if (moduleToLoad === 'pagos_content') renderPaymentsView(); 
+                        if (moduleToLoad === 'library_content') {
+                            // Load both programs and exercises
+                            fetchProgramsFromDB();
+                            window.renderExerciseLibrary();
+                            renderProgramsList();
+                        }                        if (moduleToLoad === 'pagos_content') renderPaymentsView(); 
                         if (moduleToLoad === 'client_metricas') initCharts();
                         if (moduleToLoad === 'client_equipo') renderEquipmentOptions();
                         if (moduleToLoad === 'client_clock') window.initClockModule(); 
@@ -1423,7 +2159,62 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return;
         }
+
+        // 🟢 TOGGLE BETWEEN PROGRAMS AND EXERCISES VIEW
+        if (target.id === 'toggle-programs-view') {
+            document.getElementById('programs-view').classList.remove('hidden');
+            document.getElementById('exercises-view').classList.add('hidden');
+            
+            target.classList.add('bg-white', 'dark:bg-gray-700', 'text-purple-600', 'dark:text-purple-400', 'shadow');
+            target.classList.remove('text-gray-600', 'dark:text-gray-400');
+            
+            document.getElementById('toggle-exercises-view').classList.remove('bg-white', 'dark:bg-gray-700', 'text-purple-600', 'dark:text-purple-400', 'shadow');
+            document.getElementById('toggle-exercises-view').classList.add('text-gray-600', 'dark:text-gray-400');
+            
+            document.getElementById('add-btn-text').textContent = "Nuevo Programa";
+            document.getElementById('add-new-item-btn').onclick = () => document.getElementById('create-program-modal').classList.remove('hidden');
+            
+            return;
+        }
+        
+        if (target.id === 'toggle-exercises-view') {
+            document.getElementById('programs-view').classList.add('hidden');
+            document.getElementById('exercises-view').classList.remove('hidden');
+            
+            target.classList.add('bg-white', 'dark:bg-gray-700', 'text-purple-600', 'dark:text-purple-400', 'shadow');
+            target.classList.remove('text-gray-600', 'dark:text-gray-400');
+            
+            document.getElementById('toggle-programs-view').classList.remove('bg-white', 'dark:bg-gray-700', 'text-purple-600', 'dark:text-purple-400', 'shadow');
+            document.getElementById('toggle-programs-view').classList.add('text-gray-600', 'dark:text-gray-400');
+            
+            document.getElementById('add-btn-text').textContent = "Nuevo Ejercicio";
+            document.getElementById('add-new-item-btn').onclick = () => document.getElementById('add-exercise-modal').classList.remove('hidden');
+            
+            return;
+        }
     });
+
+    // Right-click context menu for copy workout
+    document.addEventListener('contextmenu', async (e) => {
+        const dayCell = e.target.closest('.day-cell');
+        if(!dayCell || !currentClientViewId) return;
+        
+        e.preventDefault();
+        
+        const dateId = dayCell.id;
+        const dateStr = dateId.replace('day-', '');
+        
+        // Check if there's a workout on this day
+        const hasWorkout = dayCell.querySelector('.content-area').innerHTML.includes('ejercicios');
+        
+        if(hasWorkout) {
+            const confirmed = confirm('📋 ¿Copiar este workout?');
+            if(confirmed) {
+                window.copyWorkout(dateStr, currentClientViewId);
+            }
+        }
+    });
+
 
     applyThemePreferenceEarly();
     injectGlobalStyles();
@@ -1450,19 +2241,37 @@ document.addEventListener('DOMContentLoaded', () => {
         const greetingEl = document.getElementById('greeting-text');
         const feedContainer = document.getElementById('trainer-feed-container');
         if (!feedContainer) return;
+        
         const hour = new Date().getHours();
         let greeting = "¡Buenos días";
         if (hour >= 12 && hour < 17) greeting = "¡Buenas tardes";
         else if (hour >= 17) greeting = "¡Buenas noches";
         if(greetingEl) greetingEl.textContent = `${greeting}, ${trainerName.split(' ')[0]}!`;
-        const mockFeed = [ { clientName: "Gabriel Ciuró", initials: "GC", timeAgo: "hace 4 horas", workoutTitle: "Día 2: Piernas & Core", exercises: [ { letter: "A", name: "Plate Decline Sit Ups", instructions: "4 sets de 15-25 repeticiones...", result: "2x25 sin plato\n1x20" } ] } ];
+        
+        // 🟢 Mock feed with CLICKABLE client names
+        const mockFeed = mockClientsDb.slice(0, 5).map(client => ({
+            clientId: client._id,
+            clientName: `${client.name} ${client.lastName || ''}`,
+            initials: (client.name.charAt(0) + (client.lastName ? client.lastName.charAt(0) : '')).toUpperCase(),
+            timeAgo: "hace 4 horas",
+            workoutTitle: "Día 2: Piernas & Core",
+            exercises: [
+                { 
+                    letter: "A", 
+                    name: "Plate Decline Sit Ups", 
+                    instructions: "4 sets de 15-25 repeticiones...", 
+                    result: "2x25 sin plato\n1x20" 
+                }
+            ]
+        }));
+        
         feedContainer.innerHTML = mockFeed.map(item => `
             <div class="bg-gray-800 dark:bg-gray-800 rounded-lg border border-gray-700 overflow-hidden shadow-lg">
                 <div class="p-4 bg-gray-750 dark:bg-gray-750 border-b border-gray-700 flex justify-between items-center">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-gray-600 text-white flex items-center justify-center font-bold">${item.initials}</div>
+                        <div class="w-10 h-10 rounded-full bg-gray-600 text-white flex items-center justify-center font-bold cursor-pointer hover:bg-gray-500 transition" onclick="window.openClientProfile('${item.clientId}')">${item.initials}</div>
                         <div>
-                            <h3 class="font-bold text-white text-lg leading-tight">${item.clientName}</h3>
+                            <h3 class="font-bold text-white text-lg leading-tight cursor-pointer hover:text-blue-400 transition" onclick="window.openClientProfile('${item.clientId}')">${item.clientName}</h3>
                             <p class="text-xs text-gray-400">Vence el Mar, 13 Ene | Última actividad: ${item.timeAgo}</p>
                         </div>
                     </div>
@@ -1500,3 +2309,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     renderRandomTip('es');
 });
+
+// Initialize auth listeners when page loads
+initAuthListeners();
