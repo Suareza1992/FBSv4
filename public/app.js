@@ -1308,7 +1308,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (moduleToLoad === 'client_equipo') renderEquipmentOptions();
                         if (moduleToLoad === 'client_clock') window.initClockModule(); 
                         if (moduleToLoad === 'trainer_home') renderTrainerHome(loadSession().name); 
-                        if (moduleToLoad === 'ajustes_content') console.log("Settings loaded");
+                        if (moduleToLoad === 'ajustes_content') window.initSettingsModule();
                     }
                 } catch(e) { console.error(e); }
             }
@@ -1321,6 +1321,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'save-exercise-db-btn') { window.handleSaveNewExercise(); return; }
         if (target.id === 'save-new-client-btn') { window.handleSaveClient(); return; }
         if (target.id === 'close-add-client-modal' || target.id === 'cancel-add-client') { document.getElementById('add-client-modal').classList.add('hidden'); return; }
+        if (target.id === 'open-add-trainer-btn') { document.getElementById('add-trainer-modal').classList.remove('hidden'); return; }
+        if (target.id === 'cancel-add-trainer') { document.getElementById('add-trainer-modal').classList.add('hidden'); return; }
+        if (target.id === 'save-trainer-btn') { window.handleSaveTrainer(); return; }
+        if (target.classList.contains('delete-trainer-btn')) { window.handleDeleteTrainer(target.dataset.id, target.dataset.name); return; }
         if (target.id === 'open-add-client-modal') { currentClientViewId = null; document.querySelector('#add-client-modal h2').textContent = "Nuevo cliente"; document.getElementById('save-new-client-btn').textContent = "Guardar cliente"; document.getElementById('new-client-name').value = ""; document.getElementById('new-client-lastname').value = ""; document.getElementById('new-client-email').value = ""; document.getElementById('add-client-modal').classList.remove('hidden'); populateTimezones(); renderGroupOptions(); return; }
         if (target.id === 'open-group-modal') { document.getElementById('add-group-modal').classList.remove('hidden'); return; }
         if (target.id === 'close-group-modal') { document.getElementById('add-group-modal').classList.add('hidden'); return; }
@@ -1444,6 +1448,74 @@ document.addEventListener('DOMContentLoaded', () => {
     window.clockDrawLoop = function() { if(!document.getElementById('clockCanvas')) return; const centerX = 400; const centerY = 400; clockCtx.clearRect(0, 0, 800, 800); window.clockDrawGear(clockCtx, centerX, centerY, 12, 360, 320, 40, '#5e2d91'); clockCtx.fillStyle = "white"; clockCtx.font = "bold 24px Arial"; clockCtx.textAlign = "center"; for (let i = 0; i < 60; i += 5) { const angle = (i - 15) * (Math.PI * 2 / 60); const x = centerX + Math.cos(angle) * 385; const y = centerY + Math.sin(angle) * 385 + 10; clockCtx.fillText(i, x, y); } const now = new Date(); let activeSeconds = 0; if (clockMode === 'CLOCK') { activeSeconds = now.getSeconds(); const timeDisplay = document.getElementById('timeDisplay'); if(timeDisplay) timeDisplay.innerText = now.toTimeString().split(' ')[0].substring(0, 5); } else if (clockMode === 'STOPWATCH') { activeSeconds = Math.floor(stopwatchTime / 1000) % 60; } else if (clockMode === 'TIMER') { activeSeconds = Math.floor(timerTime / 1000) % 60; } for (let i = 0; i < 60; i++) { window.clockDrawMarker(clockCtx, centerX, centerY, i, i <= activeSeconds); } clockIntervalId = requestAnimationFrame(window.clockDrawLoop); };
     window.clockDrawGear = function(ctx, x, y, teeth, outerRadius, innerRadius, toothHeight, color) { ctx.save(); ctx.beginPath(); ctx.translate(x, y); ctx.fillStyle = color; ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 5; for (let i = 0; i < teeth; i++) { ctx.rotate(Math.PI / teeth); ctx.lineTo(innerRadius, 0); ctx.lineTo(outerRadius, toothHeight); ctx.rotate(Math.PI / teeth); ctx.lineTo(outerRadius, -toothHeight); ctx.lineTo(innerRadius, 0); } ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); };
     window.clockDrawMarker = function(ctx, centerX, centerY, index, isActive) { const angle = (index - 15) * (Math.PI * 2 / 60); ctx.beginPath(); ctx.strokeStyle = isActive ? "white" : "rgba(255,255,255,0.15)"; ctx.lineWidth = 15; ctx.arc(centerX, centerY, 280, angle - 0.04, angle + 0.04); ctx.stroke(); };
+
+    // 🟢 TRAINER MANAGEMENT
+    window.initSettingsModule = async function() {
+        const user = loadSession();
+        if (user && user.role === 'trainer') {
+            const section = document.getElementById('trainers-section');
+            if (section) { section.classList.remove('hidden'); await window.loadTrainersList(); }
+        }
+    };
+    window.loadTrainersList = async function() {
+        const listEl = document.getElementById('trainers-list');
+        if (!listEl) return;
+        try {
+            const res = await fetch('/api/trainers');
+            const trainers = await res.json();
+            if (trainers.length === 0) {
+                listEl.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No hay entrenadores registrados.</p>';
+                return;
+            }
+            listEl.innerHTML = `<div class="space-y-3">${trainers.map(t => `
+                <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-750 rounded-lg border border-gray-100 dark:border-gray-700">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center text-sm font-bold text-purple-600 dark:text-purple-300">
+                            ${(t.name || '?')[0].toUpperCase()}${(t.lastName || '')[0]?.toUpperCase() || ''}
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-800 dark:text-gray-200">${t.name} ${t.lastName || ''}</p>
+                            <p class="text-sm text-gray-500">${t.email}</p>
+                        </div>
+                    </div>
+                    <button class="delete-trainer-btn text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg transition" data-id="${t._id}" data-name="${t.name}" title="Eliminar entrenador">
+                        <i class="fas fa-trash pointer-events-none"></i>
+                    </button>
+                </div>`).join('')}</div>`;
+        } catch (err) {
+            listEl.innerHTML = '<p class="text-red-400 text-sm text-center py-4">Error cargando entrenadores.</p>';
+        }
+    };
+    window.handleSaveTrainer = async function() {
+        const name = document.getElementById('trainer-name-input')?.value.trim();
+        const lastName = document.getElementById('trainer-lastname-input')?.value.trim();
+        const email = document.getElementById('trainer-email-input')?.value.trim();
+        const password = document.getElementById('trainer-password-input')?.value;
+        if (!name || !email || !password) return alert('Nombre, email y contraseña son requeridos.');
+        if (password.length < 4) return alert('La contraseña debe tener al menos 4 caracteres.');
+        try {
+            const res = await fetch('/api/trainers', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, lastName, email, password })
+            });
+            const data = await res.json();
+            if (!res.ok) return alert(data.message || 'Error creando entrenador');
+            document.getElementById('add-trainer-modal').classList.add('hidden');
+            document.getElementById('trainer-name-input').value = '';
+            document.getElementById('trainer-lastname-input').value = '';
+            document.getElementById('trainer-email-input').value = '';
+            document.getElementById('trainer-password-input').value = '';
+            await window.loadTrainersList();
+        } catch (err) { alert('Error de conexión al crear entrenador.'); }
+    };
+    window.handleDeleteTrainer = async function(id, name) {
+        if (!confirm(`¿Eliminar al entrenador "${name}"? Esta acción no se puede deshacer.`)) return;
+        try {
+            const res = await fetch(`/api/trainers/${id}`, { method: 'DELETE' });
+            if (!res.ok) { const data = await res.json(); return alert(data.message || 'Error eliminando entrenador'); }
+            await window.loadTrainersList();
+        } catch (err) { alert('Error de conexión al eliminar entrenador.'); }
+    };
 
     // 🟢 RENDER TRAINER HOME
     window.renderTrainerHome = (trainerName) => {

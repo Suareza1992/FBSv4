@@ -29,12 +29,17 @@ await seedAdmin();
 .catch(err => console.error('❌ Error de MongoDB:', err));
 // --- SEED ADMIN/TRAINER ACCOUNT ---
 async function seedAdmin() {
-const adminEmail = 'fitbysuarez@gmail.com';
-try {
-const exists = await mongoose.connection.collection('users').findOne({ email: adminEmail });
-if (!exists) {
-const hashedPassword = await bcrypt.hash('surfac3tens!0N', 10);
-await mongoose.connection.collection('users').insertOne({
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminEmail || !adminPassword) {
+        console.log('⚠️  ADMIN_EMAIL or ADMIN_PASSWORD not set in .env — skipping seed.');
+        return;
+    }
+    try {
+        const exists = await mongoose.connection.collection('users').findOne({ email: adminEmail });
+        if (!exists) {
+            const hashedPassword = await bcrypt.hash(adminPassword, 10);
+            await mongoose.connection.collection('users').insertOne({
                 name: 'Coach Suárez',
                 lastName: '',
                 email: adminEmail,
@@ -59,7 +64,7 @@ await mongoose.connection.collection('users').insertOne({
                 emailPreferences: { dailyRoutine: true, incompleteRoutine: false },
                 createdAt: new Date()
             });
-            console.log('✅ Admin/Trainer account seeded: fitbysuarez@gmail.com');
+            console.log(`✅ Admin/Trainer account seeded: ${adminEmail}`);
         } else {
             console.log('ℹ️  Admin/Trainer account already exists — skipping seed.');
         }
@@ -300,6 +305,36 @@ await user.save();
         console.error('Reset password error:', error);
         res.status(500).json({ message: 'Error al actualizar contraseña' });
     }
+});
+// ==========================================================================
+// --- Trainers ---
+// ==========================================================================
+app.get('/api/trainers', async (req, res) => {
+    try {
+        const trainers = await User.find({ role: 'trainer', isDeleted: { $ne: true } }).sort({ createdAt: -1 });
+        res.json(trainers.map(t => ({ _id: t._id, name: t.name, lastName: t.lastName, email: t.email, isActive: t.isActive, createdAt: t.createdAt })));
+    } catch (error) { res.status(500).json({ message: 'Error fetching trainers' }); }
+});
+app.post('/api/trainers', async (req, res) => {
+    try {
+        const { name, lastName, email, password } = req.body;
+        if (!name || !email || !password) return res.status(400).json({ message: 'Nombre, email y contraseña son requeridos' });
+        const existing = await User.findOne({ email });
+        if (existing) return res.status(400).json({ message: 'El email ya existe' });
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newTrainer = new User({ name, lastName: lastName || '', email, password: hashedPassword, role: 'trainer', isFirstLogin: false });
+        await newTrainer.save();
+        res.status(201).json({ message: 'Trainer creado', trainer: { _id: newTrainer._id, name: newTrainer.name, email: newTrainer.email } });
+    } catch (error) { res.status(500).json({ message: 'Error creating trainer', error }); }
+});
+app.delete('/api/trainers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const trainer = await User.findById(id);
+        if (!trainer || trainer.role !== 'trainer') return res.status(404).json({ message: 'Trainer not found' });
+        await User.findByIdAndUpdate(id, { isDeleted: true });
+        res.json({ message: 'Trainer eliminado' });
+    } catch (error) { res.status(500).json({ message: 'Error deleting trainer', error }); }
 });
 // ==========================================================================
 // --- Clients ---

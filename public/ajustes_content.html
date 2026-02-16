@@ -70,4 +70,51 @@
             </div>
         </div>
     </div>
+
+    <!-- Manage Trainers Section -->
+    <div id="trainers-section" class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 hidden">
+        <div class="p-6 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Administrar Entrenadores</h3>
+                <p class="text-sm text-gray-500">Crea y gestiona cuentas de entrenador.</p>
+            </div>
+            <button id="open-add-trainer-btn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition shadow-md flex items-center gap-2">
+                <i class="fas fa-plus"></i> Nuevo Entrenador
+            </button>
+        </div>
+        <div id="trainers-list" class="p-6">
+            <p class="text-gray-400 text-sm text-center">Cargando entrenadores...</p>
+        </div>
+    </div>
+
+    <!-- Add Trainer Modal -->
+    <div id="add-trainer-modal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-gray-700">
+            <div class="p-6 border-b border-gray-100 dark:border-gray-700">
+                <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">Nuevo Entrenador</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre</label>
+                    <input type="text" id="trainer-name-input" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-purple-500 focus:border-purple-500" placeholder="Nombre del entrenador">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Apellido (Opcional)</label>
+                    <input type="text" id="trainer-lastname-input" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-purple-500 focus:border-purple-500" placeholder="Apellido">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Correo Electrónico</label>
+                    <input type="email" id="trainer-email-input" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-purple-500 focus:border-purple-500" placeholder="email@ejemplo.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contraseña</label>
+                    <input type="password" id="trainer-password-input" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-purple-500 focus:border-purple-500" placeholder="Contraseña temporal">
+                </div>
+            </div>
+            <div class="p-4 bg-gray-50 dark:bg-gray-750 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
+                <button id="cancel-add-trainer" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition">Cancelar</button>
+                <button id="save-trainer-btn" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg text-sm transition shadow-md">Crear Entrenador</button>
+            </div>
+        </div>
+    </div>
 </div>
