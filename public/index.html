@@ -138,58 +138,42 @@
                             <img class="w-10 h-10 rounded-full border-2 border-white" src="https://i.pravatar.cc/100?img=2" alt="">
                             <img class="w-10 h-10 rounded-full border-2 border-white" src="https://i.pravatar.cc/100?img=3" alt="">
                         </div>
-                        <span class="text-sm font-medium" data-key="heroTrusted">Más de 100 atletas confían</span>
+                        <span class="text-sm font-medium" data-key="heroTrusted">Más de 500 Atletas Confían</span>
                     </div>
                 </div>
 
-                <!-- 🟢 LOGIN/FORGOT/RESET PASSWORD CARDS -->
-                <div class="md:w-1/3 w-full">
+                <div class="md:w-1/3 w-full bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl border-t-4 border-brand-purple">
+                    <h2 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white" id="auth-title" data-key="signIn">Iniciar Sesión</h2>
+                    <p class="text-sm text-gray-500 mb-6" data-key="accessDash">Accede a tu panel</p>
                     
-                    <!-- LOGIN CARD -->
-                    <div id="login-card" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl border-t-4 border-brand-purple">
-                        <h2 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white" data-key="signIn">Iniciar sesión</h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-6" data-key="accessDash">Accede a tu panel</p>
-                        
-                        <form id="login-form">
-                            <div class="mb-4">
-                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email</label>
-                                <input type="email" id="login-email" placeholder="tu@email.com" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition" required>
-                            </div>
-                            
-                            <div class="mb-4">
-                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Contraseña</label>
-                                <div class="relative">
-                                    <input type="password" id="login-password" placeholder="••••••••" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition pr-12" required>
-                                    <button type="button" id="toggle-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="flex items-center justify-between text-sm mb-6">
-                                <label class="flex items-center cursor-pointer">
-                                    <input type="checkbox" id="remember-me" class="w-4 h-4 text-brand-purple border-gray-300 rounded focus:ring-brand-purple">
-                                    <span class="ml-2 text-gray-600 dark:text-gray-400">Recordarme</span>
-                                </label>
-                                <button type="button" id="forgot-password-link" class="text-brand-purple hover:text-purple-800 font-semibold">
-                                    ¿Olvidaste tu contraseña?
-                                </button>
-                            </div>
-
-                            <div id="auth-message" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
-                            
-                            <button type="submit" class="w-full bg-brand-purple hover:bg-purple-800 text-white p-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition transform hover:-translate-y-1" data-key="startTraining">
-                                Iniciar sesión
-                            </button>
-                        </form>
-
-                        <div class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                            <p>¿Problemas para ingresar? <button type="button" id="contact-support-link" class="text-brand-purple hover:underline font-semibold">Contacta soporte</button></p>
+                    <form onsubmit="event.preventDefault();">
+                        <div id="auth-name-container" class="hidden mb-4">
+                            <input type="text" id="auth-name" placeholder="Nombre Completo" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition">
                         </div>
+                        
+                        <div class="mb-4">
+                            <input type="email" id="auth-email" placeholder="Correo Electrónico" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition">
+                        </div>
+                        
+                        <div class="mb-6">
+                            <input type="password" id="auth-password" placeholder="Contraseña" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition">
+                        </div>
+                        
+                        <button id="auth-submit-btn" class="w-full bg-brand-purple hover:bg-purple-800 text-white p-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition transform hover:-translate-y-1" data-key="startTraining">
+                            Comenzar
+                        </button>
+                    </form>
+
+                    <p id="auth-message" class="text-center mt-4 text-sm text-red-500 font-bold"></p>
+                    
+                    <div class="mt-6 text-center">
+                        <button id="auth-toggle-btn" class="text-sm text-gray-500 hover:text-brand-purple font-semibold underline" data-key="newAccount">
+                            ¿Nuevo aquí? Crea una cuenta
+                        </button>
+                    </div>
 
                     <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 text-center">
-                        <p>Demo: <strong>admin@fitbysuarez.com</strong></p>
-                        <p>Client: <strong>client@test.com</strong></p>
+                        <p>Admin: <strong>fitbysuarez@gmail.com</strong></p>
                     </div>
                 </div>
             </div>
@@ -212,17 +196,17 @@
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <div class="p-8 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 hover:shadow-lg transition">
                         <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-300 mb-4 text-xl"><i class="fas fa-calendar-alt"></i></div>
-                        <h3 class="text-xl font-bold mb-2" data-key="f1Title">Calendario inteligente</h3>
+                        <h3 class="text-xl font-bold mb-2" data-key="f1Title">Calendario Inteligente</h3>
                         <p class="text-gray-500 text-sm" data-key="f1Desc">Organiza tus semanas de entrenamiento de manera eficiente.</p>
                     </div>
                     <div class="p-8 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 hover:shadow-lg transition">
                         <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center text-purple-600 dark:text-purple-300 mb-4 text-xl"><i class="fas fa-video"></i></div>
-                        <h3 class="text-xl font-bold mb-2" data-key="f2Title">Análisis de video</h3>
+                        <h3 class="text-xl font-bold mb-2" data-key="f2Title">Análisis de Video</h3>
                         <p class="text-gray-500 text-sm" data-key="f2Desc">Sube videos de tu técnica y recibe feedback instantáneo.</p>
                     </div>
                     <div class="p-8 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 hover:shadow-lg transition">
                         <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center text-green-600 dark:text-green-300 mb-4 text-xl"><i class="fas fa-chart-line"></i></div>
-                        <h3 class="text-xl font-bold mb-2" data-key="f3Title">Métricas de progreso</h3>
+                        <h3 class="text-xl font-bold mb-2" data-key="f3Title">Métricas de Progreso</h3>
                         <p class="text-gray-500 text-sm" data-key="f3Desc">Visualiza tus ganancias de fuerza y composición corporal.</p>
                     </div>
                 </div>
@@ -231,7 +215,7 @@
 
         <section class="py-24 bg-gray-50 dark:bg-gray-850">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <h2 class="text-3xl font-bold text-center mb-12" data-key="testTitle">Historias de éxito</h2>
+                <h2 class="text-3xl font-bold text-center mb-12" data-key="testTitle">Historias de Éxito</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     <div class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm">
                         <div class="flex text-yellow-400 mb-4"><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i></div>
@@ -257,7 +241,7 @@
                 <h2 class="text-4xl font-bold mb-6" data-key="ctaTitle">¿Listo para subir de nivel?</h2>
                 <p class="text-xl text-purple-100 mb-8" data-key="ctaSub">Únete a la plataforma usada por atletas de alto rendimiento.</p>
                 <button onclick="document.querySelector('header').scrollIntoView({behavior: 'smooth'})" class="bg-brand-yellow text-brand-dark px-10 py-4 rounded-full font-bold text-lg shadow-lg hover:bg-white transition transform hover:scale-105" data-key="ctaBtn">
-                    Crea tu cuenta
+                    Crea tu Cuenta
                 </button>
             </div>
         </section>
@@ -268,13 +252,13 @@
                     
                     <div class="px-4">
                         <h4 class="text-lg text-white font-medium capitalize mb-8 relative after:content-[''] after:absolute after:left-0 after:-bottom-2.5 after:h-0.5 after:w-12 after:bg-white">
-                            Servicio al cliente
+                            Customer Service
                         </h4>
                         </div>
 
                     <div class="px-4">
                         <h4 class="text-lg text-white font-medium capitalize mb-8 relative after:content-[''] after:absolute after:left-0 after:-bottom-2.5 after:h-0.5 after:w-12 after:bg-white">
-                            ¡Sígueme!
+                            Follow me!
                         </h4>
                     </div>
 
