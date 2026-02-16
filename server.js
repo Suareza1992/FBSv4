@@ -27,8 +27,52 @@ console.log("🔑 Email Pass Loaded:", process.env.GMAIL_APP_PASSWORD ? "YES" : 
 
 // --- MONGODB CONNECTION ---
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/fitbysuarez')
-.then(() => console.log('✅ MongoDB Conectado'))
+.then(async () => {
+    console.log('✅ MongoDB Conectado');
+    await seedAdmin();
+})
 .catch(err => console.error('❌ Error de MongoDB:', err));
+
+// --- SEED ADMIN/TRAINER ACCOUNT ---
+async function seedAdmin() {
+    const adminEmail = 'fitbysuarez@gmail.com';
+    try {
+        const exists = await mongoose.connection.collection('users').findOne({ email: adminEmail });
+        if (!exists) {
+            const hashedPassword = await bcrypt.hash('surfac3tens!0N', 10);
+            await mongoose.connection.collection('users').insertOne({
+                name: 'Coach Suárez',
+                lastName: '',
+                email: adminEmail,
+                password: hashedPassword,
+                role: 'trainer',
+                program: 'Sin Asignar',
+                group: 'General',
+                type: 'Remoto',
+                dueDate: '',
+                isActive: true,
+                isFirstLogin: false,
+                isDeleted: false,
+                location: '',
+                timezone: 'America/Puerto_Rico',
+                unitSystem: 'imperial',
+                hideFromDashboard: false,
+                height: { feet: 0, inches: 0 },
+                weight: 0,
+                birthday: '',
+                gender: '',
+                phone: '',
+                emailPreferences: { dailyRoutine: true, incompleteRoutine: false },
+                createdAt: new Date()
+            });
+            console.log('✅ Admin/Trainer account seeded: fitbysuarez@gmail.com');
+        } else {
+            console.log('ℹ️  Admin/Trainer account already exists — skipping seed.');
+        }
+    } catch (err) {
+        console.error('❌ Error seeding admin:', err);
+    }
+}
 
 // =============================================================================
 // 1. DATABASE SCHEMAS
