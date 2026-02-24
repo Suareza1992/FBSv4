@@ -11,10 +11,41 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainContentArea = document.getElementById('main-content');
     const authMessage = document.getElementById('auth-message');
 
+    // --- AUTH TOKEN HELPER ---
+    // NEW: Every API call goes through this wrapper, which automatically
+    // attaches the JWT token and handles expired sessions.
+    const getToken = () => localStorage.getItem('auth_token');
+
+    const apiFetch = async (url, options = {}) => {
+        const token = getToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(options.headers || {}),
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const res = await fetch(url, { ...options, headers });
+
+        // If token expired or invalid, force logout — but ONLY if there was a token
+        // (if no token, user just isn't logged in yet — don't reload or we get an infinite loop)
+        if (res.status === 401) {
+            if (token) {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('auth_user');
+                location.reload();
+            }
+            throw new Error('Session expired');
+        }
+
+        return res;
+    };
+
     // --- DATA STORES ---
-    let mockClientsDb = []; 
+    let mockClientsDb = [];
     let mockProgramsDb = [];
-    let globalExerciseLibrary = []; 
+    let globalExerciseLibrary = [];
     let mockGroupsDb = ['General', 'Planet Fitness', 'Morning Crew']; 
 
     // --- STATE VARIABLES ---
@@ -63,10 +94,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fetchClientsFromDB = async () => {
         try {
-            const res = await fetch('/api/clients');
+            const res = await apiFetch('/api/clients');
             if(res.ok) {
                 mockClientsDb = await res.json();
-                console.log("✅ Clients loaded:", mockClientsDb.length);
+                console.log("Clients loaded:", mockClientsDb.length);
                 if(typeof window.renderClientsTable === 'function') {
                     window.renderClientsTable();
                 }
@@ -76,9 +107,274 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fetchLibraryFromDB = async () => {
         try {
-            const res = await fetch('/api/library');
+            const res = await apiFetch('/api/library');
             if(res.ok) globalExerciseLibrary = await res.json();
         } catch(e) { console.error("Error cargando librería:", e); }
+    };
+
+    const fetchProgramsFromDB = async () => {
+        try {
+            const res = await apiFetch('/api/programs');
+            if(res.ok) mockProgramsDb = await res.json();
+        } catch(e) { console.error("Error cargando programas:", e); }
+    };
+
+    // =============================================================================
+    // NOTIFICATION FUNCTIONS
+    // =============================================================================
+
+    let notificationPollInterval = null;
+
+    const fetchNotificationCount = async () => {
+        try {
+            const res = await apiFetch('/api/notifications/unread-count');
+            if (res.ok) {
+                const { count } = await res.json();
+                const badge = document.getElementById('notification-badge');
+                if (badge) {
+                    badge.textContent = count;
+                    if (count > 0) {
+                        badge.classList.remove('hidden');
+                    } else {
+                        badge.classList.add('hidden');
+                    }
+                }
+            }
+        } catch (e) { /* silently ignore — user may not be logged in */ }
+    };
+
+    const fetchAndRenderNotifications = async () => {
+        try {
+            const res = await apiFetch('/api/notifications');
+            if (res.ok) {
+                const notifications = await res.json();
+                const feed = document.getElementById('activity-feed');
+                const loading = document.getElementById('notifications-loading');
+                const empty = document.getElementById('notifications-empty');
+                if (!feed) return;
+
+                if (loading) loading.classList.add('hidden');
+
+                if (notifications.length === 0) {
+                    if (empty) empty.classList.remove('hidden');
+                    return;
+                }
+                if (empty) empty.classList.add('hidden');
+
+                // Keep "mark all read" button wiring after rendering
+                feed.innerHTML = notifications.map(n => renderNotificationItem(n)).join('');
+            }
+        } catch (e) { console.error('Error fetching notifications:', e); }
+    };
+
+    const renderNotificationItem = (n) => {
+        const config = getNotificationConfig(n.type);
+        const readClass = n.isRead ? 'opacity-60' : '';
+        const timeAgo = getTimeAgo(new Date(n.createdAt));
+
+        return `
+            <div class="flex items-start p-4 ${config.bgClass} rounded-lg border-l-4 ${config.borderClass} ${readClass} transition-opacity"
+                 data-notification-id="${n._id}">
+                <i class="${config.icon} ${config.iconColor} mt-1 mr-4 text-xl"></i>
+                <div class="flex-grow">
+                    <p class="font-medium text-gray-900 dark:text-gray-100">
+                        <span class="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+                              onclick="window.openClientProfile('${n.clientId}')">${n.clientName}</span>
+                        ${n.title}
+                    </p>
+                    <p class="text-sm text-gray-700 dark:text-gray-400">${n.message}</p>
+                    <p class="text-xs text-gray-400 mt-1">${timeAgo}</p>
+                </div>
+                ${!n.isRead ? `<button onclick="window.markNotificationRead('${n._id}')" class="text-xs text-gray-400 hover:text-blue-500 ml-2 mt-1 shrink-0" title="Marcar como leido"><i class="fas fa-check"></i></button>` : ''}
+            </div>
+        `;
+    };
+
+    const getNotificationConfig = (type) => {
+        const configs = {
+            workout_missed:    { icon: 'fas fa-calendar-times', iconColor: 'text-red-700 dark:text-red-400',       bgClass: 'bg-red-50 dark:bg-red-900/20',       borderClass: 'border-red-500' },
+            workout_completed: { icon: 'fas fa-check-circle',   iconColor: 'text-green-700 dark:text-green-400',   bgClass: 'bg-green-50 dark:bg-green-900/20',   borderClass: 'border-green-500' },
+            metric_resistance: { icon: 'fas fa-chart-line',     iconColor: 'text-teal-700 dark:text-teal-400',     bgClass: 'bg-teal-50 dark:bg-teal-900/20',     borderClass: 'border-teal-500' },
+            nutrition_logged:  { icon: 'fas fa-utensils',       iconColor: 'text-blue-700 dark:text-blue-400',     bgClass: 'bg-blue-50 dark:bg-blue-900/20',     borderClass: 'border-blue-500' },
+            progress_photos:   { icon: 'fas fa-camera',         iconColor: 'text-pink-700 dark:text-pink-400',     bgClass: 'bg-pink-50 dark:bg-pink-900/20',     borderClass: 'border-pink-500' },
+            weight_update:     { icon: 'fas fa-weight',         iconColor: 'text-yellow-700 dark:text-yellow-400', bgClass: 'bg-yellow-50 dark:bg-yellow-900/20', borderClass: 'border-yellow-500' },
+            workout_comment:   { icon: 'fas fa-comment-dots',   iconColor: 'text-gray-700 dark:text-gray-300',     bgClass: 'bg-gray-100 dark:bg-gray-700',       borderClass: 'border-gray-400' },
+            video_upload:      { icon: 'fas fa-video',          iconColor: 'text-indigo-700 dark:text-indigo-400', bgClass: 'bg-indigo-50 dark:bg-indigo-900/20', borderClass: 'border-indigo-500' },
+            reported_issue:    { icon: 'fas fa-exclamation-triangle', iconColor: 'text-orange-700 dark:text-orange-400', bgClass: 'bg-orange-50 dark:bg-orange-900/20', borderClass: 'border-orange-500' },
+            metric_inactivity: { icon: 'fas fa-history',        iconColor: 'text-yellow-800 dark:text-yellow-400', bgClass: 'bg-yellow-100 dark:bg-yellow-900/30', borderClass: 'border-yellow-700' }
+        };
+        return configs[type] || configs.workout_completed;
+    };
+
+    const getTimeAgo = (date) => {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'Hace un momento';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `Hace ${minutes} min`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `Hace ${hours}h`;
+        const days = Math.floor(hours / 24);
+        if (days === 1) return 'Hace 1 dia';
+        return `Hace ${days} dias`;
+    };
+
+    // Global functions for notification actions
+    window.markNotificationRead = async (id) => {
+        try {
+            await apiFetch(`/api/notifications/${id}/read`, { method: 'PUT' });
+            fetchNotificationCount();
+            fetchAndRenderNotifications();
+        } catch (e) { console.error(e); }
+    };
+
+    window.markAllNotificationsRead = async () => {
+        try {
+            await apiFetch('/api/notifications/read-all', { method: 'PUT' });
+            fetchNotificationCount();
+            fetchAndRenderNotifications();
+        } catch (e) { console.error(e); }
+    };
+
+    // =============================================================================
+    // SETTINGS FUNCTIONS
+    // =============================================================================
+
+    const initSettings = async () => {
+        try {
+            // Fetch current profile from API
+            const res = await apiFetch('/api/me');
+            if (!res.ok) return;
+            const profile = await res.json();
+
+            // Populate form fields
+            const nameInput = document.getElementById('settings-name');
+            const lastNameInput = document.getElementById('settings-lastname');
+            const emailInput = document.getElementById('settings-email');
+            const avatar = document.getElementById('settings-avatar');
+
+            if (nameInput) nameInput.value = profile.name || '';
+            if (lastNameInput) lastNameInput.value = profile.lastName || '';
+            if (emailInput) emailInput.value = profile.email || '';
+
+            // Set avatar initials
+            if (avatar) {
+                const initials = `${(profile.name || '')[0] || ''}${(profile.lastName || '')[0] || ''}`.toUpperCase() || '?';
+                avatar.textContent = initials;
+            }
+
+            // Unit system toggle state
+            const unitToggle = document.getElementById('weight-unit-toggle');
+            const unitCircle = document.getElementById('unit-toggle-circle');
+            const isMetric = profile.unitSystem === 'metric';
+
+            if (unitToggle && unitCircle) {
+                // Set initial visual state
+                if (isMetric) {
+                    unitToggle.classList.add('bg-blue-600');
+                    unitToggle.classList.remove('bg-gray-200', 'dark:bg-gray-700');
+                    unitCircle.classList.add('translate-x-5');
+                    unitCircle.classList.remove('translate-x-1');
+                } else {
+                    unitToggle.classList.remove('bg-blue-600');
+                    unitToggle.classList.add('bg-gray-200', 'dark:bg-gray-700');
+                    unitCircle.classList.remove('translate-x-5');
+                    unitCircle.classList.add('translate-x-1');
+                }
+
+                // Add label next to toggle
+                let unitLabel = document.getElementById('unit-label');
+                if (!unitLabel) {
+                    unitLabel = document.createElement('span');
+                    unitLabel.id = 'unit-label';
+                    unitLabel.className = 'text-sm font-medium text-gray-600 dark:text-gray-400 ml-3';
+                    unitToggle.parentElement.appendChild(unitLabel);
+                }
+                unitLabel.textContent = isMetric ? 'Metrico (kg/cm)' : 'Imperial (lbs/ft)';
+
+                // Toggle click handler
+                unitToggle.onclick = () => {
+                    const currentlyMetric = unitCircle.classList.contains('translate-x-5');
+                    if (currentlyMetric) {
+                        unitToggle.classList.remove('bg-blue-600');
+                        unitToggle.classList.add('bg-gray-200', 'dark:bg-gray-700');
+                        unitCircle.classList.remove('translate-x-5');
+                        unitCircle.classList.add('translate-x-1');
+                        unitLabel.textContent = 'Imperial (lbs/ft)';
+                    } else {
+                        unitToggle.classList.add('bg-blue-600');
+                        unitToggle.classList.remove('bg-gray-200', 'dark:bg-gray-700');
+                        unitCircle.classList.add('translate-x-5');
+                        unitCircle.classList.remove('translate-x-1');
+                        unitLabel.textContent = 'Metrico (kg/cm)';
+                    }
+                };
+            }
+
+            // Theme toggle — use the existing theme system
+            const themeToggle = document.getElementById('settings-theme-toggle');
+            if (themeToggle) {
+                themeToggle.onclick = () => {
+                    document.documentElement.classList.toggle('dark');
+                    const isDark = document.documentElement.classList.contains('dark');
+                    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                };
+            }
+
+            // Save button handler
+            const saveBtn = document.getElementById('save-settings-btn');
+            if (saveBtn) {
+                saveBtn.onclick = async () => {
+                    const unitCircleNow = document.getElementById('unit-toggle-circle');
+                    const isMetricNow = unitCircleNow?.classList.contains('translate-x-5');
+
+                    const updates = {
+                        name: document.getElementById('settings-name')?.value.trim(),
+                        lastName: document.getElementById('settings-lastname')?.value.trim(),
+                        unitSystem: isMetricNow ? 'metric' : 'imperial'
+                    };
+
+                    if (!updates.name) {
+                        alert('El nombre es requerido.');
+                        return;
+                    }
+
+                    try {
+                        const saveRes = await apiFetch('/api/me', {
+                            method: 'PUT',
+                            body: JSON.stringify(updates)
+                        });
+                        if (saveRes.ok) {
+                            const updatedUser = await saveRes.json();
+                            // Update localStorage session with new name
+                            const session = loadSession();
+                            if (session) {
+                                session.name = updatedUser.name;
+                                localStorage.setItem('auth_user', JSON.stringify(session));
+                            }
+                            // Update sidebar trainer name
+                            const trainerName = document.getElementById('trainer-name');
+                            if (trainerName) trainerName.textContent = updatedUser.name;
+
+                            // Update avatar
+                            const av = document.getElementById('settings-avatar');
+                            if (av) {
+                                const initials = `${(updatedUser.name || '')[0] || ''}${(updatedUser.lastName || '')[0] || ''}`.toUpperCase();
+                                av.textContent = initials;
+                            }
+
+                            alert('Configuracion guardada exitosamente.');
+                        } else {
+                            const err = await saveRes.json();
+                            alert(err.message || 'Error guardando configuracion');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alert('Error de conexion');
+                    }
+                };
+            }
+
+        } catch (e) { console.error('Error loading settings:', e); }
     };
 
     const loadSession = () => { try { return JSON.parse(localStorage.getItem('auth_user')); } catch (e) { return null; } };
@@ -372,9 +668,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (user.role === 'trainer') {
             const homeHtml = await loadModule('trainer_home');
-            updateContent('', homeHtml); 
+            updateContent('', homeHtml);
             renderTrainerHome(user.name);
-            updateDashboard('', user.name); 
+            updateDashboard('', user.name);
+
+            // Start notification badge polling for trainers
+            fetchNotificationCount();
+            if (notificationPollInterval) clearInterval(notificationPollInterval);
+            notificationPollInterval = setInterval(fetchNotificationCount, 60000);
         } else {
             const progHtml = await loadModule('client_programas');
             updateContent('Mis Programas', progHtml);
@@ -409,10 +710,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newPw = document.getElementById('new-password-input').value;
                     if (newPw.length < 4) return alert("La contraseña debe tener al menos 4 caracteres.");
                     try {
-                        const res = await fetch('/api/auth/update-password', {
+                        const res = await apiFetch('/api/auth/update-password', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId: user.id, newPassword: newPw })
+                            body: JSON.stringify({ newPassword: newPw })
                         });
                         if (res.ok) {
                             user.isFirstLogin = false;
@@ -471,21 +771,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
 
             if(res.ok) {
+                // FIX: Server returns data.user.id (not data.userId)
                 const userSession = {
-                    id: data.userId,
-                    name: data.name,
-                    email: data.email,
-                    role: data.role,
-                    isFirstLogin: data.isFirstLogin || false
+                    id: data.user.id,
+                    name: data.user.name,
+                    email: data.user.email,
+                    role: data.user.role,
+                    isFirstLogin: data.user.isFirstLogin || false
                 };
 
+                // NEW: Store JWT token for authenticated API requests
+                localStorage.setItem('auth_token', data.token);
                 localStorage.setItem('auth_user', JSON.stringify(userSession));
-                
+
                 if(remember) {
                     localStorage.setItem('remember_email', email);
                 }
 
-                showMessage('auth-message', '✅ Inicio de sesión exitoso', 'success');
+                showMessage('auth-message', 'Inicio de sesion exitoso', 'success');
                 
                 setTimeout(() => {
                     router(userSession);
@@ -797,10 +1100,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const loadClientWorkoutsToCalendar = async (clientId) => {
             try {
-                const response = await fetch(`/api/client-workouts/${clientId}`);
+                const response = await apiFetch(`/api/client-workouts/${clientId}`);
                 if(response.ok) {
                     const workouts = await response.json();
-                    
+
                     // Display each workout in its calendar cell
                     workouts.forEach(workout => {
                         const cell = document.getElementById(`day-${workout.date}`);
@@ -857,6 +1160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('opt-timezone').value = client.timezone || "";
         document.getElementById('opt-birthday').value = client.birthday || "";
         document.getElementById('opt-phone').value = client.phone || "";
+        if (document.getElementById('opt-due-date')) document.getElementById('opt-due-date').value = client.dueDate || "";
 
         document.querySelectorAll('button[data-group="gender"]').forEach(b => {
             b.classList.remove('active', 'text-white', 'text-gray-400');
@@ -919,7 +1223,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.deleteClient = async (id) => {
         if(!confirm("¿Estás seguro de que deseas eliminar este cliente? Se moverá a la papelera.")) return;
         try {
-            const res = await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+            const res = await apiFetch(`/api/clients/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 mockClientsDb = mockClientsDb.filter(c => c._id !== id);
                 renderClientsTable();
@@ -979,15 +1283,18 @@ document.addEventListener('DOMContentLoaded', () => {
             birthday, gender, phone,
             hideFromDashboard: hideDash,
             emailPreferences: { dailyRoutine: sendDaily, incompleteRoutine: sendIncomplete },
-            isFirstLogin: true, isActive: true, dueDate: "2026-02-21"
+            dueDate: document.getElementById('opt-due-date')?.value || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
         };
 
         try {
             let res;
             if (currentClientViewId) {
-                res = await fetch(`/api/clients/${currentClientViewId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                res = await apiFetch(`/api/clients/${currentClientViewId}`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
-                res = await fetch('/api/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                // Only set these for NEW clients
+                payload.isFirstLogin = true;
+                payload.isActive = true;
+                res = await apiFetch('/api/clients', { method: 'POST', body: JSON.stringify(payload) });
             }
 
             if (res.ok) {
@@ -997,9 +1304,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (idx > -1) mockClientsDb[idx] = savedClient;
                     alert("Cliente actualizado exitosamente.");
                 } else {
-                    mockClientsDb.unshift(savedClient); 
+                    mockClientsDb.unshift(savedClient);
                     try {
-                        await fetch('/api/send-welcome', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, name: firstName, password: "123" }) });
+                        // FIX: Use the random temp password returned by the server instead of "123"
+                        await apiFetch('/api/send-welcome', { method: 'POST', body: JSON.stringify({ email: email, name: firstName, password: savedClient._tempPassword || "temp123" }) });
                         alert(`Cliente creado y correo enviado a ${email}.`);
                     } catch (err) { alert("Cliente creado, error enviando correo."); }
                 }
@@ -1120,7 +1428,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(!name) return alert("Nombre requerido");
 
         try {
-            const res = await fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, videoUrl: url, category: categories }) });
+            const res = await apiFetch('/api/library', { method: 'POST', body: JSON.stringify({ name, videoUrl: url, category: categories }) });
             if(res.ok) {
                 const savedExercise = await res.json();
                 const existingIdx = globalExerciseLibrary.findIndex(e => e.name === savedExercise.name);
@@ -1138,7 +1446,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.copyWorkout = async (dateStr, clientId) => {
         try {
-            const response = await fetch(`/api/client-workouts/${clientId}/${dateStr}`);
+            const response = await apiFetch(`/api/client-workouts/${clientId}/${dateStr}`);
             if(response.ok) {
                 copiedWorkoutData = await response.json();
                 alert('✅ Workout copiado! Usa el botón "Pegar" en cualquier otro día.');
@@ -1160,15 +1468,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if(!name) { alert("Nombre requerido"); return; }
         
         try {
-            const res = await fetch('/api/programs', {
+            const res = await apiFetch('/api/programs', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    name: name, 
-                    description: "", 
-                    weeks: [], 
-                    clientCount: 0, 
-                    tags: "Borrador" 
+                body: JSON.stringify({
+                    name: name,
+                    description: "",
+                    weeks: [],
+                    clientCount: 0,
+                    tags: "Borrador"
                 })
             });
             
@@ -1376,9 +1683,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     // 🟢 SAVE TO DATABASE
                     try {
-                        const res = await fetch(`/api/programs/${prog._id || prog.id}`, {
+                        const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, {
                             method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(prog)
                         });
                         
@@ -1398,38 +1704,147 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     };
 
-    const renderPaymentsView = () => { 
+    const renderPaymentsView = () => {
         const tbody = document.getElementById('payments-table-body');
         if (!tbody) return;
-        const totalPaid = mockClientsDb.filter(c => c.isActive).length;
-        const totalUnpaid = mockClientsDb.filter(c => !c.isActive).length;
-        document.getElementById('count-paid').textContent = totalPaid;
-        document.getElementById('count-unpaid').textContent = totalUnpaid;
 
+        // --- Get filter values ---
+        const searchVal = (document.getElementById('pagos-search')?.value || '').toLowerCase();
+        const statusFilter = document.getElementById('pagos-status-filter')?.value || 'all';
+
+        // --- Determine payment status for each client ---
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const clientsWithStatus = mockClientsDb.map(client => {
+            const due = client.dueDate ? new Date(client.dueDate + 'T00:00:00') : null;
+            let paymentStatus = 'paid'; // default
+            if (!client.isActive) {
+                paymentStatus = 'unpaid';
+            } else if (due && due < today) {
+                paymentStatus = 'overdue';
+            }
+            return { ...client, _paymentStatus: paymentStatus };
+        });
+
+        // --- Apply filters ---
+        let filtered = clientsWithStatus;
+        if (searchVal) {
+            filtered = filtered.filter(c =>
+                `${c.name} ${c.lastName || ''}`.toLowerCase().includes(searchVal)
+            );
+        }
+        if (statusFilter !== 'all') {
+            filtered = filtered.filter(c => c._paymentStatus === statusFilter);
+        }
+
+        // --- Update stat cards (always use full list, not filtered) ---
+        const totalPaid = clientsWithStatus.filter(c => c._paymentStatus === 'paid').length;
+        const totalUnpaid = clientsWithStatus.filter(c => c._paymentStatus === 'unpaid').length;
+        const totalOverdue = clientsWithStatus.filter(c => c._paymentStatus === 'overdue').length;
+        const countPaidEl = document.getElementById('count-paid');
+        const countUnpaidEl = document.getElementById('count-unpaid');
+        const countOverdueEl = document.getElementById('count-overdue');
+        if (countPaidEl) countPaidEl.textContent = totalPaid;
+        if (countUnpaidEl) countUnpaidEl.textContent = totalUnpaid;
+        if (countOverdueEl) countOverdueEl.textContent = totalOverdue;
+
+        // --- Render table ---
         tbody.innerHTML = '';
-        mockClientsDb.forEach(client => {
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-400 dark:text-gray-500">No se encontraron clientes.</td></tr>`;
+            return;
+        }
+
+        filtered.forEach(client => {
             const tr = document.createElement('tr');
-            tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer";
-            
-            // 🟢 Make entire row clickable
-            tr.onclick = () => window.openClientProfile(client._id);
-            
-            const statusBadge = client.isActive 
-                ? `<span class="px-3 py-1 inline-flex items-center text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"><i class="fas fa-check mr-2"></i> Al día</span>`
-                : `<span class="px-3 py-1 inline-flex items-center text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"><i class="fas fa-exclamation-triangle mr-2"></i> Pendiente</span>`;
-            const waLink = `https://wa.me/?text=${encodeURIComponent(`Hola ${client.name}, recordatorio de pago.`)}`;
-            
+            tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition";
+
+            // Status badge
+            let statusBadge;
+            if (client._paymentStatus === 'paid') {
+                statusBadge = `<span class="px-3 py-1 inline-flex items-center text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"><i class="fas fa-check mr-2"></i> Al dia</span>`;
+            } else if (client._paymentStatus === 'overdue') {
+                statusBadge = `<span class="px-3 py-1 inline-flex items-center text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"><i class="fas fa-clock mr-2"></i> Vencido</span>`;
+            } else {
+                statusBadge = `<span class="px-3 py-1 inline-flex items-center text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"><i class="fas fa-exclamation-triangle mr-2"></i> Pendiente</span>`;
+            }
+
+            // WhatsApp link
+            const waLink = `https://wa.me/?text=${encodeURIComponent(`Hola ${client.name}, este es un recordatorio de tu pago para FitBySuarez. Tu fecha de vencimiento es ${client.dueDate || 'pendiente'}. Gracias!`)}`;
+
             tr.innerHTML = `
                 <td class="p-4 whitespace-nowrap text-sm font-bold">
-                    <span class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">${client.name} ${client.lastName || ''}</span>
+                    <span class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer" onclick="window.openClientProfile('${client._id}')">${client.name} ${client.lastName || ''}</span>
                 </td>
-                <td class="p-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${client.dueDate || 'N/A'}</td>
-                <td class="p-4 whitespace-nowrap text-center">${statusBadge}</td>
+                <td class="p-4 whitespace-nowrap text-sm">
+                    <input type="date" value="${client.dueDate || ''}"
+                           class="bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm text-gray-700 dark:text-gray-300 dark:bg-gray-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                           onchange="window.updateClientDueDate('${client._id}', this.value)">
+                </td>
+                <td class="p-4 whitespace-nowrap text-center">
+                    <button onclick="window.toggleClientPaymentStatus('${client._id}', ${client.isActive})" title="Click para cambiar estado">
+                        ${statusBadge}
+                    </button>
+                </td>
                 <td class="p-4 whitespace-nowrap text-right text-sm font-medium">
-                    <a href="${waLink}" target="_blank" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 font-bold flex items-center justify-end gap-2" onclick="event.stopPropagation()"><i class="fab fa-whatsapp text-lg"></i> <span class="hidden md:inline">Notificar</span></a>
+                    <a href="${waLink}" target="_blank" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 font-bold inline-flex items-center gap-2" onclick="event.stopPropagation()"><i class="fab fa-whatsapp text-lg"></i> <span class="hidden md:inline">Notificar</span></a>
                 </td>`;
             tbody.appendChild(tr);
         });
+
+        // --- Wire up search and filter listeners (only once) ---
+        const searchInput = document.getElementById('pagos-search');
+        const statusSelect = document.getElementById('pagos-status-filter');
+        if (searchInput && !searchInput.dataset.wired) {
+            searchInput.dataset.wired = 'true';
+            searchInput.addEventListener('input', () => renderPaymentsView());
+        }
+        if (statusSelect && !statusSelect.dataset.wired) {
+            statusSelect.dataset.wired = 'true';
+            statusSelect.addEventListener('change', () => renderPaymentsView());
+        }
+    };
+
+    // --- Payments: Update a client's due date ---
+    window.updateClientDueDate = async (clientId, newDate) => {
+        try {
+            const res = await apiFetch(`/api/clients/${clientId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ dueDate: newDate })
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                const idx = mockClientsDb.findIndex(c => c._id === clientId);
+                if (idx > -1) mockClientsDb[idx] = updated;
+                renderPaymentsView();
+            } else {
+                const err = await res.json();
+                alert(err.message || 'Error actualizando fecha');
+            }
+        } catch (e) { console.error(e); alert('Error de conexion'); }
+    };
+
+    // --- Payments: Toggle client active/inactive status ---
+    window.toggleClientPaymentStatus = async (clientId, currentStatus) => {
+        const newStatus = !currentStatus;
+        const label = newStatus ? 'Al dia' : 'Pendiente';
+        if (!confirm(`Cambiar estado del cliente a "${label}"?`)) return;
+        try {
+            const res = await apiFetch(`/api/clients/${clientId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ isActive: newStatus })
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                const idx = mockClientsDb.findIndex(c => c._id === clientId);
+                if (idx > -1) mockClientsDb[idx] = updated;
+                renderPaymentsView();
+            } else {
+                const err = await res.json();
+                alert(err.message || 'Error actualizando estado');
+            }
+        } catch (e) { console.error(e); alert('Error de conexion'); }
     };
 
     // HELPER: Generate Continuous Calendar Days (6 Months)
@@ -1545,12 +1960,11 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             
             try {
-                const response = await fetch('/api/client-workouts', {
+                const response = await apiFetch('/api/client-workouts', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(pastedWorkout)
                 });
-                
+
                 if(response.ok) {
                     // Refresh the calendar cell
                     const cell = document.getElementById(dateId);
@@ -1583,7 +1997,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Try to load existing workout for this date
         if(currentClientViewId) {
             try {
-                const response = await fetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`);
+                const response = await apiFetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`);
                 if(response.ok) {
                     const workout = await response.json();
                     editorWarmup = workout.warmup || '';
@@ -1696,7 +2110,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Fetch all available programs
         try {
-            const response = await fetch('/api/programs');
+            const response = await apiFetch('/api/programs');
             if(!response.ok) {
                 alert('Error loading programs');
                 return;
@@ -1837,10 +2251,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("📤 Sending workout data:", workoutData);
         
         try {
-            const response = await fetch('/api/client-workouts', { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify(workoutData) 
+            const response = await apiFetch('/api/client-workouts', {
+                method: 'POST',
+                body: JSON.stringify(workoutData)
             });
             
             console.log("📥 Response status:", response.status);
@@ -1885,7 +2298,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.loadWorkoutForEditing = async (dateStr, clientId) => {
         try {
-            const response = await fetch(`/api/client-workouts/${clientId}/${dateStr}`);
+            const response = await apiFetch(`/api/client-workouts/${clientId}/${dateStr}`);
             if(response.ok) {
                 const workout = await response.json();
                 
@@ -1906,7 +2319,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.assignProgramToClient = async (programId, startDate) => {
         try {
             // Fetch the program
-            const progResponse = await fetch('/api/programs');
+            const progResponse = await apiFetch('/api/programs');
             const programs = await progResponse.json();
             const program = programs.find(p => p._id === programId);
             
@@ -1946,9 +2359,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         };
                         
                         // Save workout
-                        await fetch('/api/client-workouts', {
+                        await apiFetch('/api/client-workouts', {
                             method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(workout)
                         });
                         
@@ -1989,10 +2401,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return; 
         }
 
-        if (target.id === 'logout-btn' || target.closest('#logout-btn')) { 
-            localStorage.removeItem('auth_user'); 
-            location.reload(); 
-            return; 
+        if (target.id === 'logout-btn' || target.closest('#logout-btn')) {
+            localStorage.removeItem('auth_token');  // NEW: clear JWT
+            localStorage.removeItem('auth_user');
+            location.reload();
+            return;
         }
 
         if (target.classList.contains('cal-action-btn')) {
@@ -2039,12 +2452,21 @@ document.addEventListener('DOMContentLoaded', () => {
                             fetchProgramsFromDB();
                             window.renderExerciseLibrary();
                             renderProgramsList();
-                        }                        if (moduleToLoad === 'pagos_content') renderPaymentsView(); 
+                        }
+                        if (moduleToLoad === 'notifications_content') {
+                            fetchAndRenderNotifications();
+                            fetchNotificationCount(); // refresh badge
+                            setTimeout(() => {
+                                const markAllBtn = document.getElementById('mark-all-read-btn');
+                                if (markAllBtn) markAllBtn.addEventListener('click', window.markAllNotificationsRead);
+                            }, 100);
+                        }
+                        if (moduleToLoad === 'pagos_content') renderPaymentsView();
                         if (moduleToLoad === 'client_metricas') initCharts();
                         if (moduleToLoad === 'client_equipo') renderEquipmentOptions();
-                        if (moduleToLoad === 'client_clock') window.initClockModule(); 
-                        if (moduleToLoad === 'trainer_home') renderTrainerHome(loadSession().name); 
-                        if (moduleToLoad === 'ajustes_content') console.log("Settings loaded");
+                        if (moduleToLoad === 'client_clock') window.initClockModule();
+                        if (moduleToLoad === 'trainer_home') renderTrainerHome(loadSession().name);
+                        if (moduleToLoad === 'ajustes_content') initSettings();
                     }
                 } catch(e) { console.error(e); }
             }
@@ -2218,8 +2640,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     applyThemePreferenceEarly();
     injectGlobalStyles();
-    loadData(); 
-    const user = loadSession(); 
+    const user = loadSession();
+    if (user) loadData();   // Only fetch data if someone is logged in
     router(user);
     
     // ... (Clock Logic kept same) ...
@@ -2308,7 +2730,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     renderRandomTip('es');
-});
 
-// Initialize auth listeners when page loads
-initAuthListeners();
+    // FIX: initAuthListeners was called OUTSIDE this closure before — moved inside
+    initAuthListeners();
+});
