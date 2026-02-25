@@ -59,15 +59,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentClientViewId = null;
     let copiedWorkoutData = null; // Store copied workout
 
-    // 🟢 NEW: Workout Editor State (For the Orange Modal)
+    // NEW: Workout Editor State (For the Orange Modal)
     let editorExercises = []; 
     let editorDateStr = "";
-    let editorWarmup = ""; // 🟢 State for Warmup Text
+    let editorWarmup = ""; // State for Warmup Text
     let editorWorkoutTitle = "";
     let editorCooldown = "";
-    let currentEditorExId = null; // 🟢 Track which exercise is being edited for Video/History
+    let currentEditorExId = null; // Track which exercise is being edited for Video/History
 
-    // 🟢 MUSCLE GROUPS DEFINITION
+    // MUSCLE GROUPS DEFINITION
     const muscleGroups = [
         "Pecho", "Espalda", "Piernas", "Quadriceps", "Femorales", "Tibiales", 
         "Pantorrillas", "Glúteos", "Triceps", "Biceps", "Hombros", "Antebrazos", 
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fetchLibraryFromDB(); 
         fetchClientsFromDB();
-        fetchProgramsFromDB(); // 🟢 NEW: Fetch programs from MongoDB
+        fetchProgramsFromDB(); // NEW: Fetch programs from MongoDB
     };
 
     const fetchClientsFromDB = async () => {
@@ -256,10 +256,47 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lastNameInput) lastNameInput.value = profile.lastName || '';
             if (emailInput) emailInput.value = profile.email || '';
 
-            // Set avatar initials
+            // Set avatar: show profile picture or initials
             if (avatar) {
-                const initials = `${(profile.name || '')[0] || ''}${(profile.lastName || '')[0] || ''}`.toUpperCase() || '?';
-                avatar.textContent = initials;
+                if (profile.profilePicture) {
+                    avatar.innerHTML = `<img src="${profile.profilePicture}" class="w-full h-full object-cover" alt="Profile">`;
+                } else {
+                    const initials = `${(profile.name || '')[0] || ''}${(profile.lastName || '')[0] || ''}`.toUpperCase() || '?';
+                    avatar.textContent = initials;
+                }
+            }
+
+            // Profile picture upload
+            const changePhotoBtn = document.getElementById('change-photo-btn');
+            const profilePicInput = document.getElementById('profile-pic-input');
+            window._pendingProfilePicture = null;
+
+            if (changePhotoBtn && profilePicInput) {
+                changePhotoBtn.onclick = () => profilePicInput.click();
+
+                profilePicInput.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    if (file.size > 1024 * 1024) {
+                        alert('La imagen debe ser menor a 1MB.');
+                        return;
+                    }
+                    if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+                        alert('Solo se permiten archivos JPG, PNG o GIF.');
+                        return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const base64 = ev.target.result;
+                        if (avatar) {
+                            avatar.innerHTML = `<img src="${base64}" class="w-full h-full object-cover" alt="Profile">`;
+                        }
+                        window._pendingProfilePicture = base64;
+                    };
+                    reader.readAsDataURL(file);
+                };
             }
 
             // Unit system toggle state
@@ -273,12 +310,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     unitToggle.classList.add('bg-blue-600');
                     unitToggle.classList.remove('bg-gray-200', 'dark:bg-gray-700');
                     unitCircle.classList.add('translate-x-5');
-                    unitCircle.classList.remove('translate-x-1');
+                    unitCircle.classList.remove('translate-x-0');
                 } else {
                     unitToggle.classList.remove('bg-blue-600');
                     unitToggle.classList.add('bg-gray-200', 'dark:bg-gray-700');
                     unitCircle.classList.remove('translate-x-5');
-                    unitCircle.classList.add('translate-x-1');
+                    unitCircle.classList.add('translate-x-0');
                 }
 
                 // Add label next to toggle
@@ -298,13 +335,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         unitToggle.classList.remove('bg-blue-600');
                         unitToggle.classList.add('bg-gray-200', 'dark:bg-gray-700');
                         unitCircle.classList.remove('translate-x-5');
-                        unitCircle.classList.add('translate-x-1');
+                        unitCircle.classList.add('translate-x-0');
                         unitLabel.textContent = 'Imperial (lbs/ft)';
                     } else {
                         unitToggle.classList.add('bg-blue-600');
                         unitToggle.classList.remove('bg-gray-200', 'dark:bg-gray-700');
                         unitCircle.classList.add('translate-x-5');
-                        unitCircle.classList.remove('translate-x-1');
+                        unitCircle.classList.remove('translate-x-0');
                         unitLabel.textContent = 'Metrico (kg/cm)';
                     }
                 };
@@ -333,6 +370,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         unitSystem: isMetricNow ? 'metric' : 'imperial'
                     };
 
+                    // Include profile picture if changed
+                    if (window._pendingProfilePicture) {
+                        updates.profilePicture = window._pendingProfilePicture;
+                    }
+
                     if (!updates.name) {
                         alert('El nombre es requerido.');
                         return;
@@ -345,21 +387,31 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         if (saveRes.ok) {
                             const updatedUser = await saveRes.json();
-                            // Update localStorage session with new name
+                            // Update localStorage session with ALL changed fields
                             const session = loadSession();
                             if (session) {
                                 session.name = updatedUser.name;
+                                session.lastName = updatedUser.lastName;
+                                session.unitSystem = updatedUser.unitSystem;
+                                session.profilePicture = updatedUser.profilePicture || '';
                                 localStorage.setItem('auth_user', JSON.stringify(session));
                             }
+                            // Clear pending picture
+                            window._pendingProfilePicture = null;
+
                             // Update sidebar trainer name
                             const trainerName = document.getElementById('trainer-name');
                             if (trainerName) trainerName.textContent = updatedUser.name;
 
-                            // Update avatar
+                            // Update avatar in settings
                             const av = document.getElementById('settings-avatar');
                             if (av) {
-                                const initials = `${(updatedUser.name || '')[0] || ''}${(updatedUser.lastName || '')[0] || ''}`.toUpperCase();
-                                av.textContent = initials;
+                                if (updatedUser.profilePicture) {
+                                    av.innerHTML = `<img src="${updatedUser.profilePicture}" class="w-full h-full object-cover" alt="Profile">`;
+                                } else {
+                                    const initials = `${(updatedUser.name || '')[0] || ''}${(updatedUser.lastName || '')[0] || ''}`.toUpperCase();
+                                    av.textContent = initials;
+                                }
                             }
 
                             alert('Configuracion guardada exitosamente.');
@@ -424,7 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .autocomplete-item:hover { background-color: #374151; }
             .autocomplete-item strong { color: #a78bfa; }
             
-            /* 🟢 CALENDAR & EDITOR STYLES */
+            /* CALENDAR & EDITOR STYLES */
             .category-pill { cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: all 0.2s; }
             .category-pill:hover { background: rgba(255,255,255,0.1); }
             .category-pill.selected { background: #5e2d91; border-color: #ffde00; color: white; }
@@ -459,7 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 z-index: 0;
             }
 
-            /* 🟢 TABLET/SMALL DESKTOP: Scale down hover menu to prevent overlap */
+            /* TABLET/SMALL DESKTOP: Scale down hover menu to prevent overlap */
             @media (max-width: 1200px) and (min-width: 769px) {
                 .cal-action-btn {
                     padding: 6px !important;
@@ -506,7 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-                /* 🟢 MOBILE-FRIENDLY CALENDAR STYLES */
+                /* MOBILE-FRIENDLY CALENDAR STYLES */
                 @media (max-width: 768px) {
                     /* Make calendar grid single column on mobile */
                     #calendar-grid-container {
@@ -618,7 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
             mainContentArea.innerHTML = contentHtml;
             return;
         }
-        // 🟢 Remove padding for calendar view to allow full edge-to-edge scrolling
+        // Remove padding for calendar view to allow full edge-to-edge scrolling
         const isCalendar = contentHtml.includes('client-calendar-grid');
         const paddingClass = isCalendar ? 'p-0' : 'p-14'; 
         const titleClass = (isCalendar || !title) ? 'hidden' : 'text-4xl font-bold text-gray-800 dark:text-gray-100 mb-6 border-b border-gray-200 dark:border-gray-700 pb-3 flex-shrink-0';
@@ -677,9 +729,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (notificationPollInterval) clearInterval(notificationPollInterval);
             notificationPollInterval = setInterval(fetchNotificationCount, 60000);
         } else {
-            const progHtml = await loadModule('client_programas');
-            updateContent('Mis Programas', progHtml);
-            updateDashboard('Mis Programas', user.name);
+            const homeHtml = await loadModule('client_inicio');
+            updateContent('Inicio', homeHtml);
+            initClientHome();
+            updateDashboard('Inicio', user.name);
         }
         setTimeout(updateThemeIcon, 100); 
 
@@ -822,7 +875,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
 
             if(res.ok) {
-                showMessage('forgot-message', '✅ Hemos enviado un enlace de recuperación a tu email', 'success');
+                showMessage('forgot-message', 'Hemos enviado un enlace de recuperación a tu email', 'success');
                 document.getElementById('forgot-email').value = '';
             } else {
                 showMessage('forgot-message', data.message || 'No encontramos una cuenta con ese email', 'error');
@@ -867,7 +920,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
 
             if(res.ok) {
-                showMessage('reset-message', '✅ Contraseña actualizada exitosamente', 'success');
+                showMessage('reset-message', 'Contraseña actualizada exitosamente', 'success');
                 
                 setTimeout(() => {
                     window.location.href = '/';
@@ -1010,22 +1063,22 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // 🟢 1. OPEN CLIENT PROFILE (Updated with Modals)
+    // 1. OPEN CLIENT PROFILE (Updated with Modals)
     window.openClientProfile = (clientId) => {
-        console.log("👇 CLICKED ID:", clientId);
+        console.log("CLICKED ID:", clientId);
         // LOOSE MATCHING (==)
         const client = mockClientsDb.find(c => (c._id == clientId) || (c.id == clientId));
         
         if (!client) { 
-            console.error("❌ Client NOT found in local DB. Available:", mockClientsDb); 
+            console.error("Client NOT found in local DB. Available:", mockClientsDb); 
             return; 
         }
         
-        console.log("✅ Client Found:", client.name);
+        console.log("Client Found:", client.name);
         currentClientViewId = clientId;
-        console.log("✅ currentClientViewId SET TO:", currentClientViewId);
+        console.log("currentClientViewId SET TO:", currentClientViewId);
 
-        // 🟢 TRUECOACH STYLE CONTINUOUS CALENDAR
+        // TRUECOACH STYLE CONTINUOUS CALENDAR (with tabs)
         updateContent(`Perfil: ${client.name} ${client.lastName}`, `
             <div id="client-calendar-grid" class="flex flex-col h-full bg-gray-50 dark:bg-gray-900 overflow-hidden">
                 <div class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10">
@@ -1037,20 +1090,44 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="px-3 py-1 text-sm font-semibold bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-white transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
                     </div>
                 </div>
-                
-                <div class="grid grid-cols-7 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10 shrink-0">
-                    ${['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'].map(d => `<div class="py-3 text-center text-xs font-bold text-gray-400 dark:text-gray-500 tracking-wider">${d}</div>`).join('')}
+
+                <!-- Tab Bar -->
+                <div class="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 shrink-0 z-10">
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" data-tab="calendar">Calendario</button>
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border-b-2 border-transparent" data-tab="metrics">Metricas</button>
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border-b-2 border-transparent" data-tab="nutrition">Nutricion</button>
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border-b-2 border-transparent" data-tab="photos">Fotos</button>
                 </div>
 
-                <div id="infinite-calendar-scroll" class="flex-grow overflow-y-auto overflow-x-hidden relative bg-gray-100 dark:bg-gray-900 pb-20">
-                    <div id="calendar-grid-container" class="grid grid-cols-7 auto-rows-min gap-px bg-gray-200 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
-                        ${generateContinuousCalendar(client)}
+                <!-- TAB: Calendar (default) -->
+                <div id="tab-calendar" class="client-tab-content flex flex-col flex-grow overflow-hidden">
+                    <div class="grid grid-cols-7 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10 shrink-0">
+                        ${['LUN','MAR','MIE','JUE','VIE','SAB','DOM'].map(d => `<div class="py-3 text-center text-xs font-bold text-gray-400 dark:text-gray-500 tracking-wider">${d}</div>`).join('')}
                     </div>
+                    <div id="infinite-calendar-scroll" class="flex-grow overflow-y-auto overflow-x-hidden relative bg-gray-100 dark:bg-gray-900 pb-20">
+                        <div id="calendar-grid-container" class="grid grid-cols-7 auto-rows-min gap-px bg-gray-200 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
+                            ${generateContinuousCalendar(client)}
+                        </div>
+                    </div>
+                    <div id="workout-editor-modal" class="hidden absolute inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-[1px]"></div>
                 </div>
-                
-                <div id="workout-editor-modal" class="hidden absolute inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-[1px]">
-                    </div>
 
+                <!-- TAB: Metrics -->
+                <div id="tab-metrics" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
+                    <p class="text-gray-400 text-sm animate-pulse">Cargando metricas...</p>
+                </div>
+
+                <!-- TAB: Nutrition -->
+                <div id="tab-nutrition" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
+                    <p class="text-gray-400 text-sm animate-pulse">Cargando nutricion...</p>
+                </div>
+
+                <!-- TAB: Photos -->
+                <div id="tab-photos" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
+                    <p class="text-gray-400 text-sm animate-pulse">Cargando fotos...</p>
+                </div>
+
+                <!-- Modals (shared) -->
                 <div id="history-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div class="bg-white dark:bg-gray-800 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
                         <div class="bg-gray-100 dark:bg-gray-700 p-4 border-b border-gray-200 dark:border-gray-600 flex justify-between items-center">
@@ -1086,7 +1163,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <div id="video-upload-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-96 border border-gray-200 dark:border-gray-700">
-                        <h3 class="text-lg font-bold mb-4 dark:text-white">Añadir Video URL</h3>
+                        <h3 class="text-lg font-bold mb-4 dark:text-white">Anadir Video URL</h3>
                         <input type="text" id="video-url-input" class="w-full p-2 border rounded mb-4 dark:bg-gray-700 dark:text-white dark:border-gray-600 outline-none" placeholder="https://youtube.com/...">
                         <div class="flex justify-end gap-2">
                             <button onclick="document.getElementById('video-upload-modal').classList.add('hidden')" class="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400">Cancelar</button>
@@ -1097,6 +1174,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
             </div>
         `);
+
+        // Tab switching logic
+        document.querySelectorAll('.client-detail-tab').forEach(tab => {
+            tab.onclick = () => {
+                document.querySelectorAll('.client-detail-tab').forEach(t => {
+                    t.classList.remove('border-blue-500', 'text-blue-600', 'dark:text-blue-400');
+                    t.classList.add('text-gray-500', 'border-transparent');
+                });
+                tab.classList.add('border-blue-500', 'text-blue-600', 'dark:text-blue-400');
+                tab.classList.remove('text-gray-500', 'border-transparent');
+
+                document.querySelectorAll('.client-tab-content').forEach(c => c.classList.add('hidden'));
+                const targetTab = document.getElementById(`tab-${tab.dataset.tab}`);
+                if (targetTab) {
+                    targetTab.classList.remove('hidden');
+                    if (tab.dataset.tab === 'calendar') targetTab.classList.add('flex');
+                }
+
+                // Load data on tab switch
+                if (tab.dataset.tab === 'metrics') loadClientMetrics(clientId);
+                if (tab.dataset.tab === 'nutrition') loadClientNutrition(clientId);
+                if (tab.dataset.tab === 'photos') loadClientPhotos(clientId);
+            };
+        });
 
         const loadClientWorkoutsToCalendar = async (clientId) => {
             try {
@@ -1121,13 +1222,370 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) {
                 console.error('Error loading workouts:', e);
             }
-        };        
+        };
 
         // Scroll to Today automatically
         setTimeout(() => {
             const todayCell = document.querySelector('.is-today');
             if(todayCell) todayCell.scrollIntoView({ block: "center", behavior: "auto" });
         }, 100);
+    };
+
+    // --- Client Detail Tab Data Loaders ---
+
+    const loadClientMetrics = async (clientId) => {
+        const container = document.getElementById('tab-metrics');
+        if (!container) return;
+        try {
+            const res = await apiFetch(`/api/weight-logs/${clientId}`);
+            const logs = res.ok ? await res.json() : [];
+            const client = mockClientsDb.find(c => c._id == clientId);
+            container.innerHTML = `
+                <div class="space-y-6 max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xl font-bold dark:text-white">Peso y Metricas</h3>
+                        <button onclick="window.showAddWeightModal('${clientId}')" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition">
+                            <i class="fas fa-plus mr-1"></i> Registrar Peso
+                        </button>
+                    </div>
+                    ${client ? `
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+                            <p class="text-2xl font-black text-blue-600">${client.weight || '--'}</p>
+                            <p class="text-xs font-bold text-gray-500 uppercase">Peso actual</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+                            <p class="text-2xl font-black text-green-600">${client.height ? client.height.feet + "'" + client.height.inches + '"' : '--'}</p>
+                            <p class="text-xs font-bold text-gray-500 uppercase">Altura</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+                            <p class="text-2xl font-black text-purple-600">${client.gender || '--'}</p>
+                            <p class="text-xs font-bold text-gray-500 uppercase">Genero</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+                            <p class="text-2xl font-black text-orange-600">${client.birthday || '--'}</p>
+                            <p class="text-xs font-bold text-gray-500 uppercase">Cumpleanos</p>
+                        </div>
+                    </div>` : ''}
+                    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Fecha</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Peso</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">% Grasa</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Notas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${logs.length === 0 ? '<tr><td colspan="4" class="p-6 text-center text-gray-400">Sin registros de peso. Haz clic en "Registrar Peso" para comenzar.</td></tr>' :
+                                logs.map(l => `<tr class="border-t border-gray-100 dark:border-gray-700">
+                                    <td class="px-4 py-3 dark:text-white">${l.date}</td>
+                                    <td class="px-4 py-3 font-bold dark:text-white">${l.weight} lbs</td>
+                                    <td class="px-4 py-3 dark:text-gray-300">${l.bodyFat ? l.bodyFat + '%' : '--'}</td>
+                                    <td class="px-4 py-3 dark:text-gray-400">${l.notes || '--'}</td>
+                                </tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        } catch (e) { container.innerHTML = '<p class="text-red-500">Error cargando metricas.</p>'; }
+    };
+
+    window.showAddWeightModal = (clientId) => {
+        const existing = document.getElementById('add-weight-modal');
+        if (existing) existing.remove();
+        const today = new Date().toISOString().split('T')[0];
+        document.body.insertAdjacentHTML('beforeend', `
+            <div id="add-weight-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-bold dark:text-white mb-4">Registrar Peso</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
+                            <input type="date" id="weight-date" value="${today}" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Peso (lbs)</label>
+                            <input type="number" id="weight-value" step="0.1" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">% Grasa corporal (opcional)</label>
+                            <input type="number" id="weight-bodyfat" step="0.1" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
+                            <input type="text" id="weight-notes" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="Notas...">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3 mt-6">
+                        <button onclick="document.getElementById('add-weight-modal').remove()" class="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 font-medium">Cancelar</button>
+                        <button onclick="window.saveWeightLog('${clientId}')" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        `);
+    };
+
+    window.saveWeightLog = async (clientId) => {
+        const date = document.getElementById('weight-date')?.value;
+        const weight = parseFloat(document.getElementById('weight-value')?.value);
+        const bodyFat = parseFloat(document.getElementById('weight-bodyfat')?.value) || null;
+        const notes = document.getElementById('weight-notes')?.value || '';
+        if (!date || !weight) { alert('Fecha y peso son requeridos.'); return; }
+        try {
+            const res = await apiFetch('/api/weight-logs', {
+                method: 'POST',
+                body: JSON.stringify({ clientId, date, weight, bodyFat, notes })
+            });
+            if (res.ok) {
+                document.getElementById('add-weight-modal')?.remove();
+                loadClientMetrics(clientId);
+            } else { alert('Error guardando registro.'); }
+        } catch (e) { alert('Error de conexion.'); }
+    };
+
+    const loadClientNutrition = async (clientId) => {
+        const container = document.getElementById('tab-nutrition');
+        if (!container) return;
+        try {
+            const res = await apiFetch(`/api/nutrition-logs/${clientId}`);
+            const logs = res.ok ? await res.json() : [];
+            container.innerHTML = `
+                <div class="space-y-6 max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xl font-bold dark:text-white">Nutricion</h3>
+                        <button onclick="window.showAddNutritionModal('${clientId}')" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition">
+                            <i class="fas fa-plus mr-1"></i> Registrar Nutricion
+                        </button>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Fecha</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Calorias</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Proteina</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Carbos</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Grasa</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Agua (oz)</th>
+                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Notas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${logs.length === 0 ? '<tr><td colspan="7" class="p-6 text-center text-gray-400">Sin registros de nutricion. Haz clic en "Registrar Nutricion" para comenzar.</td></tr>' :
+                                logs.map(l => `<tr class="border-t border-gray-100 dark:border-gray-700">
+                                    <td class="px-4 py-3 dark:text-white">${l.date}</td>
+                                    <td class="px-4 py-3 font-bold dark:text-white">${l.calories}</td>
+                                    <td class="px-4 py-3 dark:text-gray-300">${l.protein}g</td>
+                                    <td class="px-4 py-3 dark:text-gray-300">${l.carbs}g</td>
+                                    <td class="px-4 py-3 dark:text-gray-300">${l.fat}g</td>
+                                    <td class="px-4 py-3 dark:text-gray-300">${l.water || '--'}</td>
+                                    <td class="px-4 py-3 dark:text-gray-400">${l.notes || '--'}</td>
+                                </tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        } catch (e) { container.innerHTML = '<p class="text-red-500">Error cargando nutricion.</p>'; }
+    };
+
+    window.showAddNutritionModal = (clientId) => {
+        const existing = document.getElementById('add-nutrition-modal');
+        if (existing) existing.remove();
+        const today = new Date().toISOString().split('T')[0];
+        document.body.insertAdjacentHTML('beforeend', `
+            <div id="add-nutrition-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-bold dark:text-white mb-4">Registrar Nutricion</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
+                            <input type="date" id="nutri-date" value="${today}" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white">
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Calorias</label>
+                                <input type="number" id="nutri-calories" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proteina (g)</label>
+                                <input type="number" id="nutri-protein" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Carbos (g)</label>
+                                <input type="number" id="nutri-carbs" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Grasa (g)</label>
+                                <input type="number" id="nutri-fat" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Agua (oz)</label>
+                            <input type="number" id="nutri-water" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
+                            <input type="text" id="nutri-notes" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="Notas...">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3 mt-6">
+                        <button onclick="document.getElementById('add-nutrition-modal').remove()" class="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 font-medium">Cancelar</button>
+                        <button onclick="window.saveNutritionLog('${clientId}')" class="px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        `);
+    };
+
+    window.saveNutritionLog = async (clientId) => {
+        const date = document.getElementById('nutri-date')?.value;
+        const calories = parseInt(document.getElementById('nutri-calories')?.value) || 0;
+        const protein = parseInt(document.getElementById('nutri-protein')?.value) || 0;
+        const carbs = parseInt(document.getElementById('nutri-carbs')?.value) || 0;
+        const fat = parseInt(document.getElementById('nutri-fat')?.value) || 0;
+        const water = parseInt(document.getElementById('nutri-water')?.value) || 0;
+        const notes = document.getElementById('nutri-notes')?.value || '';
+        if (!date) { alert('Fecha es requerida.'); return; }
+        try {
+            const res = await apiFetch('/api/nutrition-logs', {
+                method: 'POST',
+                body: JSON.stringify({ clientId, date, calories, protein, carbs, fat, water, notes })
+            });
+            if (res.ok) {
+                document.getElementById('add-nutrition-modal')?.remove();
+                loadClientNutrition(clientId);
+            } else { alert('Error guardando registro.'); }
+        } catch (e) { alert('Error de conexion.'); }
+    };
+
+    const loadClientPhotos = async (clientId) => {
+        const container = document.getElementById('tab-photos');
+        if (!container) return;
+        try {
+            const res = await apiFetch(`/api/progress-photos/${clientId}`);
+            const photos = res.ok ? await res.json() : [];
+            container.innerHTML = `
+                <div class="space-y-6 max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xl font-bold dark:text-white">Fotos de Progreso</h3>
+                        <button onclick="window.showAddPhotoModal('${clientId}')" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold hover:bg-purple-700 transition">
+                            <i class="fas fa-camera mr-1"></i> Subir Foto
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        ${photos.length === 0 ? '<div class="col-span-full text-center py-12 text-gray-400"><i class="fas fa-camera text-5xl mb-3 block"></i><p>Sin fotos de progreso. Haz clic en "Subir Foto" para comenzar.</p></div>' :
+                        photos.map(p => `
+                            <div class="relative group bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm">
+                                <img src="${p.imageData}" alt="Progress" class="w-full aspect-[3/4] object-cover">
+                                <div class="p-2">
+                                    <p class="text-xs font-bold text-gray-500">${p.date}</p>
+                                    ${p.notes ? `<p class="text-xs text-gray-400 truncate">${p.notes}</p>` : ''}
+                                </div>
+                                <button onclick="window.deleteProgressPhoto('${p._id}', '${clientId}')" class="absolute top-2 right-2 w-7 h-7 bg-red-600 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                    <i class="fas fa-trash text-[10px]"></i>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        } catch (e) { container.innerHTML = '<p class="text-red-500">Error cargando fotos.</p>'; }
+    };
+
+    window.showAddPhotoModal = (clientId) => {
+        const existing = document.getElementById('add-photo-modal');
+        if (existing) existing.remove();
+        const today = new Date().toISOString().split('T')[0];
+        document.body.insertAdjacentHTML('beforeend', `
+            <div id="add-photo-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-bold dark:text-white mb-4">Subir Foto de Progreso</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
+                            <input type="date" id="photo-date" value="${today}" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Foto</label>
+                            <input type="file" id="photo-file" accept="image/jpeg,image/png,image/gif" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white text-sm">
+                        </div>
+                        <div id="photo-preview-container" class="hidden">
+                            <img id="photo-preview" class="w-full max-h-48 object-contain rounded-lg border border-gray-200 dark:border-gray-600">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoria</label>
+                            <select id="photo-category" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white">
+                                <option value="general">General</option>
+                                <option value="front">Frente</option>
+                                <option value="back">Espalda</option>
+                                <option value="side">Lateral</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
+                            <input type="text" id="photo-notes" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="Notas...">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3 mt-6">
+                        <button onclick="document.getElementById('add-photo-modal').remove()" class="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 font-medium">Cancelar</button>
+                        <button onclick="window.saveProgressPhoto('${clientId}')" class="px-4 py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition">Subir</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        // Preview handler
+        setTimeout(() => {
+            const fileInput = document.getElementById('photo-file');
+            if (fileInput) {
+                fileInput.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) { alert('La imagen debe ser menor a 2MB.'); return; }
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        document.getElementById('photo-preview').src = ev.target.result;
+                        document.getElementById('photo-preview-container').classList.remove('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                };
+            }
+        }, 50);
+    };
+
+    window.saveProgressPhoto = async (clientId) => {
+        const date = document.getElementById('photo-date')?.value;
+        const fileInput = document.getElementById('photo-file');
+        const category = document.getElementById('photo-category')?.value || 'general';
+        const notes = document.getElementById('photo-notes')?.value || '';
+        if (!date || !fileInput?.files[0]) { alert('Fecha y foto son requeridas.'); return; }
+        const file = fileInput.files[0];
+        if (file.size > 2 * 1024 * 1024) { alert('La imagen debe ser menor a 2MB.'); return; }
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            try {
+                const res = await apiFetch('/api/progress-photos', {
+                    method: 'POST',
+                    body: JSON.stringify({ clientId, date, imageData: ev.target.result, notes, category })
+                });
+                if (res.ok) {
+                    document.getElementById('add-photo-modal')?.remove();
+                    loadClientPhotos(clientId);
+                } else { alert('Error subiendo foto.'); }
+            } catch (e) { alert('Error de conexion.'); }
+        };
+        reader.readAsDataURL(file);
+    };
+
+    window.deleteProgressPhoto = async (photoId, clientId) => {
+        if (!confirm('Eliminar esta foto?')) return;
+        try {
+            const res = await apiFetch(`/api/progress-photos/${photoId}`, { method: 'DELETE' });
+            if (res.ok) loadClientPhotos(clientId);
+        } catch (e) { alert('Error eliminando foto.'); }
     };
 
     window.openEditClientModal = (clientId) => {
@@ -1336,18 +1794,36 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
 
-    // 🟢 RENDER CLIENTS TABLE
+    // RENDER CLIENTS TABLE (with search + status filter support)
     window.renderClientsTable = () => {
         const tbody = document.getElementById('clients-table-body');
         if(!tbody) return;
         tbody.innerHTML = '';
-        if(mockClientsDb.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-gray-500">No hay clientes aún.</td></tr>`; return; }
 
-        mockClientsDb.forEach(client => {
+        // Read filter values
+        const searchInput = document.getElementById('client-search-input');
+        const statusFilter = document.getElementById('client-status-filter');
+        const searchTerm = (searchInput?.value || '').toLowerCase().trim();
+        const statusValue = statusFilter?.value || 'all';
+
+        // Apply filters
+        let filtered = mockClientsDb;
+        if (searchTerm) {
+            filtered = filtered.filter(c => {
+                const fullName = `${c.name} ${c.lastName || ''}`.toLowerCase();
+                return fullName.includes(searchTerm);
+            });
+        }
+        if (statusValue === 'active') filtered = filtered.filter(c => c.isActive);
+        if (statusValue === 'inactive') filtered = filtered.filter(c => !c.isActive);
+
+        if(filtered.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-gray-500">No hay clientes.</td></tr>`; return; }
+
+        filtered.forEach(client => {
             const tr = document.createElement('tr');
             tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer client-row";
-            tr.setAttribute('data-id', client._id); 
-            // 🟢 CLICK LISTENER FOR ROW
+            tr.setAttribute('data-id', client._id);
+            // CLICK LISTENER FOR ROW
             tr.onclick = (e) => {
                 if(!e.target.closest('button')) {
                     window.openClientProfile(client._id);
@@ -1358,7 +1834,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="p-4 whitespace-nowrap"><div class="flex items-center"><div class="h-10 w-10 rounded-full bg-brand-purple text-white flex items-center justify-center font-bold mr-3">${initials}</div><div class="text-sm font-medium text-gray-900 dark:text-white">${client.name} ${client.lastName || ''}</div></div></td>
                 <td class="p-4 whitespace-nowrap text-sm font-bold text-gray-600 dark:text-gray-300"><span class="bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded text-xs">${client.group || 'General'}</span></td>
                 <td class="p-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${client.program}</td>
-                <td class="p-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${client.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${client.isActive ? 'Activo' : 'Inactivo'}</span></td>
+                <td class="p-4 whitespace-nowrap">
+                    <button onclick="event.stopPropagation(); window.toggleClientStatus('${client._id}', ${client.isActive})" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition ${client.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-red-100 text-red-800 hover:bg-red-200'}">
+                        ${client.isActive ? 'Activo' : 'Inactivo'}
+                    </button>
+                </td>
                 <td class="p-4 whitespace-nowrap text-right text-sm font-medium">
                     <button onclick="window.openEditClientModal('${client._id}'); event.stopPropagation();" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 mr-2"><i class="fas fa-edit"></i></button>
                     <button onclick="window.deleteClient('${client._id}'); event.stopPropagation();" class="text-red-600 hover:text-red-900 dark:text-red-400"><i class="fas fa-trash"></i></button>
@@ -1366,6 +1846,30 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             tbody.appendChild(tr);
         });
+    };
+
+    // Toggle client active/inactive status
+    window.toggleClientStatus = async (clientId, currentActive) => {
+        try {
+            const res = await apiFetch(`/api/clients/${clientId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ isActive: !currentActive })
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                const idx = mockClientsDb.findIndex(c => c._id === clientId);
+                if (idx > -1) mockClientsDb[idx] = updated;
+                renderClientsTable();
+            }
+        } catch (e) { console.error('Error toggling status:', e); }
+    };
+
+    // Attach search/filter listeners for clients table
+    const attachClientFilterListeners = () => {
+        const searchInput = document.getElementById('client-search-input');
+        const statusFilter = document.getElementById('client-status-filter');
+        if (searchInput) searchInput.addEventListener('input', () => renderClientsTable());
+        if (statusFilter) statusFilter.addEventListener('change', () => renderClientsTable());
     };
 
     // =============================================================================
@@ -1377,7 +1881,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const searchInput = document.getElementById('library-search-input');
         if (!listContainer) return;
 
-        // 🟢 Render Pills
+        // Render Pills
         const catContainer = document.getElementById('category-selection-container');
         if (catContainer && catContainer.innerHTML.trim() === '') {
             catContainer.innerHTML = '';
@@ -1449,13 +1953,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await apiFetch(`/api/client-workouts/${clientId}/${dateStr}`);
             if(response.ok) {
                 copiedWorkoutData = await response.json();
-                alert('✅ Workout copiado! Usa el botón "Pegar" en cualquier otro día.');
+                alert('Workout copiado! Usa el botón "Pegar" en cualquier otro día.');
             } else {
-                alert('⚠️ No hay workout en este día para copiar.');
+                alert('No hay workout en este día para copiar.');
             }
         } catch(e) {
             console.error(e);
-            alert('❌ Error al copiar workout');
+            alert('Error al copiar workout');
         }
     };
 
@@ -1486,13 +1990,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('program-name-input').value = '';
                 renderProgramsList();
                 openProgramBuilder(newProg._id); // Use MongoDB _id
-                alert("✅ Programa creado!");
+                alert("Programa creado!");
             } else {
-                alert("❌ Error creando programa");
+                alert("Error creando programa");
             }
         } catch(e) {
             console.error(e);
-            alert("❌ Error de conexión");
+            alert("Error de conexión");
         }
     };
 
@@ -1681,7 +2185,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     prog.weeks[currentEditingWeekIndex].days[currentEditingDay] = dayData;
                     
-                    // 🟢 SAVE TO DATABASE
+                    // SAVE TO DATABASE
                     try {
                         const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, {
                             method: 'PUT',
@@ -1689,12 +2193,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         
                         if(res.ok) {
-                            console.log("✅ Program saved to database");
+                            console.log("Program saved to database");
                         } else {
-                            console.error("❌ Error saving program");
+                            console.error("Error saving program");
                         }
                     } catch(e) {
-                        console.error("❌ Database save error:", e);
+                        console.error("Database save error:", e);
                     }
                 }
             }
@@ -1876,7 +2380,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const dayNames = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
             const dayName = dayNames[currentDate.getDay()];
 
-            // 🟢 5-BUTTON HOVER MENU
+            // 5-BUTTON HOVER MENU
             const hoverMenu = `
                 <div class="day-cell-menu absolute inset-0 bg-gray-900/95 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
                     <div class="flex gap-4">
@@ -1919,12 +2423,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return html;
     };
 
-    // 🟢 CALENDAR ACTIONS HANDLER
+    // CALENDAR ACTIONS HANDLER
     const handleCalendarAction = async (action, dateId) => {
         const dateStr = dateId.replace('day-', '');
         
         if (action === 'add') {
-            console.log("🔍 Opening workout editor for client:", currentClientViewId)
+            console.log("Opening workout editor for client:", currentClientViewId)
             editorExercises = [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
             editorDateStr = dateStr;
             editorWarmup = ""; 
@@ -1945,9 +2449,9 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Nutrición feature - Coming soon!');
             
         } else if (action === 'paste') {
-            // 🟢 PASTE copied workout
+            // PASTE copied workout
             if(!copiedWorkoutData) {
-                alert('⚠️ No hay workout copiado. Primero haz clic derecho en un día con workout y selecciona "Copiar".');
+                alert('No hay workout copiado. Primero haz clic derecho en un día con workout y selecciona "Copiar".');
                 return;
             }
             
@@ -1977,20 +2481,20 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         `;
                     }
-                    alert('✅ Workout pegado exitosamente!');
+                    alert('Workout pegado exitosamente!');
                 }
             } catch(e) {
                 console.error(e);
-                alert('❌ Error al pegar workout');
+                alert('Error al pegar workout');
             }
             
         } else if (action === 'program') {
-            // 🟢 ASSIGN PROGRAM (Show program selector)
+            // ASSIGN PROGRAM (Show program selector)
             showProgramAssignmentModal(dateStr);
         }
     };
 
-    // 🟢 NEW WORKOUT EDITOR UI
+    // NEW WORKOUT EDITOR UI
     const openWorkoutEditor = async (dateStr) => {
         editorDateStr = dateStr;
         
@@ -2028,7 +2532,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Dynamic Exercise List
         const listHtml = editorExercises.map((ex, index) => {
             const letter = getLetter(index, editorExercises); 
-            // 🟢 4. SUPERSET BUTTON: Insert BETWEEN exercises
+            // 4. SUPERSET BUTTON: Insert BETWEEN exercises
             let supersetBtnHtml = '';
             if (index < editorExercises.length - 1) {
                 const nextEx = editorExercises[index + 1];
@@ -2074,15 +2578,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button onclick="document.getElementById('workout-editor-modal').classList.add('hidden')"><i class="fas fa-times"></i></button>
                     </div>
                 </div>
-                <!-- 🟢 WORKOUT TITLE (Separate from warmup) -->
+                <!-- WORKOUT TITLE (Separate from warmup) -->
                 <div class="p-6 border-b border-gray-700 bg-[#26262c]">
                     <input type="text" id="workout-title-input" value="${editorDateStr}" oninput="window.updateWorkoutTitle(this.value)" class="bg-transparent text-2xl font-bold text-white placeholder-gray-400 w-full outline-none" placeholder="Nombre del Entrenamiento">
                 </div>
             
-                <!-- 🟢 WARMUP/INSTRUCTIONS (Separate section) -->
+                <!-- WARMUP/INSTRUCTIONS (Separate section) -->
                 <div class="p-6 border-b border-gray-700 hover:bg-[#363640] transition group relative">
                     <div class="flex items-center gap-3">
-                        <div class="w-6 h-6 bg-orange-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">🔥</div>
+                        <div class="w-6 h-6 bg-orange-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"><i class="fas fa-fire"></i></div>
                         <textarea oninput="window.updateWarmup(this.value)" class="bg-transparent text-base text-gray-300 placeholder-gray-500 w-full outline-none resize-none" rows="2" placeholder="Calentamiento o instrucciones generales...">${editorWarmup}</textarea>
                     </div>
                 </div>
@@ -2092,7 +2596,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="p-6 border-t border-gray-700">
                     <div class="flex items-center gap-3">
-                        <div class="w-6 h-6 bg-blue-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">❄️</div>
+                        <div class="w-6 h-6 bg-blue-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"><i class="fas fa-snowflake"></i></div>
                         <textarea oninput="window.updateCooldown(this.value)" class="bg-transparent text-base text-gray-300 placeholder-gray-500 w-full outline-none resize-none" rows="2" placeholder="Enfriamiento (estiramientos, cardio ligero...)">${editorCooldown || ''}</textarea>
                     </div>
                 </div>
@@ -2119,7 +2623,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const programs = await response.json();
             
             if(programs.length === 0) {
-                alert('⚠️ No hay programas creados. Ve a la sección "Programas" para crear uno primero.');
+                alert('No hay programas creados. Ve a la sección "Programas" para crear uno primero.');
                 return;
             }
             
@@ -2153,7 +2657,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // 🟢 SUPERSET LETTER LOGIC
+    // SUPERSET LETTER LOGIC
     const getLetter = (index, arr) => {
         let charCode = 65; 
         let subIndex = 0;
@@ -2167,7 +2671,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return letters[index];
     };
 
-    // 🟢 HELPERS
+    // HELPERS
     window.updateWarmup = (val) => { editorWarmup = val; };
     window.addEditorExercise = () => { editorExercises.push({ id: Date.now(), name: "", isSuperset: false, videoUrl: "" }); renderWorkoutEditorUI(); };
     window.updateExName = (id, val) => { const ex = editorExercises.find(e => e.id === id); if(ex) ex.name = val; };
@@ -2183,7 +2687,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     window.updateCooldown = (val) => { editorCooldown = val; };
     
-    // 🟢 LINK SUPERSET BUTTON ACTION
+    // LINK SUPERSET BUTTON ACTION
     window.linkSuperset = (index) => {
         if (editorExercises[index + 1]) {
             editorExercises[index + 1].isSuperset = true;
@@ -2195,7 +2699,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.updateWorkoutTitle = (val) => { editorWorkoutTitle = val; };
 
-    // 🟢 MODAL ACTIONS
+    // MODAL ACTIONS
     window.openVideoModalForEditor = (id) => {
         currentEditorExId = id;
         const ex = editorExercises.find(e => e.id === id);
@@ -2218,20 +2722,20 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.saveDayWorkout = async () => {
-        console.log("🔍 DEBUG: Save clicked");
-        console.log("🔍 currentClientViewId:", currentClientViewId);
-        console.log("🔍 editorDateStr:", editorDateStr);
-        console.log("🔍 editorExercises:", editorExercises);
+        console.log("DEBUG: Save clicked");
+        console.log("currentClientViewId:", currentClientViewId);
+        console.log("editorDateStr:", editorDateStr);
+        console.log("editorExercises:", editorExercises);
         
         if(!currentClientViewId) {
-            alert('❌ Error: No hay cliente seleccionado. Por favor abre el calendario de un cliente primero.');
-            console.error("❌ currentClientViewId is null/undefined");
+            alert('Error: No hay cliente seleccionado. Por favor abre el calendario de un cliente primero.');
+            console.error("currentClientViewId is null/undefined");
             return;
         }
         
         const titleInput = document.getElementById('workout-title-input');
-        console.log("🔍 titleInput element:", titleInput);
-        console.log("🔍 titleInput value:", titleInput?.value);
+        console.log("titleInput element:", titleInput);
+        console.log("titleInput value:", titleInput?.value);
         
         const workoutData = {
             clientId: currentClientViewId,
@@ -2261,7 +2765,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if(response.ok) {
                 const savedWorkout = await response.json();
-                console.log("✅ Workout saved:", savedWorkout);
+                console.log("Workout saved:", savedWorkout);
                 
                 const cell = document.getElementById(`day-${editorDateStr}`);
                 if(cell) {
@@ -2275,15 +2779,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 document.getElementById('workout-editor-modal').classList.add('hidden');
-                alert('✅ Workout guardado exitosamente!');
+                alert('Workout guardado exitosamente!');
             } else {
                 const errorText = await response.text();
-                console.error("❌ Server error:", errorText);
-                alert('❌ Error al guardar workout: ' + errorText);
+                console.error("Server error:", errorText);
+                alert('Error al guardar workout: ' + errorText);
             }
         } catch(e) { 
-            console.error("❌ Fetch error:", e); 
-            alert('❌ Error de conexión: ' + e.message);
+            console.error("Fetch error:", e); 
+            alert('Error de conexión: ' + e.message);
         }
     };
 
@@ -2374,14 +2878,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Close modal and refresh calendar
             document.getElementById('program-assignment-modal').remove();
-            alert(`✅ Programa asignado! ${workoutsCreated} workouts creados.`);
+            alert(`Programa asignado! ${workoutsCreated} workouts creados.`);
             
             // Reload client profile to show new workouts
             openClientProfile(currentClientViewId);
             
         } catch(e) {
             console.error(e);
-            alert('❌ Error asignando programa');
+            alert('Error asignando programa');
         }
     };
 
@@ -2428,7 +2932,10 @@ document.addEventListener('DOMContentLoaded', () => {
             let moduleToLoad = null;
 
             if (linkText.includes('Notificaciones')) moduleToLoad = 'notifications_content';
-            else if (linkText === 'Inicio' || linkText === document.getElementById('trainer-name')?.textContent.trim()) moduleToLoad = 'trainer_home';
+            else if (linkText === 'Inicio' || linkText === document.getElementById('trainer-name')?.textContent.trim()) {
+                const session = loadSession();
+                moduleToLoad = (session?.role === 'client') ? 'client_inicio' : 'trainer_home';
+            }
             else if (linkText === 'Clientes') moduleToLoad = 'clientes_content';
             else if (linkText === 'Programas') moduleToLoad = 'library_content'; 
             else if (linkText === 'Ajustes') { moduleToLoad = 'ajustes_content'; } 
@@ -2446,7 +2953,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if(res.ok) {
                         const html = await res.text();
                         updateContent(linkText, html);
-                        if (moduleToLoad === 'clientes_content') renderClientsTable();
+                        if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
                         if (moduleToLoad === 'library_content') {
                             // Load both programs and exercises
                             fetchProgramsFromDB();
@@ -2466,6 +2973,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (moduleToLoad === 'client_equipo') renderEquipmentOptions();
                         if (moduleToLoad === 'client_clock') window.initClockModule();
                         if (moduleToLoad === 'trainer_home') renderTrainerHome(loadSession().name);
+                        if (moduleToLoad === 'client_inicio') initClientHome();
                         if (moduleToLoad === 'ajustes_content') initSettings();
                     }
                 } catch(e) { console.error(e); }
@@ -2522,6 +3030,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const html = await res.text();
                 updateContent('Clientes', html);
                 renderClientsTable();
+                attachClientFilterListeners();
             }
             return;
         }
@@ -2582,7 +3091,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // 🟢 TOGGLE BETWEEN PROGRAMS AND EXERCISES VIEW
+        // TOGGLE BETWEEN PROGRAMS AND EXERCISES VIEW
         if (target.id === 'toggle-programs-view') {
             document.getElementById('programs-view').classList.remove('hidden');
             document.getElementById('exercises-view').classList.add('hidden');
@@ -2630,7 +3139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const hasWorkout = dayCell.querySelector('.content-area').innerHTML.includes('ejercicios');
         
         if(hasWorkout) {
-            const confirmed = confirm('📋 ¿Copiar este workout?');
+            const confirmed = confirm('¿Copiar este workout?');
             if(confirmed) {
                 window.copyWorkout(dateStr, currentClientViewId);
             }
@@ -2645,7 +3154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     router(user);
     
     // ... (Clock Logic kept same) ...
-    // 🟢 CLOCK LOGIC
+    // CLOCK LOGIC
     let clockIntervalId = null; let stopwatchInterval = null; let timerInterval = null; let clockMode = 'CLOCK'; let stopwatchTime = 0; let timerTime = 0; let isClockRunning = false; let clockCanvas = null; let clockCtx = null;
     window.initClockModule = function() { clockCanvas = document.getElementById('clockCanvas'); if(!clockCanvas) return; clockCtx = clockCanvas.getContext('2d'); clockMode = 'CLOCK'; stopwatchTime = 0; timerTime = 0; isClockRunning = false; if(stopwatchInterval) clearInterval(stopwatchInterval); if(timerInterval) clearInterval(timerInterval); if(clockIntervalId) cancelAnimationFrame(clockIntervalId); window.clockDrawLoop(); };
     window.clockSetMode = function(mode) { clockMode = mode; const modeLabel = document.getElementById('modeLabel'); const timerInputArea = document.getElementById('timerInputArea'); const actionBtn = document.getElementById('actionBtn'); const timeDisplay = document.getElementById('timeDisplay'); if(modeLabel) modeLabel.innerText = mode; window.clockResetLogic(); if (mode === 'TIMER') { if(timerInputArea) timerInputArea.style.display = 'block'; if(timeDisplay) timeDisplay.innerText = "00:00"; } else { if(timerInputArea) timerInputArea.style.display = 'none'; } if(actionBtn) actionBtn.innerText = (mode === 'CLOCK') ? "---" : "Start"; };
@@ -2658,7 +3167,160 @@ document.addEventListener('DOMContentLoaded', () => {
     window.clockDrawGear = function(ctx, x, y, teeth, outerRadius, innerRadius, toothHeight, color) { ctx.save(); ctx.beginPath(); ctx.translate(x, y); ctx.fillStyle = color; ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 5; for (let i = 0; i < teeth; i++) { ctx.rotate(Math.PI / teeth); ctx.lineTo(innerRadius, 0); ctx.lineTo(outerRadius, toothHeight); ctx.rotate(Math.PI / teeth); ctx.lineTo(outerRadius, -toothHeight); ctx.lineTo(innerRadius, 0); } ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); };
     window.clockDrawMarker = function(ctx, centerX, centerY, index, isActive) { const angle = (index - 15) * (Math.PI * 2 / 60); ctx.beginPath(); ctx.strokeStyle = isActive ? "white" : "rgba(255,255,255,0.15)"; ctx.lineWidth = 15; ctx.arc(centerX, centerY, 280, angle - 0.04, angle + 0.04); ctx.stroke(); };
 
-    // 🟢 RENDER TRAINER HOME
+    // CLIENT HOME / INICIO
+    const initClientHome = async () => {
+        const session = loadSession();
+        if (!session) return;
+
+        // Set greeting
+        const greetingEl = document.getElementById('client-greeting');
+        const dateEl = document.getElementById('client-today-date');
+
+        if (greetingEl) {
+            const hour = new Date().getHours();
+            let greeting = 'Buenos dias';
+            if (hour >= 12 && hour < 17) greeting = 'Buenas tardes';
+            else if (hour >= 17) greeting = 'Buenas noches';
+            greetingEl.textContent = `${greeting}, ${session.name}!`;
+        }
+
+        if (dateEl) {
+            const today = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            dateEl.textContent = today.toLocaleDateString('es-ES', options);
+        }
+
+        // Load today's workout
+        const todayStr = new Date().toISOString().split('T')[0];
+        const content = document.getElementById('today-workout-content');
+        try {
+            const res = await apiFetch(`/api/client-workouts/${session.id}/${todayStr}`);
+            if (res.ok) {
+                const workout = await res.json();
+                if (content) {
+                    content.innerHTML = `
+                        <h4 class="text-lg font-bold text-gray-800 dark:text-white mb-3">${workout.title || 'Workout'}</h4>
+                        ${workout.warmup ? `<p class="text-sm text-orange-500 mb-2"><i class="fas fa-fire mr-1"></i> Warmup: ${workout.warmup}</p>` : ''}
+                        <div class="space-y-2">
+                            ${(workout.exercises || []).map((ex, i) => `
+                                <div class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                    <span class="w-6 h-6 bg-blue-500 text-white rounded text-xs flex items-center justify-center font-bold shrink-0">${i + 1}</span>
+                                    <span class="text-sm font-medium dark:text-white">${ex.name}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ${workout.cooldown ? `<p class="text-sm text-blue-500 mt-2"><i class="fas fa-snowflake mr-1"></i> Cooldown: ${workout.cooldown}</p>` : ''}
+                    `;
+                }
+            } else {
+                if (content) {
+                    content.innerHTML = `
+                        <div class="text-center py-6">
+                            <i class="fas fa-calendar-check text-5xl text-gray-300 dark:text-gray-600 mb-3 block"></i>
+                            <p class="text-gray-500 dark:text-gray-400 font-medium">No hay entrenamiento programado para hoy.</p>
+                            <p class="text-gray-400 dark:text-gray-500 text-sm mt-1">Disfruta tu dia de descanso!</p>
+                        </div>
+                    `;
+                }
+            }
+        } catch (e) {
+            if (content) content.innerHTML = '<p class="text-gray-400 text-sm">No se pudo cargar el entrenamiento.</p>';
+        }
+
+        // Load stats
+        try {
+            const allRes = await apiFetch(`/api/client-workouts/${session.id}`);
+            if (allRes.ok) {
+                const workouts = await allRes.json();
+                const totalEl = document.getElementById('stat-total-workouts');
+                if (totalEl) totalEl.textContent = workouts.length;
+
+                // Workouts this week
+                const now = new Date();
+                const dayOfWeek = now.getDay();
+                const weekStart = new Date(now);
+                weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+                const weekStartStr = weekStart.toISOString().split('T')[0];
+                const thisWeek = workouts.filter(w => w.date >= weekStartStr && w.date <= todayStr).length;
+                const weekEl = document.getElementById('stat-workouts-week');
+                if (weekEl) weekEl.textContent = thisWeek;
+
+                // Simple streak: count consecutive days with workouts going back from today
+                const workoutDates = new Set(workouts.map(w => w.date));
+                let streak = 0;
+                const checkDate = new Date();
+                for (let i = 0; i < 365; i++) {
+                    const ds = checkDate.toISOString().split('T')[0];
+                    if (workoutDates.has(ds)) {
+                        streak++;
+                        checkDate.setDate(checkDate.getDate() - 1);
+                    } else {
+                        break;
+                    }
+                }
+                const streakEl = document.getElementById('stat-streak');
+                if (streakEl) streakEl.textContent = streak;
+
+                // Recent activity
+                const activityEl = document.getElementById('client-recent-activity');
+                if (activityEl) {
+                    const recent = workouts.slice(0, 5);
+                    if (recent.length === 0) {
+                        activityEl.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Sin actividad reciente.</p>';
+                    } else {
+                        activityEl.innerHTML = recent.map(w => `
+                            <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <div class="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center shrink-0">
+                                    <i class="fas fa-dumbbell text-blue-500 text-sm"></i>
+                                </div>
+                                <div class="flex-grow min-w-0">
+                                    <p class="text-sm font-bold text-gray-800 dark:text-white truncate">${w.title || 'Workout'}</p>
+                                    <p class="text-xs text-gray-500">${w.date} - ${(w.exercises || []).length} ejercicios</p>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            }
+        } catch (e) { console.error('Error loading client stats:', e); }
+
+        // Set program name
+        try {
+            const profileRes = await apiFetch('/api/me');
+            if (profileRes.ok) {
+                const profile = await profileRes.json();
+                const progEl = document.getElementById('stat-program');
+                if (progEl) progEl.textContent = profile.program || 'Sin Asignar';
+            }
+        } catch (e) { /* silently fail */ }
+
+        // Set daily tip
+        const tips = [
+            'La consistencia es mas importante que la intensidad.',
+            'Dormir bien es la mejor recuperacion muscular.',
+            'Hidratate antes, durante y despues del entrenamiento.',
+            'Calentar reduce lesiones y mejora el rendimiento.',
+            'El progreso no es lineal. Confiar en el proceso.',
+            'La nutricion es el 80% de tus resultados.',
+            'Descansar es parte del entrenamiento.',
+            'Establece metas pequenas y alcanzables.',
+            'Celebra cada logro, por pequeno que sea.',
+            'Tu unica competencia eres tu mismo de ayer.',
+            'La disciplina supera la motivacion.',
+            'Una buena postura previene el 90% de las lesiones.',
+            'Escucha a tu cuerpo, no al ego.',
+            'La proteina es esencial para la recuperacion.',
+            'Entrena con intencion, no solo con movimiento.'
+        ];
+        const tipEl = document.getElementById('client-daily-tip');
+        if (tipEl) {
+            // Use day of year as seed for consistent daily tip
+            const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+            tipEl.textContent = tips[dayOfYear % tips.length];
+        }
+    };
+
+    // RENDER TRAINER HOME
     window.renderTrainerHome = (trainerName) => {
         const greetingEl = document.getElementById('greeting-text');
         const feedContainer = document.getElementById('trainer-feed-container');
@@ -2670,7 +3332,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (hour >= 17) greeting = "¡Buenas noches";
         if(greetingEl) greetingEl.textContent = `${greeting}, ${trainerName.split(' ')[0]}!`;
         
-        // 🟢 Mock feed with CLICKABLE client names
+        // Mock feed with CLICKABLE client names
         const mockFeed = mockClientsDb.slice(0, 5).map(client => ({
             clientId: client._id,
             clientName: `${client.name} ${client.lastName || ''}`,
@@ -2715,7 +3377,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`).join('');
     };
 
-    // 🟢 UPDATED TIPS (Full List)
+    // UPDATED TIPS (Full List)
     const fitnessTips = {
         en: [ "Drink water before every meal.", "Prioritize protein in every meal.", "Sleep is your best supplement.", "Consistency beats intensity.", "Walk 10k steps daily.", "Don't drink your calories.", "Lift heavy things.", "Eat whole foods 80% of the time.", "Track your progress.", "Rest days are growth days.", "Compound lifts give best ROI.", "Form over weight, always.", "Eat more vegetables.", "Creatine is safe and effective.", "Protein shakes are just food.", "You can't out-train a bad diet.", "Progressive overload is key.", "Warm up before lifting.", "Stretch after lifting.", "Take progress photos.", "Don't fear carbohydrates.", "Fats are essential for hormones.", "Sugar isn't poison, excess is.", "Listen to your body.", "Deload weeks prevent injury.", "Training to failure is optional.", "Volume drives hypertrophy.", "Strength takes years, not weeks.", "Motivation fades, discipline stays.", "Meal prep saves time and waistlines.", "Alcohol kills gains.", "Sleep 7-9 hours.", "Hydrate first thing in the morning.", "Caffeine is a valid performance enhancer.", "Don't ego lift.", "Track your steps.", "Non-exercise activity matters (NEAT).", "Fiber keeps you full.", "Eat slowly.", "Stop when 80% full.", "Weigh yourself daily, average weekly.", "Scale weight fluctuates, don't panic.", "Take walks after meals.", "Sunlight helps sleep rhythm.", "Magnesium helps recovery.", "Consistency > Perfection.", "Enjoy your favorite foods in moderation.", "Fitness is a marathon, not a sprint.", "Focus on habits, not just goals.", "You got this." ],
         es: [ "Bebe agua antes de cada comida.", "Prioriza la proteína en cada comida.", "El sueño es tu mejor suplemento.", "La consistencia supera a la intensidad.", "Camina 10 mil pasos diarios.", "No te bebas tus calorías.", "Levanta cosas pesadas.", "Come alimentos enteros el 80% del tiempo.", "Rastrea tu progreso.", "Los días de descanso son días de crecimiento.", "Los ejercicios compuestos dan el mejor ROI.", "Técnica sobre peso, siempre.", "Come más vegetales.", "La creatina es segura y efectiva.", "Los batidos de proteína son solo comida.", "No puedes entrenar para compensar una mala dieta.", "La sobrecarga progresiva es clave.", "Calienta antes de levantar.", "Estira después de levantar.", "Toma fotos de progreso.", "No le temas a los carbohidratos.", "Las grasas son esenciales para las hormonas.", "El azúcar no es veneno, el exceso sí.", "Escucha a tu cuerpo.", "Las semanas de descarga previenen lesiones.", "Entrenar al fallo es opcional.", "El volumen impulsa la hipertrofia.", "La fuerza toma años, no semanas.", "La motivación se desvanece, la disciplina se queda.", "Preparar comidas ahorra tiempo y cintura.", "El alcohol mata las ganancias.", "Duerme 7-9 horas.", "Hidrátate a primera hora de la mañana.", "La cafeína es un potenciador de rendimiento válido.", "No levantes por ego.", "Rastrea tus pasos.", "La actividad no relacionada con el ejercicio importa (NEAT).", "La fibra te mantiene lleno.", "Come despacio.", "Detente cuando estés 80% lleno.", "Pésate diariamente, promedia semanalmente.", "El peso de la báscula fluctúa, no entres en pánico.", "Da paseos después de las comidas.", "La luz solar ayuda al ritmo del sueño.", "El magnesio ayuda a la recuperación.", "Consistencia > Perfección.", "Disfruta tus comidas favoritas con moderación.", "El fitness es un maratón, no un sprint.", "Enfócate en hábitos, no solo en metas.", "Tú puedes con esto." ]

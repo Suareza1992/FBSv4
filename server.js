@@ -20,7 +20,7 @@ const app = express();
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION'; // NEW: JWT secret from env
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';         // NEW: app URL from env
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 // FIX: Configure CORS with allowed origins instead of allowing everything
 app.use(cors({
@@ -115,6 +115,7 @@ const UserSchema = new mongoose.Schema({
     gender: { type: String, default: "" },
     phone: { type: String, default: "" },
     emailPreferences: { dailyRoutine: { type: Boolean, default: true }, incompleteRoutine: { type: Boolean, default: false } },
+    profilePicture: { type: String, default: "" },
     createdAt: { type: Date, default: Date.now },
     resetPasswordToken: String,
     resetPasswordExpires: Date,
@@ -209,6 +210,45 @@ const NotificationSchema = new mongoose.Schema({
 NotificationSchema.index({ trainerId: 1, isRead: 1, createdAt: -1 });
 const Notification = mongoose.model('Notification', NotificationSchema);
 
+// --- Weight/Metrics Log Schema ---
+const WeightLogSchema = new mongoose.Schema({
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    date: { type: String, required: true },
+    weight: { type: Number, required: true },
+    bodyFat: { type: Number, default: null },
+    notes: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now }
+});
+WeightLogSchema.index({ clientId: 1, date: -1 });
+const WeightLog = mongoose.model('WeightLog', WeightLogSchema);
+
+// --- Nutrition Log Schema ---
+const NutritionLogSchema = new mongoose.Schema({
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    date: { type: String, required: true },
+    calories: { type: Number, default: 0 },
+    protein: { type: Number, default: 0 },
+    carbs: { type: Number, default: 0 },
+    fat: { type: Number, default: 0 },
+    water: { type: Number, default: 0 },
+    notes: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now }
+});
+NutritionLogSchema.index({ clientId: 1, date: -1 });
+const NutritionLog = mongoose.model('NutritionLog', NutritionLogSchema);
+
+// --- Progress Photo Schema ---
+const ProgressPhotoSchema = new mongoose.Schema({
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    date: { type: String, required: true },
+    imageData: { type: String, required: true },
+    notes: { type: String, default: '' },
+    category: { type: String, default: 'general' },
+    createdAt: { type: Date, default: Date.now }
+});
+ProgressPhotoSchema.index({ clientId: 1, date: -1 });
+const ProgressPhoto = mongoose.model('ProgressPhoto', ProgressPhotoSchema);
+
 // =============================================================================
 // 2. API ROUTES
 // =============================================================================
@@ -293,7 +333,8 @@ app.post('/api/auth/login', async (req, res) => {
                 lastName: user.lastName,
                 email: user.email,
                 role: user.role,
-                isFirstLogin: user.isFirstLogin
+                isFirstLogin: user.isFirstLogin,
+                profilePicture: user.profilePicture || ''
             }
         });
     } catch (error) { res.status(500).json({ message: 'Server error', error }); }
@@ -476,7 +517,7 @@ app.get('/api/me', authenticateToken, async (req, res) => {
 app.put('/api/me', authenticateToken, async (req, res) => {
     try {
         // Only allow safe profile fields to be updated (not role, password, etc.)
-        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone'];
+        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'profilePicture'];
         const updates = {};
         for (const key of allowedFields) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -652,6 +693,79 @@ app.delete('/api/client-workouts/:clientId/:date', authenticateToken, authorizeR
     } catch (error) {
         res.status(500).json({ message: 'Error deleting workout', error });
     }
+});
+
+// ==========================================================================
+// --- PROTECTED: Weight/Metrics Logs ---
+// ==========================================================================
+
+app.get('/api/weight-logs/:clientId', authenticateToken, async (req, res) => {
+    try {
+        const logs = await WeightLog.find({ clientId: req.params.clientId }).sort({ date: -1 }).limit(100);
+        res.json(logs);
+    } catch (e) { res.status(500).json({ message: 'Error fetching weight logs' }); }
+});
+
+app.post('/api/weight-logs', authenticateToken, async (req, res) => {
+    try {
+        const { clientId, date, weight, bodyFat, notes } = req.body;
+        const log = await WeightLog.findOneAndUpdate(
+            { clientId, date },
+            { weight, bodyFat, notes },
+            { new: true, upsert: true }
+        );
+        res.json(log);
+    } catch (e) { res.status(500).json({ message: 'Error saving weight log' }); }
+});
+
+// ==========================================================================
+// --- PROTECTED: Nutrition Logs ---
+// ==========================================================================
+
+app.get('/api/nutrition-logs/:clientId', authenticateToken, async (req, res) => {
+    try {
+        const logs = await NutritionLog.find({ clientId: req.params.clientId }).sort({ date: -1 }).limit(100);
+        res.json(logs);
+    } catch (e) { res.status(500).json({ message: 'Error fetching nutrition logs' }); }
+});
+
+app.post('/api/nutrition-logs', authenticateToken, async (req, res) => {
+    try {
+        const { clientId, date, calories, protein, carbs, fat, water, notes } = req.body;
+        const log = await NutritionLog.findOneAndUpdate(
+            { clientId, date },
+            { calories, protein, carbs, fat, water, notes },
+            { new: true, upsert: true }
+        );
+        res.json(log);
+    } catch (e) { res.status(500).json({ message: 'Error saving nutrition log' }); }
+});
+
+// ==========================================================================
+// --- PROTECTED: Progress Photos ---
+// ==========================================================================
+
+app.get('/api/progress-photos/:clientId', authenticateToken, async (req, res) => {
+    try {
+        const photos = await ProgressPhoto.find({ clientId: req.params.clientId }).sort({ date: -1 }).limit(50);
+        res.json(photos);
+    } catch (e) { res.status(500).json({ message: 'Error fetching progress photos' }); }
+});
+
+app.post('/api/progress-photos', authenticateToken, async (req, res) => {
+    try {
+        const { clientId, date, imageData, notes, category } = req.body;
+        const photo = new ProgressPhoto({ clientId, date, imageData, notes, category });
+        await photo.save();
+        res.json(photo);
+    } catch (e) { res.status(500).json({ message: 'Error saving progress photo' }); }
+});
+
+app.delete('/api/progress-photos/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        await ProgressPhoto.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Photo deleted' });
+    } catch (e) { res.status(500).json({ message: 'Error deleting photo' }); }
 });
 
 // ==========================================================================

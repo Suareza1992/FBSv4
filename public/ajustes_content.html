@@ -12,13 +12,14 @@
         </div>
         <div class="p-6 space-y-6">
             <div class="flex items-center gap-4">
-                <div id="settings-avatar" class="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-2xl font-bold text-blue-600 dark:text-blue-300">
+                <div id="settings-avatar" class="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-2xl font-bold text-blue-600 dark:text-blue-300 overflow-hidden">
                     AS
                 </div>
                 <div>
-                    <button class="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600 transition">
+                    <button id="change-photo-btn" class="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600 transition">
                         Cambiar Foto
                     </button>
+                    <input type="file" id="profile-pic-input" accept="image/jpeg,image/png,image/gif" class="hidden">
                     <p class="text-xs text-gray-400 mt-1">JPG, GIF o PNG. Max 1MB.</p>
                 </div>
             </div>
@@ -54,7 +55,7 @@
                     <p class="text-sm text-gray-500">Define cómo ves el peso y altura.</p>
                 </div>
                 <div id="weight-unit-toggle" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out bg-gray-200 dark:bg-gray-700">
-                    <span id="unit-toggle-circle" class="translate-x-1 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                    <span id="unit-toggle-circle" class="translate-x-0 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
                 </div>
             </div>
             <hr class="border-gray-100 dark:border-gray-700">

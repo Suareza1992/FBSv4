@@ -2,7 +2,7 @@
     
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100">Mis clientes 👥</h2>
+            <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100">Mis clientes</h2>
             <p class="text-gray-500 dark:text-gray-400">Gestiona perfiles, asigna rutinas y monitorea el progreso.</p>
         </div>
         <div class="flex flex-wrap gap-3">
@@ -17,11 +17,11 @@
 
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700">
         <div class="p-4 border-b border-gray-100 dark:border-gray-700 flex gap-4">
-            <input type="text" placeholder="Buscar por nombre..." class="w-full md:w-64 p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <select class="p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option>Todos</option>
-                <option>Activos</option>
-                <option>Inactivos</option>
+            <input type="text" id="client-search-input" placeholder="Buscar por nombre..." class="w-full md:w-64 p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <select id="client-status-filter" class="p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="all">Todos</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Inactivos</option>
             </select>
         </div>
         <div class="overflow-x-auto">
@@ -125,7 +125,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div><label class="block text-xs text-gray-500 mb-1 uppercase font-bold">Phone</label><div class="flex"><span class="glass-input p-3 rounded-l-lg border-r-0 text-sm">🇺🇸</span><input type="tel" id="opt-phone" class="glass-input w-full p-3 rounded-r-lg text-sm" placeholder="(201) 555-0123"></div></div>
+                        <div><label class="block text-xs text-gray-500 mb-1 uppercase font-bold">Phone</label><div class="flex"><span class="glass-input p-3 rounded-l-lg border-r-0 text-sm">+1</span><input type="tel" id="opt-phone" class="glass-input w-full p-3 rounded-r-lg text-sm" placeholder="(201) 555-0123"></div></div>
                         <div><label class="block text-xs text-gray-500 mb-1 uppercase font-bold">Fecha de Pago</label><input type="date" id="opt-due-date" class="glass-input w-full p-3 rounded-lg text-sm"></div>
                         <div class="space-y-4 pt-2">
                             <div class="flex items-center justify-between"><span class="text-sm font-bold text-white">Email daily workout</span><button class="toggle-switch w-12 h-6 rounded-full bg-green-500 flex items-center px-1 transition duration-300" data-on="true"><div class="w-4 h-4 bg-white rounded-full shadow-md transform translate-x-6 transition duration-300"></div></button></div>

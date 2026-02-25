@@ -14,11 +14,11 @@
         <div>
             <h3 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">¿Cómo te sientes hoy?</h3>
             <div class="flex gap-2" id="mood-selector">
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-yellow-100 transition">😊</button>
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-blue-100 transition">🤩</button>
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-gray-100 transition">😐</button>
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-purple-100 transition">🥱</button>
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-red-100 transition">😡</button>
+                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-yellow-100 transition" data-mood="great"><i class="fas fa-smile text-green-500"></i></button>
+                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-blue-100 transition" data-mood="amazing"><i class="fas fa-grin-stars text-yellow-500"></i></button>
+                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-gray-100 transition" data-mood="neutral"><i class="fas fa-meh text-gray-500"></i></button>
+                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-purple-100 transition" data-mood="tired"><i class="fas fa-tired text-purple-500"></i></button>
+                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-red-100 transition" data-mood="angry"><i class="fas fa-angry text-red-500"></i></button>
             </div>
         </div>
         <div class="flex items-center gap-3 bg-orange-50 dark:bg-orange-900/30 px-4 py-2 rounded-xl border border-orange-100 dark:border-orange-800">
@@ -53,7 +53,7 @@
 
 <div id="change-password-modal" class="hidden fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 border border-red-500">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">⚠️ Acción Requerida</h2>
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2"><i class="fas fa-exclamation-triangle text-yellow-500 mr-1"></i> Accion Requerida</h2>
         <p class="text-gray-600 dark:text-gray-300 mb-6">Por seguridad, debes cambiar tu contraseña temporal.</p>
         <input type="password" id="new-password-input" class="w-full p-4 mb-4 bg-gray-50 dark:bg-gray-700 border rounded-lg dark:text-white" placeholder="Nueva Contraseña">
         <button id="confirm-password-change-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg">Guardar y Continuar</button>
