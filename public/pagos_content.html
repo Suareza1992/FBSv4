@@ -1,74 +1,70 @@
 <div class="space-y-8 pb-10">
 
     <div>
-        <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100">Gestion de Pagos 💰</h2>
-        <p class="text-gray-500 dark:text-gray-400">Controla el estado de membresia de tus clientes.</p>
+        <h2 class="text-3xl font-bold text-[#FFDB89]">Gestion de Pagos</h2>
+        <p class="text-[#92A9E1]/70">Controla el estado de membresia de tus clientes.</p>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-        <div id="al-dia-card" class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl shadow-lg backdrop-filter backdrop-blur-md bg-white/30 dark:bg-gray-700/50 transition-all duration-300">
-            <i class="fas fa-check-circle text-green-600 text-3xl mr-4"></i>
+        <div id="al-dia-card" class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#92A9E1]/20 bg-white/5 transition-all duration-300">
+            <i class="fas fa-check-circle text-green-400 text-3xl mr-4"></i>
             <div>
-                <p class="text-sm font-semibold text-gray-700 dark:text-gray-300">Al dia:</p>
-                <p id="count-paid" class="text-2xl font-bold text-gray-800 dark:text-white">0</p>
+                <p class="text-sm font-semibold text-[#92A9E1]/70">Al dia:</p>
+                <p id="count-paid" class="text-2xl font-bold text-white">0</p>
             </div>
         </div>
 
-        <div id="pendiente-card" class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl shadow-lg backdrop-filter backdrop-blur-md bg-white/30 dark:bg-gray-700/50 transition-all duration-300">
-            <i class="fas fa-exclamation-triangle text-red-600 text-3xl mr-4"></i>
+        <div id="pendiente-card" class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#92A9E1]/20 bg-white/5 transition-all duration-300">
+            <i class="fas fa-exclamation-triangle text-red-400 text-3xl mr-4"></i>
             <div>
-                <p class="text-sm font-semibold text-gray-700 dark:text-gray-300">Pendiente:</p>
-                <p id="count-unpaid" class="text-2xl font-bold text-gray-800 dark:text-white">0</p>
+                <p class="text-sm font-semibold text-[#92A9E1]/70">Pendiente:</p>
+                <p id="count-unpaid" class="text-2xl font-bold text-white">0</p>
             </div>
         </div>
 
-        <div class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl shadow-lg backdrop-filter backdrop-blur-md bg-white/30 dark:bg-gray-700/50 transition-all duration-300">
-            <i class="fas fa-clock text-yellow-500 text-3xl mr-4"></i>
+        <div class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#92A9E1]/20 bg-white/5 transition-all duration-300">
+            <i class="fas fa-clock text-yellow-400 text-3xl mr-4"></i>
             <div>
-                <p class="text-sm font-semibold text-gray-700 dark:text-gray-300">Vencidos:</p>
-                <p id="count-overdue" class="text-2xl font-bold text-gray-800 dark:text-white">0</p>
+                <p class="text-sm font-semibold text-[#92A9E1]/70">Vencidos:</p>
+                <p id="count-overdue" class="text-2xl font-bold text-white">0</p>
             </div>
         </div>
 
     </div>
 
-    <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-        <div class="flex flex-wrap items-center gap-4">
-
-            <div class="relative flex-grow">
-                <input type="text" id="pagos-search" placeholder="Buscar cliente..." class="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-150">
-                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-            </div>
-
-            <select id="pagos-status-filter" class="py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-150">
-                <option value="all">Todos</option>
-                <option value="paid">Al dia</option>
-                <option value="unpaid">Pendiente</option>
-                <option value="overdue">Vencidos</option>
-            </select>
+    <div class="flex flex-wrap items-center gap-4">
+        <div class="relative flex-grow">
+            <input type="text" id="pagos-search" placeholder="Buscar cliente..." class="w-full pl-10 pr-4 py-2 border border-[#92A9E1]/30 rounded-lg bg-white/10 text-white placeholder-[#92A9E1]/50 focus:outline-none focus:ring-2 focus:ring-[#92A9E1] transition duration-150">
+            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-[#92A9E1]"></i>
         </div>
+        <select id="pagos-status-filter" class="py-2 px-4 border border-[#92A9E1]/30 rounded-lg bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-[#92A9E1] transition duration-150">
+            <option value="all" class="text-black">Todos</option>
+            <option value="paid" class="text-black">Al dia</option>
+            <option value="unpaid" class="text-black">Pendiente</option>
+            <option value="overdue" class="text-black">Vencidos</option>
+        </select>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead class="bg-gray-50 dark:bg-gray-700">
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-[#92A9E1]/20">
+            <thead>
                 <tr>
-                    <th scope="col" class="p-4 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" class="p-4 text-left text-xs font-bold text-[#92A9E1] uppercase tracking-wider">
                         Cliente
                     </th>
-                    <th scope="col" class="p-4 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" class="p-4 text-left text-xs font-bold text-[#92A9E1] uppercase tracking-wider">
                         Fecha Vencimiento
                     </th>
-                    <th scope="col" class="p-4 text-center text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" class="p-4 text-center text-xs font-bold text-[#92A9E1] uppercase tracking-wider">
                         Estado
                     </th>
-                    <th scope="col" class="p-4 text-right text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" class="p-4 text-right text-xs font-bold text-[#92A9E1] uppercase tracking-wider">
                         Acciones
                     </th>
                 </tr>
             </thead>
-            <tbody id="payments-table-body" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody id="payments-table-body" class="divide-y divide-[#92A9E1]/10">
             </tbody>
         </table>
     </div>

@@ -1,19 +1,24 @@
-<div class="p-4 bg-white dark:bg-gray-800 rounded-xl shadow-lg h-full overflow-y-auto">
-    <div class="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-3">
-        <h2 class="text-3xl font-semibold text-gray-900 dark:text-gray-100">
-            Actividad de Clientes (Notificaciones)
-        </h2>
-        <button id="mark-all-read-btn" class="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium">
-            Marcar todo como leido
-        </button>
-    </div>
+<div class="flex justify-between items-center mb-4 border-b border-[#FFDB89]/20 pb-3">
+    <h2 class="text-3xl font-semibold text-[#FFDB89]">Actividad de Clientes</h2>
+    <button id="mark-all-read-btn" class="text-sm text-[#FFDB89] hover:underline font-medium">
+        Marcar todo como leído
+    </button>
+</div>
 
-    <div id="activity-feed" class="space-y-4">
-        <p id="notifications-loading" class="text-sm text-center text-gray-500 dark:text-gray-400 py-8">
-            <i class="fas fa-spinner fa-spin mr-2"></i>Cargando notificaciones...
-        </p>
-        <p id="notifications-empty" class="text-sm text-center text-gray-500 dark:text-gray-400 py-8 hidden">
-            No hay notificaciones nuevas.
-        </p>
-    </div>
+<div class="flex gap-2 mb-5">
+    <button id="notif-filter-7days" class="px-4 py-1.5 rounded-full text-sm font-bold bg-[#92A9E1] text-white shadow transition">
+        Últimos 7 días
+    </button>
+    <button id="notif-filter-unread" class="px-4 py-1.5 rounded-full text-sm font-bold bg-white/10 text-[#92A9E1] border border-[#92A9E1]/30 hover:bg-[#92A9E1]/20 transition">
+        No leídas
+    </button>
+</div>
+
+<div id="activity-feed" class="space-y-4">
+    <p id="notifications-loading" class="text-sm text-center text-[#92A9E1]/70 py-8">
+        <i class="fas fa-spinner fa-spin mr-2"></i>Cargando notificaciones...
+    </p>
+    <p id="notifications-empty" class="text-sm text-center text-[#92A9E1]/70 py-8 hidden">
+        No hay notificaciones en este período.
+    </p>
 </div>

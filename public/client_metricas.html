@@ -1,27 +1,55 @@
-<div class="space-y-6">
-    <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100">Mis Metricas</h2>
+<div class="space-y-8 pb-10">
 
+    <!-- Charts Row -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg">
-            <h3 class="font-bold text-gray-700 dark:text-gray-200 mb-4">Progreso de Peso (Lbs)</h3>
-            <div class="h-64">
+        <div class="bg-white/5 border border-[#92A9E1]/20 p-5 rounded-xl">
+            <p class="text-xs font-bold text-[#92A9E1]/70 uppercase tracking-wider mb-1">Progreso</p>
+            <h3 class="font-bold text-white mb-4">Peso (lbs)</h3>
+            <div class="h-52">
                 <canvas id="weightChart"></canvas>
             </div>
         </div>
-
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg">
-            <h3 class="font-bold text-gray-700 dark:text-gray-200 mb-4">% Grasa Corporal</h3>
-            <div class="h-64">
+        <div class="bg-white/5 border border-[#92A9E1]/20 p-5 rounded-xl">
+            <p class="text-xs font-bold text-[#92A9E1]/70 uppercase tracking-wider mb-1">Progreso</p>
+            <h3 class="font-bold text-white mb-4">% Grasa Corporal</h3>
+            <div class="h-52">
                 <canvas id="fatChart"></canvas>
             </div>
         </div>
+    </div>
 
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg md:col-span-2">
-            <h3 class="font-bold text-gray-700 dark:text-gray-200 mb-4">Volumen de Carga (Bench Press)</h3>
-            <div class="h-64">
-                <canvas id="volumeChart"></canvas>
-            </div>
+    <!-- Measurements Table -->
+    <div>
+        <div class="flex items-center gap-3 mb-4 pb-3 border-b border-[#92A9E1]/20">
+            <h3 class="text-lg font-bold text-white">Historial de Medidas</h3>
+            <span id="metrics-record-count" class="text-xs font-bold text-[#92A9E1]/50 bg-[#92A9E1]/10 px-2 py-0.5 rounded-full">0 registros</span>
+        </div>
+
+        <div id="metrics-empty" class="hidden text-center py-12 text-[#92A9E1]/40">
+            <i class="fas fa-ruler-combined text-4xl mb-3"></i>
+            <p class="font-medium">Tu entrenador aún no ha registrado medidas.</p>
+        </div>
+
+        <div id="metrics-table-wrap" class="overflow-x-auto hidden">
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr class="border-b border-[#92A9E1]/20">
+                        <th class="py-3 px-3 text-left text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Fecha</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">BMI</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">%G</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Peso</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Pecho</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Bíceps</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Cintura</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Cadera</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Quads</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Calves</th>
+                    </tr>
+                </thead>
+                <tbody id="metrics-table-body" class="divide-y divide-[#92A9E1]/10">
+                </tbody>
+            </table>
         </div>
     </div>
+
 </div>

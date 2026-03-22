@@ -1,40 +1,40 @@
 <div class="space-y-8 pb-10">
-    
+
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100">Mis clientes</h2>
-            <p class="text-gray-500 dark:text-gray-400">Gestiona perfiles, asigna rutinas y monitorea el progreso.</p>
+            <h2 class="text-3xl font-bold text-[#3d5a80]">Mis clientes</h2>
+            <p class="text-[#5a6f8a]">Gestiona perfiles, asigna rutinas y monitorea el progreso.</p>
         </div>
         <div class="flex flex-wrap gap-3">
-            <button id="open-group-modal" class="px-4 py-2 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition transform hover:scale-105">
+            <button id="open-group-modal" class="px-4 py-2 bg-[#92A9E1] text-white font-semibold rounded-lg shadow-md hover:bg-[#7b93cc] transition transform hover:scale-105">
                 <i class="fas fa-layer-group mr-2"></i> Crear grupo
             </button>
-            <button id="open-add-client-modal" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition transform hover:scale-105">
+            <button id="open-add-client-modal" class="px-4 py-2 bg-[#7b93cc] text-white font-semibold rounded-lg shadow-md hover:bg-[#6a82b8] transition transform hover:scale-105">
                 <i class="fas fa-user-plus mr-2"></i> Añadir cliente
             </button>
         </div>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700">
-        <div class="p-4 border-b border-gray-100 dark:border-gray-700 flex gap-4">
-            <input type="text" id="client-search-input" placeholder="Buscar por nombre..." class="w-full md:w-64 p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <select id="client-status-filter" class="p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+    <div class="overflow-hidden">
+        <div class="p-4 border-b border-[#92A9E1]/20 flex gap-4">
+            <input type="text" id="client-search-input" placeholder="Buscar por nombre..." class="w-full md:w-64 p-2 bg-white border border-[#92A9E1]/30 rounded text-sm text-[#3d5a80] focus:outline-none focus:ring-2 focus:ring-[#92A9E1]">
+            <select id="client-status-filter" class="p-2 bg-white border border-[#92A9E1]/30 rounded text-sm text-[#3d5a80] focus:outline-none focus:ring-2 focus:ring-[#92A9E1]">
                 <option value="all">Todos</option>
                 <option value="active">Activos</option>
                 <option value="inactive">Inactivos</option>
             </select>
         </div>
         <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-750">
+            <table class="min-w-full divide-y divide-[#92A9E1]/20">
+                <thead class="bg-[#92A9E1]/10">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-300">Cliente</th>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-300">Grupo</th> <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-300">Programa</th>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-300">Estatus</th>
-                        <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-300">Acciones</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Cliente</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Grupo</th> <th class="px-6 py-3 text-left text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Programa</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Estatus</th>
+                        <th class="px-6 py-3 text-right text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Acciones</th>
                     </tr>
                 </thead>
-                <tbody id="clients-table-body" class="bg-white divide-y divide-gray-100 dark:bg-gray-800 dark:divide-gray-700">
+                <tbody id="clients-table-body" class="bg-white/30 divide-y divide-[#92A9E1]/10">
                 </tbody>
             </table>
         </div>
@@ -68,7 +68,7 @@
                     <div><label class="block text-sm text-gray-400 mb-1">Apellido</label><input type="text" id="new-client-lastname" class="glass-input w-full p-3 rounded-lg outline-none"></div>
                 </div>
                 <div><label class="block text-sm text-gray-400 mb-1">Email *</label><input type="email" id="new-client-email" class="glass-input w-full p-3 rounded-lg outline-none"></div>
-                
+
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">Programa</label>
@@ -127,6 +127,10 @@
                         </div>
                         <div><label class="block text-xs text-gray-500 mb-1 uppercase font-bold">Phone</label><div class="flex"><span class="glass-input p-3 rounded-l-lg border-r-0 text-sm">+1</span><input type="tel" id="opt-phone" class="glass-input w-full p-3 rounded-r-lg text-sm" placeholder="(201) 555-0123"></div></div>
                         <div><label class="block text-xs text-gray-500 mb-1 uppercase font-bold">Fecha de Pago</label><input type="date" id="opt-due-date" class="glass-input w-full p-3 rounded-lg text-sm"></div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-xs text-gray-500 mb-1 uppercase font-bold">THR (bpm)</label><input type="number" id="opt-thr" class="glass-input w-full p-3 rounded-lg text-sm" placeholder="ej. 142"></div>
+                            <div><label class="block text-xs text-gray-500 mb-1 uppercase font-bold">Max HR (bpm)</label><input type="number" id="opt-mahr" class="glass-input w-full p-3 rounded-lg text-sm" placeholder="ej. 191"></div>
+                        </div>
                         <div class="space-y-4 pt-2">
                             <div class="flex items-center justify-between"><span class="text-sm font-bold text-white">Email daily workout</span><button class="toggle-switch w-12 h-6 rounded-full bg-green-500 flex items-center px-1 transition duration-300" data-on="true"><div class="w-4 h-4 bg-white rounded-full shadow-md transform translate-x-6 transition duration-300"></div></button></div>
                             <div class="flex items-center justify-between"><span class="text-sm font-bold text-white">Email missed workouts</span><button class="toggle-switch w-12 h-6 rounded-full bg-gray-600 flex items-center px-1 transition duration-300" data-on="false"><div class="w-4 h-4 bg-white rounded-full shadow-md transform translate-x-0 transition duration-300"></div></button></div>
@@ -136,16 +140,26 @@
                 </div>
             </div>
 
-            <div class="p-6 border-t border-gray-700/50 flex justify-end gap-3 bg-gray-900/50 rounded-b-2xl">
-                <button id="close-add-client-modal" class="px-6 py-3 rounded-lg text-white font-bold hover:bg-white/10 transition">Cancelar</button>
-                <button id="save-new-client-btn" class="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-lg shadow-blue-500/30 transition">Guardar cliente</button>
+            <div class="p-6 border-t border-gray-700/50 flex flex-wrap justify-between items-center gap-4 bg-gray-900/50 rounded-b-2xl">
+                <div class="flex items-center gap-3">
+                    <button id="send-invite-toggle" class="toggle-switch w-12 h-6 rounded-full bg-green-500 flex items-center px-1 transition duration-300" data-on="true">
+                        <div class="w-4 h-4 bg-white rounded-full shadow-md transform translate-x-6 transition duration-300"></div>
+                    </button>
+                    <button id="send-invite-btn" class="flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 hover:bg-green-600 text-white text-sm font-bold shadow transition">
+                        <i class="fas fa-envelope"></i> Enviar invitación
+                    </button>
+                </div>
+                <div class="flex gap-3">
+                    <button id="close-add-client-modal" class="px-6 py-3 rounded-lg text-white font-bold hover:bg-white/10 transition">Cancelar</button>
+                    <button id="save-new-client-btn" class="px-6 py-3 rounded-lg bg-[#92A9E1] hover:bg-[#7b93cc] text-white font-bold shadow-lg transition">Guardar cliente</button>
+                </div>
             </div>
         </div>
     </div>
 
     <div id="add-group-modal" class="hidden fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#2b2d42] dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-700">
-            
+
             <div class="p-6 text-center relative">
                 <button id="close-group-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                     <i class="fas fa-times text-xl"></i>
@@ -162,10 +176,10 @@
             <div class="p-6 pt-0 space-y-4">
                 <div>
                     <label class="block mb-2 text-sm font-bold text-gray-300">Group name</label>
-                    <input type="text" id="new-group-name" class="w-full p-3 bg-[#1e2030] dark:bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Planet Fitness">
+                    <input type="text" id="new-group-name" class="w-full p-3 bg-[#1e2030] dark:bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-[#92A9E1] outline-none" placeholder="e.g. Planet Fitness">
                 </div>
-                
-                <button id="save-group-btn" class="w-full py-3 bg-[#4c5c96] hover:bg-[#3b4a7a] text-white font-bold rounded-lg shadow-lg transition transform hover:scale-[1.02]">
+
+                <button id="save-group-btn" class="w-full py-3 bg-[#92A9E1] hover:bg-[#7b93cc] text-white font-bold rounded-lg shadow-lg transition transform hover:scale-[1.02]">
                     Create group
                 </button>
             </div>

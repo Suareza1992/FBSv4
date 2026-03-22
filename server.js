@@ -87,6 +87,18 @@ async function seedAdmin() {
     } catch (err) {
         console.error('Error seeding admin:', err);
     }
+
+    // Seed default group
+    try {
+        const groupsCol = mongoose.connection.collection('groups');
+        const exists = await groupsCol.findOne({ name: 'General' });
+        if (!exists) {
+            await groupsCol.insertOne({ name: 'General', createdAt: new Date() });
+            console.log('Default group "General" seeded.');
+        }
+    } catch (err) {
+        console.error('Error seeding default group:', err);
+    }
 }
 
 // =============================================================================
@@ -113,6 +125,8 @@ const UserSchema = new mongoose.Schema({
     weight: { type: Number, default: 0 },
     birthday: { type: String, default: "" },
     gender: { type: String, default: "" },
+    thr: { type: Number, default: null },
+    mahr: { type: Number, default: null },
     phone: { type: String, default: "" },
     emailPreferences: { dailyRoutine: { type: Boolean, default: true }, incompleteRoutine: { type: Boolean, default: false } },
     profilePicture: { type: String, default: "" },
@@ -145,6 +159,7 @@ const ClientWorkoutSchema = new mongoose.Schema({
     date: { type: String, required: true },
     title: { type: String, default: "Workout" },
     warmup: { type: String, default: "" },
+    warmupVideoUrl: { type: String, default: "" },
     cooldown: { type: String, default: "" },
     exercises: [{
         id: Number,
@@ -237,6 +252,25 @@ const NutritionLogSchema = new mongoose.Schema({
 NutritionLogSchema.index({ clientId: 1, date: -1 });
 const NutritionLog = mongoose.model('NutritionLog', NutritionLogSchema);
 
+// --- Body Measurement Log Schema ---
+const BodyMeasurementSchema = new mongoose.Schema({
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    date: { type: String, required: true },
+    weight: { type: Number, default: null },
+    bodyFat: { type: Number, default: null },
+    bmi: { type: Number, default: null },
+    pecho: { type: String, default: '' },
+    biceps: { type: String, default: '' },
+    cintura: { type: String, default: '' },
+    cadera: { type: String, default: '' },
+    quads: { type: String, default: '' },
+    calves: { type: String, default: '' },
+    notes: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now }
+});
+BodyMeasurementSchema.index({ clientId: 1, date: 1 });
+const BodyMeasurement = mongoose.model('BodyMeasurement', BodyMeasurementSchema);
+
 // --- Progress Photo Schema ---
 const ProgressPhotoSchema = new mongoose.Schema({
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -248,6 +282,14 @@ const ProgressPhotoSchema = new mongoose.Schema({
 });
 ProgressPhotoSchema.index({ clientId: 1, date: -1 });
 const ProgressPhoto = mongoose.model('ProgressPhoto', ProgressPhotoSchema);
+
+// --- Group Schema ---
+const GroupSchema = new mongoose.Schema({
+    name: { type: String, required: true, unique: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdAt: { type: Date, default: Date.now }
+});
+const Group = mongoose.model('Group', GroupSchema);
 
 // =============================================================================
 // 2. API ROUTES
@@ -630,10 +672,10 @@ app.get('/api/log/:clientId', authenticateToken, async (req, res) => {
 
 app.post('/api/client-workouts', authenticateToken, async (req, res) => {
     try {
-        const { clientId, date, title, warmup, cooldown, exercises } = req.body;
+        const { clientId, date, title, warmup, warmupVideoUrl, cooldown, exercises } = req.body;
         const workout = await ClientWorkout.findOneAndUpdate(
             { clientId, date },
-            { title, warmup, cooldown, exercises, updatedAt: Date.now() },
+            { title, warmup, warmupVideoUrl, cooldown, exercises, updatedAt: Date.now() },
             { new: true, upsert: true }
         );
         console.log(`Workout saved for client ${clientId} on ${date}`);
@@ -714,8 +756,61 @@ app.post('/api/weight-logs', authenticateToken, async (req, res) => {
             { weight, bodyFat, notes },
             { new: true, upsert: true }
         );
+
+        // Notify trainer when client logs weight
+        if (req.user.role === 'client') {
+            const client = await User.findById(clientId);
+            if (client) {
+                await createNotification({
+                    clientId: client._id,
+                    clientName: `${client.name} ${client.lastName || ''}`.trim(),
+                    type: 'weight_update',
+                    title: `registró su peso`,
+                    message: `Peso: ${weight} lbs${bodyFat ? ` | Grasa: ${bodyFat}%` : ''} - ${date}`,
+                    data: { date, weight, bodyFat }
+                });
+            }
+        }
+
         res.json(log);
     } catch (e) { res.status(500).json({ message: 'Error saving weight log' }); }
+});
+
+// ==========================================================================
+// --- PROTECTED: Body Measurements ---
+// ==========================================================================
+
+app.get('/api/body-measurements/:clientId', authenticateToken, async (req, res) => {
+    try {
+        const measurements = await BodyMeasurement.find({ clientId: req.params.clientId }).sort({ date: 1 });
+        res.json(measurements);
+    } catch (e) { res.status(500).json({ message: 'Error fetching body measurements' }); }
+});
+
+app.post('/api/body-measurements', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'trainer' && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Solo el entrenador puede registrar medidas.' });
+        }
+        const { clientId, date, weight, bodyFat, bmi, pecho, biceps, cintura, cadera, quads, calves, notes } = req.body;
+        if (!clientId || !date) return res.status(400).json({ message: 'clientId y date son requeridos.' });
+        const measurement = await BodyMeasurement.findOneAndUpdate(
+            { clientId, date },
+            { weight, bodyFat, bmi, pecho, biceps, cintura, cadera, quads, calves, notes },
+            { new: true, upsert: true }
+        );
+        res.json(measurement);
+    } catch (e) { res.status(500).json({ message: 'Error saving body measurement' }); }
+});
+
+app.delete('/api/body-measurements/:id', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'trainer' && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Solo el entrenador puede eliminar medidas.' });
+        }
+        await BodyMeasurement.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Medida eliminada.' });
+    } catch (e) { res.status(500).json({ message: 'Error deleting measurement' }); }
 });
 
 // ==========================================================================
@@ -737,6 +832,22 @@ app.post('/api/nutrition-logs', authenticateToken, async (req, res) => {
             { calories, protein, carbs, fat, water, notes },
             { new: true, upsert: true }
         );
+
+        // Notify trainer when client logs nutrition
+        if (req.user.role === 'client') {
+            const client = await User.findById(clientId);
+            if (client) {
+                await createNotification({
+                    clientId: client._id,
+                    clientName: `${client.name} ${client.lastName || ''}`.trim(),
+                    type: 'nutrition_logged',
+                    title: `registró su nutrición`,
+                    message: `${calories} cal | P:${protein}g C:${carbs}g F:${fat}g - ${date}`,
+                    data: { date, calories, protein, carbs, fat }
+                });
+            }
+        }
+
         res.json(log);
     } catch (e) { res.status(500).json({ message: 'Error saving nutrition log' }); }
 });
@@ -757,6 +868,22 @@ app.post('/api/progress-photos', authenticateToken, async (req, res) => {
         const { clientId, date, imageData, notes, category } = req.body;
         const photo = new ProgressPhoto({ clientId, date, imageData, notes, category });
         await photo.save();
+
+        // Notify trainer when client uploads progress photo
+        if (req.user.role === 'client') {
+            const client = await User.findById(clientId);
+            if (client) {
+                await createNotification({
+                    clientId: client._id,
+                    clientName: `${client.name} ${client.lastName || ''}`.trim(),
+                    type: 'progress_photos',
+                    title: `subió una foto de progreso`,
+                    message: `Categoría: ${category || 'general'} - ${date}`,
+                    data: { date, category }
+                });
+            }
+        }
+
         res.json(photo);
     } catch (e) { res.status(500).json({ message: 'Error saving progress photo' }); }
 });
@@ -828,6 +955,36 @@ app.delete('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'ad
         console.error('Error deleting program:', error);
         res.status(500).json({ message: 'Error deleting program', error });
     }
+});
+
+// ==========================================================================
+// --- PROTECTED: Groups ---
+// ==========================================================================
+
+app.get('/api/groups', authenticateToken, async (req, res) => {
+    try {
+        const groups = await Group.find().sort({ name: 1 });
+        res.json(groups);
+    } catch (e) { res.status(500).json({ message: 'Error fetching groups' }); }
+});
+
+app.post('/api/groups', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        const { name } = req.body;
+        const existing = await Group.findOne({ name });
+        if (existing) return res.status(400).json({ message: 'Group already exists' });
+        const group = new Group({ name, createdBy: req.user.id });
+        await group.save();
+        console.log(`Group created: ${name}`);
+        res.json(group);
+    } catch (e) { res.status(500).json({ message: 'Error creating group' }); }
+});
+
+app.delete('/api/groups/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        await Group.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Group deleted' });
+    } catch (e) { res.status(500).json({ message: 'Error deleting group' }); }
 });
 
 // ==========================================================================
