@@ -70,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let editorWorkoutTitle = "";
     let editorCooldown = "";
     let currentEditorExId = null; // Track which exercise is being edited for Video/History
+    let editorIsDirty = false;
+    let editorAutosaveInterval = null;
 
     // MUSCLE GROUPS DEFINITION
     const muscleGroups = [
@@ -333,13 +335,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (unitToggle && unitCircle) {
                 // Set initial visual state
                 if (isMetric) {
-                    unitToggle.classList.add('bg-blue-600');
-                    unitToggle.classList.remove('bg-gray-200', 'dark:bg-gray-700');
+                    unitToggle.classList.add('bg-[#FFDB89]/20');
+                    unitToggle.classList.remove('bg-white/10');
                     unitCircle.classList.add('translate-x-5');
                     unitCircle.classList.remove('translate-x-0');
                 } else {
-                    unitToggle.classList.remove('bg-blue-600');
-                    unitToggle.classList.add('bg-gray-200', 'dark:bg-gray-700');
+                    unitToggle.classList.remove('bg-[#FFDB89]/20');
+                    unitToggle.classList.add('bg-white/10');
                     unitCircle.classList.remove('translate-x-5');
                     unitCircle.classList.add('translate-x-0');
                 }
@@ -349,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!unitLabel) {
                     unitLabel = document.createElement('span');
                     unitLabel.id = 'unit-label';
-                    unitLabel.className = 'text-sm font-medium text-gray-600 dark:text-gray-400 ml-3';
+                    unitLabel.className = 'text-sm font-medium text-[#FFDB89]/70 ml-3';
                     unitToggle.parentElement.appendChild(unitLabel);
                 }
                 unitLabel.textContent = isMetric ? 'Metrico (kg/cm)' : 'Imperial (lbs/ft)';
@@ -358,14 +360,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 unitToggle.onclick = () => {
                     const currentlyMetric = unitCircle.classList.contains('translate-x-5');
                     if (currentlyMetric) {
-                        unitToggle.classList.remove('bg-blue-600');
-                        unitToggle.classList.add('bg-gray-200', 'dark:bg-gray-700');
+                        unitToggle.classList.remove('bg-[#FFDB89]/20');
+                        unitToggle.classList.add('bg-white/10');
                         unitCircle.classList.remove('translate-x-5');
                         unitCircle.classList.add('translate-x-0');
                         unitLabel.textContent = 'Imperial (lbs/ft)';
                     } else {
-                        unitToggle.classList.add('bg-blue-600');
-                        unitToggle.classList.remove('bg-gray-200', 'dark:bg-gray-700');
+                        unitToggle.classList.add('bg-[#FFDB89]/20');
+                        unitToggle.classList.remove('bg-white/10');
                         unitCircle.classList.add('translate-x-5');
                         unitCircle.classList.remove('translate-x-0');
                         unitLabel.textContent = 'Metrico (kg/cm)';
@@ -467,9 +469,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const isDark = document.documentElement.classList.contains('dark');
         btns.forEach(btn => {
             if (isDark) {
-                btn.innerHTML = `<i class="fas fa-moon text-gray-400 text-xl w-6 text-center"></i><span class="nav-text ml-3 font-medium group-[.w-20]:hidden">Modo oscuro</span>`;
+                btn.innerHTML = `<i class="fas fa-moon w-6 text-center text-lg transition-colors"></i><span class="font-medium whitespace-nowrap overflow-hidden nav-text group-[.w-20]:hidden">Modo oscuro</span>`;
             } else {
-                btn.innerHTML = `<i class="fas fa-sun text-yellow-500 text-xl w-6 text-center"></i><span class="nav-text ml-3 font-medium group-[.w-20]:hidden">Modo claro</span>`;
+                btn.innerHTML = `<i class="fas fa-sun w-6 text-center text-lg transition-colors"></i><span class="font-medium whitespace-nowrap overflow-hidden nav-text group-[.w-20]:hidden">Modo claro</span>`;
             }
         });
     };
@@ -514,6 +516,11 @@ document.addEventListener('DOMContentLoaded', () => {
             .copy-day-checkbox:not(.hidden) { opacity: 0; transition: opacity 0.15s; }
             .day-cell:hover .copy-day-checkbox:not(.hidden) { opacity: 1; }
             .copy-day-checkbox:checked { opacity: 1 !important; }
+
+            /* Slide content right on hover to reveal checkbox */
+            .content-area { transition: padding-left 0.15s ease; }
+            .day-cell:has(.content-area:not(:empty)):hover .content-area { padding-left: 26px; }
+            .day-cell:has(.copy-day-checkbox:checked) .content-area { padding-left: 26px; }
             
             /* Transparent default, visible on hover */
             .cal-action-btn { 
@@ -538,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 top: -10px;
                 bottom: -10px;
                 width: 4px;
-                background-color: #3b82f6; /* Blue line */
+                background-color: #FFDB89; /* Golden line */
                 z-index: 0;
             }
 
@@ -584,103 +591,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     gap: 2px !important;
                 }
                 
-                .day-cell {
-                    min-height: 140px !important;
-                }
+                .day-cell { min-height: 52px; }
             }
 
-                /* MOBILE-FRIENDLY CALENDAR STYLES */
-                @media (max-width: 768px) {
-                    /* Make calendar grid single column on mobile */
-                    #calendar-grid-container {
-                        grid-template-columns: 1fr !important;
-                        gap: 8px;
-                    }
+                /* Hide action icons when the cell already has content */
+                .day-cell:has(.content-area:not(:empty)) .day-cell-menu { display: none !important; }
 
-                    /* Hide desktop day headers on mobile */
-                    #client-calendar-grid > .grid.grid-cols-7 {
-                        display: none !important;
-                    }
-
-                    /* Make day cells mobile-friendly */
-                    .day-cell {
-                        min-height: 120px !important;
-                        border-radius: 12px;
-                        border: 1px solid rgba(209, 213, 219, 0.3);
-                        margin-bottom: 4px;
-                    }
-
-                    /* Show day name inside each cell on mobile */
-                    .day-cell::before {
-                        content: attr(data-day-name);
-                        display: block;
-                        font-size: 10px;
-                        font-weight: 600;
-                        color: #9ca3af;
-                        text-transform: uppercase;
-                        margin-bottom: 4px;
-                    }
-
-                    /* Mobile: Always show action buttons (no hover needed) */
-                    .day-cell-menu {
-                        display: none !important;
-                    }
-
-                    .mobile-day-actions {
-                        display: flex;
-                        gap: 3px;
-                        margin-top: 8px;
-                        flex-wrap: nowrap;
-                        justify-content: space-between;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                    }
-    
-                    /* For very small screens */
-                    @media (max-width: 380px) {
-                        .mobile-action-btn {
-                            width: 28px;
-                            height: 28px;
-                            font-size: 10px;
-                        }
-                        
-                        .mobile-day-actions {
-                            gap: 2px;
-                        }
-                    }
-
-                    .mobile-action-btn {
-                        flex: 0 0 auto;
-                        width: 32px;
-                        height: 32px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        background: rgba(107, 114, 128, 0.3);
-                        border-radius: 8px;
-                        font-size: 11px;
-                        color: white;
-                        border: 1px solid rgba(255, 255, 255, 0.15);
-                        padding: 0;
-                        margin: 0;
-                    }    
-
-                    .mobile-action-btn:active {
-                        background: rgba(107, 114, 128, 0.4);
-                        transform: scale(0.95);
-                    }
-
-                    /* Make header more compact on mobile */
-                    #client-calendar-grid > .flex.items-center {
-                        flex-direction: column;
-                        align-items: flex-start !important;
-                        gap: 8px;
-                        padding: 12px !important;
-                    }
-
-                    #client-calendar-grid h2 {
-                        font-size: 18px !important;
-                    }
+                /* On touch devices, show icons without hover */
+                @media (hover: none) {
+                    .day-cell-menu { opacity: 1 !important; }
 
                     #back-to-clients-btn {
                         font-size: 14px;
@@ -1184,32 +1103,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // TRUECOACH STYLE CONTINUOUS CALENDAR (with tabs)
         updateContent(`Perfil: ${client.name} ${client.lastName}`, `
-            <div id="client-calendar-grid" class="flex flex-col h-full bg-gray-50 dark:bg-gray-900 overflow-hidden">
-                <div class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10">
+            <div id="client-calendar-grid" class="flex flex-col h-full bg-[#2C2C2E] overflow-hidden">
+                <div class="flex items-center justify-between p-4 bg-[#2C2C2E] border-b border-[#FFDB89]/20 shadow-sm z-10">
                     <div class="flex items-center gap-4">
-                        <button id="back-to-clients-btn" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"><i class="fas fa-arrow-left text-xl"></i></button>
-                        <h2 class="text-2xl font-bold text-gray-800 dark:text-white">${client.name} ${client.lastName}</h2>
+                        <button id="back-to-clients-btn" class="text-[#FFDB89]/70 hover:text-[#FFDB89] transition"><i class="fas fa-arrow-left text-xl"></i></button>
+                        <h2 class="text-2xl font-bold text-[#FFDB89]">${client.name} ${client.lastName}</h2>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button class="px-3 py-1 text-sm font-semibold bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-white transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
+                        <button class="px-3 py-1 text-sm font-semibold border border-[#FFDB89]/30 bg-[#FFDB89]/10 text-[#FFDB89] rounded hover:bg-[#FFDB89]/20 transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
                     </div>
                 </div>
 
                 <!-- Tab Bar -->
-                <div class="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 shrink-0 z-10">
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" data-tab="calendar">Calendario</button>
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border-b-2 border-transparent" data-tab="metrics">Metricas</button>
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border-b-2 border-transparent" data-tab="nutrition">Nutricion</button>
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border-b-2 border-transparent" data-tab="photos">Fotos</button>
+                <div class="flex border-b border-[#FFDB89]/20 bg-transparent px-4 shrink-0 z-10">
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold border-b-2 border-[#FFDB89] text-[#FFDB89]" data-tab="calendar">Calendario</button>
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="metrics">Métricas</button>
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="nutrition">Nutrición</button>
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="photos">Fotos</button>
                 </div>
 
                 <!-- TAB: Calendar (default) -->
                 <div id="tab-calendar" class="client-tab-content flex flex-col flex-grow overflow-hidden">
-                    <div class="grid grid-cols-7 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10 shrink-0">
-                        ${['LUN','MAR','MIE','JUE','VIE','SAB','DOM'].map(d => `<div class="py-3 text-center text-xs font-bold text-gray-400 dark:text-gray-500 tracking-wider">${d}</div>`).join('')}
-                    </div>
-                    <div id="infinite-calendar-scroll" class="flex-grow overflow-y-auto overflow-x-hidden relative bg-gray-100 dark:bg-gray-900 pb-20">
-                        <div id="calendar-grid-container" class="grid grid-cols-7 auto-rows-min gap-px bg-gray-200 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
+                    <div id="infinite-calendar-scroll" class="flex-grow overflow-y-auto overflow-x-hidden relative bg-[#1C1C1E] pb-20">
+                        <div id="calendar-grid-container" class="flex flex-col">
                             ${generateContinuousCalendar(client)}
                         </div>
                     </div>
@@ -1266,12 +1182,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <div id="video-upload-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                     <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-96 border border-gray-200 dark:border-gray-700">
-                        <h3 class="text-lg font-bold mb-4 dark:text-white">Anadir Video URL</h3>
-                        <input type="text" id="video-url-input" class="w-full p-2 border rounded mb-4 dark:bg-gray-700 dark:text-white dark:border-gray-600 outline-none" placeholder="https://youtube.com/...">
+                     <div class="bg-[#030303]/95 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-96 border border-[#FFDB89]/20">
+                        <h3 id="video-modal-title" class="text-lg font-bold mb-1 text-[#FFDB89]">Añadir Video URL</h3>
+                        <p class="text-xs text-[#FFDB89]/40 mb-4">Enlace de YouTube o Vimeo</p>
+                        <input type="text" id="video-url-input" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30 mb-4" placeholder="https://youtube.com/...">
                         <div class="flex justify-end gap-2">
-                            <button onclick="document.getElementById('video-upload-modal').classList.add('hidden')" class="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400">Cancelar</button>
-                            <button onclick="window.saveEditorVideo()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold">Guardar</button>
+                            <button onclick="document.getElementById('video-upload-modal').classList.add('hidden')" class="px-4 py-2 text-[#FFDB89]/60 hover:text-[#FFDB89] font-medium transition">Cancelar</button>
+                            <button onclick="window.saveEditorVideo()" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg font-bold transition">Guardar</button>
                         </div>
                      </div>
                 </div>
@@ -1283,11 +1200,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.client-detail-tab').forEach(tab => {
             tab.onclick = () => {
                 document.querySelectorAll('.client-detail-tab').forEach(t => {
-                    t.classList.remove('border-blue-500', 'text-blue-600', 'dark:text-blue-400');
-                    t.classList.add('text-gray-500', 'border-transparent');
+                    t.classList.remove('border-[#FFDB89]', 'text-[#FFDB89]');
+                    t.classList.add('text-[#FFDB89]/50', 'border-transparent');
                 });
-                tab.classList.add('border-blue-500', 'text-blue-600', 'dark:text-blue-400');
-                tab.classList.remove('text-gray-500', 'border-transparent');
+                tab.classList.add('border-[#FFDB89]', 'text-[#FFDB89]');
+                tab.classList.remove('text-[#FFDB89]/50', 'border-transparent');
 
                 document.querySelectorAll('.client-tab-content').forEach(c => c.classList.add('hidden'));
                 const targetTab = document.getElementById(`tab-${tab.dataset.tab}`);
@@ -1311,13 +1228,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Display each workout in its calendar cell
                     workouts.forEach(workout => {
+                        window._calendarWorkouts[workout.date] = workout;
                         const cell = document.getElementById(`day-${workout.date}`);
                         if(cell) {
                             const area = cell.querySelector('.content-area');
                             area.innerHTML = `
-                                <div class="bg-gray-800 text-white text-[10px] p-1 rounded border-l-2 border-orange-500 mb-1 pl-2 cursor-pointer hover:bg-gray-700" onclick="window.loadWorkoutForEditing('${workout.date}', '${clientId}')">
-                                    <div class="font-bold">${workout.title}</div>
-                                    <div class="text-gray-400">${workout.exercises.length} ejercicios</div>
+                                <div class="workout-card-wrapper">
+                                    <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk" onclick="window.toggleWorkoutExpand(this)">
+                                        <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="text-sm font-bold text-[#FFDB89] truncate">${workout.title}</div>
+                                            <div class="text-xs text-[#FFDB89]/50">${workout.exercises.length} ejercicios</div>
+                                        </div>
+                                        <i class="fas fa-chevron-right text-[#FFDB89]/40 text-xs shrink-0 workout-chevron transition-transform duration-200"></i>
+                                    </div>
+                                    <div class="workout-expand-content hidden mt-1 border-t border-[#FFDB89]/10"></div>
                                 </div>
                             `;
                             // Show copy checkbox on hover for days with workouts
@@ -1357,17 +1282,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalInches = hFt * 12 + hIn;
 
             const tableRows = measurements.length === 0
-                ? `<tr><td colspan="11" class="py-8 text-center text-[#92A9E1]/40">
+                ? `<tr><td colspan="11" class="py-8 text-center text-[#FFDB89]/40">
                        <i class="fas fa-ruler-combined text-2xl mb-2 block"></i>
-                       Sin registros. Haz clic en "Agregar Medición" para comenzar.
+                       Sin registros. Haz clic en "Agregar medición" para comenzar.
                    </td></tr>`
                 : [...measurements].reverse().map(m => {
                     const [y, mo, d] = m.date.split('-');
                     const dateStr = `${d}/${mo}/${y}`;
                     const cell = (val, gold = false) =>
-                        `<td class="px-3 py-2.5 text-center whitespace-nowrap ${gold ? 'font-bold text-[#FFDB89]' : 'text-[#92A9E1]/80'}">${val || '—'}</td>`;
-                    return `<tr class="border-b border-[#92A9E1]/10 hover:bg-white/[0.02] transition group">
-                        <td class="px-3 py-2.5 text-left font-medium text-white whitespace-nowrap">${dateStr}</td>
+                        `<td class="px-3 py-2.5 text-center whitespace-nowrap ${gold ? 'font-bold text-[#FFDB89]' : 'text-[#FFDB89]/60'}">${val || '—'}</td>`;
+                    return `<tr class="border-b border-[#FFDB89]/10 hover:bg-[#FFDB89]/5 transition group">
+                        <td class="px-3 py-2.5 text-left font-medium text-[#FFDB89] whitespace-nowrap">${dateStr}</td>
                         ${cell(m.bmi ? m.bmi.toFixed(1) : null)}
                         ${cell(m.bodyFat ? m.bodyFat + '%' : null)}
                         ${cell(m.weight ? m.weight + ' lbs' : null, true)}
@@ -1391,36 +1316,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex flex-wrap justify-between items-center gap-3">
                         <div>
                             <h3 class="text-xl font-bold text-[#FFDB89]">Medidas Corporales</h3>
-                            ${client ? `<p class="text-sm text-[#92A9E1]/70 mt-0.5">
+                            ${client ? `<p class="text-sm text-[#FFDB89]/60 mt-0.5">
                                 ${client.height ? `Estatura: ${hFt}'${hIn}"` : ''}
                                 ${client.thr ? ` · THR: ${client.thr} bpm` : ''}
                                 ${client.mahr ? ` · MaxHR: ${client.mahr} bpm` : ''}
                             </p>` : ''}
                         </div>
                         <button onclick="window.showAddMeasurementModal('${clientId}', ${totalInches})"
-                            class="px-4 py-2 bg-[#92A9E1] hover:bg-[#7b93cc] text-white rounded-lg text-sm font-bold transition flex items-center gap-2">
-                            <i class="fas fa-plus"></i> Agregar Medición
+                            class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg text-sm font-bold transition flex items-center gap-2">
+                            <i class="fas fa-plus"></i> Agregar medición
                         </button>
                     </div>
 
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm border-collapse">
                             <thead>
-                                <tr class="border-b border-[#92A9E1]/20">
-                                    <th class="px-3 py-3 text-left text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Fecha</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">BMI</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">%G</th>
+                                <tr class="border-b border-[#FFDB89]/20">
+                                    <th class="px-3 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Fecha</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">BMI</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">%G</th>
                                     <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Peso</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Pecho</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Bíceps</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Cintura</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Cadera</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Quads</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Calves</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#92A9E1] uppercase"></th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Pecho</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Bíceps</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Cintura</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Cadera</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Quads</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Calves</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase"></th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-[#92A9E1]/10">${tableRows}</tbody>
+                            <tbody class="divide-y divide-[#FFDB89]/10">${tableRows}</tbody>
                         </table>
                     </div>
                 </div>
@@ -1432,14 +1357,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const existing = document.getElementById('add-measurement-modal');
         if (existing) existing.remove();
         const today = new Date().toISOString().split('T')[0];
-        const inputCls = 'w-full p-2 bg-white/10 border border-[#92A9E1]/30 rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-[#92A9E1] placeholder-[#92A9E1]/30';
-        const labelCls = 'block text-xs font-bold text-[#92A9E1]/70 uppercase mb-1';
+        const inputCls = 'w-full p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30';
+        const labelCls = 'block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1';
         document.body.insertAdjacentHTML('beforeend', `
             <div id="add-measurement-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#92A9E1]/20 rounded-2xl shadow-2xl w-full max-w-2xl p-7 overflow-y-auto max-h-[90vh]">
+                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-2xl p-7 overflow-y-auto max-h-[90vh]">
                     <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-xl font-bold text-[#FFDB89]"><i class="fas fa-ruler-combined mr-2 text-[#92A9E1]"></i>Agregar Medición</h3>
-                        <button onclick="document.getElementById('add-measurement-modal').remove()" class="text-[#92A9E1]/50 hover:text-white transition text-xl">&times;</button>
+                        <h3 class="text-xl font-bold text-[#FFDB89]"><i class="fas fa-ruler-combined mr-2 text-[#FFDB89]"></i>Agregar medición</h3>
+                        <button onclick="document.getElementById('add-measurement-modal').remove()" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl">&times;</button>
                     </div>
 
                     <!-- Date + Key Numbers -->
@@ -1463,7 +1388,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
 
                     <!-- Body Measurements -->
-                    <p class="text-xs font-bold text-[#92A9E1]/50 uppercase tracking-wider mb-3">Medidas (pulg)</p>
+                    <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-3">Medidas (pulg)</p>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                         <div>
                             <label class="${labelCls}">Pecho</label>
@@ -1499,10 +1424,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     <div class="flex justify-end gap-3">
                         <button onclick="document.getElementById('add-measurement-modal').remove()"
-                            class="px-5 py-2.5 text-[#92A9E1]/70 hover:text-white font-medium transition">Cancelar</button>
+                            class="px-5 py-2.5 text-[#FFDB89]/70 hover:text-[#FFDB89] font-medium transition">Cancelar</button>
                         <button onclick="window.saveMeasurement('${clientId}')"
-                            class="px-6 py-2.5 bg-[#92A9E1] hover:bg-[#7b93cc] text-white rounded-lg font-bold transition shadow-md">
-                            Guardar Medición
+                            class="px-6 py-2.5 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg font-bold transition shadow-md">
+                            Guardar medición
                         </button>
                     </div>
                 </div>
@@ -1564,34 +1489,34 @@ document.addEventListener('DOMContentLoaded', () => {
             container.innerHTML = `
                 <div class="space-y-6 max-w-4xl mx-auto">
                     <div class="flex justify-between items-center">
-                        <h3 class="text-xl font-bold dark:text-white">Nutricion</h3>
-                        <button onclick="window.showAddNutritionModal('${clientId}')" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition">
-                            <i class="fas fa-plus mr-1"></i> Registrar Nutricion
+                        <h3 class="text-xl font-bold text-[#FFDB89]">Nutrición</h3>
+                        <button onclick="window.showAddNutritionModal('${clientId}')" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg text-sm font-bold transition">
+                            <i class="fas fa-plus mr-1"></i> Registrar nutrición
                         </button>
                     </div>
-                    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                        <table class="w-full text-sm">
-                            <thead class="bg-gray-50 dark:bg-gray-700">
-                                <tr>
-                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Fecha</th>
-                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Calorias</th>
-                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Proteina</th>
-                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Carbos</th>
-                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Grasa</th>
-                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Agua (oz)</th>
-                                    <th class="px-4 py-3 text-left font-bold text-gray-500 dark:text-gray-300">Notas</th>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm border-collapse">
+                            <thead>
+                                <tr class="border-b border-[#FFDB89]/20">
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Fecha</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Calorías</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Proteína</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Carbos</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Grasa</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Agua (oz)</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Notas</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                ${logs.length === 0 ? '<tr><td colspan="7" class="p-6 text-center text-gray-400">Sin registros de nutricion. Haz clic en "Registrar Nutricion" para comenzar.</td></tr>' :
-                                logs.map(l => `<tr class="border-t border-gray-100 dark:border-gray-700">
-                                    <td class="px-4 py-3 dark:text-white">${l.date}</td>
-                                    <td class="px-4 py-3 font-bold dark:text-white">${l.calories}</td>
-                                    <td class="px-4 py-3 dark:text-gray-300">${l.protein}g</td>
-                                    <td class="px-4 py-3 dark:text-gray-300">${l.carbs}g</td>
-                                    <td class="px-4 py-3 dark:text-gray-300">${l.fat}g</td>
-                                    <td class="px-4 py-3 dark:text-gray-300">${l.water || '--'}</td>
-                                    <td class="px-4 py-3 dark:text-gray-400">${l.notes || '--'}</td>
+                            <tbody class="divide-y divide-[#FFDB89]/10">
+                                ${logs.length === 0 ? '<tr><td colspan="7" class="p-6 text-center text-[#FFDB89]/40">Sin registros de nutrición. Haz clic en "Registrar nutrición" para comenzar.</td></tr>' :
+                                logs.map(l => `<tr class="hover:bg-[#FFDB89]/5 transition">
+                                    <td class="px-4 py-3 text-[#FFDB89]">${l.date}</td>
+                                    <td class="px-4 py-3 font-bold text-[#FFDB89]">${l.calories}</td>
+                                    <td class="px-4 py-3 text-[#FFDB89]/70">${l.protein}g</td>
+                                    <td class="px-4 py-3 text-[#FFDB89]/70">${l.carbs}g</td>
+                                    <td class="px-4 py-3 text-[#FFDB89]/70">${l.fat}g</td>
+                                    <td class="px-4 py-3 text-[#FFDB89]/70">${l.water || '--'}</td>
+                                    <td class="px-4 py-3 text-[#FFDB89]/50">${l.notes || '--'}</td>
                                 </tr>`).join('')}
                             </tbody>
                         </table>
@@ -1607,43 +1532,43 @@ document.addEventListener('DOMContentLoaded', () => {
         const today = new Date().toISOString().split('T')[0];
         document.body.insertAdjacentHTML('beforeend', `
             <div id="add-nutrition-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-200 dark:border-gray-700">
-                    <h3 class="text-lg font-bold dark:text-white mb-4">Registrar Nutricion</h3>
+                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md p-6">
+                    <h3 class="text-lg font-bold text-[#FFDB89] mb-4">Registrar nutrición</h3>
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
-                            <input type="date" id="nutri-date" value="${today}" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white">
+                            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Fecha</label>
+                            <input type="date" id="nutri-date" value="${today}" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Calorias</label>
-                                <input type="number" id="nutri-calories" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                                <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Calorías</label>
+                                <input type="number" id="nutri-calories" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="0">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proteina (g)</label>
-                                <input type="number" id="nutri-protein" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                                <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Proteína (g)</label>
+                                <input type="number" id="nutri-protein" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="0">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Carbos (g)</label>
-                                <input type="number" id="nutri-carbs" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                                <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Carbos (g)</label>
+                                <input type="number" id="nutri-carbs" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="0">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Grasa (g)</label>
-                                <input type="number" id="nutri-fat" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                                <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Grasa (g)</label>
+                                <input type="number" id="nutri-fat" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="0">
                             </div>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Agua (oz)</label>
-                            <input type="number" id="nutri-water" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="0">
+                            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Agua (oz)</label>
+                            <input type="number" id="nutri-water" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="0">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
-                            <input type="text" id="nutri-notes" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="Notas...">
+                            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Notas (opcional)</label>
+                            <input type="text" id="nutri-notes" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="Notas...">
                         </div>
                     </div>
                     <div class="flex justify-end gap-3 mt-6">
-                        <button onclick="document.getElementById('add-nutrition-modal').remove()" class="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 font-medium">Cancelar</button>
-                        <button onclick="window.saveNutritionLog('${clientId}')" class="px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition">Guardar</button>
+                        <button onclick="document.getElementById('add-nutrition-modal').remove()" class="px-4 py-2 text-[#FFDB89]/70 hover:text-[#FFDB89] font-medium transition">Cancelar</button>
+                        <button onclick="window.saveNutritionLog('${clientId}')" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg font-bold transition">Guardar</button>
                     </div>
                 </div>
             </div>
@@ -1680,19 +1605,19 @@ document.addEventListener('DOMContentLoaded', () => {
             container.innerHTML = `
                 <div class="space-y-6 max-w-4xl mx-auto">
                     <div class="flex justify-between items-center">
-                        <h3 class="text-xl font-bold dark:text-white">Fotos de Progreso</h3>
-                        <button onclick="window.showAddPhotoModal('${clientId}')" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold hover:bg-purple-700 transition">
-                            <i class="fas fa-camera mr-1"></i> Subir Foto
+                        <h3 class="text-xl font-bold text-[#FFDB89]">Fotos de Progreso</h3>
+                        <button onclick="window.showAddPhotoModal('${clientId}')" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg text-sm font-bold transition">
+                            <i class="fas fa-camera mr-1"></i> Subir foto
                         </button>
                     </div>
                     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        ${photos.length === 0 ? '<div class="col-span-full text-center py-12 text-gray-400"><i class="fas fa-camera text-5xl mb-3 block"></i><p>Sin fotos de progreso. Haz clic en "Subir Foto" para comenzar.</p></div>' :
+                        ${photos.length === 0 ? '<div class="col-span-full text-center py-12 text-[#FFDB89]/40"><i class="fas fa-camera text-5xl mb-3 block"></i><p>Sin fotos de progreso. Haz clic en "Subir foto" para comenzar.</p></div>' :
                         photos.map(p => `
-                            <div class="relative group bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm">
+                            <div class="relative group bg-[#2C2C2E] rounded-xl overflow-hidden border border-[#FFDB89]/20 shadow-sm">
                                 <img src="${p.imageData}" alt="Progress" class="w-full aspect-[3/4] object-cover">
                                 <div class="p-2">
-                                    <p class="text-xs font-bold text-gray-500">${p.date}</p>
-                                    ${p.notes ? `<p class="text-xs text-gray-400 truncate">${p.notes}</p>` : ''}
+                                    <p class="text-xs font-bold text-[#FFDB89]/70">${p.date}</p>
+                                    ${p.notes ? `<p class="text-xs text-[#FFDB89]/50 truncate">${p.notes}</p>` : ''}
                                 </div>
                                 <button onclick="window.deleteProgressPhoto('${p._id}', '${clientId}')" class="absolute top-2 right-2 w-7 h-7 bg-red-600 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                                     <i class="fas fa-trash text-[10px]"></i>
@@ -1711,37 +1636,37 @@ document.addEventListener('DOMContentLoaded', () => {
         const today = new Date().toISOString().split('T')[0];
         document.body.insertAdjacentHTML('beforeend', `
             <div id="add-photo-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-200 dark:border-gray-700">
-                    <h3 class="text-lg font-bold dark:text-white mb-4">Subir Foto de Progreso</h3>
+                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md p-6">
+                    <h3 class="text-lg font-bold text-[#FFDB89] mb-4">Subir foto de progreso</h3>
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
-                            <input type="date" id="photo-date" value="${today}" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white">
+                            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Fecha</label>
+                            <input type="date" id="photo-date" value="${today}" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Foto</label>
-                            <input type="file" id="photo-file" accept="image/jpeg,image/png,image/gif" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white text-sm">
+                            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Foto</label>
+                            <input type="file" id="photo-file" accept="image/jpeg,image/png,image/gif" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none">
                         </div>
                         <div id="photo-preview-container" class="hidden">
-                            <img id="photo-preview" class="w-full max-h-48 object-contain rounded-lg border border-gray-200 dark:border-gray-600">
+                            <img id="photo-preview" class="w-full max-h-48 object-contain rounded-lg border border-[#FFDB89]/20">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoria</label>
-                            <select id="photo-category" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white">
-                                <option value="general">General</option>
-                                <option value="front">Frente</option>
-                                <option value="back">Espalda</option>
-                                <option value="side">Lateral</option>
+                            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Categoría</label>
+                            <select id="photo-category" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
+                                <option value="general" class="text-black">General</option>
+                                <option value="front" class="text-black">Frente</option>
+                                <option value="back" class="text-black">Espalda</option>
+                                <option value="side" class="text-black">Lateral</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
-                            <input type="text" id="photo-notes" class="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white" placeholder="Notas...">
+                            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Notas (opcional)</label>
+                            <input type="text" id="photo-notes" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="Notas...">
                         </div>
                     </div>
                     <div class="flex justify-end gap-3 mt-6">
-                        <button onclick="document.getElementById('add-photo-modal').remove()" class="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 font-medium">Cancelar</button>
-                        <button onclick="window.saveProgressPhoto('${clientId}')" class="px-4 py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition">Subir</button>
+                        <button onclick="document.getElementById('add-photo-modal').remove()" class="px-4 py-2 text-[#FFDB89]/70 hover:text-[#FFDB89] font-medium transition">Cancelar</button>
+                        <button onclick="window.saveProgressPhoto('${clientId}')" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg font-bold transition">Subir</button>
                     </div>
                 </div>
             </div>
@@ -1876,11 +1801,11 @@ document.addEventListener('DOMContentLoaded', () => {
             toggle.dataset.on = state ? "true" : "false";
             const thumb = toggle.querySelector('div');
             if (state) {
-                toggle.classList.remove('bg-gray-600'); toggle.classList.add('bg-green-500');
-                thumb.classList.add('translate-x-6'); thumb.classList.remove('translate-x-0');
+                toggle.classList.remove('bg-white/10'); toggle.classList.add('bg-[#FFDB89]/20');
+                thumb.classList.add('translate-x-5'); thumb.classList.remove('translate-x-0');
             } else {
-                toggle.classList.add('bg-gray-600'); toggle.classList.remove('bg-green-500');
-                thumb.classList.remove('translate-x-6'); thumb.classList.add('translate-x-0');
+                toggle.classList.add('bg-white/10'); toggle.classList.remove('bg-[#FFDB89]/20');
+                thumb.classList.remove('translate-x-5'); thumb.classList.add('translate-x-0');
             }
         };
 
@@ -2031,11 +1956,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusValue === 'active') filtered = filtered.filter(c => c.isActive);
         if (statusValue === 'inactive') filtered = filtered.filter(c => !c.isActive);
 
-        if(filtered.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-gray-500">No hay clientes.</td></tr>`; return; }
+        if(filtered.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[#FFDB89]">No hay clientes.</td></tr>`; return; }
 
         filtered.forEach(client => {
             const tr = document.createElement('tr');
-            tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer client-row";
+            tr.className = "hover:bg-[#FFDB89]/5 transition cursor-pointer client-row";
             tr.setAttribute('data-id', client._id);
             // CLICK LISTENER FOR ROW
             tr.onclick = (e) => {
@@ -2045,17 +1970,17 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             const initials = (client.name.charAt(0) + (client.lastName ? client.lastName.charAt(0) : '')).toUpperCase();
             tr.innerHTML = `
-                <td class="p-4 whitespace-nowrap"><div class="flex items-center"><div class="h-10 w-10 rounded-full bg-brand-purple text-white flex items-center justify-center font-bold mr-3">${initials}</div><div class="text-sm font-medium text-gray-900 dark:text-white">${client.name} ${client.lastName || ''}</div></div></td>
-                <td class="p-4 whitespace-nowrap text-sm font-bold text-gray-600 dark:text-gray-300"><span class="bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded text-xs">${client.group || 'General'}</span></td>
-                <td class="p-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${client.program}</td>
-                <td class="p-4 whitespace-nowrap">
-                    <button onclick="event.stopPropagation(); window.toggleClientStatus('${client._id}', ${client.isActive})" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition ${client.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-red-100 text-red-800 hover:bg-red-200'}">
+                <td class="px-6 py-4 whitespace-nowrap"><div class="flex items-center"><div class="h-10 w-10 rounded-full bg-[#FFDB89]/30 text-[#FFDB89] flex items-center justify-center font-bold mr-3">${initials}</div><div class="text-sm font-medium text-[#FFDB89]">${client.name} ${client.lastName || ''}</div></div></td>
+                <td class="px-6 py-4 whitespace-nowrap"><span class="bg-[#FFDB89]/10 text-[#FFDB89] px-2 py-1 rounded text-xs font-bold">${client.group || 'General'}</span></td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-[#FFDB89]/80">${client.program}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <button onclick="event.stopPropagation(); window.toggleClientStatus('${client._id}', ${client.isActive})" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition ${client.isActive ? 'bg-green-900/40 text-green-300 hover:bg-green-900/60' : 'bg-red-900/40 text-red-300 hover:bg-red-900/60'}">
                         ${client.isActive ? 'Activo' : 'Inactivo'}
                     </button>
                 </td>
-                <td class="p-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button onclick="window.openEditClientModal('${client._id}'); event.stopPropagation();" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 mr-2"><i class="fas fa-edit"></i></button>
-                    <button onclick="window.deleteClient('${client._id}'); event.stopPropagation();" class="text-red-600 hover:text-red-900 dark:text-red-400"><i class="fas fa-trash"></i></button>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onclick="window.openEditClientModal('${client._id}'); event.stopPropagation();" class="text-[#FFDB89]/70 hover:text-[#FFDB89] mr-2 transition"><i class="fas fa-edit"></i></button>
+                    <button onclick="window.deleteClient('${client._id}'); event.stopPropagation();" class="text-red-400 hover:text-red-300 transition"><i class="fas fa-trash"></i></button>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -2124,7 +2049,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <h4 class="font-bold text-gray-900 dark:text-white">${ex.name}</h4>
                             <div class="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
                                 <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700">${catDisplay}</span>
-                                ${ex.videoUrl ? `<span class="text-blue-400 flex items-center gap-1"><i class="fas fa-video"></i> Video</span>` : ''}
+                                ${ex.videoUrl ? `<span class="text-[#FFDB89]/70 flex items-center gap-1"><i class="fas fa-video"></i> Video</span>` : ''}
                             </div>
                         </div>
                     </div>
@@ -2195,12 +2120,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if(!bar) {
                 bar = document.createElement('div');
                 bar.id = 'copy-selection-bar';
-                bar.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[55] bg-blue-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-fade-in-down';
+                bar.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[55] bg-[#FFDB89] text-[#2C2C2E] px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-fade-in-down';
                 document.body.appendChild(bar);
             }
             bar.innerHTML = `
                 <span class="font-bold text-sm"><i class="fas fa-check-square mr-2"></i>${selectedCopyDays.size} dia${selectedCopyDays.size > 1 ? 's' : ''} seleccionado${selectedCopyDays.size > 1 ? 's' : ''}</span>
-                <button onclick="window.copySelectedDays()" class="bg-white text-blue-600 font-bold px-4 py-1.5 rounded-full text-sm hover:bg-blue-50 transition">
+                <button onclick="window.copySelectedDays()" class="bg-[#2C2C2E] text-[#FFDB89] font-bold px-4 py-1.5 rounded-full text-sm hover:bg-[#2C2C2E]/80 transition">
                     <i class="fas fa-copy mr-1"></i> Copiar
                 </button>
                 <button onclick="window.clearCopySelection()" class="text-white/70 hover:text-white transition text-sm">
@@ -2307,34 +2232,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    const renderProgramBuilder = (prog) => {
+        document.getElementById('builder-program-name').textContent = prog.name;
+        document.getElementById('calendar-container').innerHTML = '';
+        currentWeekCount = 0;
+        if (prog.weeks && prog.weeks.length > 0) {
+            prog.weeks.forEach(week => addWeekToCalendar(week));
+        } else {
+            addWeekToCalendar();
+        }
+    };
+
     const openProgramBuilder = (id) => {
         const prog = mockProgramsDb.find(p => (p.id == id) || (p._id == id));
         if (!prog) return;
         currentProgramId = id;
         document.getElementById('programs-main-view').classList.add('hidden');
         document.getElementById('program-builder-view').classList.remove('hidden');
-        document.getElementById('builder-program-name').textContent = prog.name;
-        document.getElementById('calendar-container').innerHTML = '';
-        currentWeekCount = 0;
-        if (prog.weeks.length > 0) prog.weeks.forEach(() => addWeekToCalendar()); 
-        else addWeekToCalendar(); 
+        renderProgramBuilder(prog);
     };
 
-    const addWeekToCalendar = () => { /* ... (Existing Logic) ... */
+    const addWeekToCalendar = (weekData = null) => {
         currentWeekCount++;
         const weekDiv = document.createElement('div');
         weekDiv.className = "week-block mb-8";
-        weekDiv.innerHTML = `<h4 class="text-xl font-bold text-gray-700 dark:text-gray-300 mb-4 px-2">Semana ${currentWeekCount}</h4><div class="grid grid-cols-1 md:grid-cols-7 gap-4">${Array.from({length: 7}, (_, i) => renderDayCell(i + 1)).join('')}</div>`;
+        const days = weekData?.days || {};
+        const getDayData = (i) => days[String(i + 1)] || days[i + 1] || null;
+        weekDiv.innerHTML = `<h4 class="text-xl font-bold text-gray-700 dark:text-gray-300 mb-4 px-2">Semana ${currentWeekCount}</h4><div class="grid grid-cols-1 md:grid-cols-7 gap-4">${Array.from({length: 7}, (_, i) => renderDayCell(i + 1, getDayData(i))).join('')}</div>`;
         document.getElementById('calendar-container').appendChild(weekDiv);
     };
 
     // Original Render Day Cell (For Program Builder)
-    const renderDayCell = (dayNum) => {
+    const renderDayCell = (dayNum, existingDay = null) => {
+        let bodyContent;
+        if (existingDay?.isRest) {
+            bodyContent = `<div class="text-center text-green-500"><i class="fas fa-bed text-2xl"></i><div class="text-xs font-bold mt-1">Descanso</div></div>`;
+        } else if (existingDay?.exercises?.length > 0) {
+            const preview = existingDay.exercises.slice(0, 3).map(ex => `<div class="truncate text-[10px] text-gray-600 dark:text-gray-300">• ${ex.name}</div>`).join('');
+            const more = existingDay.exercises.length > 3 ? `<div class="text-[10px] text-gray-400">+${existingDay.exercises.length - 3} más</div>` : '';
+            bodyContent = `<div class="text-left w-full">${preview}${more}</div>`;
+        } else {
+            bodyContent = `<div class="text-center text-gray-300 dark:text-gray-600"><i class="fas fa-plus text-2xl"></i></div>`;
+        }
+        const nameLabel = existingDay?.name ? `<div class="text-[10px] text-gray-500 truncate">${existingDay.name}</div>` : '';
         return `<div class="relative bg-white dark:bg-gray-800 h-40 rounded-xl shadow border border-gray-100 dark:border-gray-700 group overflow-hidden hover:shadow-lg transition">
-            <div class="p-3 h-full flex flex-col justify-between"><span class="text-xs font-bold text-gray-400">Día ${dayNum}</span><div class="text-center text-gray-300 dark:text-gray-600"><i class="fas fa-plus text-2xl"></i></div><div></div></div>
+            <div class="p-3 h-full flex flex-col justify-between"><div><span class="text-xs font-bold text-gray-400">Día ${dayNum}</span>${nameLabel}</div>${bodyContent}<div></div></div>
             <div class="absolute inset-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col cursor-pointer z-10">
                 <div class="flex-1 flex border-b border-gray-200 dark:border-gray-600">
-                    <div class="action-add flex-1 flex flex-col items-center justify-center hover:bg-blue-50 dark:hover:bg-gray-700 text-blue-600 transition border-r border-gray-200 dark:border-gray-600" data-day="${dayNum}"><i class="fas fa-dumbbell"></i><span class="text-[10px] font-bold">Añadir</span></div>
+                    <div class="action-add flex-1 flex flex-col items-center justify-center hover:bg-[#FFDB89]/10 text-[#FFDB89] transition border-r border-[#FFDB89]/20" data-day="${dayNum}"><i class="fas fa-dumbbell"></i><span class="text-[10px] font-bold">Añadir</span></div>
                     <div class="action-rest flex-1 flex flex-col items-center justify-center hover:bg-green-50 dark:hover:bg-gray-700 text-green-600 transition"><i class="fas fa-bed"></i><span class="text-[10px] font-bold">Descanso</span></div>
                 </div>
                 <div class="flex-1 flex">
@@ -2347,10 +2292,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const openExerciseBuilder = (dayNum) => {
         document.getElementById('edit-routine-modal').classList.remove('hidden');
-        document.getElementById('exercise-list').innerHTML = ''; 
-        document.getElementById('routine-name-input').value = `Entrenamiento Día ${dayNum}`;
+        document.getElementById('exercise-list').innerHTML = '';
         exerciseCount = 0;
-        addExerciseToBuilder(); 
+        const prog = currentProgramId ? mockProgramsDb.find(p => (p.id == currentProgramId) || (p._id == currentProgramId)) : null;
+        const existingDay = prog?.weeks?.[currentEditingWeekIndex]?.days?.[String(dayNum)];
+        if (existingDay) {
+            document.getElementById('routine-name-input').value = existingDay.name || `Entrenamiento Día ${dayNum}`;
+            if (existingDay.exercises?.length > 0) {
+                existingDay.exercises.forEach(ex => addExerciseToBuilder(ex));
+            } else {
+                addExerciseToBuilder();
+            }
+        } else {
+            document.getElementById('routine-name-input').value = `Entrenamiento Día ${dayNum}`;
+            addExerciseToBuilder();
+        }
     };
 
     const addExerciseToBuilder = (data = null) => {
@@ -2398,7 +2354,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if(match.videoUrl) {
                             videoBtn.dataset.video = match.videoUrl;
                             videoBtn.querySelector('i').classList.remove('text-gray-400');
-                            videoBtn.querySelector('i').classList.add('text-blue-500');
+                            videoBtn.querySelector('i').classList.add('text-[#FFDB89]');
                         }
                     });
                     suggestionsBox.appendChild(div);
@@ -2517,7 +2473,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         filtered.forEach(client => {
             const tr = document.createElement('tr');
-            tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition";
+            tr.className = "hover:bg-[#FFDB89]/20 transition";
 
             // Status badge
             let statusBadge;
@@ -2534,11 +2490,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             tr.innerHTML = `
                 <td class="p-4 whitespace-nowrap text-sm font-bold">
-                    <span class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer" onclick="window.openClientProfile('${client._id}')">${client.name} ${client.lastName || ''}</span>
+                    <span class="text-[#FFDB89] hover:underline cursor-pointer" onclick="window.openClientProfile('${client._id}')">${client.name} ${client.lastName || ''}</span>
                 </td>
                 <td class="p-4 whitespace-nowrap text-sm">
                     <input type="date" value="${client.dueDate || ''}"
-                           class="bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm text-gray-700 dark:text-gray-300 dark:bg-gray-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                           class="bg-[#3a3a3c] border border-[#FFDB89]/30 rounded px-2 py-1 text-sm text-[#FFDB89] focus:ring-2 focus:ring-[#FFDB89] focus:outline-none"
                            onchange="window.updateClientDueDate('${client._id}', this.value)">
                 </td>
                 <td class="p-4 whitespace-nowrap text-center">
@@ -2624,57 +2580,59 @@ document.addEventListener('DOMContentLoaded', () => {
     // Show 12 months total (3 past + 9 future)
         const totalDays = 52 * 7; // 52 weeks = ~1 year 
         
+        const dayNames = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+        const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
         for(let i=0; i < totalDays; i++) {
             const currentDate = new Date(startDate);
             currentDate.setDate(startDate.getDate() + i);
             const dayNum = currentDate.getDate();
-            const monthName = currentDate.toLocaleString('default', { month: 'short' }).toUpperCase();
+            const monthName = monthNames[currentDate.getMonth()];
+            const year = currentDate.getFullYear();
             const isToday = currentDate.toDateString() === new Date().toDateString();
             const isFirstOfMonth = dayNum === 1;
             const cellId = `day-${currentDate.toISOString().split('T')[0]}`;
-            const dayNames = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
             const dayName = dayNames[currentDate.getDay()];
 
-            // 5-BUTTON HOVER MENU
-            const hoverMenu = `
-                <div class="day-cell-menu absolute inset-0 bg-gray-900/95 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                    <div class="flex gap-4">
-                        <button class="cal-action-btn text-white" data-action="add" data-date="${cellId}" title="Añadir"><i class="fas fa-plus text-2xl"></i></button>
-                        <button class="cal-action-btn text-white" data-action="rest" data-date="${cellId}" title="Descanso"><i class="fas fa-battery-full text-2xl"></i></button>
-                        <button class="cal-action-btn text-white" data-action="nutrition" data-date="${cellId}" title="Nutrición"><i class="fab fa-apple text-2xl"></i></button>
-                    </div>
-                    <div class="flex gap-4">
-                        <button class="cal-action-btn text-white" data-action="paste" data-date="${cellId}" title="Pegar"><i class="fas fa-clipboard text-2xl"></i></button>
-                        <button class="cal-action-btn text-white" data-action="program" data-date="${cellId}" title="Programa"><i class="far fa-calendar-plus text-2xl"></i></button>
-                    </div>
-                </div>
-            `;
+            // Month divider on the 1st of each month
+            if (isFirstOfMonth) {
+                html += `<div class="month-divider px-5 py-2.5 bg-[#1C1C1E] border-b border-[#FFDB89]/15 sticky top-0 z-10">
+                    <span class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-widest">${monthName} ${year}</span>
+                </div>`;
+            }
 
-                const mobileActions = `
-                <div class="mobile-day-actions hidden md:hidden">
-                    <button class="mobile-action-btn" data-action="add" data-date="${cellId}"><i class="fas fa-plus"></i></button>
-                    <button class="mobile-action-btn" data-action="rest" data-date="${cellId}"><i class="fas fa-battery-full"></i></button>
-                    <button class="mobile-action-btn" data-action="nutrition" data-date="${cellId}"><i class="fab fa-apple"></i></button>
-                    <button class="mobile-action-btn" data-action="paste" data-date="${cellId}"><i class="fas fa-clipboard"></i></button>
-                    <button class="mobile-action-btn" data-action="program" data-date="${cellId}"><i class="far fa-calendar-plus"></i></button>
-                </div>
-            `;
+            const dayNumDisplay = isToday
+                ? `<span class="inline-flex items-center justify-center w-7 h-7 bg-[#FFDB89] text-[#1C1C1E] rounded-full text-sm font-bold">${dayNum}</span>`
+                : `<span class="text-lg font-bold text-[#FFDB89]/80">${dayNum}</span>`;
 
-            const bgClass = isToday ? 'bg-blue-50 dark:bg-gray-800/80 border-t-4 border-blue-500' : 'bg-white dark:bg-gray-800';
-            const textClass = isToday ? 'text-blue-600 font-bold' : 'text-gray-500 dark:text-gray-400';
-            
+            const rowBg = isToday ? 'bg-[#FFDB89]/[0.06] border-l-2 border-l-[#FFDB89]' : '';
+
             html += `
-                <div id="${cellId}" class="day-cell ${bgClass} min-h-[160px] p-2 relative group transition hover:shadow-inner ${isToday ? 'is-today' : ''}" data-day-name="${dayName}">
-                    <div class="flex justify-between items-start pointer-events-none">
-                        <span class="text-xs font-bold ${textClass}">${dayNum} ${isFirstOfMonth ? monthName : ''}</span>
+                <div id="${cellId}" class="day-cell flex items-stretch border-b border-[#FFDB89]/10 relative group hover:bg-white/[0.02] transition-colors ${rowBg} ${isToday ? 'is-today' : ''}" data-day-name="${dayName}">
+
+                    <!-- Date column -->
+                    <div class="w-16 shrink-0 flex flex-col items-center justify-center py-3 gap-0.5 border-r border-[#FFDB89]/10">
+                        <span class="text-[10px] font-bold uppercase tracking-wide ${isToday ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'}">${dayName}</span>
+                        ${dayNumDisplay}
                     </div>
-                    <input type="checkbox" class="copy-day-checkbox hidden absolute top-2 right-2 w-4 h-4 z-30 accent-blue-500 cursor-pointer pointer-events-auto" data-date="${currentDate.toISOString().split('T')[0]}" onclick="event.stopPropagation(); window.toggleCopyDay(this)" />
-                    <div class="mt-2 space-y-1 content-area"></div>
-                    ${hoverMenu}
-                    ${mobileActions}
+
+                    <!-- Content area -->
+                    <div class="flex-1 py-2.5 px-4 min-w-0 flex items-center">
+                        <div class="content-area w-full"></div>
+                    </div>
+
+                    <!-- Action icons — no squares, just icons, hidden when cell has content -->
+                    <div class="day-cell-menu flex items-center gap-4 px-4 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button class="cal-action-btn text-[#FFDB89]/35 hover:text-[#FFDB89] transition-colors" data-action="add" data-date="${cellId}" title="Añadir rutina"><i class="fas fa-plus text-sm"></i></button>
+                        <button class="cal-action-btn text-[#FFDB89]/35 hover:text-[#FFDB89] transition-colors" data-action="rest" data-date="${cellId}" title="Día de descanso"><i class="fas fa-battery-full text-sm"></i></button>
+                        <button class="cal-action-btn text-[#FFDB89]/35 hover:text-[#FFDB89] transition-colors" data-action="nutrition" data-date="${cellId}" title="Nutrición"><i class="fab fa-apple text-sm"></i></button>
+                        <button class="cal-action-btn text-[#FFDB89]/35 hover:text-[#FFDB89] transition-colors" data-action="paste" data-date="${cellId}" title="Pegar"><i class="fas fa-clipboard text-sm"></i></button>
+                        <button class="cal-action-btn text-[#FFDB89]/35 hover:text-[#FFDB89] transition-colors" data-action="program" data-date="${cellId}" title="Asignar programa"><i class="far fa-calendar-plus text-sm"></i></button>
+                    </div>
+
+                    <input type="checkbox" class="copy-day-checkbox hidden absolute left-[80px] top-1/2 -translate-y-1/2 w-4 h-4 z-30 accent-[#FFDB89] cursor-pointer pointer-events-auto" data-date="${currentDate.toISOString().split('T')[0]}" onclick="event.stopPropagation(); window.toggleCopyDay(this)" />
                 </div>
             `;
-
         }
         return html;
     };
@@ -2685,7 +2643,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (action === 'add') {
             console.log("Opening workout editor for client:", currentClientViewId)
-            editorExercises = [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
+            editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
             editorDateStr = dateStr;
             editorWarmup = "";
             editorWarmupVideoUrl = "";
@@ -2699,7 +2657,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const content = cell.querySelector('.content-area');
                 const exists = content.querySelector('.rest-badge');
                 if(exists) exists.remove();
-                else content.insertAdjacentHTML('beforeend', `<div class="rest-badge bg-green-100 text-green-800 text-xs px-2 py-1 rounded text-center font-bold mt-2 border border-green-200">REST DAY</div>`);
+                else content.insertAdjacentHTML('beforeend', `<div class="rest-badge flex items-center gap-2"><div class="w-1 h-6 bg-[#FFDB89]/30 rounded-full shrink-0"></div><span class="text-xs font-bold text-[#FFDB89]/50">Día de descanso</span></div>`);
             }
             
         } else if (action === 'nutrition') {
@@ -2737,9 +2695,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             if(cell) {
                                 const area = cell.querySelector('.content-area');
                                 area.innerHTML = `
-                                    <div class="bg-gray-800 text-white text-[10px] p-1 rounded border-l-2 border-purple-500 mb-1 pl-2 cursor-pointer hover:bg-gray-700" onclick="window.loadWorkoutForEditing('${targetDateStr}', '${currentClientViewId}')">
-                                        <div class="font-bold">${pastedWorkout.title}</div>
-                                        <div class="text-gray-400">${pastedWorkout.exercises.length} ejercicios</div>
+                                    <div class="workout-card-wrapper">${window._calendarWorkouts[targetDateStr] = pastedWorkout, ''}
+                                        <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk" onclick="window.toggleWorkoutExpand(this)">
+                                            <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="text-sm font-bold text-[#FFDB89] truncate">${pastedWorkout.title}</div>
+                                                <div class="text-xs text-[#FFDB89]/50">${pastedWorkout.exercises.length} ejercicios</div>
+                                            </div>
+                                            <i class="fas fa-chevron-right text-[#FFDB89]/40 text-xs shrink-0 workout-chevron transition-transform duration-200"></i>
+                                        </div>
+                                        <div class="workout-expand-content hidden mt-1 border-t border-[#FFDB89]/10"></div>
                                     </div>
                                 `;
                                 const cb = cell.querySelector('.copy-day-checkbox');
@@ -2772,9 +2737,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         if(cell) {
                             const area = cell.querySelector('.content-area');
                             area.innerHTML = `
-                                <div class="bg-gray-800 text-white text-[10px] p-1 rounded border-l-2 border-purple-500 mb-1 pl-2 cursor-pointer hover:bg-gray-700" onclick="window.loadWorkoutForEditing('${dateStr}', '${currentClientViewId}')">
-                                    <div class="font-bold">${pastedWorkout.title}</div>
-                                    <div class="text-gray-400">${pastedWorkout.exercises.length} ejercicios</div>
+                                <div class="workout-card flex items-center gap-3 cursor-pointer group/wk" onclick="window.loadWorkoutForEditing('${dateStr}', '${currentClientViewId}')">
+                                    <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="text-sm font-bold text-[#FFDB89] truncate">${pastedWorkout.title}</div>
+                                        <div class="text-xs text-[#FFDB89]/50">${pastedWorkout.exercises.length} ejercicios</div>
+                                    </div>
+                                    <i class="fas fa-chevron-right text-[#FFDB89]/30 text-xs group-hover/wk:text-[#FFDB89] transition-colors shrink-0"></i>
                                 </div>
                             `;
                             const cb = cell.querySelector('.copy-day-checkbox');
@@ -2810,23 +2779,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     editorWarmup = workout.warmup || '';
                     editorWarmupVideoUrl = workout.warmupVideoUrl || '';
                     editorCooldown = workout.cooldown || '';
-                    editorExercises = workout.exercises || [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
+                    editorExercises = workout.exercises || [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
                 } else {
                     // New workout - initialize empty
-                    editorExercises = [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
+                    editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
                     editorWarmup = "";
                     editorWarmupVideoUrl = "";
                     editorCooldown = "";
                 }
             } catch(e) {
                 // Network error - initialize empty
-                editorExercises = [{ id: Date.now(), name: "", instructions: "", isSuperset: false, videoUrl: "" }];
+                editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
                 editorWarmup = "";
                 editorWarmupVideoUrl = "";
                 editorCooldown = "";
             }
         }
         
+        editorIsDirty = false;
+        clearInterval(editorAutosaveInterval);
+        editorAutosaveInterval = setInterval(async () => {
+            if (editorIsDirty) await window.performWorkoutSave(true);
+        }, 30000);
+
         const modal = document.getElementById('workout-editor-modal');
         modal.classList.remove('hidden');
         renderWorkoutEditorUI();
@@ -2834,7 +2809,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderWorkoutEditorUI = () => {
         const modal = document.getElementById('workout-editor-modal');
-        
+
+        // If panel already exists, only update the exercise list — no full re-render, no animation
         // Dynamic Exercise List
         const listHtml = editorExercises.map((ex, index) => {
             const letter = getLetter(index, editorExercises); 
@@ -2845,7 +2821,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!nextEx.isSuperset) {
                     supersetBtnHtml = `
                         <div class="flex justify-center -my-3 z-10 relative">
-                            <button onclick="window.linkSuperset(${index})" class="bg-gray-600 hover:bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full shadow-md transition border border-gray-500 font-bold">
+                            <button onclick="window.linkSuperset(${index})" class="bg-[#3a3a3c] hover:bg-[#FFDB89]/20 text-[#FFDB89] text-[10px] px-3 py-1 rounded-full shadow-md transition border border-[#FFDB89]/30 font-bold">
                                 <i class="fas fa-link mr-1"></i> Superset
                             </button>
                         </div>
@@ -2854,65 +2830,81 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             return `
-            <div class="p-6 border-b border-gray-700 bg-[#32323c] relative">
-                <div class="flex justify-between items-start mb-2">
-                    <div class="flex gap-2 items-start">
-                        <div class="flex flex-col items-center gap-1 pt-1">
-                            <input type="checkbox" class="ex-checkbox w-4 h-4 rounded bg-gray-700 border-gray-500" data-id="${ex.id}" ${ex.isSuperset ? 'checked' : ''}>
-                            <i class="fas fa-grip-lines text-gray-500 cursor-move hover:text-white text-xs" title="Move"></i>
-                        </div>
-                        <h3 class="text-white font-bold text-lg">${letter})</h3>
-                        <input type="text" value="${ex.name}" class="bg-transparent text-white font-bold ml-1 outline-none w-full" placeholder="Exercise title (required)" oninput="window.updateExName(${ex.id}, this.value)">
+            <div class="p-6 border-b border-[#FFDB89]/15 bg-[#32323c] relative">
+                <div class="flex items-start gap-2 mb-2 min-w-0">
+                    <div class="flex flex-col items-center gap-1 pt-1 shrink-0">
+                        <input type="checkbox" class="ex-checkbox w-4 h-4 rounded accent-[#FFDB89] bg-gray-700 border-[#FFDB89]/30" data-id="${ex.id}" ${ex.isSuperset ? 'checked' : ''}>
+                        <i class="fas fa-grip-lines text-[#FFDB89]/30 cursor-move hover:text-[#FFDB89] text-xs" title="Move"></i>
                     </div>
-                    <i class="fas fa-video ${ex.videoUrl ? 'text-blue-400' : 'text-gray-500'} cursor-pointer hover:text-blue-400" onclick="window.openVideoModalForEditor(${ex.id})"></i>
+                    <h3 class="text-[#FFDB89] font-bold text-lg shrink-0">${letter})</h3>
+                    <input type="text" value="${ex.name}" class="bg-transparent text-[#FFDB89] font-bold outline-none min-w-0 flex-1 placeholder-[#FFDB89]/30" placeholder="Título del ejercicio" oninput="window.updateExName(${ex.id}, this.value); window.markEditorDirty();">
+                    <i class="fas fa-video ${ex.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] shrink-0 mt-1" onclick="window.openVideoModalForEditor(${ex.id})"></i>
                 </div>
-                
-                <button class="w-full py-2 bg-[#3b4c75] text-[#8faae3] font-bold rounded text-sm hover:bg-[#475a87] transition mb-3 flex items-center justify-center gap-2" onclick="window.openHistoryModal(${ex.id})">
-                    <i class="fas fa-history"></i> See History
+
+                <button class="w-full py-2 bg-[#3a3a3c] text-[#FFDB89] font-bold rounded text-sm hover:bg-[#3a3a3c]/80 transition mb-3 flex items-center justify-center gap-2" onclick="window.openHistoryModal(${ex.id})">
+                    <i class="fas fa-history"></i> Ver historial
                 </button>
-                <textarea oninput="window.updateExInstructions(${ex.id}, this.value)" class="w-full bg-transparent text-gray-400 text-xs resize-none outline-none" placeholder="Sets, Reps, Tempo, Rest etc." rows="2">${ex.instructions || ''}</textarea>
+                <textarea oninput="window.updateExInstructions(${ex.id}, this.value); window.markEditorDirty();" class="w-full bg-transparent text-[#FFDB89]/60 text-xs resize-none outline-none placeholder-[#FFDB89]/30 mb-2" placeholder="Sets, Reps, Tempo, Rest etc." rows="2">${ex.instructions || ''}</textarea>
+                <textarea oninput="window.updateExResults(${ex.id}, this.value); window.markEditorDirty();" class="w-full bg-black/30 border border-[#FFDB89]/10 rounded-lg text-[#FFDB89]/80 text-xs resize-none outline-none placeholder-[#FFDB89]/25 p-2.5 focus:border-[#FFDB89]/30 transition" placeholder="Agregar resultados..." rows="2">${ex.results || ''}</textarea>
             </div>
             ${supersetBtnHtml}
             `;
         }).join('');
 
+        // If the panel already exists just swap the exercise list — no full re-render, no animation
+        const existingList = document.getElementById('editor-exercises-list');
+        if (existingList) { existingList.innerHTML = listHtml; return; }
+
         modal.innerHTML = `
-            <div id="editor-panel" class="bg-[#2d2d35] w-full max-w-md h-full shadow-2xl flex flex-col border-l border-gray-700 slide-in-right transition-all duration-300">
-                <div class="bg-[#ff6b4a] px-4 py-3 flex justify-between items-center text-white shrink-0">
-                    <div class="flex items-center gap-2"><span class="text-sm font-bold">Workout has unsaved changes</span></div>
-                    <div class="flex gap-3 text-white/90">
-                        <button onclick="document.getElementById('editor-panel').classList.toggle('editor-expanded')"><i class="fas fa-expand-alt"></i></button>
-                        <button><i class="far fa-file-alt"></i></button>
-                        <button onclick="document.getElementById('workout-editor-modal').classList.add('hidden')"><i class="fas fa-times"></i></button>
+            <div id="editor-panel" class="bg-[#2d2d35] w-full max-w-md h-full shadow-2xl flex flex-col border-l border-[#FFDB89]/15 slide-in-right transition-all duration-300">
+
+                <!-- TITLE always on top -->
+                <div class="px-5 py-4 border-b border-[#FFDB89]/15 bg-[#26262c] shrink-0 flex items-center gap-3">
+                    <input type="text" id="workout-title-input" value="${editorDateStr}" oninput="window.updateWorkoutTitle(this.value); window.markEditorDirty();" class="bg-transparent text-2xl font-bold text-[#FFDB89] placeholder-[#FFDB89]/30 w-full outline-none" placeholder="Nombre del Entrenamiento">
+                    <div class="flex gap-3 text-[#FFDB89]/40 shrink-0">
+                        <button onclick="document.getElementById('editor-panel').classList.toggle('editor-expanded')" class="hover:text-[#FFDB89] transition"><i class="fas fa-expand-alt text-sm"></i></button>
+                        <button onclick="window.closeWorkoutEditor()" class="hover:text-[#FFDB89] transition"><i class="fas fa-times text-sm"></i></button>
                     </div>
                 </div>
-                <!-- WORKOUT TITLE (Separate from warmup) -->
-                <div class="p-6 border-b border-gray-700 bg-[#26262c]">
-                    <input type="text" id="workout-title-input" value="${editorDateStr}" oninput="window.updateWorkoutTitle(this.value)" class="bg-transparent text-2xl font-bold text-white placeholder-gray-400 w-full outline-none" placeholder="Nombre del Entrenamiento">
-                </div>
-            
-                <!-- WARMUP/INSTRUCTIONS (Separate section) -->
-                <div class="p-6 border-b border-gray-700 hover:bg-[#363640] transition group relative">
-                    <div class="flex items-center gap-3">
-                        <div class="w-6 h-6 bg-orange-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"><i class="fas fa-fire"></i></div>
-                        <textarea oninput="window.updateWarmup(this.value)" class="bg-transparent text-base text-gray-300 placeholder-gray-500 w-full outline-none resize-none" rows="2" placeholder="Calentamiento o instrucciones generales...">${editorWarmup}</textarea>
-                        <i class="fas fa-video ${editorWarmupVideoUrl ? 'text-blue-400' : 'text-gray-500'} cursor-pointer hover:text-blue-400 flex-shrink-0" onclick="window.openWarmupVideoModal()" title="Video URL"></i>
+
+                <!-- UNSAVED BANNER — hidden by default, slides in when dirty -->
+                <div id="editor-unsaved-banner" class="bg-[#ff6b4a] shrink-0 overflow-hidden transition-all duration-500" style="max-height:0; opacity:0;">
+                    <div class="px-4 py-2 flex justify-between items-center text-white">
+                        <span class="text-xs font-bold flex items-center gap-1.5"><i class="fas fa-exclamation-circle"></i> Cambios sin guardar</span>
+                        <span id="editor-autosave-status" class="text-xs opacity-80"></span>
                     </div>
                 </div>
+
+                <!-- SCROLLABLE BODY -->
+                <div class="flex-1 overflow-y-auto">
+                    <!-- WARMUP -->
+                    <div class="p-6 border-b border-[#FFDB89]/15 hover:bg-[#363640] transition group relative">
+                        <div class="flex items-center gap-3">
+                            <div class="w-6 h-6 bg-orange-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"><i class="fas fa-fire"></i></div>
+                            <textarea oninput="window.updateWarmup(this.value); window.markEditorDirty();" class="bg-transparent text-base text-[#FFDB89]/70 placeholder-[#FFDB89]/30 w-full outline-none resize-none" rows="2" placeholder="Calentamiento o instrucciones generales...">${editorWarmup}</textarea>
+                            <i class="fas fa-video ${editorWarmupVideoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] flex-shrink-0" onclick="window.openWarmupVideoModal()" title="Video URL"></i>
+                        </div>
+                    </div>
+
                     <div id="editor-exercises-list">${listHtml}</div>
+
                     <div class="flex justify-center gap-2 p-6">
-                        <button class="px-3 py-1 border border-gray-500 rounded text-gray-300 text-xs hover:bg-gray-700 transition" onclick="window.addEditorExercise()">+ Exercise</button>
+                        <button class="px-3 py-1 border border-[#FFDB89]/30 rounded text-[#FFDB89] text-xs hover:bg-[#FFDB89]/10 transition" onclick="window.addEditorExercise()">+ Ejercicio</button>
                     </div>
-                    <div class="p-6 border-t border-gray-700">
-                    <div class="flex items-center gap-3">
-                        <div class="w-6 h-6 bg-blue-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"><i class="fas fa-snowflake"></i></div>
-                        <textarea oninput="window.updateCooldown(this.value)" class="bg-transparent text-base text-gray-300 placeholder-gray-500 w-full outline-none resize-none" rows="2" placeholder="Enfriamiento (estiramientos, cardio ligero...)">${editorCooldown || ''}</textarea>
+
+                    <!-- COOLDOWN -->
+                    <div class="p-6 border-t border-[#FFDB89]/15">
+                        <div class="flex items-center gap-3">
+                            <div class="w-6 h-6 bg-[#3a3a3c] border border-[#FFDB89]/30 rounded flex-shrink-0 flex items-center justify-center text-[#FFDB89] text-xs font-bold"><i class="fas fa-snowflake"></i></div>
+                            <textarea oninput="window.updateCooldown(this.value); window.markEditorDirty();" class="bg-transparent text-base text-[#FFDB89]/70 placeholder-[#FFDB89]/30 w-full outline-none resize-none" rows="2" placeholder="Enfriamiento (estiramientos, cardio ligero...)">${editorCooldown || ''}</textarea>
+                        </div>
                     </div>
                 </div>
-                </div>
-                <div class="p-4 border-t border-gray-700 flex flex-col gap-3 bg-[#26262c] shrink-0">
-                    <button class="w-full py-3 bg-[#4a6399] text-white font-bold rounded hover:bg-[#5a73a9] transition shadow-lg" onclick="window.saveDayWorkout()">Guardar</button>
-                    <button class="w-full py-2 text-gray-300 font-bold hover:text-white transition rounded hover:bg-gray-700" onclick="document.getElementById('workout-editor-modal').classList.add('hidden')">Cancelar</button>
+
+                <!-- FOOTER -->
+                <div class="p-4 border-t border-[#FFDB89]/15 flex flex-col gap-3 bg-[#26262c] shrink-0">
+                    <button class="w-full py-3 bg-[#3a3a3c] text-[#FFDB89] font-bold rounded hover:bg-[#3a3a3c]/80 transition shadow-lg" onclick="window.saveDayWorkout()">Guardar</button>
+                    <button class="w-full py-2 text-[#FFDB89]/60 font-bold hover:text-[#FFDB89] transition rounded hover:bg-[#FFDB89]/10" onclick="window.closeWorkoutEditor()">Cancelar</button>
                 </div>
             </div>
         `;
@@ -2982,14 +2974,157 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // HELPERS
     window.updateWarmup = (val) => { editorWarmup = val; };
-    window.addEditorExercise = () => { editorExercises.push({ id: Date.now(), name: "", isSuperset: false, videoUrl: "" }); renderWorkoutEditorUI(); };
+    window.addEditorExercise = () => { editorExercises.push({ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }); renderWorkoutEditorUI(); window.markEditorDirty(); };
     window.updateExName = (id, val) => { const ex = editorExercises.find(e => e.id === id); if(ex) ex.name = val; };
     window.updateExInstructions = (id, val) => {
         const ex = editorExercises.find(e => e.id === id);
         if(ex) ex.instructions = val;
     };
+    window.updateExResults = (id, val) => {
+        const ex = editorExercises.find(e => e.id === id);
+        if(ex) ex.results = val;
+    };
     window.updateCooldown = (val) => { editorCooldown = val; };
     window.updateWorkoutTitle = (val) => { editorWorkoutTitle = val; };
+
+    window._calendarWorkouts = window._calendarWorkouts || {};
+
+    window.toggleWorkoutExpand = (headerEl) => {
+        const cell = headerEl.closest('.day-cell');
+        if (!cell) return;
+        const dateStr = cell.id.replace('day-', '');
+        const wrapper = headerEl.closest('.workout-card-wrapper');
+        const content = wrapper.querySelector('.workout-expand-content');
+        const chevron = headerEl.querySelector('.workout-chevron');
+        const isExpanded = !content.classList.contains('hidden');
+
+        if (isExpanded) {
+            content.classList.add('hidden');
+            chevron.style.transform = 'rotate(0deg)';
+            return;
+        }
+
+        const workout = window._calendarWorkouts[dateStr];
+        if (!workout) { window.loadWorkoutForEditing(dateStr, currentClientViewId); return; }
+
+        const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        let html = '';
+
+        if (workout.warmup) {
+            html += `<div class="py-2 text-xs text-[#FFDB89]/50 italic border-b border-[#FFDB89]/10">${workout.warmup}</div>`;
+        }
+
+        (workout.exercises || []).forEach((ex, i) => {
+            html += `<div class="py-2 flex items-start gap-2 border-b border-[#FFDB89]/10 last:border-0">
+                <span class="text-xs font-bold text-[#FFDB89]/50 shrink-0 mt-0.5">${L[i] || '?'})</span>
+                <div class="min-w-0">
+                    <div class="text-xs font-bold text-[#FFDB89]/80">${ex.name || '<span class="opacity-40 italic">Sin nombre</span>'}</div>
+                    ${ex.instructions ? `<div class="text-xs text-[#FFDB89]/40 mt-0.5 leading-relaxed">${ex.instructions}</div>` : ''}
+                </div>
+            </div>`;
+        });
+
+        if (workout.cooldown) {
+            html += `<div class="pt-2 text-xs text-[#FFDB89]/50 italic border-t border-[#FFDB89]/10">${workout.cooldown}</div>`;
+        }
+
+        html += `<button onclick="event.stopPropagation(); window.loadWorkoutForEditing('${dateStr}', '${currentClientViewId}')"
+            class="mt-2 text-[10px] font-bold text-[#FFDB89]/30 hover:text-[#FFDB89] transition-colors flex items-center gap-1">
+            <i class="fas fa-pen text-[9px]"></i> Editar rutina
+        </button>`;
+
+        content.innerHTML = html;
+        content.classList.remove('hidden');
+        chevron.style.transform = 'rotate(90deg)';
+    };
+
+    window.markEditorDirty = () => {
+        editorIsDirty = true;
+        const banner = document.getElementById('editor-unsaved-banner');
+        if (!banner) return;
+        banner.style.maxHeight = '40px';
+        banner.style.opacity = '1';
+        clearTimeout(window._editorBannerHideTimer);
+        window._editorBannerHideTimer = setTimeout(() => {
+            banner.style.maxHeight = '0';
+            banner.style.opacity = '0';
+        }, 4000);
+    };
+
+    window.closeWorkoutEditor = () => {
+        clearInterval(editorAutosaveInterval);
+        editorAutosaveInterval = null;
+        editorIsDirty = false;
+        document.getElementById('workout-editor-modal').classList.add('hidden');
+    };
+
+    window.performWorkoutSave = async (silent = false) => {
+        if (!currentClientViewId) { if (!silent) alert('Error: No hay cliente seleccionado.'); return; }
+        const titleInput = document.getElementById('workout-title-input');
+        const workoutData = {
+            clientId: currentClientViewId,
+            date: editorDateStr,
+            title: titleInput?.value || editorDateStr,
+            warmup: editorWarmup,
+            warmupVideoUrl: editorWarmupVideoUrl,
+            cooldown: editorCooldown,
+            exercises: editorExercises.map(ex => ({
+                id: ex.id, name: ex.name, instructions: ex.instructions || '',
+                results: ex.results || '', videoUrl: ex.videoUrl || '', isSuperset: ex.isSuperset || false
+            }))
+        };
+        try {
+            const response = await apiFetch('/api/client-workouts', { method: 'POST', body: JSON.stringify(workoutData) });
+            if (response.ok) {
+                const savedWorkout = await response.json();
+                editorIsDirty = false;
+                const cell = document.getElementById(`day-${editorDateStr}`);
+                if (cell) {
+                    const area = cell.querySelector('.content-area');
+                    window._calendarWorkouts[editorDateStr] = workoutData;
+                    area.innerHTML = `
+                        <div class="workout-card-wrapper">
+                            <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk" onclick="window.toggleWorkoutExpand(this)">
+                                <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-sm font-bold text-[#FFDB89] truncate">${workoutData.title}</div>
+                                    <div class="text-xs text-[#FFDB89]/50">${editorExercises.length} ejercicios</div>
+                                </div>
+                                <i class="fas fa-chevron-right text-[#FFDB89]/40 text-xs shrink-0 workout-chevron transition-transform duration-200"></i>
+                            </div>
+                            <div class="workout-expand-content hidden mt-1 border-t border-[#FFDB89]/10"></div>
+                        </div>`;
+                    const cb = cell.querySelector('.copy-day-checkbox');
+                    if (cb) cb.classList.remove('hidden');
+                }
+                if (silent) {
+                    // Show brief "Autoguardado" indicator in the banner status
+                    const banner = document.getElementById('editor-unsaved-banner');
+                    const status = document.getElementById('editor-autosave-status');
+                    if (banner && status) {
+                        status.textContent = '✓ Autoguardado';
+                        banner.style.maxHeight = '40px';
+                        banner.style.opacity = '1';
+                        // Change banner color to indicate success
+                        banner.style.backgroundColor = '#2C6B3C';
+                        setTimeout(() => {
+                            banner.style.maxHeight = '0';
+                            banner.style.opacity = '0';
+                            banner.style.backgroundColor = '';
+                            status.textContent = '';
+                        }, 2500);
+                    }
+                } else {
+                    window.closeWorkoutEditor();
+                    alert('Workout guardado exitosamente!');
+                }
+            } else {
+                if (!silent) { const err = await response.text(); alert('Error al guardar: ' + err); }
+            }
+        } catch(e) {
+            if (!silent) alert('Error de conexión: ' + e.message);
+        }
+    };
     // LINK SUPERSET BUTTON ACTION
     window.linkSuperset = (index) => {
         if (editorExercises[index + 1]) {
@@ -3005,6 +3140,8 @@ document.addEventListener('DOMContentLoaded', () => {
         currentEditorExId = id;
         const ex = editorExercises.find(e => e.id === id);
         document.getElementById('video-url-input').value = ex ? ex.videoUrl : "";
+        const titleEl = document.getElementById('video-modal-title');
+        if (titleEl) titleEl.textContent = ex?.name?.trim() || 'Añadir Video URL';
         document.getElementById('video-upload-modal').classList.remove('hidden');
     };
 
@@ -3019,11 +3156,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         document.getElementById('video-upload-modal').classList.add('hidden');
         renderWorkoutEditorUI();
+        window.markEditorDirty();
     };
 
     window.openWarmupVideoModal = () => {
         currentEditorExId = 'warmup';
         document.getElementById('video-url-input').value = editorWarmupVideoUrl || '';
+        const titleEl = document.getElementById('video-modal-title');
+        if (titleEl) titleEl.textContent = 'Calentamiento';
         document.getElementById('video-upload-modal').classList.remove('hidden');
     };
 
@@ -3032,6 +3172,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.saveDayWorkout = async () => {
+        await window.performWorkoutSave(false);
+    };
+
+    window._saveDayWorkoutLegacy = async () => {
         console.log("DEBUG: Save clicked");
         console.log("currentClientViewId:", currentClientViewId);
         console.log("editorDateStr:", editorDateStr);
@@ -3082,7 +3226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(cell) {
                     const area = cell.querySelector('.content-area');
                     area.innerHTML = `
-                        <div class="bg-gray-800 text-white text-[10px] p-1 rounded border-l-2 border-orange-500 mb-1 pl-2 cursor-pointer hover:bg-gray-700" onclick="window.loadWorkoutForEditing('${editorDateStr}', '${currentClientViewId}')">
+                        <div class="workout-card flex items-center gap-3 cursor-pointer group/wk" onclick="window.loadWorkoutForEditing('${editorDateStr}', '${currentClientViewId}')">
                             <div class="font-bold">${workoutData.title}</div>
                             <div class="text-gray-400">${editorExercises.length} ejercicios</div>
                         </div>
@@ -3284,10 +3428,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const btn7 = document.getElementById('notif-filter-7days');
                                 const btnU = document.getElementById('notif-filter-unread');
                                 const setActive = (active, inactive) => {
-                                    active.classList.add('bg-[#92A9E1]', 'text-white', 'shadow');
-                                    active.classList.remove('bg-white/60', 'text-[#5a6f8a]', 'border', 'border-[#92A9E1]/30');
-                                    inactive.classList.remove('bg-[#92A9E1]', 'text-white', 'shadow');
-                                    inactive.classList.add('bg-white/60', 'text-[#5a6f8a]', 'border', 'border-[#92A9E1]/30');
+                                    active.classList.add('bg-[#FFDB89]', 'text-[#2C2C2E]', 'shadow');
+                                    active.classList.remove('bg-[#030303]/60', 'text-[#FFDB89]', 'border', 'border-[#FFDB89]/30');
+                                    inactive.classList.remove('bg-[#FFDB89]', 'text-[#2C2C2E]', 'shadow');
+                                    inactive.classList.add('bg-[#030303]/60', 'text-[#FFDB89]', 'border', 'border-[#FFDB89]/30');
                                 };
                                 if (btn7) btn7.addEventListener('click', () => { setActive(btn7, btnU); fetchAndRenderNotifications('7days'); });
                                 if (btnU) btnU.addEventListener('click', () => { setActive(btnU, btn7); fetchAndRenderNotifications('unread'); });
@@ -3330,9 +3474,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const invBtn = document.getElementById('send-invite-btn');
             if (invToggle) {
                 invToggle.dataset.on = 'true';
-                invToggle.classList.add('bg-green-500');
-                invToggle.classList.remove('bg-gray-600');
-                invToggle.querySelector('div').classList.add('translate-x-6');
+                invToggle.classList.add('bg-[#FFDB89]/20');
+                invToggle.classList.remove('bg-white/10');
+                invToggle.querySelector('div').classList.add('translate-x-5');
                 invToggle.querySelector('div').classList.remove('translate-x-0');
             }
             if (invBtn) {
@@ -3372,7 +3516,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'cancel-create-program') { document.getElementById('create-program-modal').classList.add('hidden'); return; }
         if (target.id === 'back-to-program-list') { document.getElementById('program-builder-view').classList.add('hidden'); document.getElementById('programs-main-view').classList.remove('hidden'); return; }
         if (target.id === 'add-week-btn') { addWeekToCalendar(); return; }
-        if (target.classList.contains('action-add')) { openExerciseBuilder(target.closest('.relative').querySelector('span').innerText.replace('Día ', '')); return; }
+        if (target.classList.contains('action-add')) {
+            const weekBlocks = Array.from(document.querySelectorAll('.week-block'));
+            currentEditingWeekIndex = weekBlocks.indexOf(target.closest('.week-block'));
+            currentEditingDay = target.dataset.day;
+            openExerciseBuilder(target.dataset.day);
+            return;
+        }
         if (target.id === 'cancel-routine-edit' || target.id === 'cancel-routine-btn-footer') { document.getElementById('edit-routine-modal').classList.add('hidden'); return; }
         if (target.id === 'add-exercise-btn') { addExerciseToBuilder(); return; }
         if (target.id === 'save-routine-btn') { saveRoutine(); return; }
@@ -3428,11 +3578,11 @@ document.addEventListener('DOMContentLoaded', () => {
             target.dataset.on = !isOn;
             const thumb = target.querySelector('div');
             if (!isOn) {
-                target.classList.remove('bg-gray-600'); target.classList.add('bg-green-500');
-                thumb.classList.add('translate-x-6'); thumb.classList.remove('translate-x-0');
+                target.classList.remove('bg-white/10'); target.classList.add('bg-[#FFDB89]/20');
+                thumb.classList.add('translate-x-5'); thumb.classList.remove('translate-x-0');
             } else {
-                target.classList.add('bg-gray-600'); target.classList.remove('bg-green-500');
-                thumb.classList.remove('translate-x-6'); thumb.classList.add('translate-x-0');
+                target.classList.add('bg-white/10'); target.classList.remove('bg-[#FFDB89]/20');
+                thumb.classList.remove('translate-x-5'); thumb.classList.add('translate-x-0');
             }
             // If this is the invite toggle, update the invite button state
             if (target.id === 'send-invite-toggle') {
@@ -3738,13 +3888,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         plugins: { legend: { display: false } },
                         scales: {
                             x: {
-                                ticks: { color: '#92A9E1', font: { size: 10 } },
-                                grid: { color: 'rgba(146,169,225,0.08)' }
+                                ticks: { color: '#FFDB89', font: { size: 10 } },
+                                grid: { color: 'rgba(255,219,137,0.08)' }
                             },
                             y: {
                                 beginAtZero: false,
-                                ticks: { color: '#92A9E1', font: { size: 10 } },
-                                grid: { color: 'rgba(146,169,225,0.08)' }
+                                ticks: { color: '#FFDB89', font: { size: 10 } },
+                                grid: { color: 'rgba(255,219,137,0.08)' }
                             }
                         }
                     }
@@ -3759,7 +3909,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const weightData  = measurements.map(m => m.weight   || null);
             const fatData     = measurements.map(m => m.bodyFat  || null);
 
-            buildChart('weightChart', 'Peso (lbs)', weightData,  chartLabels, '#92A9E1');
+            buildChart('weightChart', 'Peso (lbs)', weightData,  chartLabels, '#FFDB89');
             buildChart('fatChart',    '% Grasa',    fatData,     chartLabels, '#FFDB89');
 
             // --- Render table ---
@@ -3784,8 +3934,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const [y, mo, d] = m.date.split('-');
                 const dateStr = `${d}/${mo}/${y}`;
                 const cell = (val, highlight = false) =>
-                    `<td class="py-3 px-3 text-center ${highlight ? 'font-bold text-[#FFDB89]' : 'text-[#92A9E1]/80'} whitespace-nowrap">${val || '—'}</td>`;
-                return `<tr class="border-b border-[#92A9E1]/10 hover:bg-white/[0.02] transition">
+                    `<td class="py-3 px-3 text-center ${highlight ? 'font-bold text-[#FFDB89]' : 'text-[#FFDB89]/60'} whitespace-nowrap">${val || '—'}</td>`;
+                return `<tr class="border-b border-[#FFDB89]/10 hover:bg-[#FFDB89]/5 transition">
                     <td class="py-3 px-3 text-left font-medium text-white whitespace-nowrap">${dateStr}</td>
                     ${cell(m.bmi ? m.bmi.toFixed(1) : null)}
                     ${cell(m.bodyFat ? m.bodyFat + '%' : null)}

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Particle Wave</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #030303; }
+    canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+
+    let W, H;
+    function resize() {
+        W = canvas.width  = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ── Grid density ──────────────────────────────────────────────
+    const COLS = 60;
+    const ROWS = 60;
+
+    // ── Brand colours ─────────────────────────────────────────────
+    // #FFDB89 → R 255  G 219  B 137
+    const GR = 255, GG = 219, GB = 137;
+
+    // ── Camera (static tilt so the grid feels 3-D) ────────────────
+    const FOCAL   = 900;   // perspective strength
+    const CAM_Z   = 550;   // camera distance from origin
+    const TILT_X  = -0.38; // look down at the plane
+    const TILT_Y  =  0.12; // slight left-right angle
+
+    const cosTX = Math.cos(TILT_X), sinTX = Math.sin(TILT_X);
+    const cosTY = Math.cos(TILT_Y), sinTY = Math.sin(TILT_Y);
+
+    // Pre-allocate dot array to avoid GC pressure
+    const dots = new Array(COLS * ROWS);
+
+    let startTime = null;
+
+    function animate(ts) {
+        if (!startTime) startTime = ts;
+        const t = (ts - startTime) * 0.001; // seconds
+
+        // Clear with brand near-black
+        ctx.fillStyle = '#030303';
+        ctx.fillRect(0, 0, W, H);
+
+        // Plane spans slightly beyond the viewport for edge-to-edge coverage
+        const span = Math.max(W, H) * 1.45;
+
+        let count = 0;
+
+        for (let ri = 0; ri < ROWS; ri++) {
+            for (let ci = 0; ci < COLS; ci++) {
+                const u = ci / (COLS - 1); // 0 → 1
+                const v = ri / (ROWS - 1); // 0 → 1
+
+                // Base 3-D position on a flat plane
+                const x0 = (u - 0.5) * span;
+                const y0 = (v - 0.5) * span;
+
+                // ── Layered wave displacement (Z height) ──────────
+                // Three overlapping waves create the organic cloth feel
+                const z0 =
+                    Math.sin(u * Math.PI * 4.2 + t * 0.75)
+                        * Math.cos(v * Math.PI * 3.0 + t * 0.50) * 170 +
+                    Math.sin(v * Math.PI * 4.8 - t * 0.65) * 75 +
+                    Math.cos((u + v) * Math.PI * 2.8 + t * 0.42) * 55;
+
+                // ── Apply camera tilt (rotate X then Y) ──────────
+                // Rotate around X
+                const y1 = y0 * cosTX - z0 * sinTX;
+                const z1 = y0 * sinTX + z0 * cosTX;
+                // Rotate around Y
+                const x2 =  x0 * cosTY + z1 * sinTY;
+                const z2 = -x0 * sinTY + z1 * cosTY;
+                const y2 = y1;
+
+                // ── Perspective projection ────────────────────────
+                const depth = FOCAL + z2 + CAM_Z;
+                if (depth <= 0) continue;
+                const scale = FOCAL / depth;
+
+                const px = W * 0.5 + x2 * scale;
+                const py = H * 0.5 + y2 * scale;
+
+                // Dot radius: subtle size variation with depth
+                const radius = Math.max(0.5, 2.1 * scale);
+
+                // Alpha: dots closer to camera are brighter
+                const normDepth = Math.min(1, Math.max(0, (z2 + 340) / 680));
+                const alpha     = 0.08 + normDepth * 0.92;
+
+                dots[count++] = { px, py, radius, z2, alpha };
+            }
+        }
+
+        // ── Sort back → front for correct overlap ─────────────────
+        const visible = dots.slice(0, count);
+        visible.sort((a, b) => a.z2 - b.z2);
+
+        // ── Draw ──────────────────────────────────────────────────
+        for (let i = 0; i < visible.length; i++) {
+            const d = visible[i];
+            ctx.beginPath();
+            ctx.arc(d.px, d.py, d.radius, 0, Math.PI * 2);
+            // Gold with depth-driven opacity; darkest dots tinted toward #2C2C2E
+            const mix   = d.alpha;               // 0 = far, 1 = close
+            const r     = Math.round(GR * mix + 44  * (1 - mix));
+            const g     = Math.round(GG * mix + 44  * (1 - mix));
+            const b     = Math.round(GB * mix + 46  * (1 - mix));
+            ctx.fillStyle = `rgba(${r},${g},${b},${(0.15 + mix * 0.85).toFixed(2)})`;
+            ctx.fill();
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

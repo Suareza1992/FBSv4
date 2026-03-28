@@ -2,69 +2,69 @@
 
     <div>
         <h2 class="text-3xl font-bold text-[#FFDB89]">Gestion de Pagos</h2>
-        <p class="text-[#92A9E1]/70">Controla el estado de membresia de tus clientes.</p>
+        <p class="text-[#FFDB89]/60">Controla el estado de membresia de tus clientes.</p>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-        <div id="al-dia-card" class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#92A9E1]/20 bg-white/5 transition-all duration-300">
+        <div id="al-dia-card" class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#FFDB89]/20 bg-white/5 hover:bg-[#FFDB89]/10 transition-all duration-300">
             <i class="fas fa-check-circle text-green-400 text-3xl mr-4"></i>
             <div>
-                <p class="text-sm font-semibold text-[#92A9E1]/70">Al dia:</p>
-                <p id="count-paid" class="text-2xl font-bold text-white">0</p>
+                <p class="text-sm font-semibold text-[#FFDB89]/60">Al dia:</p>
+                <p id="count-paid" class="text-2xl font-bold text-[#FFDB89]">0</p>
             </div>
         </div>
 
-        <div id="pendiente-card" class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#92A9E1]/20 bg-white/5 transition-all duration-300">
+        <div id="pendiente-card" class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#FFDB89]/20 bg-white/5 hover:bg-[#FFDB89]/10 transition-all duration-300">
             <i class="fas fa-exclamation-triangle text-red-400 text-3xl mr-4"></i>
             <div>
-                <p class="text-sm font-semibold text-[#92A9E1]/70">Pendiente:</p>
-                <p id="count-unpaid" class="text-2xl font-bold text-white">0</p>
+                <p class="text-sm font-semibold text-[#FFDB89]/60">Pendiente:</p>
+                <p id="count-unpaid" class="text-2xl font-bold text-[#FFDB89]">0</p>
             </div>
         </div>
 
-        <div class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#92A9E1]/20 bg-white/5 transition-all duration-300">
+        <div class="h-24 md:h-20 lg:h-16 flex items-center p-4 rounded-xl border border-[#FFDB89]/20 bg-white/5 hover:bg-[#FFDB89]/10 transition-all duration-300">
             <i class="fas fa-clock text-yellow-400 text-3xl mr-4"></i>
             <div>
-                <p class="text-sm font-semibold text-[#92A9E1]/70">Vencidos:</p>
-                <p id="count-overdue" class="text-2xl font-bold text-white">0</p>
+                <p class="text-sm font-semibold text-[#FFDB89]/60">Vencidos:</p>
+                <p id="count-overdue" class="text-2xl font-bold text-[#FFDB89]">0</p>
             </div>
         </div>
 
     </div>
 
-    <div class="flex flex-wrap items-center gap-4">
+    <div class="flex flex-wrap items-center gap-4 px-px">
         <div class="relative flex-grow">
-            <input type="text" id="pagos-search" placeholder="Buscar cliente..." class="w-full pl-10 pr-4 py-2 border border-[#92A9E1]/30 rounded-lg bg-white/10 text-white placeholder-[#92A9E1]/50 focus:outline-none focus:ring-2 focus:ring-[#92A9E1] transition duration-150">
-            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-[#92A9E1]"></i>
+            <input type="text" id="pagos-search" placeholder="Buscar cliente..." class="w-full pl-10 pr-4 py-2 border border-[#FFDB89]/30 rounded-lg bg-[#0D0D0D] text-[#FFDB89] placeholder:text-[#FFDB89]/40 focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition duration-150">
+            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-[#FFDB89]/50"></i>
         </div>
-        <select id="pagos-status-filter" class="py-2 px-4 border border-[#92A9E1]/30 rounded-lg bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-[#92A9E1] transition duration-150">
-            <option value="all" class="text-black">Todos</option>
-            <option value="paid" class="text-black">Al dia</option>
-            <option value="unpaid" class="text-black">Pendiente</option>
-            <option value="overdue" class="text-black">Vencidos</option>
+        <select id="pagos-status-filter" class="py-2 px-4 border border-[#FFDB89]/30 rounded-lg bg-[#0D0D0D] text-[#FFDB89] focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition duration-150">
+            <option value="all" class="text-[#FFDB89] bg-[#0D0D0D]">Todos</option>
+            <option value="paid" class="text-[#FFDB89] bg-[#0D0D0D]">Al dia</option>
+            <option value="unpaid" class="text-[#FFDB89] bg-[#0D0D0D]">Pendiente</option>
+            <option value="overdue" class="text-[#FFDB89] bg-[#0D0D0D]">Vencidos</option>
         </select>
     </div>
 
     <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-[#92A9E1]/20">
+        <table class="min-w-full divide-y divide-[#FFDB89]/20">
             <thead>
                 <tr>
-                    <th scope="col" class="p-4 text-left text-xs font-bold text-[#92A9E1] uppercase tracking-wider">
+                    <th scope="col" class="p-4 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">
                         Cliente
                     </th>
-                    <th scope="col" class="p-4 text-left text-xs font-bold text-[#92A9E1] uppercase tracking-wider">
+                    <th scope="col" class="p-4 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">
                         Fecha Vencimiento
                     </th>
-                    <th scope="col" class="p-4 text-center text-xs font-bold text-[#92A9E1] uppercase tracking-wider">
+                    <th scope="col" class="p-4 text-center text-xs font-bold text-[#FFDB89] uppercase tracking-wider">
                         Estado
                     </th>
-                    <th scope="col" class="p-4 text-right text-xs font-bold text-[#92A9E1] uppercase tracking-wider">
+                    <th scope="col" class="p-4 text-right text-xs font-bold text-[#FFDB89] uppercase tracking-wider">
                         Acciones
                     </th>
                 </tr>
             </thead>
-            <tbody id="payments-table-body" class="divide-y divide-[#92A9E1]/10">
+            <tbody id="payments-table-body" class="divide-y divide-[#FFDB89]/10">
             </tbody>
         </table>
     </div>

@@ -2,39 +2,39 @@
 
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h2 class="text-3xl font-bold text-[#3d5a80]">Mis clientes</h2>
-            <p class="text-[#5a6f8a]">Gestiona perfiles, asigna rutinas y monitorea el progreso.</p>
+            <h2 class="text-3xl font-bold text-[#FFDB89]">Mis clientes</h2>
+            <p class="text-[#FFDB89]">Gestiona perfiles, asigna rutinas y monitorea el progreso.</p>
         </div>
-        <div class="flex flex-wrap gap-3">
-            <button id="open-group-modal" class="px-4 py-2 bg-[#92A9E1] text-white font-semibold rounded-lg shadow-md hover:bg-[#7b93cc] transition transform hover:scale-105">
+        <div class="flex flex-wrap gap-3 mr-4">
+            <button id="open-group-modal" class="px-4 py-2 bg-[#2C2C2E] text-[#FFDB89] font-semibold rounded-lg border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 transition">
                 <i class="fas fa-layer-group mr-2"></i> Crear grupo
             </button>
-            <button id="open-add-client-modal" class="px-4 py-2 bg-[#7b93cc] text-white font-semibold rounded-lg shadow-md hover:bg-[#6a82b8] transition transform hover:scale-105">
+            <button id="open-add-client-modal" class="px-4 py-2 bg-[#2C2C2E] text-[#FFDB89] font-semibold rounded-lg border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 transition">
                 <i class="fas fa-user-plus mr-2"></i> Añadir cliente
             </button>
         </div>
     </div>
 
-    <div class="overflow-hidden">
-        <div class="p-4 border-b border-[#92A9E1]/20 flex gap-4">
-            <input type="text" id="client-search-input" placeholder="Buscar por nombre..." class="w-full md:w-64 p-2 bg-white border border-[#92A9E1]/30 rounded text-sm text-[#3d5a80] focus:outline-none focus:ring-2 focus:ring-[#92A9E1]">
-            <select id="client-status-filter" class="p-2 bg-white border border-[#92A9E1]/30 rounded text-sm text-[#3d5a80] focus:outline-none focus:ring-2 focus:ring-[#92A9E1]">
+    <div class="overflow-visible">
+        <div class="py-3 px-px border-b border-[#92A9E1]/20 flex gap-4">
+            <input type="text" id="client-search-input" placeholder="Buscar por nombre..." class="w-full md:w-64 h-10 px-3 bg-[#0D0D0D] border border-[#FFDB89]/50 rounded text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/40 focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/60">
+            <select id="client-status-filter" class="h-10 px-3 bg-[#0D0D0D] border border-[#FFDB89]/50 rounded text-sm text-[#FFDB89] focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/60">
                 <option value="all">Todos</option>
                 <option value="active">Activos</option>
                 <option value="inactive">Inactivos</option>
             </select>
         </div>
         <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-[#92A9E1]/20">
-                <thead class="bg-[#92A9E1]/10">
+            <table class="min-w-full divide-y divide-[#FFDB89]/10">
+                <thead class="bg-[#3a3a3c]">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Cliente</th>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Grupo</th> <th class="px-6 py-3 text-left text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Programa</th>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Estatus</th>
-                        <th class="px-6 py-3 text-right text-xs font-bold text-[#5a6f8a] uppercase tracking-wider">Acciones</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Cliente</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Grupo</th> <th class="px-6 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Programa</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Estatus</th>
+                        <th class="px-6 py-3 text-right text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Acciones</th>
                     </tr>
                 </thead>
-                <tbody id="clients-table-body" class="bg-white/30 divide-y divide-[#92A9E1]/10">
+                <tbody id="clients-table-body" class="divide-y divide-[#FFDB89]/10">
                 </tbody>
             </table>
         </div>
@@ -43,7 +43,7 @@
     <div id="add-client-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
             <div class="p-6 border-b border-gray-700/50 flex justify-between items-center">
-                <h2 class="text-2xl font-bold text-white">Nuevo cliente</h2>
+                <h2 class="text-2xl font-bold text-[#FFDB89]">Nuevo cliente</h2>
                 <button id="close-add-client-modal" class="text-gray-400 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
             </div>
 
@@ -132,9 +132,9 @@
                             <div><label class="block text-xs text-gray-500 mb-1 uppercase font-bold">Max HR (bpm)</label><input type="number" id="opt-mahr" class="glass-input w-full p-3 rounded-lg text-sm" placeholder="ej. 191"></div>
                         </div>
                         <div class="space-y-4 pt-2">
-                            <div class="flex items-center justify-between"><span class="text-sm font-bold text-white">Email daily workout</span><button class="toggle-switch w-12 h-6 rounded-full bg-green-500 flex items-center px-1 transition duration-300" data-on="true"><div class="w-4 h-4 bg-white rounded-full shadow-md transform translate-x-6 transition duration-300"></div></button></div>
-                            <div class="flex items-center justify-between"><span class="text-sm font-bold text-white">Email missed workouts</span><button class="toggle-switch w-12 h-6 rounded-full bg-gray-600 flex items-center px-1 transition duration-300" data-on="false"><div class="w-4 h-4 bg-white rounded-full shadow-md transform translate-x-0 transition duration-300"></div></button></div>
-                            <div class="flex items-center justify-between pt-4 border-t border-gray-700/50"><div><p class="text-sm font-bold text-white">Hide from dashboard</p><p class="text-xs text-gray-500">Hide results and notifications</p></div><button id="opt-hide-dash" class="toggle-switch w-12 h-6 rounded-full bg-gray-600 flex items-center px-1 transition duration-300" data-on="false"><div class="w-4 h-4 bg-white rounded-full shadow-md transform translate-x-0 transition duration-300"></div></button></div>
+                            <div class="flex items-center justify-between"><span class="text-sm font-bold text-white">Email daily workout</span><button class="toggle-switch w-12 h-6 rounded-full bg-[#FFDB89]/20 flex items-center px-1 transition duration-300" data-on="true"><div class="w-5 h-5 bg-[#FFDB89] rounded-full shadow-md transform translate-x-5 transition duration-300"></div></button></div>
+                            <div class="flex items-center justify-between"><span class="text-sm font-bold text-white">Email missed workouts</span><button class="toggle-switch w-12 h-6 rounded-full bg-white/10 flex items-center px-1 transition duration-300" data-on="false"><div class="w-5 h-5 bg-[#FFDB89] rounded-full shadow-md transform translate-x-0 transition duration-300"></div></button></div>
+                            <div class="flex items-center justify-between pt-4 border-t border-gray-700/50"><div><p class="text-sm font-bold text-white">Hide from dashboard</p><p class="text-xs text-gray-500">Hide results and notifications</p></div><button id="opt-hide-dash" class="toggle-switch w-12 h-6 rounded-full bg-white/10 flex items-center px-1 transition duration-300" data-on="false"><div class="w-5 h-5 bg-[#FFDB89] rounded-full shadow-md transform translate-x-0 transition duration-300"></div></button></div>
                         </div>
                     </div>
                 </div>
@@ -142,8 +142,8 @@
 
             <div class="p-6 border-t border-gray-700/50 flex flex-wrap justify-between items-center gap-4 bg-gray-900/50 rounded-b-2xl">
                 <div class="flex items-center gap-3">
-                    <button id="send-invite-toggle" class="toggle-switch w-12 h-6 rounded-full bg-green-500 flex items-center px-1 transition duration-300" data-on="true">
-                        <div class="w-4 h-4 bg-white rounded-full shadow-md transform translate-x-6 transition duration-300"></div>
+                    <button id="send-invite-toggle" class="toggle-switch w-12 h-6 rounded-full bg-[#FFDB89]/20 flex items-center px-1 transition duration-300" data-on="true">
+                        <div class="w-5 h-5 bg-[#FFDB89] rounded-full shadow-md transform translate-x-5 transition duration-300"></div>
                     </button>
                     <button id="send-invite-btn" class="flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 hover:bg-green-600 text-white text-sm font-bold shadow transition">
                         <i class="fas fa-envelope"></i> Enviar invitación

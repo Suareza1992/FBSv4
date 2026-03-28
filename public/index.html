@@ -86,6 +86,15 @@
         border: 1px solid rgba(255,255,255,0.2);
     }
     
+    /* Remove browser default focus ring on mouse click (keeps it for keyboard nav) */
+    button:focus:not(:focus-visible),
+    a:focus:not(:focus-visible),
+    input:focus:not(:focus-visible),
+    select:focus:not(:focus-visible) {
+        outline: none;
+        box-shadow: none;
+    }
+
     /* Animation */
     .animate-fade-in-down { animation: fadeInDown 0.3s ease-out forwards; }
     @keyframes fadeInDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
@@ -327,11 +336,11 @@
     </div>
 
     <div id="dashboard-container" class="flex flex-grow hidden h-screen overflow-hidden">
-        
+
         <div id="sidebar-placeholder" class="h-full flex-shrink-0 z-20 shadow-2xl"></div>
 
         <div class="flex-grow flex flex-col h-full relative overflow-hidden bg-[#2C2C2E] dark:bg-[#030303]">
-            
+
             <main id="main-content" class="flex-grow p-4 md:p-6 overflow-hidden relative">
                 </main>
 
