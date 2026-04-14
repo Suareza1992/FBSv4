@@ -1,84 +1,77 @@
 <div class="pb-10">
-    <div class="flex justify-between items-center mb-8">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-[#FFDB89]/20 pb-4">
         <div>
-            <h2 class="text-3xl font-bold text-gray-800 dark:text-white">Biblioteca</h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-2">Gestiona programas y ejercicios</p>
+            <h2 class="text-3xl font-bold text-[#FFDB89]">Biblioteca</h2>
+            <p class="text-[#FFDB89]/50 mt-1">Gestiona programas y ejercicios</p>
         </div>
-        
+
         <!-- TOGGLE BETWEEN PROGRAMS AND EXERCISES -->
-        <div class="flex items-center gap-4">
-            <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-1 flex gap-1">
-                <button id="toggle-programs-view" class="px-4 py-2 rounded-lg font-bold transition bg-white dark:bg-gray-700 text-purple-600 dark:text-purple-400 shadow">
+        <div class="flex items-center gap-3">
+            <div class="bg-[#1C1C1E] border border-[#FFDB89]/15 rounded-xl p-1 flex gap-1">
+                <button id="toggle-programs-view" class="px-4 py-2 rounded-lg font-bold transition bg-[#FFDB89]/15 text-[#FFDB89] border border-[#FFDB89]/30">
                     <i class="fas fa-calendar-week mr-2"></i>Programas
                 </button>
-                <button id="toggle-exercises-view" class="px-4 py-2 rounded-lg font-bold transition text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
+                <button id="toggle-exercises-view" class="px-4 py-2 rounded-lg font-bold transition text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10">
                     <i class="fas fa-dumbbell mr-2"></i>Ejercicios
                 </button>
             </div>
-            
-            <button id="add-new-item-btn" class="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition transform hover:scale-105">
+
+            <button id="add-new-item-btn" class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-xl transition">
                 <i class="fas fa-plus mr-2"></i><span id="add-btn-text">Nuevo Programa</span>
             </button>
         </div>
     </div>
-    
+
     <!-- PROGRAMS VIEW (Initially visible) -->
     <div id="programs-view" class="mb-8">
-        <div id="programs-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <!-- Programs will be rendered here -->
+        <div id="programs-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <!-- Programs rendered by JS -->
         </div>
     </div>
-    
+
     <!-- EXERCISES VIEW (Initially hidden) -->
     <div id="exercises-view" class="hidden">
         <!-- Search bar -->
-        <div class="mb-6">
-            <input type="text" id="library-search-input" class="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl dark:text-white focus:ring-2 focus:ring-purple-500 outline-none transition" placeholder="Buscar ejercicio...">
+        <div class="mb-4">
+            <div class="relative">
+                <input type="text" id="library-search-input" class="w-full pl-10 pr-4 py-3 bg-[#0D0D0D] border border-[#FFDB89]/20 rounded-xl text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Buscar ejercicio...">
+                <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-[#FFDB89]/30 text-sm"></i>
+            </div>
         </div>
-        
+
         <!-- Exercise list -->
-        <div id="exercise-library-list" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg divide-y divide-gray-100 dark:divide-gray-700">
-            <!-- Exercises will be rendered here -->
+        <div id="exercise-library-list" class="bg-[#111113] border border-[#FFDB89]/10 rounded-xl overflow-hidden">
+            <!-- Exercises rendered by JS -->
         </div>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div class="p-4 border-b border-gray-100 dark:border-gray-700">
-            <input type="text" id="library-search-input" placeholder="Buscar ejercicio..." class="w-full p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        
-        <div id="exercise-library-list" class="divide-y divide-gray-100 dark:divide-gray-700 max-h-[600px] overflow-y-auto">
-            </div>
-    </div>
-
+    <!-- ADD EXERCISE MODAL -->
     <div id="add-exercise-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
-            
-            <div class="p-6 border-b border-gray-700/50 flex justify-between items-center">
-                <h3 class="text-xl font-bold text-white">Nuevo Ejercicio</h3>
-                <button id="close-exercise-modal-x" class="text-gray-400 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
+        <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+
+            <div class="px-6 py-4 border-b border-[#FFDB89]/15 flex justify-between items-center bg-[#FFDB89]/5 rounded-t-2xl">
+                <h3 class="text-xl font-bold text-[#FFDB89]">Nuevo Ejercicio</h3>
+                <button id="close-exercise-modal-x" class="text-[#FFDB89]/40 hover:text-red-400 transition"><i class="fas fa-times text-xl"></i></button>
             </div>
 
-            <div class="p-6 space-y-4 overflow-y-auto custom-scrollbar">
+            <div class="p-6 space-y-4 overflow-y-auto">
                 <div>
-                    <label class="block text-sm text-gray-400 mb-1">Nombre</label>
-                    <input type="text" id="new-ex-name" class="glass-input w-full p-3 rounded-lg outline-none" placeholder="e.g. Barbell Squat">
+                    <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Nombre</label>
+                    <input type="text" id="new-ex-name" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Ej: Barbell Squat">
                 </div>
                 <div>
-                    <label class="block text-sm text-gray-400 mb-1">Video URL (YouTube/Vimeo)</label>
-                    <input type="text" id="new-ex-url" class="glass-input w-full p-3 rounded-lg outline-none" placeholder="https://...">
+                    <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Video URL (YouTube / Vimeo)</label>
+                    <input type="text" id="new-ex-url" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 outline-none transition" placeholder="https://...">
                 </div>
-                
                 <div>
-                    <label class="block text-sm text-gray-400 mb-2">Categorías / Músculos</label>
-                    <div id="category-selection-container" class="flex flex-wrap gap-2">
-                        </div>
+                    <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-2">Categorías / Músculos</label>
+                    <div id="category-selection-container" class="flex flex-wrap"></div>
                 </div>
             </div>
 
-            <div class="p-6 border-t border-gray-700/50 flex justify-end gap-3 bg-gray-900/50 rounded-b-2xl">
-                <button id="cancel-exercise-btn" class="px-4 py-2 rounded-lg text-white font-bold hover:bg-white/10 transition">Cancelar</button>
-                <button id="save-exercise-db-btn" class="px-4 py-2 rounded-lg bg-brand-purple hover:bg-purple-600 text-white font-bold shadow-lg transition">Guardar en la librería</button>
+            <div class="px-6 py-4 border-t border-[#FFDB89]/15 flex justify-end gap-3 bg-[#FFDB89]/5 rounded-b-2xl">
+                <button id="cancel-exercise-btn" class="px-5 py-2 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 border border-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Cancelar</button>
+                <button id="save-exercise-db-btn" class="px-5 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Guardar en la librería</button>
             </div>
         </div>
     </div>

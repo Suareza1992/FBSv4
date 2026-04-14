@@ -1,69 +1,110 @@
-<div class="space-y-8 pb-10">
+<div class="space-y-8 pb-24">
 
-    <div>
-        <h2 class="text-3xl font-bold text-[#FFDB89]">Mi Equipo & Pesos</h2>
-        <p class="text-[#92A9E1]/70">Selecciona los pesos exactos que tienes disponibles.</p>
+    <div class="flex justify-between items-start border-b border-[#FFDB89]/15 pb-4">
+        <div>
+            <h2 class="text-3xl font-bold text-[#FFDB89]">Mi Equipo & Pesos</h2>
+            <p class="text-[#FFDB89]/40 mt-1">Selecciona los pesos que tienes disponibles.</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-bold text-[#FFDB89]/50" id="equipment-unit-lbl">LBS</span>
+            <button id="weight-unit-toggle" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out bg-[#FFDB89]/20">
+                <span id="unit-toggle-circle" class="translate-x-0 inline-block h-5 w-5 transform rounded-full bg-[#FFDB89] transition-transform duration-200"></span>
+            </button>
+            <span class="text-sm font-bold text-[#FFDB89]/50">KG</span>
+        </div>
     </div>
 
-    <div class="bg-white/5 border border-[#92A9E1]/20 p-6 rounded-xl">
-        <div class="flex justify-between items-center mb-6 border-b border-[#92A9E1]/20 pb-4">
-            <h3 class="font-bold text-xl text-white"><i class="fas fa-dumbbell mr-2 text-[#92A9E1]"></i>Mancuernas</h3>
-            <div class="flex items-center gap-3">
-                <span class="text-sm font-bold text-[#FFDB89]/70" id="unit-label-lbs">LBS</span>
-                <button id="weight-unit-toggle" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out bg-[#FFDB89]/20">
-                    <span id="unit-toggle-circle" class="translate-x-0 inline-block h-5 w-5 transform rounded-full bg-[#FFDB89] transition-transform duration-200"></span>
-                </button>
-                <span class="text-sm font-bold text-[#FFDB89]/70" id="unit-label-kg">KG</span>
+    <!-- Mancuernas -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-6 rounded-xl">
+        <h3 class="font-bold text-xl text-[#FFDB89] mb-5 flex items-center gap-2"><i class="fas fa-dumbbell text-[#FFDB89]/60"></i> Mancuernas</h3>
+        <div id="dumbbells-container" class="grid grid-cols-4 md:grid-cols-8 gap-2"></div>
+    </div>
+
+    <!-- Discos -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-6 rounded-xl">
+        <h3 class="font-bold text-xl text-[#FFDB89] mb-2 flex items-center gap-2"><i class="fas fa-bullseye text-red-400"></i> Discos / Platos</h3>
+        <p class="text-sm text-[#FFDB89]/40 mb-5">Para barra, banco plano y prensa de pierna.</p>
+        <div id="plates-container" class="grid grid-cols-4 md:grid-cols-8 gap-2 mb-5"></div>
+        <div class="bg-white/5 border border-[#FFDB89]/10 p-4 rounded-lg">
+            <h4 class="text-sm font-bold text-[#FFDB89]/70 mb-3">Estaciones disponibles:</h4>
+            <div class="flex flex-wrap gap-4" id="stations-container">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="station-barra" class="rounded accent-[#FFDB89]">
+                    <span class="text-[#FFDB89]/70 text-sm">Barra Olímpica (45 lbs)</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="station-banco" class="rounded accent-[#FFDB89]">
+                    <span class="text-[#FFDB89]/70 text-sm">Banco Plano</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="station-prensa" class="rounded accent-[#FFDB89]">
+                    <span class="text-[#FFDB89]/70 text-sm">Prensa de Pierna</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="station-squat" class="rounded accent-[#FFDB89]">
+                    <span class="text-[#FFDB89]/70 text-sm">Squat Rack</span>
+                </label>
             </div>
         </div>
-        <div id="dumbbells-container" class="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3"></div>
     </div>
 
-    <div class="bg-white/5 border border-[#92A9E1]/20 p-6 rounded-xl">
-        <div class="mb-6 border-b border-[#92A9E1]/20 pb-4">
-            <h3 class="font-bold text-xl text-white"><i class="fas fa-bullseye mr-2 text-red-400"></i>Discos / Platos</h3>
-            <p class="text-sm text-[#92A9E1]/70">Disponible para Barra, Banco Plano y Prensa de Pierna.</p>
+    <!-- Kettlebells -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-6 rounded-xl">
+        <h3 class="font-bold text-xl text-[#FFDB89] mb-5 flex items-center gap-2"><i class="fas fa-weight-hanging text-[#FFDB89]/60"></i> Kettlebells</h3>
+        <div id="kettlebells-container" class="grid grid-cols-4 md:grid-cols-8 gap-2"></div>
+    </div>
+
+    <!-- Poleas -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-6 rounded-xl">
+        <h3 class="font-bold text-xl text-[#FFDB89] mb-5 flex items-center gap-2"><i class="fas fa-grip-lines text-[#FFDB89]/60"></i> Poleas / Cables</h3>
+        <div id="cables-container" class="grid grid-cols-4 md:grid-cols-8 gap-2"></div>
+    </div>
+
+    <!-- Other Equipment -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-6 rounded-xl">
+        <h3 class="font-bold text-xl text-[#FFDB89] mb-5 flex items-center gap-2"><i class="fas fa-toolbox text-[#FFDB89]/60"></i> Otro Equipo</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="other-equipment-container">
+            <label class="flex items-center gap-2 cursor-pointer bg-white/5 border border-[#FFDB89]/15 p-3 rounded-lg hover:border-[#FFDB89]/40 transition">
+                <input type="checkbox" id="equip-bands" class="rounded accent-[#FFDB89]">
+                <span class="text-[#FFDB89]/70 text-sm">Bandas de resistencia</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer bg-white/5 border border-[#FFDB89]/15 p-3 rounded-lg hover:border-[#FFDB89]/40 transition">
+                <input type="checkbox" id="equip-trx" class="rounded accent-[#FFDB89]">
+                <span class="text-[#FFDB89]/70 text-sm">TRX / Suspensión</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer bg-white/5 border border-[#FFDB89]/15 p-3 rounded-lg hover:border-[#FFDB89]/40 transition">
+                <input type="checkbox" id="equip-mat" class="rounded accent-[#FFDB89]">
+                <span class="text-[#FFDB89]/70 text-sm">Mat de yoga / suelo</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer bg-white/5 border border-[#FFDB89]/15 p-3 rounded-lg hover:border-[#FFDB89]/40 transition">
+                <input type="checkbox" id="equip-pullup" class="rounded accent-[#FFDB89]">
+                <span class="text-[#FFDB89]/70 text-sm">Barra de dominadas</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer bg-white/5 border border-[#FFDB89]/15 p-3 rounded-lg hover:border-[#FFDB89]/40 transition">
+                <input type="checkbox" id="equip-treadmill" class="rounded accent-[#FFDB89]">
+                <span class="text-[#FFDB89]/70 text-sm">Caminadora / Treadmill</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer bg-white/5 border border-[#FFDB89]/15 p-3 rounded-lg hover:border-[#FFDB89]/40 transition">
+                <input type="checkbox" id="equip-bike" class="rounded accent-[#FFDB89]">
+                <span class="text-[#FFDB89]/70 text-sm">Bicicleta estacionaria</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer bg-white/5 border border-[#FFDB89]/15 p-3 rounded-lg hover:border-[#FFDB89]/40 transition">
+                <input type="checkbox" id="equip-row" class="rounded accent-[#FFDB89]">
+                <span class="text-[#FFDB89]/70 text-sm">Remo / Rowing</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer bg-white/5 border border-[#FFDB89]/15 p-3 rounded-lg hover:border-[#FFDB89]/40 transition">
+                <input type="checkbox" id="equip-box" class="rounded accent-[#FFDB89]">
+                <span class="text-[#FFDB89]/70 text-sm">Cajón pliométrico</span>
+            </label>
         </div>
-
-        <h4 class="text-sm font-bold text-[#92A9E1]/70 uppercase mb-3">Pesos Estándar & Fraccionales</h4>
-        <div id="plates-container" class="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3 mb-6"></div>
-
-        <div class="bg-white/5 border border-[#92A9E1]/20 p-4 rounded-lg">
-            <h4 class="text-sm font-bold text-white mb-3">Estaciones Disponibles:</h4>
-            <div class="flex flex-wrap gap-4">
-                <label class="flex items-center space-x-2 cursor-pointer">
-                    <input type="checkbox" class="form-checkbox text-[#92A9E1] rounded accent-[#92A9E1]">
-                    <span class="text-[#92A9E1]/80">Barra Olímpica (45lbs)</span>
-                </label>
-                <label class="flex items-center space-x-2 cursor-pointer">
-                    <input type="checkbox" class="form-checkbox text-[#92A9E1] rounded accent-[#92A9E1]">
-                    <span class="text-[#92A9E1]/80">Banco Plano</span>
-                </label>
-                <label class="flex items-center space-x-2 cursor-pointer">
-                    <input type="checkbox" class="form-checkbox text-[#92A9E1] rounded accent-[#92A9E1]">
-                    <span class="text-[#92A9E1]/80">Prensa de Pierna</span>
-                </label>
-            </div>
-        </div>
     </div>
 
-    <div class="bg-white/5 border border-[#92A9E1]/20 p-6 rounded-xl">
-        <h3 class="font-bold text-xl text-white mb-6 border-b border-[#92A9E1]/20 pb-4">
-            <i class="fas fa-weight-hanging mr-2 text-[#FFDB89]"></i>Kettlebells
-        </h3>
-        <div id="kettlebells-container" class="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3"></div>
-    </div>
-
-    <div class="bg-white/5 border border-[#92A9E1]/20 p-6 rounded-xl">
-        <h3 class="font-bold text-xl text-white mb-6 border-b border-[#92A9E1]/20 pb-4">
-            <i class="fas fa-bacon mr-2 text-[#92A9E1]"></i>Poleas / Cables
-        </h3>
-        <div id="cables-container" class="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3"></div>
-    </div>
-
-    <div class="fixed bottom-6 right-6 z-20">
-        <button class="bg-[#92A9E1] hover:bg-[#7b93cc] text-white px-6 py-4 rounded-full shadow-2xl font-bold transition transform hover:scale-105 flex items-center gap-2">
+    <!-- Sticky Save Bar -->
+    <div class="fixed bottom-0 left-0 right-0 z-30 bg-[#030303]/90 backdrop-blur-md border-t border-[#FFDB89]/15 px-6 py-4 flex items-center justify-between">
+        <span id="equipment-save-status" class="text-sm text-[#FFDB89]/40"></span>
+        <button id="save-equipment-btn" class="bg-[#FFDB89] hover:bg-[#ffe9a8] text-[#030303] px-8 py-3 rounded-full shadow-xl font-bold transition transform hover:scale-105 flex items-center gap-2">
             <i class="fas fa-save"></i> Guardar Inventario
         </button>
     </div>
+
 </div>

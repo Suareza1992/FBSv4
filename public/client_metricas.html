@@ -1,31 +1,62 @@
 <div class="space-y-8 pb-10">
 
-    <!-- Charts Row -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-white/5 border border-[#92A9E1]/20 p-5 rounded-xl">
-            <p class="text-xs font-bold text-[#92A9E1]/70 uppercase tracking-wider mb-1">Progreso</p>
-            <h3 class="font-bold text-white mb-4">Peso (lbs)</h3>
-            <div class="h-52">
-                <canvas id="weightChart"></canvas>
+    <!-- Chart Card -->
+    <div class="bg-white/5 border border-[#FFDB89]/15 rounded-2xl overflow-hidden">
+
+        <!-- Metric selector tabs -->
+        <div class="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[#FFDB89]/10">
+            <h3 class="font-bold text-[#FFDB89] text-lg">Progreso</h3>
+            <div class="flex gap-1.5 flex-wrap" id="metric-tabs">
+                <button class="metric-tab-btn active px-3 py-1.5 rounded-lg text-xs font-bold transition" data-metric="weight">Peso</button>
+                <button class="metric-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition" data-metric="fat">% Grasa</button>
+                <button class="metric-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition" data-metric="bmi">BMI</button>
+                <button class="metric-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition" data-metric="circum">Circunf.</button>
             </div>
         </div>
-        <div class="bg-white/5 border border-[#92A9E1]/20 p-5 rounded-xl">
-            <p class="text-xs font-bold text-[#92A9E1]/70 uppercase tracking-wider mb-1">Progreso</p>
-            <h3 class="font-bold text-white mb-4">% Grasa Corporal</h3>
-            <div class="h-52">
-                <canvas id="fatChart"></canvas>
+
+        <!-- Circum dropdown (shown only when Circunf. tab is active) -->
+        <div id="circum-selector-wrap" class="hidden px-5 py-2.5 border-b border-[#FFDB89]/10 flex items-center gap-2">
+            <span class="text-xs text-[#FFDB89]/50 uppercase tracking-wider font-bold">Ver:</span>
+            <select id="circum-field-select" class="bg-[#FFDB89]/10 text-[#FFDB89] text-xs font-bold rounded-lg px-3 py-1.5 border border-[#FFDB89]/20 outline-none cursor-pointer appearance-none pr-7" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 8px center;">
+                <option value="pecho">Pecho</option>
+                <option value="biceps">Bíceps</option>
+                <option value="cintura" selected>Cintura</option>
+                <option value="cadera">Cadera</option>
+                <option value="quads">Quads</option>
+                <option value="calves">Pantorrillas</option>
+            </select>
+        </div>
+
+        <!-- Stats row -->
+        <div class="grid grid-cols-3 divide-x divide-[#FFDB89]/10 border-b border-[#FFDB89]/10">
+            <div class="px-5 py-3 text-center">
+                <p class="text-xs text-[#FFDB89]/50 uppercase tracking-wider mb-0.5">Actual</p>
+                <p class="text-xl font-black text-[#FFDB89]" id="stat-current">—</p>
             </div>
+            <div class="px-5 py-3 text-center">
+                <p class="text-xs text-[#FFDB89]/50 uppercase tracking-wider mb-0.5">Cambio</p>
+                <p class="text-xl font-black" id="stat-change">—</p>
+            </div>
+            <div class="px-5 py-3 text-center">
+                <p class="text-xs text-[#FFDB89]/50 uppercase tracking-wider mb-0.5">Mejor</p>
+                <p class="text-xl font-black text-[#FFDB89]" id="stat-best">—</p>
+            </div>
+        </div>
+
+        <!-- Chart canvas -->
+        <div class="p-5" style="height:220px; position:relative;">
+            <canvas id="metricsChart"></canvas>
         </div>
     </div>
 
     <!-- Measurements Table -->
     <div>
-        <div class="flex items-center gap-3 mb-4 pb-3 border-b border-[#92A9E1]/20">
+        <div class="flex items-center gap-3 mb-4 pb-3 border-b border-[#FFDB89]/15">
             <h3 class="text-lg font-bold text-white">Historial de Medidas</h3>
-            <span id="metrics-record-count" class="text-xs font-bold text-[#92A9E1]/50 bg-[#92A9E1]/10 px-2 py-0.5 rounded-full">0 registros</span>
+            <span id="metrics-record-count" class="text-xs font-bold text-[#FFDB89]/50 bg-[#FFDB89]/10 px-2 py-0.5 rounded-full">0 registros</span>
         </div>
 
-        <div id="metrics-empty" class="hidden text-center py-12 text-[#92A9E1]/40">
+        <div id="metrics-empty" class="hidden text-center py-12 text-[#FFDB89]/40">
             <i class="fas fa-ruler-combined text-4xl mb-3"></i>
             <p class="font-medium">Tu entrenador aún no ha registrado medidas.</p>
         </div>
@@ -33,20 +64,20 @@
         <div id="metrics-table-wrap" class="overflow-x-auto hidden">
             <table class="w-full text-sm border-collapse">
                 <thead>
-                    <tr class="border-b border-[#92A9E1]/20">
-                        <th class="py-3 px-3 text-left text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Fecha</th>
-                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">BMI</th>
-                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">%G</th>
+                    <tr class="border-b border-[#FFDB89]/15">
+                        <th class="py-3 px-3 text-left   text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">Fecha</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">BMI</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">%G</th>
                         <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Peso</th>
-                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Pecho</th>
-                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Bíceps</th>
-                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Cintura</th>
-                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Cadera</th>
-                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Quads</th>
-                        <th class="py-3 px-3 text-center text-xs font-bold text-[#92A9E1] uppercase whitespace-nowrap">Calves</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">Pecho</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">Bíceps</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">Cintura</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">Cadera</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">Quads</th>
+                        <th class="py-3 px-3 text-center text-xs font-bold text-[#FFDB89]/60 uppercase whitespace-nowrap">Calves</th>
                     </tr>
                 </thead>
-                <tbody id="metrics-table-body" class="divide-y divide-[#92A9E1]/10">
+                <tbody id="metrics-table-body" class="divide-y divide-[#FFDB89]/10">
                 </tbody>
             </table>
         </div>

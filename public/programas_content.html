@@ -3,36 +3,154 @@
         display: none !important;
         opacity: 0;
     }
+    .autocomplete-list {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 40px;
+        background: #111113;
+        border: 1px solid rgba(255, 219, 137, 0.25);
+        border-radius: 10px;
+        z-index: 100;
+        overflow: hidden;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    }
+    .autocomplete-item {
+        padding: 10px 14px;
+        font-size: 13px;
+        color: rgba(255, 219, 137, 0.7);
+        cursor: pointer;
+        border-bottom: 1px solid rgba(255, 219, 137, 0.06);
+        transition: background 0.15s, color 0.15s;
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover { background: rgba(255, 219, 137, 0.08); color: #FFDB89; }
+    .autocomplete-item strong { color: #FFDB89; font-weight: 700; }
+    .category-pill.selected {
+        background: rgba(255, 219, 137, 0.18);
+        border-color: rgba(255, 219, 137, 0.5);
+        color: #FFDB89;
+    }
+    .lib-tab-active {
+        background: rgba(255, 219, 137, 0.15);
+        color: #FFDB89;
+        border: 1px solid rgba(255, 219, 137, 0.3);
+    }
+    .lib-tab-inactive {
+        color: rgba(255, 219, 137, 0.4);
+    }
+    .lib-tab-inactive:hover { color: #FFDB89; background: rgba(255, 219, 137, 0.08); }
 </style>
 
-<div id="programs-main-view" class="space-y-8 pb-10">
+<div class="pb-10">
 
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <!-- ══════════════════════════════════════════
+         PAGE HEADER + TAB BAR
+    ══════════════════════════════════════════ -->
+    <div id="programas-page-header" class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-[#FFDB89]/20 pb-5">
         <div>
-            <h2 class="text-3xl font-bold text-[#FFDB89]">Mis programas</h2>
-            <p class="text-[#FFDB89]/60">Diseña y organiza tus planes de entrenamiento.</p>
+            <h2 class="text-3xl font-bold text-[#FFDB89]">Biblioteca</h2>
+            <p class="text-[#FFDB89]/50 mt-1">Programas, ejercicios y videos de referencia</p>
         </div>
-        <div class="flex flex-wrap gap-3 mr-4">
-            <button class="px-6 py-2 bg-[#2C2C2E] text-[#FFDB89] font-bold rounded-lg border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 transition">
-                <i class="fas fa-tags mr-2"></i> Manejar etiquetas
-            </button>
-            <button id="open-create-program-modal" class="px-6 py-2 bg-[#2C2C2E] text-[#FFDB89] font-bold rounded-lg border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 transition">
-                <i class="fas fa-plus mr-2"></i> Crear programa
+        <div class="flex items-center gap-3 flex-wrap">
+            <!-- Tab switcher -->
+            <div class="bg-[#1C1C1E] border border-[#FFDB89]/15 rounded-xl p-1 flex gap-1">
+                <button id="tab-programas" class="px-4 py-2 rounded-lg font-bold transition text-sm lib-tab-active">
+                    <i class="fas fa-calendar-week mr-2"></i>Programas
+                </button>
+                <button id="tab-ejercicios" class="px-4 py-2 rounded-lg font-bold transition text-sm lib-tab-inactive">
+                    <i class="fas fa-dumbbell mr-2"></i>Librería de Ejercicios
+                </button>
+                <button id="tab-videos" class="px-4 py-2 rounded-lg font-bold transition text-sm lib-tab-inactive">
+                    <i class="fas fa-video mr-2"></i>Videos
+                </button>
+            </div>
+            <!-- Context-aware action button -->
+            <button id="add-new-item-btn" class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-xl transition">
+                <i class="fas fa-plus mr-2"></i><span id="add-btn-text">Nuevo Programa</span>
             </button>
         </div>
     </div>
 
-    <div class="py-2 px-px">
-        <div class="relative w-full md:w-1/3">
-            <input type="text" placeholder="Buscar programa..." class="w-full pl-10 pr-4 py-2 bg-[#0D0D0D] border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/40 focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50">
-            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-[#FFDB89]/50"></i>
+    <!-- ══════════════════════════════════════════
+         TAB: PROGRAMAS
+    ══════════════════════════════════════════ -->
+    <div id="programs-main-view" class="space-y-6">
+        <div class="flex flex-wrap gap-3 items-center">
+            <div class="relative flex-grow max-w-sm">
+                <input type="text" placeholder="Buscar programa..." class="w-full pl-10 pr-4 py-2.5 bg-[#0D0D0D] border border-[#FFDB89]/30 rounded-xl text-[#FFDB89] placeholder:text-[#FFDB89]/40 focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50 focus:border-[#FFDB89]/50 transition">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#FFDB89]/50 text-sm"></i>
+            </div>
+            <button id="open-create-program-modal" class="px-5 py-2.5 bg-[#2C2C2E] text-[#FFDB89] font-bold rounded-xl border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 transition text-sm">
+                <i class="fas fa-plus mr-2"></i>Crear programa
+            </button>
+        </div>
+        <div id="programs-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Programs rendered by JS -->
         </div>
     </div>
 
-    <div id="programs-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+    <!-- ══════════════════════════════════════════
+         TAB: LIBRERÍA DE EJERCICIOS
+    ══════════════════════════════════════════ -->
+    <div id="ejercicios-panel" class="hidden space-y-4">
+        <div class="relative">
+            <input type="text" id="library-search-input" class="w-full pl-10 pr-4 py-3 bg-[#0D0D0D] border border-[#FFDB89]/20 rounded-xl text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Buscar ejercicio...">
+            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-[#FFDB89]/30 text-sm"></i>
+        </div>
+        <div id="exercise-library-list" class="bg-[#111113] border border-[#FFDB89]/10 rounded-xl overflow-hidden min-h-[200px]">
+            <div class="p-8 text-center text-[#FFDB89]/30">Cargando ejercicios...</div>
+        </div>
     </div>
+
+    <!-- ══════════════════════════════════════════
+         TAB: VIDEOS
+    ══════════════════════════════════════════ -->
+    <div id="videos-panel" class="hidden">
+        <div id="video-library-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div class="col-span-full text-center py-16 text-[#FFDB89]/30">
+                <i class="fas fa-film text-4xl mb-3 block"></i>
+                <p class="font-bold">Cargando videos...</p>
+            </div>
+        </div>
+    </div>
+
+</div><!-- end .pb-10 -->
+
+
+<!-- ══════════════════════════════════════════
+     PROGRAM BUILDER VIEW (full override)
+══════════════════════════════════════════ -->
+<div id="program-builder-view" class="hidden h-full flex flex-col">
+
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-[#FFDB89]/20 pb-4">
+        <div>
+            <button id="back-to-program-list" class="text-[#FFDB89]/50 hover:text-[#FFDB89] mb-2 flex items-center text-sm font-bold transition">
+                <i class="fas fa-arrow-left mr-2"></i> Volver a programas
+            </button>
+            <h2 id="builder-program-name" class="text-3xl font-bold text-[#FFDB89]">Nombre del programa</h2>
+            <p id="builder-client-count" class="text-[#FFDB89]/50 text-sm mt-1">0 Clientes asignados</p>
+        </div>
+        <div class="flex gap-3 flex-wrap">
+            <button id="assign-program-to-client-btn" class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-xl transition text-sm">
+                <i class="fas fa-user-plus mr-2"></i>Asignar a un cliente
+            </button>
+            <button id="add-week-btn" class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-xl transition text-sm">
+                <i class="fas fa-plus mr-2"></i>Añadir Semana
+            </button>
+        </div>
+    </div>
+
+    <div id="calendar-container" class="flex-grow overflow-y-auto pr-1">
+        <!-- Weeks rendered by JS -->
+    </div>
+
 </div>
 
+
+<!-- ══════════════════════════════════════════
+     MODAL: CREATE PROGRAM
+══════════════════════════════════════════ -->
 <div id="create-program-modal" class="fixed inset-0 bg-black/80 z-50 flex justify-center items-center hidden backdrop-blur-sm">
     <div class="bg-[#030303] border border-[#FFDB89]/20 p-8 rounded-2xl shadow-2xl w-full max-w-lg">
         <h3 class="text-2xl font-bold text-[#FFDB89] mb-6">Crear nuevo programa</h3>
@@ -53,45 +171,26 @@
     </div>
 </div>
 
-<div id="program-builder-view" class="hidden h-full flex flex-col">
 
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-[#FFDB89]/20 pb-4">
-        <div>
-            <button id="back-to-program-list" class="text-[#FFDB89]/50 hover:text-[#FFDB89] mb-2 flex items-center text-sm font-bold transition">
-                <i class="fas fa-arrow-left mr-2"></i> Volver a programas
-            </button>
-            <h2 id="builder-program-name" class="text-3xl font-bold text-[#FFDB89]">Nombre del programa</h2>
-            <p class="text-sm text-[#FFDB89]/50 mt-1"><i class="fas fa-users mr-1"></i> <span id="builder-client-count">0</span> Clientes activos</p>
-        </div>
-        <button class="bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] px-6 py-2 rounded-lg font-bold flex items-center transition">
-            <i class="fas fa-user-plus mr-2"></i> Asignar a un cliente
-        </button>
-    </div>
-
-    <div id="calendar-container" class="space-y-8 pb-20">
-    </div>
-
-    <div class="mt-8 text-center pb-12">
-        <button id="add-week-btn" class="px-8 py-3 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-full border border-[#FFDB89]/30 transition">
-            <i class="fas fa-plus mr-2"></i> Añadir semana
-        </button>
-    </div>
-
-</div>
-
-<div id="edit-routine-modal" class="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center hidden backdrop-blur-sm p-4 overflow-y-auto">
-    <div class="bg-[#030303] border border-[#FFDB89]/20 w-full max-w-4xl min-h-[500px] rounded-2xl shadow-2xl flex flex-col relative my-10">
+<!-- ══════════════════════════════════════════
+     MODAL: EDIT ROUTINE
+══════════════════════════════════════════ -->
+<div id="edit-routine-modal" class="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center hidden backdrop-blur-sm p-4">
+    <div class="bg-[#030303] border border-[#FFDB89]/20 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col relative my-10">
 
         <div class="px-6 py-4 border-b border-[#FFDB89]/20 flex justify-between items-center bg-[#FFDB89]/5 rounded-t-2xl">
             <input type="text" id="routine-name-input" value="Nombre del Entrenamiento" class="text-xl font-bold bg-transparent border-none focus:ring-0 text-[#FFDB89] placeholder:text-[#FFDB89]/30 w-full outline-none">
             <button id="cancel-routine-edit" class="text-[#FFDB89]/50 hover:text-red-400 transition"><i class="fas fa-times text-2xl"></i></button>
         </div>
 
-        <div class="flex-grow p-6 space-y-6 overflow-y-visible">
+        <div class="flex-grow p-6 space-y-6 overflow-y-auto min-h-0">
 
             <div>
                 <label class="text-xs font-bold text-[#FFDB89]/50 uppercase mb-2 block tracking-wider">Calentamiento</label>
-                <textarea id="routine-warmup" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 resize-none outline-none focus:border-[#FFDB89]/50" rows="2" placeholder="Ej: 5 min caminadora..."></textarea>
+                <div class="flex gap-2 items-start">
+                    <textarea id="routine-warmup" class="flex-grow p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 resize-none outline-none focus:border-[#FFDB89]/50" rows="2" placeholder="Ej: 5 min caminadora..."></textarea>
+                    <button id="warmup-video-btn" class="p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition open-video-modal shrink-0" data-target="warmup" title="Agregar video de calentamiento"><i class="fas fa-video text-sm"></i></button>
+                </div>
             </div>
 
             <div id="exercise-list" class="space-y-6 pl-4 border-l-2 border-[#FFDB89]/20">
@@ -108,7 +207,10 @@
 
             <div>
                 <label class="text-xs font-bold text-[#FFDB89]/50 uppercase mb-2 block tracking-wider">Enfriamiento</label>
-                <textarea id="routine-cooldown" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 resize-none outline-none focus:border-[#FFDB89]/50" rows="2" placeholder="Ej: Estiramientos..."></textarea>
+                <div class="flex gap-2 items-start">
+                    <textarea id="routine-cooldown" class="flex-grow p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 resize-none outline-none focus:border-[#FFDB89]/50" rows="2" placeholder="Ej: Estiramientos..."></textarea>
+                    <button id="cooldown-video-btn" class="p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition open-video-modal shrink-0" data-target="cooldown" title="Agregar video de enfriamiento"><i class="fas fa-video text-sm"></i></button>
+                </div>
             </div>
 
         </div>
@@ -120,36 +222,132 @@
     </div>
 </div>
 
+
+<!-- ══════════════════════════════════════════
+     MODAL: VIDEO — unified for exercises, warmup, cooldown & library
+══════════════════════════════════════════ -->
 <div id="video-upload-modal" class="fixed inset-0 bg-black/80 z-[70] flex justify-center items-center hidden backdrop-blur-sm">
     <div class="bg-[#030303] border border-[#FFDB89]/20 text-[#FFDB89] p-6 rounded-xl shadow-2xl w-full max-w-md">
 
-        <div class="flex items-center gap-2 mb-4">
-            <i class="fas fa-info-circle text-[#FFDB89] text-xl"></i>
-            <h3 id="video-modal-title" class="text-xl font-bold text-[#FFDB89]">Nombre del ejercicio</h3>
+        <div class="flex items-center gap-2 mb-5">
+            <i class="fas fa-video text-[#FFDB89] text-xl"></i>
+            <h3 id="video-modal-title" class="text-xl font-bold text-[#FFDB89]">Video URL</h3>
         </div>
 
+        <!-- URL input -->
         <div class="mb-4">
-            <label class="block text-sm font-bold mb-2 text-[#FFDB89]/60">Enlace del video - (YouTube o Vimeo)</label>
-            <input type="text" id="video-url-input" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50 transition" placeholder="Paste link here...">
+            <label class="block text-xs font-bold mb-2 text-[#FFDB89]/50 uppercase tracking-wider">Enlace (YouTube o Vimeo)</label>
+            <input type="text" id="video-url-input" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50 transition" placeholder="https://youtube.com/watch?v=...">
         </div>
 
-        <div class="text-center text-[#FFDB89]/40 text-sm mb-4 font-bold">o</div>
+        <!-- Library name input -->
+        <div class="mb-5 pt-4 border-t border-[#FFDB89]/10">
+            <label class="block text-xs font-bold mb-2 text-[#FFDB89]/50 uppercase tracking-wider">Guardar en librería como</label>
+            <div class="relative">
+                <input type="text" id="video-library-name" autocomplete="off" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50 transition" placeholder="Nombre del ejercicio o sección...">
+                <div id="video-lib-name-suggestions" class="absolute left-0 right-0 top-full mt-1 bg-[#111113] border border-[#FFDB89]/25 rounded-lg z-[90] overflow-hidden shadow-xl hidden max-h-48 overflow-y-auto"></div>
+            </div>
+            <p class="text-[10px] text-[#FFDB89]/30 mt-1.5">Déjalo vacío si no quieres guardarlo en la librería</p>
+        </div>
 
-        <div class="mb-2">
-            <button id="trigger-upload-btn" class="w-full py-2 border border-[#FFDB89]/30 rounded-lg hover:bg-[#FFDB89]/10 transition flex items-center justify-center gap-2 font-bold text-sm text-[#FFDB89]">
-                <i class="fas fa-upload"></i> Subir un video
+        <!-- Buttons -->
+        <div class="flex items-center gap-3 flex-wrap">
+            <button id="save-video-url-btn" class="px-5 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] rounded-lg font-bold transition flex items-center gap-2">
+                <i class="fas fa-check text-sm"></i> Guardar URL
             </button>
-            <input type="file" id="hidden-video-file" accept="video/*" class="hidden" style="display:none;">
+            <button id="save-video-btn" class="px-5 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] rounded-lg font-bold transition flex items-center gap-2">
+                <i class="fas fa-bookmark text-sm"></i> Guardar en librería
+            </button>
+            <button id="cancel-video-btn" class="px-4 py-2 text-[#FFDB89]/50 hover:text-[#FFDB89] font-bold transition">Cancelar</button>
         </div>
 
-        <p id="upload-file-name" class="text-xs text-[#FFDB89] mb-6 text-center font-mono truncate hidden"></p>
+    </div>
+</div>
 
-        <div class="flex items-center gap-4">
-            <button id="save-video-btn" class="bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] px-6 py-2 rounded-lg font-bold transition opacity-50 cursor-not-allowed">Guardar en la librería</button>
-            <button id="cancel-video-btn" class="text-[#FFDB89]/60 hover:text-[#FFDB89] font-bold transition">Cancelar</button>
+
+<!-- ══════════════════════════════════════════
+     MODAL: DAY NUTRITION
+══════════════════════════════════════════ -->
+<div id="day-nutrition-modal" class="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center hidden backdrop-blur-sm p-4">
+    <div class="bg-[#030303] border border-[#FFDB89]/20 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col">
+
+        <div class="px-6 pt-5 pb-4 border-b border-[#FFDB89]/15 bg-[#FFDB89]/5 rounded-t-2xl shrink-0">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest">Plan de Nutrición</p>
+                    <h3 id="nutri-modal-title" class="text-xl font-black text-[#FFDB89] mt-0.5">Día —</h3>
+                </div>
+                <button id="close-nutri-modal" class="text-[#FFDB89]/40 hover:text-red-400 transition mt-1"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="grid grid-cols-4 gap-2 mb-4">
+                <div>
+                    <label class="text-[9px] font-bold text-[#FFDB89]/40 uppercase tracking-wider block mb-1">Objetivo Cal</label>
+                    <input id="nutri-target-cal" type="number" min="0" class="w-full p-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm font-bold outline-none focus:border-[#FFDB89]/50 text-center" value="2200">
+                </div>
+                <div>
+                    <label class="text-[9px] font-bold text-red-400/60 uppercase tracking-wider block mb-1">Proteína (g)</label>
+                    <input id="nutri-target-p" type="number" min="0" class="w-full p-2 bg-red-500/5 border border-red-500/20 rounded-lg text-red-400 text-sm font-bold outline-none focus:border-red-400/50 text-center" value="160">
+                </div>
+                <div>
+                    <label class="text-[9px] font-bold text-yellow-400/60 uppercase tracking-wider block mb-1">Carbos (g)</label>
+                    <input id="nutri-target-c" type="number" min="0" class="w-full p-2 bg-yellow-500/5 border border-yellow-500/20 rounded-lg text-yellow-400 text-sm font-bold outline-none focus:border-yellow-400/50 text-center" value="220">
+                </div>
+                <div>
+                    <label class="text-[9px] font-bold text-[#FFDB89]/60 uppercase tracking-wider block mb-1">Grasa (g)</label>
+                    <input id="nutri-target-f" type="number" min="0" class="w-full p-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm font-bold outline-none focus:border-[#FFDB89]/50 text-center" value="65">
+                </div>
+            </div>
+            <div id="nutri-daily-progress" class="space-y-1.5"></div>
+        </div>
+
+        <div id="nutri-meals-body" class="flex-grow overflow-y-auto min-h-0 p-5 space-y-4"></div>
+
+        <div class="px-5 py-4 border-t border-[#FFDB89]/10 bg-[#FFDB89]/5 rounded-b-2xl shrink-0 flex justify-between items-center">
+            <button id="add-meal-nutri-btn" class="px-5 py-2 border border-[#FFDB89]/25 text-[#FFDB89]/60 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg font-bold transition flex items-center gap-2 text-sm">
+                <i class="fas fa-plus"></i> Añadir Comida
+            </button>
+            <div class="flex gap-3">
+                <button id="cancel-nutri-modal-btn" class="px-5 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg hover:bg-[#FFDB89]/20 transition text-sm">Cancelar</button>
+                <button id="save-nutri-btn" class="px-6 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition text-sm">Guardar plan</button>
+            </div>
         </div>
     </div>
 </div>
+
+
+<!-- ══════════════════════════════════════════
+     MODAL: ADD / EDIT EXERCISE (Librería de Ejercicios)
+══════════════════════════════════════════ -->
+<div id="add-exercise-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+
+        <div class="px-6 py-4 border-b border-[#FFDB89]/15 flex justify-between items-center bg-[#FFDB89]/5 rounded-t-2xl">
+            <h3 class="text-xl font-bold text-[#FFDB89]">Nuevo Ejercicio</h3>
+            <button id="close-exercise-modal-x" class="text-[#FFDB89]/40 hover:text-red-400 transition"><i class="fas fa-times text-xl"></i></button>
+        </div>
+
+        <div class="p-6 space-y-4 overflow-y-auto">
+            <div>
+                <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Nombre</label>
+                <input type="text" id="new-ex-name" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Ej: Barbell Squat">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Video URL <span class="normal-case text-[#FFDB89]/30 font-normal">(YouTube / Vimeo)</span></label>
+                <input type="text" id="new-ex-url" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 outline-none transition" placeholder="https://...">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-2">Categorías / Músculos</label>
+                <div id="category-selection-container" class="flex flex-wrap gap-1"></div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-[#FFDB89]/15 flex justify-end gap-3 bg-[#FFDB89]/5 rounded-b-2xl">
+            <button id="cancel-exercise-btn" class="px-5 py-2 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 border border-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Cancelar</button>
+            <button id="save-exercise-db-btn" class="px-5 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Guardar en la librería</button>
+        </div>
+    </div>
+</div>
+
 
 <datalist id="exercise-suggestions">
     <option value="Squat (Barbell)">

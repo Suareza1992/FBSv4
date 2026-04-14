@@ -1,128 +1,145 @@
 <div class="space-y-6 pb-10">
 
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-[#FFDB89]/15 pb-4">
         <div>
-            <h2 class="text-3xl font-bold text-[#FFDB89]">Nutrición & Métricas</h2>
-            <p class="text-[#92A9E1]/70">Controla tu alimentación y medidas corporales.</p>
+            <h2 class="text-3xl font-bold text-[#FFDB89]">Macros</h2>
+            <p class="text-[#FFDB89]/40 mt-1">Registra tu alimentación diaria.</p>
         </div>
-        <button id="save-nutrition-btn" class="bg-[#92A9E1] hover:bg-[#7b93cc] text-white px-6 py-2 rounded-lg shadow font-semibold transition">
-            Guardar Cambios
+        <div class="flex items-center gap-2 flex-wrap">
+            <input type="date" id="nutri-date" class="p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm font-bold outline-none focus:ring-2 focus:ring-[#FFDB89]">
+            <button id="nutri-unit-toggle" class="px-3 py-2 rounded-lg border border-[#FFDB89]/25 text-[#FFDB89] text-sm font-bold hover:bg-[#FFDB89]/10 transition flex items-center gap-1.5" title="Cambiar unidad de porción">
+                <i class="fas fa-weight-hanging text-xs"></i>
+                <span id="nutri-unit-label">g</span>
+            </button>
+            <button id="save-nutrition-btn" class="bg-[#FFDB89] hover:bg-[#ffe9a8] text-[#030303] px-5 py-2 rounded-lg shadow font-bold transition flex items-center gap-2">
+                <i class="fas fa-save"></i> Guardar
+            </button>
+        </div>
+    </div>
+
+    <!-- Macro Calculator (populated by JS) -->
+    <div id="macro-calc-wrapper-client"></div>
+
+    <!-- Trainer Nutrition Targets Banner -->
+    <div id="trainer-nutrition-targets" class="hidden bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-xl p-4">
+        <div class="flex items-center gap-2 mb-3">
+            <i class="fas fa-bullseye text-[#FFDB89] text-sm"></i>
+            <p class="text-xs font-bold text-[#FFDB89] uppercase tracking-wider">Objetivos de tu entrenador para hoy</p>
+        </div>
+        <div class="grid grid-cols-4 gap-3 text-center">
+            <div><p class="text-xs text-[#FFDB89]/50 mb-0.5">Calorías</p><p class="text-sm font-bold text-[#FFDB89]" id="target-cal">--</p></div>
+            <div><p class="text-xs text-red-400/70 mb-0.5">Proteína</p><p class="text-sm font-bold text-red-400" id="target-pro">--</p></div>
+            <div><p class="text-xs text-yellow-400/70 mb-0.5">Carbos</p><p class="text-sm font-bold text-yellow-400" id="target-carbs">--</p></div>
+            <div><p class="text-xs text-orange-400/70 mb-0.5">Grasas</p><p class="text-sm font-bold text-orange-400" id="target-fat">--</p></div>
+        </div>
+    </div>
+
+    <!-- Daily Totals -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center col-span-2 md:col-span-1">
+            <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1">Calorías</p>
+            <p class="text-3xl font-black text-[#FFDB89]" id="total-calories-display">0</p>
+            <p class="text-xs text-[#FFDB89]/40">/ <span id="calorie-goal-display">--</span> meta</p>
+        </div>
+        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center">
+            <p class="text-xs font-bold text-red-400/70 uppercase tracking-wider mb-1">Proteína</p>
+            <p class="text-2xl font-black text-red-400" id="total-protein-display">0g</p>
+        </div>
+        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center">
+            <p class="text-xs font-bold text-yellow-400/70 uppercase tracking-wider mb-1">Carbos</p>
+            <p class="text-2xl font-black text-yellow-400" id="total-carbs-display">0g</p>
+        </div>
+        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center">
+            <p class="text-xs font-bold text-orange-400/70 uppercase tracking-wider mb-1">Grasas</p>
+            <p class="text-2xl font-black text-orange-400" id="total-fat-display">0g</p>
+        </div>
+        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center">
+            <p class="text-xs font-bold text-sky-400/70 uppercase tracking-wider mb-1">Agua (oz)</p>
+            <p class="text-2xl font-black text-sky-400" id="total-water-display">0</p>
+        </div>
+    </div>
+
+    <!-- Macro progress bars -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-5 rounded-xl space-y-4">
+        <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider">Progreso del día</h3>
+            <button id="toggle-goals-btn" class="text-[10px] text-[#FFDB89]/40 hover:text-[#FFDB89] transition flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[#FFDB89]/10">
+                <i class="fas fa-sliders-h text-[9px]"></i> Editar metas
+            </button>
+        </div>
+
+        <!-- Editable goal targets (hidden by default, toggled by button) -->
+        <div id="goals-edit-row" class="hidden grid grid-cols-3 gap-2 pb-4 border-b border-[#FFDB89]/10">
+            <div>
+                <label class="text-[10px] text-red-400/60 uppercase tracking-wider block mb-1">Proteína meta (g)</label>
+                <input type="number" id="goal-protein" min="0" step="5" placeholder="120"
+                    class="w-full p-2 bg-red-400/5 border border-red-400/20 rounded-xl text-red-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-red-400">
+            </div>
+            <div>
+                <label class="text-[10px] text-yellow-400/60 uppercase tracking-wider block mb-1">Carbos meta (g)</label>
+                <input type="number" id="goal-carbs" min="0" step="5" placeholder="200"
+                    class="w-full p-2 bg-yellow-400/5 border border-yellow-400/20 rounded-xl text-yellow-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-yellow-400">
+            </div>
+            <div>
+                <label class="text-[10px] text-orange-400/60 uppercase tracking-wider block mb-1">Grasas meta (g)</label>
+                <input type="number" id="goal-fat" min="0" step="5" placeholder="65"
+                    class="w-full p-2 bg-orange-400/5 border border-orange-400/20 rounded-xl text-orange-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-orange-400">
+            </div>
+        </div>
+
+        <!-- Bars -->
+        <div>
+            <div class="flex justify-between text-xs mb-1.5"><span class="text-red-400 font-bold">Proteína</span><span id="bar-protein-label" class="text-[#FFDB89]/40">0 / 0g</span></div>
+            <div class="h-2.5 bg-white/10 rounded-full overflow-hidden"><div id="bar-protein" class="h-full bg-red-400 rounded-full transition-all duration-500" style="width:0%"></div></div>
+        </div>
+        <div>
+            <div class="flex justify-between text-xs mb-1.5"><span class="text-yellow-400 font-bold">Carbohidratos</span><span id="bar-carbs-label" class="text-[#FFDB89]/40">0 / 0g</span></div>
+            <div class="h-2.5 bg-white/10 rounded-full overflow-hidden"><div id="bar-carbs" class="h-full bg-yellow-400 rounded-full transition-all duration-500" style="width:0%"></div></div>
+        </div>
+        <div>
+            <div class="flex justify-between text-xs mb-1.5"><span class="text-orange-400 font-bold">Grasas</span><span id="bar-fat-label" class="text-[#FFDB89]/40">0 / 0g</span></div>
+            <div class="h-2.5 bg-white/10 rounded-full overflow-hidden"><div id="bar-fat" class="h-full bg-orange-400 rounded-full transition-all duration-500" style="width:0%"></div></div>
+        </div>
+    </div>
+
+    <!-- Meals -->
+    <div class="space-y-4">
+        <h3 class="text-sm font-bold text-[#FFDB89] uppercase tracking-wider">Comidas del Día</h3>
+        <div id="meals-container" class="space-y-3"></div>
+        <button id="add-meal-btn" class="w-full border-2 border-dashed border-[#FFDB89]/20 hover:border-[#FFDB89]/50 text-[#FFDB89]/40 hover:text-[#FFDB89] py-3 rounded-xl font-bold transition flex items-center justify-center gap-2">
+            <i class="fas fa-plus-circle"></i> Añadir Comida
         </button>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        <div class="bg-white/5 border border-[#92A9E1]/20 p-6 rounded-xl">
-            <h3 class="text-lg font-bold text-white mb-4 border-b border-[#92A9E1]/20 pb-2">Control de Peso</h3>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-[#92A9E1]/70 uppercase">Peso Actual (lbs)</label>
-                    <input type="number" id="nutri-weight" value="185" class="w-full mt-1 p-2 bg-white/10 border border-[#92A9E1]/30 rounded text-white font-bold outline-none focus:ring-2 focus:ring-[#92A9E1]">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-[#92A9E1]/70 uppercase">% Grasa Corporal</label>
-                    <input type="number" id="nutri-fat" value="18" class="w-full mt-1 p-2 bg-white/10 border border-[#92A9E1]/30 rounded text-white font-bold outline-none focus:ring-2 focus:ring-[#92A9E1]">
-                </div>
-
-                <div class="bg-[#92A9E1]/10 border border-[#92A9E1]/20 p-2 rounded">
-                    <p class="text-xs text-[#92A9E1]/70">Masa Magra</p>
-                    <p class="font-bold text-[#92A9E1]" id="calc-lbm">-- lbs</p>
-                </div>
-                <div class="bg-[#92A9E1]/10 border border-[#92A9E1]/20 p-2 rounded">
-                    <p class="text-xs text-[#92A9E1]/70">IMC (BMI)</p>
-                    <p class="font-bold text-[#92A9E1]" id="calc-bmi">--</p>
-                </div>
-                <div class="col-span-2 bg-[#FFDB89]/10 border border-[#FFDB89]/20 p-2 rounded flex justify-between items-center">
-                    <span class="text-xs text-[#FFDB89]/70 font-bold uppercase">Agua Recomendada</span>
-                    <span class="font-bold text-[#FFDB89]" id="calc-water">-- oz</span>
-                </div>
-            </div>
+    <!-- Water Tracker -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-5 rounded-xl">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="font-bold text-[#FFDB89]"><i class="fas fa-tint text-sky-400 mr-2"></i>Agua (oz)</h3>
+            <span class="font-black text-sky-400 text-xl" id="water-count-display">0 oz</span>
         </div>
-
-        <div class="bg-white/5 border border-[#92A9E1]/20 p-6 rounded-xl">
-            <h3 class="text-lg font-bold text-white mb-4 border-b border-[#92A9E1]/20 pb-2">Medidas (cm)</h3>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div><label class="text-xs text-[#92A9E1]/70">Pecho</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-white/10 border border-[#92A9E1]/20 rounded text-white outline-none hover:border-[#92A9E1]/50"></div>
-                <div><label class="text-xs text-[#92A9E1]/70">Brazos</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-white/10 border border-[#92A9E1]/20 rounded text-white outline-none hover:border-[#92A9E1]/50"></div>
-                <div><label class="text-xs text-[#92A9E1]/70">Cintura</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-white/10 border border-[#92A9E1]/20 rounded text-white outline-none hover:border-[#92A9E1]/50"></div>
-                <div><label class="text-xs text-[#92A9E1]/70">Caderas</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-white/10 border border-[#92A9E1]/20 rounded text-white outline-none hover:border-[#92A9E1]/50"></div>
-                <div><label class="text-xs text-[#92A9E1]/70">Cuádriceps</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-white/10 border border-[#92A9E1]/20 rounded text-white outline-none hover:border-[#92A9E1]/50"></div>
-                <div><label class="text-xs text-[#92A9E1]/70">Pantorrillas</label><input type="text" placeholder="--" class="w-full mt-1 p-2 bg-white/10 border border-[#92A9E1]/20 rounded text-white outline-none hover:border-[#92A9E1]/50"></div>
-            </div>
+        <div class="flex flex-wrap gap-2 mb-3" id="water-cups"></div>
+        <div class="flex items-center gap-2">
+            <input type="number" id="water-manual-input" min="0" max="512" class="w-24 p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]" placeholder="oz">
+            <button id="water-set-btn" class="px-3 py-2 bg-sky-400/10 border border-sky-400/20 text-sky-400 hover:bg-sky-400/20 rounded-lg text-sm font-bold transition">Establecer</button>
         </div>
     </div>
 
-    <div class="bg-white/5 border border-[#92A9E1]/20 p-6 rounded-xl">
-        <h3 class="text-lg font-bold text-white mb-6">Distribución de Calorías y Macros</h3>
+    <!-- Notes -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-5 rounded-xl">
+        <h3 class="font-bold text-[#FFDB89] mb-3"><i class="fas fa-sticky-note text-[#FFDB89]/50 mr-2"></i>Notas del Día</h3>
+        <textarea id="nutrition-notes" rows="3" class="w-full p-3 bg-white/5 border border-[#FFDB89]/15 rounded-lg text-white/90 text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] resize-none placeholder-[#FFDB89]/20" placeholder="Cómo te sentiste, qué comiste fuera de lo normal, suplementos..."></textarea>
+    </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div class="p-4 bg-white/5 border border-[#92A9E1]/20 rounded-xl text-center">
-                <p class="text-sm text-[#92A9E1]/70">Oxidar Grasa (Cut)</p>
-                <p class="text-2xl font-bold text-white" id="val-cut">--</p>
-                <p class="text-xs text-[#92A9E1]/50">calorías</p>
-            </div>
-            <div class="p-4 bg-[#92A9E1]/15 border border-[#92A9E1]/40 rounded-xl text-center">
-                <p class="text-sm text-[#92A9E1] font-bold">Mantenimiento</p>
-                <p class="text-3xl font-extrabold text-white" id="val-main">--</p>
-                <p class="text-xs text-[#92A9E1]/70">calorías diarias</p>
-            </div>
-            <div class="p-4 bg-white/5 border border-[#92A9E1]/20 rounded-xl text-center">
-                <p class="text-sm text-[#92A9E1]/70">Volumen (Bulk)</p>
-                <p class="text-2xl font-bold text-white" id="val-bulk">--</p>
-                <p class="text-xs text-[#92A9E1]/50">calorías</p>
-            </div>
+    <!-- History -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-5 rounded-xl">
+        <div class="flex items-center gap-2 mb-4">
+            <i class="fas fa-history text-[#FFDB89]/40 text-sm"></i>
+            <h3 class="font-bold text-[#FFDB89]">Historial</h3>
         </div>
-
-        <div class="border-t border-[#92A9E1]/20 pt-6">
-            <div class="flex justify-between items-center mb-4">
-                <h4 class="font-bold text-white">Distribución Diaria</h4>
-                <div class="flex items-center gap-2">
-                    <label class="text-sm text-[#92A9E1]/70">Comidas al día:</label>
-                    <select id="meals-per-day" class="p-1 bg-white/10 border border-[#92A9E1]/30 rounded text-sm font-bold text-white outline-none">
-                        <option value="3" class="text-black">3 Comidas</option>
-                        <option value="4" selected class="text-black">4 Comidas</option>
-                        <option value="5" class="text-black">5 Comidas</option>
-                        <option value="6" class="text-black">6 Comidas</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="text-xs text-[#92A9E1]/70 border-b border-[#92A9E1]/20">
-                            <th class="py-2">Macro</th>
-                            <th class="py-2">Calorías Totales</th>
-                            <th class="py-2 bg-[#92A9E1]/10 px-2 rounded-t">POR COMIDA (Cal)</th>
-                            <th class="py-2 bg-[#FFDB89]/10 px-2 rounded-t">Gramos (g)</th>
-                            <th class="py-2 bg-white/5 px-2 rounded-t">Onzas (oz)</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-sm text-white">
-                        <tr class="border-b border-[#92A9E1]/10">
-                            <td class="py-3 font-bold text-red-400">Proteína (40%)</td>
-                            <td id="total-pro-cal">--</td>
-                            <td class="font-bold bg-[#92A9E1]/5 px-2" id="meal-pro-cal">--</td>
-                            <td class="font-bold bg-[#FFDB89]/5 px-2" id="meal-pro-g">--</td>
-                            <td class="bg-white/5 px-2" id="meal-pro-oz">--</td>
-                        </tr>
-                        <tr class="border-b border-[#92A9E1]/10">
-                            <td class="py-3 font-bold text-yellow-400">Carbohidratos (40%)</td>
-                            <td id="total-carb-cal">--</td>
-                            <td class="font-bold bg-[#92A9E1]/5 px-2" id="meal-carb-cal">--</td>
-                            <td class="font-bold bg-[#FFDB89]/5 px-2" id="meal-carb-g">--</td>
-                            <td class="bg-white/5 px-2" id="meal-carb-oz">--</td>
-                        </tr>
-                        <tr>
-                            <td class="py-3 font-bold text-[#92A9E1]">Grasas (20%)</td>
-                            <td id="total-fat-cal">--</td>
-                            <td class="font-bold bg-[#92A9E1]/5 px-2" id="meal-fat-cal">--</td>
-                            <td class="font-bold bg-[#FFDB89]/5 px-2" id="meal-fat-g">--</td>
-                            <td class="bg-white/5 px-2" id="meal-fat-oz">--</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+        <div id="nutrition-history" class="space-y-2">
+            <p class="text-[#FFDB89]/30 text-sm text-center py-4">Cargando historial...</p>
         </div>
     </div>
+
 </div>

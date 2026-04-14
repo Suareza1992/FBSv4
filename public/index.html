@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FitbySuárez - Plataforma</title>
-  
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -12,419 +12,518 @@
       theme: {
         extend: {
           colors: {
-            brand: {
-              purple: '#5e2d91',
-              yellow: '#ffde00',
-              dark: '#1a1a1a',
-            },
             fbs: {
-              charcoal: '#233D4D',
-              scarlet: '#FF2400',
-              steel: '#92A9E1',
-              pumpkin: '#FE7F2D',
-              cream: '#FDF8F2',
+              dark:    '#030303',
+              dim:     '#1C1C1E',
+              charcoal:'#2C2C2E',
+              gold:    '#FFDB89',
+              steel:   '#92A9E1',
             }
           }
         }
       }
     }
   </script>
-  
+
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 
   <style>
     body { font-family: 'Inter', sans-serif; }
-    
-    /* Dark Mode Utility Classes */
-    .bg-gray-200.dark { background-color: #111827; } 
-    .text-gray-800.dark { color: #f3f4f6; } 
-    .bg-white.dark { background-color: #1f2937; color: #f3f4f6; }
-    
-    /* LIQUID CRYSTAL STYLES (Used by clients_content.html) */
-    .glassmorphism {
-      background-color: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.5);
-    }
-    
-    .glassmorphism.dark {
-        background-color: #111827;
-        border: none;
-        backdrop-filter: none;
+
+    /* Hero Background */
+    .hero-bg {
+      background-image:
+        linear-gradient(135deg, rgba(3,3,3,0.82) 0%, rgba(28,28,30,0.72) 100%),
+        url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
     }
 
-    .glass-panel {
-        background: rgba(30, 41, 59, 0.95);
-        backdrop-filter: blur(24px);
-        -webkit-backdrop-filter: blur(24px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    /* Login card glass effect */
+    .login-glass {
+      background: rgba(3, 3, 3, 0.80);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
     }
-    
-    .glass-input {
-        background: rgba(0, 0, 0, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: white;
-        box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+
+    /* Input focus */
+    .fbs-input {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 219, 137, 0.25);
+      color: white;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    
-    .glass-input:focus {
-        border-color: #a78bfa;
-        background: rgba(0, 0, 0, 0.5);
-        box-shadow: 0 0 10px rgba(167, 139, 250, 0.2);
+    .fbs-input::placeholder { color: rgba(255,219,137,0.4); }
+    .fbs-input:focus {
+      outline: none;
+      border-color: #FFDB89;
+      box-shadow: 0 0 0 2px rgba(255,219,137,0.15);
     }
-    
-    /* Pill button active state */
-    .pill-option.active {
-        background: #3b82f6; 
-        color: white;
-        box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
-        border: 1px solid rgba(255,255,255,0.2);
+
+    /* Gold button */
+    .btn-gold {
+      background: #FFDB89;
+      color: #030303;
+      font-weight: 800;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
     }
-    
-    /* Remove browser default focus ring on mouse click (keeps it for keyboard nav) */
-    button:focus:not(:focus-visible),
-    a:focus:not(:focus-visible),
-    input:focus:not(:focus-visible),
-    select:focus:not(:focus-visible) {
-        outline: none;
-        box-shadow: none;
+    .btn-gold:hover {
+      background: #ffe9a8;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(255,219,137,0.3);
     }
+    .btn-gold:active { transform: translateY(0); }
+
+    /* Section transitions */
+    .section-dark  { background-color: #030303; }
+    .section-dim   { background-color: #1C1C1E; }
+    .section-card  { background-color: #2C2C2E; }
+
+    /* Feat card hover glow */
+    .feat-card { border: 1px solid rgba(255,219,137,0.08); transition: border-color 0.25s, box-shadow 0.25s; }
+    .feat-card:hover { border-color: rgba(255,219,137,0.35); box-shadow: 0 0 24px rgba(255,219,137,0.06); }
+
+    /* Testimonial card */
+    .testi-card { border: 1px solid rgba(255,219,137,0.08); }
 
     /* Animation */
     .animate-fade-in-down { animation: fadeInDown 0.3s ease-out forwards; }
-    @keyframes fadeInDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeInDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
 
-    /* Landing Page Specifics */
-    .hero-bg {
-        background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.7)), url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop');
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
+    /* Tip bar scroll */
+    .tip-marquee { animation: marquee 30s linear infinite; }
+    @keyframes marquee { from { transform: translateX(100%); } to { transform: translateX(-100%); } }
+
+    /* Focus ring removal on click */
+    button:focus:not(:focus-visible), a:focus:not(:focus-visible),
+    input:focus:not(:focus-visible), select:focus:not(:focus-visible) {
+      outline: none; box-shadow: none;
     }
 
-    /* Custom Scrollbar */
-    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
-    .dark .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; }
+    /* Nav link — lock all browser default link states to gold, override visited/active/focus blue */
+    .nav-link-item,
+    .nav-link-item:link,
+    .nav-link-item:visited,
+    .nav-link-item:active,
+    .nav-link-item:focus {
+      color: #FFDB89;
+      text-decoration: none;
+      outline: none;
+    }
+    .nav-link-item:hover {
+      background-color: rgba(255, 219, 137, 0.12);
+      color: #FFDB89;
+      transform: translateX(3px);
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background-color: rgba(255,219,137,0.3); border-radius: 10px; }
+
+    /* Gold star */
+    .gold-star { color: #FFDB89; }
   </style>
 </head>
-<body class="bg-gray-50 dark:bg-gradient-to-br dark:from-[#05050a] dark:via-[#0d1018] dark:to-[#080b14] flex flex-col min-h-screen text-gray-800 dark:text-gray-100 font-sans transition-colors duration-200 overflow-hidden"> 
+<body class="bg-fbs-dark text-white font-sans overflow-hidden">
 
-  <div id="app-container" class="flex flex-grow w-full h-screen overflow-hidden">
+  <div id="app-container" class="flex w-full h-screen overflow-hidden">
 
-    <div id="auth-screen" class="flex-grow w-full h-full overflow-y-auto bg-white dark:bg-gray-900 scroll-smooth">
-        
-        <nav class="sticky top-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between items-center h-20">
-                    <div class="flex-shrink-0 flex items-center gap-2">
-                        <i class="fas fa-dumbbell text-3xl text-brand-purple"></i>
-                        <span class="font-bold text-2xl tracking-tighter">FitbySuárez</span>
-                    </div>
-                    <div class="flex items-center">
-                        <button onclick="toggleLanguage()" class="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-                            <i class="fas fa-globe text-brand-purple"></i>
-                            <span id="lang-btn-text" class="font-bold text-sm">EN</span>
-                        </button>
-                    </div>
-                </div>
+    <!-- ====================================================================
+         AUTH SCREEN (landing page)
+    ===================================================================== -->
+    <div id="auth-screen" class="flex-grow w-full h-full overflow-y-auto scroll-smooth">
+
+      <!-- NAV -->
+      <nav class="sticky top-0 z-50 bg-fbs-dark/90 backdrop-blur-md border-b border-fbs-gold/15">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex justify-between items-center h-18 py-4">
+            <div class="flex items-center gap-2.5">
+              <i class="fas fa-dumbbell text-2xl text-fbs-gold"></i>
+              <span class="font-black text-xl tracking-tight text-white">FitbySuárez</span>
             </div>
-        </nav>
-
-        <header class="hero-bg min-h-screen h-auto flex items-center relative py-20">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full flex flex-col md:flex-row items-center justify-between gap-12">
-                
-                <div class="md:w-1/2 text-white space-y-6">
-                    <h1 class="text-5xl md:text-7xl font-extrabold leading-tight">
-                        <span data-key="heroTitle1">Entrena con</span><br>
-                        <span class="text-brand-yellow" data-key="heroTitle2">Inteligencia.</span>
-                    </h1>
-                    <p class="text-xl text-gray-200 max-w-lg" data-key="heroSub">
-                        La plataforma profesional para fitness serio. Rastrea entrenamientos, gestiona nutrición y visualiza tu progreso—todo en un solo lugar.
-                    </p>
-                    <div class="flex items-center gap-4 pt-4">
-                        <div class="flex -space-x-2">
-                            <img class="w-10 h-10 rounded-full border-2 border-white" src="https://i.pravatar.cc/100?img=1" alt="">
-                            <img class="w-10 h-10 rounded-full border-2 border-white" src="https://i.pravatar.cc/100?img=2" alt="">
-                            <img class="w-10 h-10 rounded-full border-2 border-white" src="https://i.pravatar.cc/100?img=3" alt="">
-                        </div>
-                        <span class="text-sm font-medium" data-key="heroTrusted">Más de 500 Atletas Confían</span>
-                    </div>
-                </div>
-
-                <div class="md:w-1/3 w-full">
-
-                    <!-- LOGIN CARD -->
-                    <div id="login-card" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl border-t-4 border-brand-purple">
-                        <h2 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white" data-key="signIn">Iniciar Sesion</h2>
-                        <p class="text-sm text-gray-500 mb-6" data-key="accessDash">Accede a tu panel</p>
-
-                        <form id="login-form" onsubmit="event.preventDefault();">
-                            <div class="mb-4">
-                                <input type="email" id="login-email" placeholder="Correo Electronico" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition">
-                            </div>
-
-                            <div class="mb-4 relative">
-                                <input type="password" id="login-password" placeholder="Contrasena" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition pr-12">
-                                <button type="button" id="toggle-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><i class="fas fa-eye"></i></button>
-                            </div>
-
-                            <div class="flex items-center justify-between mb-6">
-                                <label class="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
-                                    <input type="checkbox" id="remember-me" class="rounded border-gray-300">
-                                    <span>Recordarme</span>
-                                </label>
-                                <button type="button" id="forgot-password-link" class="text-sm text-brand-purple hover:underline font-semibold">Olvide mi contrasena</button>
-                            </div>
-
-                            <button type="submit" class="w-full bg-brand-purple hover:bg-purple-800 text-white p-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition transform hover:-translate-y-1" data-key="startTraining">
-                                Comenzar
-                            </button>
-                        </form>
-
-                        <p id="auth-message" class="text-center mt-4 text-sm font-bold hidden"></p>
-                    </div>
-
-                    <!-- FORGOT PASSWORD CARD -->
-                    <div id="forgot-password-card" class="hidden bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl border-t-4 border-brand-purple">
-                        <h2 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Recuperar Contrasena</h2>
-                        <p class="text-sm text-gray-500 mb-6">Ingresa tu email y te enviaremos un enlace para restablecer tu contrasena.</p>
-
-                        <form id="forgot-password-form" onsubmit="event.preventDefault();">
-                            <div class="mb-6">
-                                <input type="email" id="forgot-email" placeholder="Correo Electronico" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition">
-                            </div>
-                            <button type="submit" class="w-full bg-brand-purple hover:bg-purple-800 text-white p-4 rounded-xl font-bold text-lg shadow-lg transition">
-                                Enviar Enlace
-                            </button>
-                        </form>
-
-                        <p id="forgot-message" class="text-center mt-4 text-sm font-bold hidden"></p>
-
-                        <div class="mt-6 text-center">
-                            <button id="back-to-login" class="text-sm text-gray-500 hover:text-brand-purple font-semibold underline">Volver a Iniciar Sesion</button>
-                        </div>
-                    </div>
-
-                    <!-- RESET PASSWORD CARD (shown when URL has ?token=...) -->
-                    <div id="reset-password-card" class="hidden bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl border-t-4 border-brand-purple">
-                        <h2 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Nueva Contrasena</h2>
-                        <p class="text-sm text-gray-500 mb-6">Ingresa tu nueva contrasena (minimo 6 caracteres).</p>
-
-                        <form id="reset-password-form" onsubmit="event.preventDefault();">
-                            <div class="mb-4">
-                                <input type="password" id="new-password" placeholder="Nueva Contrasena" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition">
-                            </div>
-                            <div class="mb-6">
-                                <input type="password" id="confirm-password" placeholder="Confirmar Contrasena" class="w-full p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl dark:text-white focus:ring-2 focus:ring-brand-purple outline-none transition">
-                            </div>
-                            <button type="submit" class="w-full bg-brand-purple hover:bg-purple-800 text-white p-4 rounded-xl font-bold text-lg shadow-lg transition">
-                                Guardar Contrasena
-                            </button>
-                        </form>
-
-                        <p id="reset-message" class="text-center mt-4 text-sm font-bold hidden"></p>
-                    </div>
-
-                </div>
-            </div>
-        </header>
-
-        <div class="bg-brand-yellow text-brand-dark py-4 relative z-20">
-            <div class="max-w-7xl mx-auto px-4 text-center">
-                <span class="font-black uppercase tracking-wider text-sm mr-2" data-key="dailyTipLabel">Tip del Día:</span>
-                <span id="daily-fitness-tip" class="font-medium italic">Cargando...</span>
-            </div>
+            <button onclick="toggleLanguage()" class="flex items-center gap-2 px-4 py-2 rounded-full border border-fbs-gold/30 text-fbs-gold hover:border-fbs-gold hover:text-fbs-gold transition text-sm font-bold">
+              <i class="fas fa-globe text-xs"></i>
+              <span id="lang-btn-text">EN</span>
+            </button>
+          </div>
         </div>
+      </nav>
 
-        <section class="py-24 bg-white dark:bg-gray-900">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-16">
-                    <h2 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl" data-key="featTitle">Todo lo que necesitas para triunfar.</h2>
-                    <p class="mt-4 text-lg text-gray-500" data-key="featSub">Herramientas profesionales construidas para entrenamiento de alto rendimiento.</p>
-                </div>
-                
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div class="p-8 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 hover:shadow-lg transition">
-                        <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-300 mb-4 text-xl"><i class="fas fa-calendar-alt"></i></div>
-                        <h3 class="text-xl font-bold mb-2" data-key="f1Title">Calendario Inteligente</h3>
-                        <p class="text-gray-500 text-sm" data-key="f1Desc">Organiza tus semanas de entrenamiento de manera eficiente.</p>
-                    </div>
-                    <div class="p-8 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 hover:shadow-lg transition">
-                        <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center text-purple-600 dark:text-purple-300 mb-4 text-xl"><i class="fas fa-video"></i></div>
-                        <h3 class="text-xl font-bold mb-2" data-key="f2Title">Análisis de Video</h3>
-                        <p class="text-gray-500 text-sm" data-key="f2Desc">Sube videos de tu técnica y recibe feedback instantáneo.</p>
-                    </div>
-                    <div class="p-8 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 hover:shadow-lg transition">
-                        <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center text-green-600 dark:text-green-300 mb-4 text-xl"><i class="fas fa-chart-line"></i></div>
-                        <h3 class="text-xl font-bold mb-2" data-key="f3Title">Métricas de Progreso</h3>
-                        <p class="text-gray-500 text-sm" data-key="f3Desc">Visualiza tus ganancias de fuerza y composición corporal.</p>
-                    </div>
-                </div>
+      <!-- HERO -->
+      <header class="hero-bg min-h-screen h-auto flex items-center relative py-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full flex flex-col md:flex-row items-center justify-between gap-12">
+
+          <!-- Left: headline -->
+          <div class="md:w-1/2 text-white space-y-6">
+            <div class="inline-flex items-center gap-2 bg-fbs-gold/15 border border-fbs-gold/30 text-fbs-gold text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-widest">
+              <span class="w-1.5 h-1.5 bg-fbs-gold rounded-full animate-pulse"></span>
+              Plataforma de Entrenamiento
             </div>
-        </section>
+            <h1 class="text-5xl md:text-6xl lg:text-7xl font-black leading-tight">
+              <span data-key="heroTitle1">Entrena con</span><br>
+              <span class="text-fbs-gold" data-key="heroTitle2">Inteligencia.</span>
+            </h1>
+            <p class="text-lg text-fbs-gold/80 max-w-lg leading-relaxed" data-key="heroSub">
+              La plataforma profesional para fitness serio. Rastrea entrenamientos, gestiona nutrición y visualiza tu progreso—todo en un solo lugar.
+            </p>
 
-        <section class="py-24 bg-gray-50 dark:bg-gray-850">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <h2 class="text-3xl font-bold text-center mb-12" data-key="testTitle">Historias de Éxito</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    <div class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm">
-                        <div class="flex text-yellow-400 mb-4"><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i></div>
-                        <p class="text-gray-600 dark:text-gray-300 italic mb-6" data-key="t1Desc">"Esta plataforma cambió completamente mi enfoque. La estructura es exactamente lo que necesitaba."</p>
-                        <div class="font-bold">- Carlos R.</div>
-                    </div>
-                    <div class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm">
-                        <div class="flex text-yellow-400 mb-4"><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i></div>
-                        <p class="text-gray-600 dark:text-gray-300 italic mb-6" data-key="t2Desc">"Finalmente, un lugar donde puedo rastrear mi nutrición y mis levantamientos en un solo panel."</p>
-                        <div class="font-bold">- Sarah M.</div>
-                    </div>
-                    <div class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm">
-                        <div class="flex text-yellow-400 mb-4"><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i></div>
-                        <p class="text-gray-600 dark:text-gray-300 italic mb-6" data-key="t3Desc">"La función de feedback por video es un cambio total para el coaching remoto."</p>
-                        <div class="font-bold">- Javier L.</div>
-                    </div>
+            <!-- Stats row -->
+            <div class="flex flex-wrap gap-6 pt-2">
+              <div>
+                <p class="text-3xl font-black text-fbs-gold">500+</p>
+                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider" data-key="heroTrusted">Atletas activos</p>
+              </div>
+              <div class="w-px bg-fbs-gold/20"></div>
+              <div>
+                <p class="text-3xl font-black text-fbs-gold">100%</p>
+                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider">Personalizado</p>
+              </div>
+              <div class="w-px bg-fbs-gold/20"></div>
+              <div>
+                <p class="text-3xl font-black text-fbs-gold">24/7</p>
+                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider">Acceso</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: auth cards -->
+          <div class="md:w-5/12 w-full">
+
+            <!-- LOGIN CARD -->
+            <div id="login-card" class="login-glass border border-fbs-gold/25 rounded-2xl shadow-2xl overflow-hidden">
+              <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
+              <div class="p-8">
+                <h2 class="text-2xl font-black text-white mb-1" data-key="signIn">Iniciar Sesión</h2>
+                <p class="text-sm text-fbs-gold/50 mb-7" data-key="accessDash">Accede a tu panel</p>
+
+                <form id="login-form" onsubmit="event.preventDefault();">
+                  <div class="mb-4">
+                    <input type="email" id="login-email" placeholder="Correo electrónico"
+                      class="fbs-input w-full p-4 rounded-xl text-sm">
+                  </div>
+                  <div class="mb-4 relative">
+                    <input type="password" id="login-password" placeholder="Contraseña"
+                      class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <button type="button" id="toggle-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
+                      <i class="fas fa-eye text-sm"></i>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between mb-6">
+                    <label class="flex items-center gap-2 text-sm text-fbs-gold/50 cursor-pointer select-none">
+                      <input type="checkbox" id="remember-me" class="rounded border-fbs-gold/40 accent-fbs-gold">
+                      <span>Recordarme</span>
+                    </label>
+                    <button type="button" id="forgot-password-link" class="text-sm text-fbs-gold/70 hover:text-fbs-gold font-semibold transition">
+                      Olvidé mi contraseña
+                    </button>
+                  </div>
+                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base" data-key="startTraining">
+                    Comenzar
+                  </button>
+                </form>
+
+                <p id="auth-message" class="text-center mt-4 text-sm font-bold hidden"></p>
+              </div>
+            </div>
+
+            <!-- FORGOT PASSWORD CARD -->
+            <div id="forgot-password-card" class="hidden login-glass border border-fbs-gold/25 rounded-2xl shadow-2xl overflow-hidden">
+              <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
+              <div class="p-8">
+                <h2 class="text-2xl font-black text-white mb-1">Recuperar Contraseña</h2>
+                <p class="text-sm text-fbs-gold/50 mb-7">Ingresa tu email y te enviaremos un enlace para restablecerla.</p>
+                <form id="forgot-password-form" onsubmit="event.preventDefault();">
+                  <div class="mb-6">
+                    <input type="email" id="forgot-email" placeholder="Correo electrónico" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  </div>
+                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base">Enviar Enlace</button>
+                </form>
+                <p id="forgot-message" class="text-center mt-4 text-sm font-bold hidden"></p>
+                <div class="mt-5 text-center">
+                  <button id="back-to-login" class="text-sm text-fbs-gold/50 hover:text-fbs-gold transition underline">Volver a Iniciar Sesión</button>
                 </div>
+              </div>
             </div>
-        </section>
 
-        <section class="py-20 bg-brand-purple text-white text-center">
-            <div class="max-w-4xl mx-auto px-4">
-                <h2 class="text-4xl font-bold mb-6" data-key="ctaTitle">¿Listo para subir de nivel?</h2>
-                <p class="text-xl text-purple-100 mb-8" data-key="ctaSub">Únete a la plataforma usada por atletas de alto rendimiento.</p>
-                <button onclick="document.querySelector('header').scrollIntoView({behavior: 'smooth'})" class="bg-brand-yellow text-brand-dark px-10 py-4 rounded-full font-bold text-lg shadow-lg hover:bg-white transition transform hover:scale-105" data-key="ctaBtn">
-                    Crea tu Cuenta
-                </button>
+            <!-- RESET PASSWORD CARD -->
+            <div id="reset-password-card" class="hidden login-glass border border-fbs-gold/25 rounded-2xl shadow-2xl overflow-hidden">
+              <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
+              <div class="p-8">
+                <h2 class="text-2xl font-black text-white mb-1">Nueva Contraseña</h2>
+                <p class="text-sm text-fbs-gold/50 mb-7">Ingresa tu nueva contraseña (mínimo 6 caracteres).</p>
+                <form id="reset-password-form" onsubmit="event.preventDefault();">
+                  <div class="mb-4">
+                    <input type="password" id="new-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  </div>
+                  <div class="mb-6">
+                    <input type="password" id="confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  </div>
+                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base">Guardar Contraseña</button>
+                </form>
+                <p id="reset-message" class="text-center mt-4 text-sm font-bold hidden"></p>
+              </div>
             </div>
-        </section>
 
-        <footer class="bg-[#383838] py-16">
-            <div class="max-w-7xl mx-auto px-4">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
-                    
-                    <div class="px-4">
-                        <h4 class="text-lg text-white font-medium capitalize mb-8 relative after:content-[''] after:absolute after:left-0 after:-bottom-2.5 after:h-0.5 after:w-12 after:bg-white">
-                            Customer Service
-                        </h4>
-                        </div>
-
-                    <div class="px-4">
-                        <h4 class="text-lg text-white font-medium capitalize mb-8 relative after:content-[''] after:absolute after:left-0 after:-bottom-2.5 after:h-0.5 after:w-12 after:bg-white">
-                            Follow me!
-                        </h4>
-                    </div>
-
-                    <div class="px-4">
-                        <div class="flex flex-wrap">
-                            <a href="#" class="inline-flex h-10 w-10 bg-white/20 rounded-full items-center justify-center text-white mr-2.5 mb-2.5 transition-all duration-500 hover:bg-white hover:text-gray-900"><i class="fab fa-facebook-f"></i></a>
-                            <a href="#" class="inline-flex h-10 w-10 bg-white/20 rounded-full items-center justify-center text-white mr-2.5 mb-2.5 transition-all duration-500 hover:bg-white hover:text-gray-900"><i class="fab fa-twitter"></i></a>
-                            <a href="https://www.instagram.com/fitbysuarez/" target="_blank" class="inline-flex h-10 w-10 bg-white/20 rounded-full items-center justify-center text-white mr-2.5 mb-2.5 transition-all duration-500 hover:bg-white hover:text-gray-900"><i class="fab fa-instagram"></i></a>
-                            <a href="#" class="inline-flex h-10 w-10 bg-white/20 rounded-full items-center justify-center text-white mr-2.5 mb-2.5 transition-all duration-500 hover:bg-white hover:text-gray-900"><i class="fab fa-threads"></i></a>
-                            <a href="#" class="inline-flex h-10 w-10 bg-white/20 rounded-full items-center justify-center text-white mr-2.5 mb-2.5 transition-all duration-500 hover:bg-white hover:text-gray-900"><i class="fab fa-youtube"></i></a>
-                        </div>
-                    </div>
-
+            <!-- SETUP ACCOUNT CARD (shown when ?invite= token is in the URL) -->
+            <div id="setup-account-card" class="hidden login-glass border border-fbs-gold/25 rounded-2xl shadow-2xl overflow-hidden">
+              <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
+              <div class="p-8">
+                <div class="flex items-center gap-3 mb-1">
+                  <div class="w-9 h-9 rounded-full bg-fbs-gold/15 border border-fbs-gold/30 flex items-center justify-center text-fbs-gold">
+                    <i class="fas fa-user-check text-sm"></i>
+                  </div>
+                  <h2 class="text-2xl font-black text-white">Activa tu Cuenta</h2>
                 </div>
+                <p class="text-sm text-fbs-gold/50 mb-6 ml-12">Bienvenido/a. Crea tu contraseña para comenzar.</p>
+
+                <div id="invite-greeting" class="hidden mb-5 p-3 bg-fbs-gold/10 border border-fbs-gold/20 rounded-xl flex items-center gap-3">
+                  <i class="fas fa-dumbbell text-fbs-gold text-sm"></i>
+                  <p id="invite-greeting-text" class="text-sm text-fbs-gold/90 font-semibold"></p>
+                </div>
+
+                <form id="accept-invite-form" onsubmit="event.preventDefault();">
+                  <div class="mb-4">
+                    <input type="email" id="invite-email-display" class="fbs-input w-full p-4 rounded-xl text-sm opacity-50 cursor-not-allowed" readonly placeholder="Correo electrónico">
+                  </div>
+                  <div class="mb-4">
+                    <input type="password" id="invite-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  </div>
+                  <div class="mb-6">
+                    <input type="password" id="invite-confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  </div>
+                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base font-black">
+                    <i class="fas fa-unlock-alt mr-2"></i>Activar mi Cuenta
+                  </button>
+                </form>
+                <p id="invite-message" class="text-center mt-4 text-sm font-bold hidden"></p>
+              </div>
             </div>
-        </footer>
 
-    </div>
+          </div>
+        </div>
+      </header>
 
+      <!-- DAILY TIP BAR -->
+      <div class="bg-fbs-gold py-3 relative z-20 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+          <span class="font-black uppercase tracking-widest text-xs text-fbs-dark mr-3" data-key="dailyTipLabel">Tip del Día:</span>
+          <span id="daily-fitness-tip" class="font-medium text-sm italic text-fbs-dark/80">Cargando...</span>
+        </div>
+      </div>
+
+      <!-- FEATURES -->
+      <section class="section-dark py-24">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="text-center max-w-3xl mx-auto mb-16">
+            <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3">Funcionalidades</p>
+            <h2 class="text-3xl md:text-4xl font-black text-white" data-key="featTitle">Todo lo que necesitas para triunfar.</h2>
+            <p class="mt-4 text-fbs-gold/70 text-base" data-key="featSub">Herramientas profesionales construidas para entrenamiento de alto rendimiento.</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold mb-5 text-xl">
+                <i class="fas fa-calendar-alt"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-2" data-key="f1Title">Calendario Inteligente</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f1Desc">Organiza tus semanas de entrenamiento de manera eficiente.</p>
+            </div>
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold mb-5 text-xl">
+                <i class="fas fa-video"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-2" data-key="f2Title">Análisis de Video</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f2Desc">Sube videos de tu técnica y recibe feedback instantáneo.</p>
+            </div>
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold mb-5 text-xl">
+                <i class="fas fa-chart-line"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-2" data-key="f3Title">Métricas de Progreso</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f3Desc">Visualiza tus ganancias de fuerza y composición corporal.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TESTIMONIALS -->
+      <section class="section-dim py-24">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest text-center mb-3">Clientes</p>
+          <h2 class="text-3xl md:text-4xl font-black text-center text-white mb-14" data-key="testTitle">Historias de Éxito</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <div class="testi-card section-card p-8 rounded-2xl">
+              <div class="flex gap-0.5 mb-5">
+                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
+                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
+                <i class="fas fa-star gold-star text-sm"></i>
+              </div>
+              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed" data-key="t1Desc">"Esta plataforma cambió completamente mi enfoque. La estructura es exactamente lo que necesitaba."</p>
+              <div class="flex items-center gap-3">
+                <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=12" alt="">
+                <span class="font-bold text-white text-sm">— Carlos R.</span>
+              </div>
+            </div>
+
+            <div class="testi-card section-card p-8 rounded-2xl">
+              <div class="flex gap-0.5 mb-5">
+                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
+                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
+                <i class="fas fa-star gold-star text-sm"></i>
+              </div>
+              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed" data-key="t2Desc">"Finalmente, un lugar donde puedo rastrear mi nutrición y mis levantamientos en un solo panel."</p>
+              <div class="flex items-center gap-3">
+                <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=5" alt="">
+                <span class="font-bold text-white text-sm">— Sarah M.</span>
+              </div>
+            </div>
+
+            <div class="testi-card section-card p-8 rounded-2xl">
+              <div class="flex gap-0.5 mb-5">
+                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
+                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
+                <i class="fas fa-star gold-star text-sm"></i>
+              </div>
+              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed" data-key="t3Desc">"La función de feedback por video es un cambio total para el coaching remoto."</p>
+              <div class="flex items-center gap-3">
+                <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=8" alt="">
+                <span class="font-bold text-white text-sm">— Javier L.</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="section-dark py-20 border-t border-fbs-gold/15">
+        <div class="max-w-4xl mx-auto px-4 text-center">
+          <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-4">¿Listo?</p>
+          <h2 class="text-4xl md:text-5xl font-black text-white mb-4" data-key="ctaTitle">¿Listo para subir de nivel?</h2>
+          <p class="text-fbs-gold/70 text-lg mb-10 max-w-xl mx-auto" data-key="ctaSub">Únete a la plataforma usada por atletas de alto rendimiento.</p>
+          <a href="https://www.instagram.com/fitbysuarez/" target="_blank"
+            class="btn-gold px-10 py-4 rounded-full text-lg inline-flex items-center gap-3" data-key="ctaBtn">
+            <i class="fab fa-instagram"></i> Contáctame
+          </a>
+        </div>
+      </section>
+
+      <!-- FOOTER -->
+      <footer class="bg-fbs-dark border-t border-fbs-gold/10 py-14">
+        <div class="max-w-7xl mx-auto px-4">
+          <div class="flex flex-col md:flex-row justify-between items-start gap-10">
+
+            <div>
+              <div class="flex items-center gap-2 mb-3">
+                <i class="fas fa-dumbbell text-fbs-gold"></i>
+                <span class="font-black text-white">FitbySuárez</span>
+              </div>
+              <p class="text-fbs-gold/50 text-sm max-w-xs">La plataforma profesional para fitness serio y entrenamiento de alto rendimiento.</p>
+            </div>
+
+            <div>
+              <p class="text-xs font-bold text-fbs-gold/70 uppercase tracking-widest mb-4">Síguenos</p>
+              <div class="flex gap-2">
+                <a href="#" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-facebook-f"></i></a>
+                <a href="#" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-twitter"></i></a>
+                <a href="https://www.instagram.com/fitbysuarez/" target="_blank" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-instagram"></i></a>
+                <a href="#" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-threads"></i></a>
+                <a href="#" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-youtube"></i></a>
+              </div>
+            </div>
+
+          </div>
+          <div class="border-t border-fbs-gold/10 mt-10 pt-8 text-center text-xs text-fbs-gold/30">
+            © 2026 FitbySuárez. Todos los derechos reservados.
+          </div>
+        </div>
+      </footer>
+
+    </div><!-- /auth-screen -->
+
+    <!-- ====================================================================
+         DASHBOARD CONTAINER (injected after login)
+    ===================================================================== -->
     <div id="dashboard-container" class="flex flex-grow hidden h-screen overflow-hidden">
-
-        <div id="sidebar-placeholder" class="h-full flex-shrink-0 z-20 shadow-2xl"></div>
-
-        <div class="flex-grow flex flex-col h-full relative overflow-hidden bg-[#2C2C2E] dark:bg-[#030303]">
-
-            <main id="main-content" class="flex-grow p-4 md:p-6 overflow-hidden relative">
-                </main>
-
-        </div>
+      <div id="sidebar-placeholder" class="h-full flex-shrink-0 z-20 shadow-2xl"></div>
+      <div class="flex-grow flex flex-col h-full relative overflow-hidden bg-[#2C2C2E] dark:bg-[#030303]">
+        <main id="main-content" class="flex-grow p-4 md:p-6 overflow-hidden relative"></main>
+      </div>
     </div>
 
-  </div>
-  
+  </div><!-- /app-container -->
+
   <script src="app.js"></script>
 
   <script>
     const translations = {
-        es: {
-            heroTitle1: "Entrena con",
-            heroTitle2: "Inteligencia.",
-            heroSub: "La plataforma profesional para fitness serio. Rastrea entrenamientos, gestiona nutrición y visualiza tu progreso—todo en un solo lugar.",
-            heroTrusted: "Más de 500 Atletas Confían",
-            signIn: "Iniciar Sesión",
-            accessDash: "Accede a tu panel",
-            startTraining: "Comenzar",
-            newAccount: "¿Nuevo aquí? Crea una cuenta",
-            dailyTipLabel: "Tip del Día:",
-            featTitle: "Todo lo que necesitas para triunfar.",
-            featSub: "Herramientas profesionales construidas para entrenamiento de alto rendimiento.",
-            f1Title: "Calendario Inteligente",
-            f1Desc: "Organiza tus semanas de entrenamiento de manera eficiente.",
-            f2Title: "Análisis de Video",
-            f2Desc: "Sube videos de tu técnica y recibe feedback instantáneo.",
-            f3Title: "Métricas de Progreso",
-            f3Desc: "Visualiza tus ganancias de fuerza y composición corporal.",
-            testTitle: "Historias de Éxito",
-            t1Desc: "\"Esta plataforma cambió completamente mi enfoque. La estructura es exactamente lo que necesitaba.\"",
-            t2Desc: "\"Finalmente, un lugar donde puedo rastrear mi nutrición y mis levantamientos en un solo panel.\"",
-            t3Desc: "\"La función de feedback por video es un cambio total para el coaching remoto.\"",
-            ctaTitle: "¿Listo para subir de nivel?",
-            ctaSub: "Únete a la plataforma usada por atletas de alto rendimiento.",
-            ctaBtn: "Crea tu Cuenta"
-        },
-        en: {
-            heroTitle1: "Train with",
-            heroTitle2: "Intelligence.",
-            heroSub: "The professional platform for serious fitness. Track workouts, manage nutrition, and visualize your progress—all in one place.",
-            heroTrusted: "Trusted by 500+ Athletes",
-            signIn: "Sign In",
-            accessDash: "Access your dashboard",
-            startTraining: "Start Training",
-            newAccount: "New here? Create an account",
-            dailyTipLabel: "Daily Tip:",
-            featTitle: "Everything you need to succeed.",
-            featSub: "Professional tools built for high-performance coaching and tracking.",
-            f1Title: "Smart Scheduling",
-            f1Desc: "Drag-and-drop calendar to organize your training weeks efficiently.",
-            f2Title: "Video Analysis",
-            f2Desc: "Upload form videos and get instant feedback from your coach.",
-            f3Title: "Progress Metrics",
-            f3Desc: "Visualize your strength gains, body composition, and volume over time.",
-            testTitle: "Success Stories",
-            t1Desc: "\"This platform completely changed how I approach my training. The structure is exactly what I needed.\"",
-            t2Desc: "\"Finally, a place where I can track my nutrition and my lifting in one seamless dashboard.\"",
-            t3Desc: "\"The video feedback feature is a game changer for remote coaching.\"",
-            ctaTitle: "Ready to level up?",
-            ctaSub: "Join the platform used by high performers.",
-            ctaBtn: "Create Your Account"
-        }
+      es: {
+        heroTitle1:   "Entrena con",
+        heroTitle2:   "Inteligencia.",
+        heroSub:      "La plataforma profesional para fitness serio. Rastrea entrenamientos, gestiona nutrición y visualiza tu progreso—todo en un solo lugar.",
+        heroTrusted:  "Atletas activos",
+        signIn:       "Iniciar Sesión",
+        accessDash:   "Accede a tu panel",
+        startTraining:"Comenzar",
+        dailyTipLabel:"Tip del Día:",
+        featTitle:    "Todo lo que necesitas para triunfar.",
+        featSub:      "Herramientas profesionales construidas para entrenamiento de alto rendimiento.",
+        f1Title:      "Calendario Inteligente",
+        f1Desc:       "Organiza tus semanas de entrenamiento de manera eficiente.",
+        f2Title:      "Análisis de Video",
+        f2Desc:       "Sube videos de tu técnica y recibe feedback instantáneo.",
+        f3Title:      "Métricas de Progreso",
+        f3Desc:       "Visualiza tus ganancias de fuerza y composición corporal.",
+        testTitle:    "Historias de Éxito",
+        t1Desc:       '"Esta plataforma cambió completamente mi enfoque. La estructura es exactamente lo que necesitaba."',
+        t2Desc:       '"Finalmente, un lugar donde puedo rastrear mi nutrición y mis levantamientos en un solo panel."',
+        t3Desc:       '"La función de feedback por video es un cambio total para el coaching remoto."',
+        ctaTitle:     "¿Listo para subir de nivel?",
+        ctaSub:       "Únete a la plataforma usada por atletas de alto rendimiento.",
+        ctaBtn:       "Crea tu Cuenta"
+      },
+      en: {
+        heroTitle1:   "Train with",
+        heroTitle2:   "Intelligence.",
+        heroSub:      "The professional platform for serious fitness. Track workouts, manage nutrition, and visualize your progress—all in one place.",
+        heroTrusted:  "Active athletes",
+        signIn:       "Sign In",
+        accessDash:   "Access your dashboard",
+        startTraining:"Start Training",
+        dailyTipLabel:"Daily Tip:",
+        featTitle:    "Everything you need to succeed.",
+        featSub:      "Professional tools built for high-performance coaching and tracking.",
+        f1Title:      "Smart Scheduling",
+        f1Desc:       "Organize your training weeks efficiently with a powerful calendar.",
+        f2Title:      "Video Analysis",
+        f2Desc:       "Upload form videos and get instant feedback from your coach.",
+        f3Title:      "Progress Metrics",
+        f3Desc:       "Visualize your strength gains, body composition, and volume over time.",
+        testTitle:    "Success Stories",
+        t1Desc:       '"This platform completely changed how I approach my training. The structure is exactly what I needed."',
+        t2Desc:       '"Finally, a place where I can track my nutrition and my lifting in one seamless dashboard."',
+        t3Desc:       '"The video feedback feature is a game changer for remote coaching."',
+        ctaTitle:     "Ready to level up?",
+        ctaSub:       "Join the platform used by high performers.",
+        ctaBtn:       "Create Your Account"
+      }
     };
 
     let currentLang = 'es';
 
     function toggleLanguage() {
-        currentLang = currentLang === 'es' ? 'en' : 'es';
-        document.getElementById('lang-btn-text').textContent = currentLang === 'es' ? 'EN' : 'ES'; // Shows what will happen next
-        
-        // Update Static Text
-        document.querySelectorAll('[data-key]').forEach(el => {
-            const key = el.getAttribute('data-key');
-            if(translations[currentLang][key]) {
-                el.textContent = translations[currentLang][key];
-            }
-        });
-
-        // Trigger App.js to update the Random Tip
-        if(window.updateFitnessTipLanguage) {
-            window.updateFitnessTipLanguage(currentLang);
-        }
+      currentLang = currentLang === 'es' ? 'en' : 'es';
+      document.getElementById('lang-btn-text').textContent = currentLang === 'es' ? 'EN' : 'ES';
+      document.querySelectorAll('[data-key]').forEach(el => {
+        const key = el.getAttribute('data-key');
+        if (translations[currentLang][key]) el.textContent = translations[currentLang][key];
+      });
+      if (window.updateFitnessTipLanguage) window.updateFitnessTipLanguage(currentLang);
     }
   </script>
 

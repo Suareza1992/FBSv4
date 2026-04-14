@@ -20,7 +20,7 @@
                         Cambiar Foto
                     </button>
                     <input type="file" id="profile-pic-input" accept="image/jpeg,image/png,image/gif" class="hidden">
-                    <p class="text-xs text-[#FFDB89]/50 mt-1">JPG, GIF o PNG. Max 1MB.</p>
+                    <p class="text-xs text-[#FFDB89]/50 mt-1">JPG, GIF o PNG. Max 5MB.</p>
                 </div>
             </div>
 
@@ -61,6 +61,43 @@
         </div>
     </div>
 
+    <!-- Payment Handles (trainer only) -->
+    <div id="payment-handles-section" class="border-b border-[#FFDB89]/20 mb-6 pb-6 hidden">
+        <div class="pb-4 mb-4 border-b border-[#FFDB89]/20">
+            <h3 class="text-lg font-semibold text-[#FFDB89]">Métodos de Cobro</h3>
+            <p class="text-sm text-[#FFDB89]/60">Tus datos de pago se incluirán en las facturas enviadas a clientes.</p>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-[#FFDB89]/70 mb-1">
+                    <i class="fas fa-mobile-alt mr-2 text-[#FFDB89]/50"></i>ATH Móvil Business — Nombre o @handle
+                </label>
+                <input type="text" id="settings-ath" placeholder="Ej: FitBySuarez"
+                    class="w-full p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-[#FFDB89] focus:border-[#FFDB89] outline-none text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-[#FFDB89]/70 mb-1">
+                    <i class="fab fa-venmo mr-2 text-[#FFDB89]/60"></i>Venmo — @usuario (sin @)
+                </label>
+                <input type="text" id="settings-venmo" placeholder="Ej: AngelSuarez"
+                    class="w-full p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-[#FFDB89] focus:border-[#FFDB89] outline-none text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-[#FFDB89]/70 mb-1">
+                    <i class="fab fa-paypal mr-2 text-[#FFDB89]/60"></i>PayPal.me — usuario (sin paypal.me/)
+                </label>
+                <input type="text" id="settings-paypal" placeholder="Ej: FitBySuarez"
+                    class="w-full p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-[#FFDB89] focus:border-[#FFDB89] outline-none text-sm">
+            </div>
+        </div>
+        <div class="pt-4 mt-4 flex justify-end">
+            <button id="save-payment-handles-btn"
+                class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-medium rounded-lg text-sm transition shadow-md">
+                Guardar Métodos de Cobro
+            </button>
+        </div>
+    </div>
+
     <div class="mb-6">
         <div class="pb-4 mb-4 border-b border-[#FFDB89]/20">
             <h3 class="text-lg font-semibold text-[#FFDB89]">Preferencias de la App</h3>
@@ -86,6 +123,50 @@
                     <span class="translate-x-0 dark:translate-x-5 inline-block h-5 w-5 transform rounded-full bg-[#FFDB89] transition-transform duration-200"></span>
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Photo Position Editor Modal -->
+<div id="photo-editor-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 hidden">
+    <div class="bg-[#1C1C1E] rounded-2xl shadow-2xl border border-[#FFDB89]/20 p-6 w-80 mx-4">
+        <h3 class="text-lg font-bold text-[#FFDB89] mb-1">Ajustar Foto</h3>
+        <p class="text-xs text-[#FFDB89]/50 mb-5">Arrastra para reposicionar · Desliza para hacer zoom</p>
+
+        <!-- Circular crop preview -->
+        <div class="flex justify-center mb-5">
+            <div id="photo-crop-circle"
+                 class="w-48 h-48 rounded-full overflow-hidden border-2 border-[#FFDB89]/40 relative cursor-grab select-none bg-black"
+                 style="touch-action: none;">
+                <img id="photo-crop-img" src="" draggable="false" alt=""
+                     class="absolute left-1/2 top-1/2 max-w-none"
+                     style="transform: translate(-50%, -50%) scale(1); transform-origin: center center;">
+            </div>
+        </div>
+
+        <!-- Zoom slider -->
+        <div class="mb-6">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Zoom</span>
+                <span id="photo-zoom-label" class="text-xs font-bold text-[#FFDB89]/40">1.0×</span>
+            </div>
+            <input type="range" id="photo-zoom-slider" min="100" max="300" value="100" step="1"
+                   class="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+                   style="accent-color: #FFDB89; background: rgba(255,219,137,0.15);">
+        </div>
+
+        <!-- Reset + Actions -->
+        <div class="flex items-center gap-2">
+            <button id="photo-editor-reset" class="px-3 py-2 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/50 text-xs font-bold hover:bg-[#FFDB89]/10 hover:text-[#FFDB89]/80 transition">
+                <i class="fas fa-undo mr-1"></i>Reset
+            </button>
+            <div class="flex-1"></div>
+            <button id="photo-editor-cancel" class="px-4 py-2 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/70 text-sm font-medium hover:bg-[#FFDB89]/10 transition">
+                Cancelar
+            </button>
+            <button id="photo-editor-apply" class="px-4 py-2 rounded-lg bg-[#FFDB89] text-[#030303] text-sm font-bold hover:bg-[#FFDB89]/80 transition">
+                Aplicar
+            </button>
         </div>
     </div>
 </div>

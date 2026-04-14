@@ -1,64 +1,37 @@
-<div class="h-full flex flex-col pb-20 space-y-6">
+<div class="h-full flex flex-col overflow-hidden">
 
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-[#92A9E1]/20 pb-4">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-[#FFDB89]/15 pb-4 px-1 mb-4 shrink-0">
         <div>
             <h1 class="text-3xl font-bold text-[#FFDB89]">Mi Entrenamiento</h1>
-            <p class="text-[#92A9E1]/70 mt-1" id="client-program-name">Cargando...</p>
+            <p class="text-[#FFDB89]/40 mt-1" id="client-program-name">Cargando...</p>
         </div>
-        <div class="mt-4 md:mt-0 flex gap-2">
-            <span class="text-sm font-bold bg-[#FFDB89]/15 text-[#FFDB89] px-3 py-1 rounded-full border border-[#FFDB89]/30" id="current-date-display">Hoy</span>
-            <span class="hidden md:inline-block px-3 py-1 bg-[#92A9E1]/15 text-[#92A9E1] border border-[#92A9E1]/30 rounded-full text-sm font-bold">Semana 1 / 12</span>
-        </div>
-    </div>
-
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/5 border border-[#92A9E1]/20 p-6 rounded-2xl">
-        <div>
-            <h3 class="text-sm font-bold text-[#92A9E1]/70 uppercase mb-2">¿Cómo te sientes hoy?</h3>
-            <div class="flex gap-2" id="mood-selector">
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-[#92A9E1]/10 transition" data-mood="great"><i class="fas fa-smile text-green-400"></i></button>
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-[#FFDB89]/10 transition" data-mood="amazing"><i class="fas fa-grin-stars text-[#FFDB89]"></i></button>
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-white/5 transition" data-mood="neutral"><i class="fas fa-meh text-[#92A9E1]/60"></i></button>
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-[#92A9E1]/10 transition" data-mood="tired"><i class="fas fa-tired text-[#92A9E1]"></i></button>
-                <button class="mood-btn text-2xl p-2 rounded-full hover:bg-red-500/10 transition" data-mood="angry"><i class="fas fa-angry text-red-400"></i></button>
-            </div>
-        </div>
-        <div class="flex items-center gap-3 bg-[#FFDB89]/10 border border-[#FFDB89]/20 px-4 py-2 rounded-xl">
-            <div class="text-center">
-                <span class="block text-2xl font-black text-[#FFDB89]">12</span>
-                <span class="text-xs font-bold text-[#FFDB89]/70">Días Racha</span>
-            </div>
-            <i class="fas fa-fire text-4xl text-[#FFDB89] animate-pulse"></i>
+        <div class="flex items-center gap-2">
+            <span id="current-date-display" class="text-sm font-bold bg-[#FFDB89]/15 text-[#FFDB89] px-3 py-1 rounded-full border border-[#FFDB89]/30">Hoy</span>
+            <button id="scroll-to-today-btn" class="text-xs font-bold px-3 py-1.5 rounded-full bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/25 hover:bg-[#FFDB89]/20 transition">
+                <i class="fas fa-crosshairs mr-1"></i>Ir a Hoy
+            </button>
         </div>
     </div>
 
-    <!-- Mobile View -->
-    <div class="md:hidden space-y-4" id="mobile-workout-view">
-        <h3 class="text-lg font-bold text-white mb-2">Rutina de Hoy</h3>
-        <div id="mobile-exercises-container" class="space-y-3">
-            <div class="text-[#92A9E1]/50 text-sm animate-pulse">Sincronizando...</div>
+    <!-- Mood Bar -->
+    <div class="flex flex-wrap items-center gap-4 bg-[#FFDB89]/5 border border-[#FFDB89]/15 px-5 py-3 rounded-xl mb-4 shrink-0">
+        <span class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider whitespace-nowrap">¿Cómo te sientes hoy?</span>
+        <div class="flex gap-1" id="mood-selector">
+            <button class="mood-btn text-xl p-2 rounded-full hover:bg-[#FFDB89]/10 transition" data-mood="amazing" title="Increíble"><i class="fas fa-grin-stars text-[#FFDB89]"></i></button>
+            <button class="mood-btn text-xl p-2 rounded-full hover:bg-[#FFDB89]/10 transition" data-mood="great" title="Genial"><i class="fas fa-smile text-green-400"></i></button>
+            <button class="mood-btn text-xl p-2 rounded-full hover:bg-white/5 transition" data-mood="neutral" title="Normal"><i class="fas fa-meh text-[#FFDB89]/30"></i></button>
+            <button class="mood-btn text-xl p-2 rounded-full hover:bg-[#FFDB89]/10 transition" data-mood="tired" title="Cansado"><i class="fas fa-tired text-orange-400"></i></button>
+            <button class="mood-btn text-xl p-2 rounded-full hover:bg-red-500/10 transition" data-mood="bad" title="Mal"><i class="fas fa-angry text-red-400"></i></button>
+        </div>
+        <span id="mood-saved-indicator" class="text-xs text-green-400 hidden"><i class="fas fa-check mr-1"></i>Guardado</span>
+    </div>
+
+    <!-- Continuous Calendar -->
+    <div class="flex-grow overflow-y-auto bg-[#1C1C1E] rounded-xl" id="client-calendar-scroll">
+        <div id="client-calendar-container">
+            <p class="text-center text-[#FFDB89]/40 py-12 animate-pulse text-sm">Cargando calendario...</p>
         </div>
     </div>
 
-    <!-- Desktop Calendar -->
-    <div class="hidden md:flex flex-col flex-grow bg-white/5 border border-[#92A9E1]/20 rounded-xl overflow-hidden min-h-[500px]">
-        <div class="grid grid-cols-7 border-b border-[#92A9E1]/20">
-            <div class="py-3 text-center text-xs font-bold text-[#92A9E1]/70">LUN</div>
-            <div class="py-3 text-center text-xs font-bold text-[#92A9E1]/70">MAR</div>
-            <div class="py-3 text-center text-xs font-bold text-[#92A9E1]/70">MIE</div>
-            <div class="py-3 text-center text-xs font-bold text-[#92A9E1]/70">JUE</div>
-            <div class="py-3 text-center text-xs font-bold text-[#92A9E1]/70">VIE</div>
-            <div class="py-3 text-center text-xs font-bold text-[#92A9E1]/70">SAB</div>
-            <div class="py-3 text-center text-xs font-bold text-[#92A9E1]/70">DOM</div>
-        </div>
-        <div id="desktop-calendar-grid" class="flex-grow grid grid-cols-7 auto-rows-fr bg-[#92A9E1]/5 gap-px overflow-y-auto"></div>
-    </div>
-</div>
-
-<div id="change-password-modal" class="hidden fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-    <div class="bg-[#030303]/85 backdrop-blur-2xl border border-red-500/50 rounded-2xl shadow-2xl w-full max-w-md p-8">
-        <h2 class="text-2xl font-bold text-white mb-2"><i class="fas fa-exclamation-triangle text-[#FFDB89] mr-1"></i> Acción Requerida</h2>
-        <p class="text-[#92A9E1]/70 mb-6">Por seguridad, debes cambiar tu contraseña temporal.</p>
-        <input type="password" id="new-password-input" class="w-full p-4 mb-4 bg-white/10 border border-[#92A9E1]/30 rounded-lg text-white outline-none focus:ring-2 focus:ring-[#92A9E1]" placeholder="Nueva Contraseña">
-        <button id="confirm-password-change-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition">Guardar y Continuar</button>
-    </div>
 </div>
