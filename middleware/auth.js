@@ -11,8 +11,9 @@ const getJwtSecret = () => process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION';
  * If missing or invalid, returns 401.
  */
 export function authenticateToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // "Bearer <token>"
+    // H-2: Prefer the HttpOnly cookie; fall back to Authorization header for API clients
+    const token = req.cookies?.auth_token
+        || (req.headers['authorization']?.split(' ')[1]);
 
     if (!token) {
         return res.status(401).json({ message: 'Access denied. No token provided.' });

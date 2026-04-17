@@ -11,28 +11,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainContentArea = document.getElementById('main-content');
     const authMessage = document.getElementById('auth-message');
 
-    // --- AUTH TOKEN HELPER ---
-    // NEW: Every API call goes through this wrapper, which automatically
-    // attaches the JWT token and handles expired sessions.
-    const getToken = () => localStorage.getItem('auth_token');
+    // H-1: HTML escape helper — use on ALL server-supplied strings before injecting into innerHTML
+    const escHtml = (s) => String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 
+    // H-2: apiFetch — token is now an HttpOnly cookie, sent automatically by the browser.
+    // We no longer read or set auth_token in localStorage.
     const apiFetch = async (url, options = {}) => {
-        const token = getToken();
         const headers = {
             'Content-Type': 'application/json',
             ...(options.headers || {}),
         };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
 
-        const res = await fetch(url, { ...options, headers });
+        // credentials:'include' tells the browser to send the HttpOnly auth cookie
+        const res = await fetch(url, { ...options, headers, credentials: 'include' });
 
-        // If token expired or invalid, force logout — but ONLY if there was a token
-        // (if no token, user just isn't logged in yet — don't reload or we get an infinite loop)
+        // If session expired, clear user info and reload to the login screen
         if (res.status === 401) {
-            if (token) {
-                localStorage.removeItem('auth_token');
+            const wasLoggedIn = !!localStorage.getItem('auth_user');
+            if (wasLoggedIn) {
                 localStorage.removeItem('auth_user');
                 location.reload();
             }
@@ -100,10 +101,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────────────────────
 
     // --- DATA STORES ---
-    let mockClientsDb = [];
-    let mockProgramsDb = [];
+    let clientsCache = [];
+    let programsCache = [];
     let globalExerciseLibrary = [];
-    let mockGroupsDb = [];
+    let groupsCache = [];
 
     // --- STATE VARIABLES ---
     const MODULE_CACHE = {}; 
@@ -157,10 +158,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await apiFetch('/api/groups');
             if (res.ok) {
                 const groups = await res.json();
-                mockGroupsDb = groups.map(g => g.name);
+                groupsCache = groups.map(g => g.name);
                 // Ensure 'General' always exists
-                if (!mockGroupsDb.includes('General')) mockGroupsDb.unshift('General');
-                console.log("Groups loaded:", mockGroupsDb.length);
+                if (!groupsCache.includes('General')) groupsCache.unshift('General');
             }
         } catch (e) { console.error('Error fetching groups:', e); }
     };
@@ -176,8 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await apiFetch('/api/clients');
             if(res.ok) {
-                mockClientsDb = await res.json();
-                console.log("Clients loaded:", mockClientsDb.length);
+                clientsCache = await res.json();
                 if(typeof window.renderClientsTable === 'function') {
                     window.renderClientsTable();
                 }
@@ -195,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const fetchProgramsFromDB = async () => {
         try {
             const res = await apiFetch('/api/programs');
-            if(res.ok) mockProgramsDb = await res.json();
+            if(res.ok) programsCache = await res.json();
         } catch(e) { console.error("Error cargando programas:", e); }
     };
 
@@ -261,21 +260,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const config = getNotificationConfig(n.type);
         const timeAgo = getTimeAgo(new Date(n.createdAt));
         const unreadDot = !n.isRead ? `<span class="w-2 h-2 rounded-full shrink-0 mt-1.5 ml-3" style="background:${config.color}"></span>` : '';
-        const clickHandler = !n.isRead ? `onclick="window.markNotificationRead('${n._id}')"` : '';
+        // H-1+M-8: escHtml on all server-supplied strings in attribute and content contexts
+        const safeId       = escHtml(n._id);
+        const safeClientId = escHtml(n.clientId);
+        const clickHandler = !n.isRead ? `onclick="window.markNotificationRead('${safeId}')"` : '';
         const readOpacity = n.isRead ? 'opacity-50' : 'cursor-pointer hover:border-[#FFDB89]/30';
 
         return `
-            <div class="flex items-start p-4 bg-[#1C1C1E] rounded-xl border border-[#FFDB89]/10 border-l-4 ${readOpacity} transition-all"
+            <div class="flex items-start p-4 glass-chip rounded-xl border-l-4 ${readOpacity} transition-all"
                  style="border-left-color: ${config.color}"
-                 data-notification-id="${n._id}" ${clickHandler}>
+                 data-notification-id="${safeId}" ${clickHandler}>
                 <i class="${config.icon} mt-0.5 mr-4 text-lg shrink-0" style="color:${config.color}"></i>
                 <div class="flex-grow min-w-0">
                     <p class="font-semibold text-[#FFDB89] text-sm leading-snug">
                         <span class="cursor-pointer hover:underline decoration-[#FFDB89]/40"
-                              onclick="event.stopPropagation(); window.openClientProfile('${n.clientId}')">${n.clientName}</span>
-                        <span class="font-normal text-[#FFDB89]/70"> ${n.title}</span>
+                              onclick="event.stopPropagation(); window.openClientProfile('${safeClientId}')">${escHtml(n.clientName)}</span>
+                        <span class="font-normal text-[#FFDB89]/70"> ${escHtml(n.title)}</span>
                     </p>
-                    <p class="text-xs text-[#FFDB89]/50 mt-0.5 truncate">${n.message}</p>
+                    <p class="text-xs text-[#FFDB89]/50 mt-0.5 truncate">${escHtml(n.message)}</p>
                     <p class="text-[11px] text-[#FFDB89]/30 mt-1">${timeAgo}</p>
                 </div>
                 ${unreadDot}
@@ -856,8 +858,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const paddingClass = isCalendar ? 'p-0' : 'p-14'; 
         const titleClass = (isCalendar || !title) ? 'hidden' : 'text-4xl font-bold text-[#FFDB89] dark:text-[#FFDB89] mb-6 border-b border-[#FFDB89]/10 pb-3 flex-shrink-0';
         const bgClass = isCalendar
-            ? 'bg-[#030303]/85 dark:bg-[#2C2C2E]/85 backdrop-blur-2xl border border-white/[0.06]'
-            : 'bg-[#030303]/85 dark:bg-[#2C2C2E]/85 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl';
+            ? 'glass-card'
+            : 'glass-card rounded-2xl';
 
         mainContentArea.innerHTML = `
         <div class="${paddingClass} ${bgClass} h-full flex flex-col relative overflow-hidden">
@@ -1022,8 +1024,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     isFirstLogin: data.user.isFirstLogin || false
                 };
 
-                // NEW: Store JWT token for authenticated API requests
-                localStorage.setItem('auth_token', data.token);
+                // H-2: Token is now an HttpOnly cookie set by the server — never stored in JS
                 localStorage.setItem('auth_user', JSON.stringify(userSession));
 
                 if(remember) {
@@ -1218,8 +1219,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (res.ok) {
                 showMessage('invite-message', '¡Cuenta activada! Iniciando sesión...', 'success');
-                // Auto-login using the returned JWT
-                localStorage.setItem('auth_token', data.token);
+                // H-2: JWT is now in the HttpOnly cookie set by the server — just store user info
                 localStorage.setItem('auth_user', JSON.stringify(data.user));
                 // Clean URL and redirect to the appropriate dashboard
                 window.history.replaceState({}, document.title, '/');
@@ -1400,7 +1400,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const select = document.getElementById('new-client-group');
         if(!select) return;
         select.innerHTML = '';
-        mockGroupsDb.forEach(group => {
+        groupsCache.forEach(group => {
             const opt = document.createElement('option');
             opt.value = group;
             opt.textContent = group;
@@ -1413,10 +1413,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const select = document.getElementById('new-client-program');
         if (!select) return;
         // Fetch programs if not yet loaded
-        if (mockProgramsDb.length === 0) await fetchProgramsFromDB();
+        if (programsCache.length === 0) await fetchProgramsFromDB();
         // Always start with "Sin Asignar"
         select.innerHTML = '<option class="bg-gray-900" value="Sin Asignar">-- Sin programa --</option>';
-        mockProgramsDb.forEach(prog => {
+        programsCache.forEach(prog => {
             const opt = document.createElement('option');
             opt.value = prog.name;
             opt.textContent = prog.name;
@@ -1430,7 +1430,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. OPEN CLIENT PROFILE (Updated with Modals)
     window.openClientProfile = (clientId) => {
         // LOOSE MATCHING (==)
-        const client = mockClientsDb.find(c => (c._id == clientId) || (c.id == clientId));
+        const client = clientsCache.find(c => (c._id == clientId) || (c.id == clientId));
         
         if (!client) return;
         
@@ -1566,6 +1566,23 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         });
 
+        // Mood metadata used in trainer calendar cells and expand panels
+        const MOOD_META = {
+            amazing: { icon: 'fa-grin-stars', color: '#FFDB89', label: 'Increíble' },
+            great:   { icon: 'fa-smile',       color: '#4ade80', label: 'Genial'    },
+            neutral: { icon: 'fa-meh',         color: '#9ca3af', label: 'Normal'    },
+            tired:   { icon: 'fa-tired',       color: '#fb923c', label: 'Cansado'   },
+            bad:     { icon: 'fa-angry',       color: '#f87171', label: 'Mal'       },
+        };
+        const moodBadgeHtml = (mood) => {
+            const m = MOOD_META[mood];
+            if (!m) return '';
+            return `<div class="flex items-center gap-1.5 mt-1 pt-1 border-t border-white/5">
+                <i class="fas ${m.icon} text-[10px]" style="color:${m.color}" title="Estado de ánimo: ${m.label}"></i>
+                <span class="text-[10px] font-semibold" style="color:${m.color}">${m.label}</span>
+            </div>`;
+        };
+
         const loadClientWorkoutsToCalendar = async (clientId) => {
             try {
                 const response = await apiFetch(`/api/client-workouts/${clientId}`);
@@ -1590,7 +1607,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <div class="w-1 h-6 rounded-full shrink-0" style="background:${color}"></div>
                                         <i class="fas ${icon} text-xs shrink-0" style="color:${color}"></i>
                                         <span class="text-xs font-semibold" style="color:${color}">${label}</span>
-                                    </div>`;
+                                    </div>
+                                    ${moodBadgeHtml(workout.mood)}`;
                                 // Show copy checkbox on hover for rest days too
                                 const cb = cell.querySelector('.copy-day-checkbox');
                                 if (cb) cb.classList.remove('hidden');
@@ -1603,7 +1621,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     : '';
                                 area.innerHTML = `
                                     <div class="workout-card-wrapper">
-                                        <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk" onclick="window.toggleWorkoutExpand(this)">
+                                        <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk">
                                             <div class="w-1 h-8 rounded-full shrink-0" style="background:${barColor}"></div>
                                             <div class="min-w-0 flex-1">
                                                 <div class="text-sm font-bold truncate" style="color:${barColor}">${workout.title}</div>
@@ -1611,6 +1629,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                             </div>
                                             <i class="fas fa-chevron-right text-[#FFDB89]/40 text-xs shrink-0 workout-chevron transition-transform duration-200"></i>
                                         </div>
+                                        ${moodBadgeHtml(workout.mood)}
                                         <div class="workout-expand-content hidden mt-1 border-t border-[#FFDB89]/10"></div>
                                     </div>
                                 `;
@@ -1628,6 +1647,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Load saved workouts onto the calendar
         loadClientWorkoutsToCalendar(clientId);
+
+        // Delegated expand-header listener (avoids CSP script-src-attr blocking inline onclick)
+        const calScroll = document.getElementById('infinite-calendar-scroll');
+        if (calScroll && !calScroll.dataset.expandListenerAttached) {
+            calScroll.dataset.expandListenerAttached = '1';
+            calScroll.addEventListener('click', (e) => {
+                const header = e.target.closest('.workout-card-header');
+                if (header) window.toggleWorkoutExpand(header);
+            });
+        }
 
         // Scroll to Today automatically
         setTimeout(() => {
@@ -1657,7 +1686,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await apiFetch(`/api/body-measurements/${clientId}`);
             const measurements = res.ok ? await res.json() : [];
-            const client = mockClientsDb.find(c => c._id == clientId);
+            const client = clientsCache.find(c => c._id == clientId);
 
             // Calculate height in inches for BMI
             const hFt = client?.height?.feet || 0;
@@ -2130,7 +2159,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const collapsed = readOnly && localStorage.getItem('macroCalcCollapsed') === 'true';
 
         container.innerHTML = `
-        <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl overflow-hidden">
+        <div class="glass-card rounded-2xl overflow-hidden">
 
             <!-- Header -->
             <div class="px-6 py-4 ${collapsed ? '' : 'border-b border-[#FFDB89]/10'} flex items-center justify-between">
@@ -2371,7 +2400,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ]);
             const logs         = logsRes.ok ? await logsRes.json() : [];
             const measurements = measRes.ok ? await measRes.json() : [];
-            const clientData   = mockClientsDb.find(c => c._id === clientId) || {};
+            const clientData   = clientsCache.find(c => c._id === clientId) || {};
             const latest       = measurements.length ? measurements[measurements.length - 1] : null;
 
             // Build macro calc data from latest measurement + client profile
@@ -2733,7 +2762,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.openEditClientModal = (clientId) => {
-        const client = mockClientsDb.find(c => c._id === clientId);
+        const client = clientsCache.find(c => c._id === clientId);
         if (!client) return;
 
         currentClientViewId = clientId; 
@@ -2767,8 +2796,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('opt-birthday').value = client.birthday || "";
         document.getElementById('opt-phone').value = client.phone || "";
         if (document.getElementById('opt-due-date')) document.getElementById('opt-due-date').value = client.dueDate || "";
-        if (document.getElementById('opt-thr'))  document.getElementById('opt-thr').value  = client.thr  || "";
-        if (document.getElementById('opt-mahr')) document.getElementById('opt-mahr').value = client.mahr || "";
+        if (document.getElementById('opt-resting-hr')) document.getElementById('opt-resting-hr').value = client.restingHr || "";
+        if (document.getElementById('opt-thr'))        document.getElementById('opt-thr').value        = client.thr       || "";
+        if (document.getElementById('opt-mahr'))       document.getElementById('opt-mahr').value       = client.mahr      || "";
 
         document.querySelectorAll('button[data-group="gender"]').forEach(b => {
             b.classList.remove('active', 'text-white', 'text-gray-400');
@@ -2826,6 +2856,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setToggle(0, client.emailPreferences?.dailyRoutine);
         setToggle(1, client.emailPreferences?.incompleteRoutine);
         setToggle(2, client.hideFromDashboard);
+
+        wireHeartRateCalc();
     };
 
     window.deleteClient = async (id) => {
@@ -2834,7 +2866,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await apiFetch(`/api/clients/${id}`, { method: 'DELETE' });
             if (res.ok) {
-                mockClientsDb = mockClientsDb.filter(c => c._id !== id);
+                clientsCache = clientsCache.filter(c => c._id !== id);
                 renderClientsTable();
             } else {
                 const contentType = res.headers.get("content-type");
@@ -2903,7 +2935,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Resend invite to existing client ─────────────────────────────────────
     window.resendClientInvite = async (clientId) => {
-        const client = mockClientsDb.find(c => c._id === clientId);
+        const client = clientsCache.find(c => c._id === clientId);
         const btn = document.getElementById(`resend-invite-${clientId}`);
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Enviando...'; }
 
@@ -2993,8 +3025,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if(!firstName || !email) { showToast("Nombre y Email son requeridos", 'error'); return; }
 
-        const thr  = parseFloat(document.getElementById('opt-thr')?.value) || null;
-        const mahr = parseFloat(document.getElementById('opt-mahr')?.value) || null;
+        const thr       = parseFloat(document.getElementById('opt-thr')?.value)        || null;
+        const mahr      = parseFloat(document.getElementById('opt-mahr')?.value)       || null;
+        const restingHr = parseFloat(document.getElementById('opt-resting-hr')?.value) || null;
 
         const payload = {
             name: firstName, lastName: lastName || "", email: email, type: type, program: program, group: group,
@@ -3002,7 +3035,7 @@ document.addEventListener('DOMContentLoaded', () => {
             height: { feet: heightFt, inches: heightIn },
             weight: weight,
             birthday, gender, phone,
-            thr, mahr,
+            restingHr, thr, mahr,
             hideFromDashboard: hideDash,
             emailPreferences: { dailyRoutine: sendDaily, incompleteRoutine: sendIncomplete },
             dueDate: document.getElementById('opt-due-date')?.value || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -3027,10 +3060,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const savedClientId = savedClient._id;
 
                 if (currentClientViewId) {
-                    const idx = mockClientsDb.findIndex(c => c._id === currentClientViewId);
-                    if (idx > -1) mockClientsDb[idx] = savedClient;
+                    const idx = clientsCache.findIndex(c => c._id === currentClientViewId);
+                    if (idx > -1) clientsCache[idx] = savedClient;
                 } else {
-                    mockClientsDb.unshift(savedClient);
+                    clientsCache.unshift(savedClient);
                 }
 
                 document.getElementById('add-client-modal').classList.add('hidden');
@@ -3048,7 +3081,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // If a real program was selected, offer to push its workouts to the client's calendar
                 if (program && program !== 'Sin Asignar') {
-                    const prog = mockProgramsDb.find(p => p.name === program);
+                    const prog = programsCache.find(p => p.name === program);
                     if (prog) {
                         const today = new Date().toISOString().split('T')[0];
                         // Show a small modal asking for start date
@@ -3124,7 +3157,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusValue = statusFilter?.value || 'all';
 
         // Apply filters
-        let filtered = mockClientsDb;
+        let filtered = clientsCache;
         if (searchTerm) {
             filtered = filtered.filter(c => {
                 const fullName = `${c.name} ${c.lastName || ''}`.toLowerCase();
@@ -3142,6 +3175,12 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.setAttribute('data-id', client._id);
             // CLICK LISTENER FOR ROW
             tr.onclick = (e) => {
+                // Status toggle button — uses data-attrs to avoid CSP script-src-attr blocking
+                const statusBtn = e.target.closest('[data-toggle-status]');
+                if (statusBtn) {
+                    window.toggleClientStatus(statusBtn.dataset.clientId, statusBtn.dataset.active === 'true');
+                    return;
+                }
                 if(!e.target.closest('button')) {
                     window.openClientProfile(client._id);
                 }
@@ -3152,7 +3191,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="px-6 py-4 whitespace-nowrap"><span class="bg-[#FFDB89]/10 text-[#FFDB89] px-2 py-1 rounded text-xs font-bold">${client.group || 'General'}</span></td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-[#FFDB89]/80">${client.program}</td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <button onclick="event.stopPropagation(); window.toggleClientStatus('${client._id}', ${client.isActive})" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition ${client.isActive ? 'bg-green-900/40 text-green-300 hover:bg-green-900/60' : 'bg-red-900/40 text-red-300 hover:bg-red-900/60'}">
+                    <button data-toggle-status data-client-id="${client._id}" data-active="${client.isActive}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition ${client.isActive ? 'bg-green-900/40 text-green-300 hover:bg-green-900/60' : 'bg-red-900/40 text-red-300 hover:bg-red-900/60'}">
                         ${client.isActive ? 'Activo' : 'Inactivo'}
                     </button>
                 </td>
@@ -3175,11 +3214,61 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (res.ok) {
                 const updated = await res.json();
-                const idx = mockClientsDb.findIndex(c => c._id === clientId);
-                if (idx > -1) mockClientsDb[idx] = updated;
+                const idx = clientsCache.findIndex(c => c._id === clientId);
+                if (idx > -1) clientsCache[idx] = updated;
+                // Switch to "Todos" so the trainer sees the updated badge,
+                // not a blank list after a client is deactivated.
+                const filterEl = document.getElementById('client-status-filter');
+                if (filterEl) filterEl.value = 'all';
                 renderClientsTable();
+                showToast(`${updated.name} marcado como ${updated.isActive ? 'Activo' : 'Inactivo'}.`, 'success');
             }
-        } catch (e) { console.error('Error toggling status:', e); }
+        } catch (e) { console.error('Error toggling status:', e); showToast('Error actualizando estado.', 'error'); }
+    };
+
+    // ── Heart-rate auto-calculator ────────────────────────────────────────
+    // Fires whenever birthday or resting HR changes.
+    // Max HR  = 220 − age            (Haskell & Fox)
+    // THR     = (MaxHR − RestHR) × 0.70 + RestHR   (Karvonen at 70%)
+    // Both fields remain editable so the trainer can override.
+    const calcHeartRates = () => {
+        const birthday   = document.getElementById('opt-birthday')?.value;
+        const restingHr  = parseFloat(document.getElementById('opt-resting-hr')?.value);
+        if (!birthday || isNaN(restingHr) || restingHr < 30) return;
+
+        const today = new Date();
+        const dob   = new Date(birthday);
+        let age = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+        if (age < 1 || age > 110) return;
+
+        const maxHr = Math.round(220 - age);
+        const thr   = Math.round((maxHr - restingHr) * 0.70 + restingHr);
+
+        const thrEl  = document.getElementById('opt-thr');
+        const mahrEl = document.getElementById('opt-mahr');
+        if (mahrEl && !mahrEl.dataset.manualOverride) mahrEl.value = maxHr;
+        if (thrEl  && !thrEl.dataset.manualOverride)  thrEl.value  = thr;
+    };
+
+    const wireHeartRateCalc = () => {
+        const birthdayEl  = document.getElementById('opt-birthday');
+        const restingHrEl = document.getElementById('opt-resting-hr');
+        const thrEl       = document.getElementById('opt-thr');
+        const mahrEl      = document.getElementById('opt-mahr');
+        if (!restingHrEl) return;
+
+        // Clear override flags when restingHr or birthday changes so calc can re-run
+        [birthdayEl, restingHrEl].forEach(el => el?.addEventListener('input', () => {
+            if (thrEl)  delete thrEl.dataset.manualOverride;
+            if (mahrEl) delete mahrEl.dataset.manualOverride;
+            calcHeartRates();
+        }));
+
+        // If trainer manually edits THR or MaxHR, mark as overridden so calc doesn't stomp it
+        thrEl?.addEventListener('input',  () => { thrEl.dataset.manualOverride  = '1'; });
+        mahrEl?.addEventListener('input', () => { mahrEl.dataset.manualOverride = '1'; });
     };
 
     // Attach search/filter listeners for clients table
@@ -3573,7 +3662,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if(res.ok) {
                 const newProg = await res.json();
-                mockProgramsDb.push(newProg);
+                programsCache.push(newProg);
                 document.getElementById('create-program-modal').classList.add('hidden');
                 document.getElementById('program-name-input').value = '';
                 renderProgramsList();
@@ -3592,7 +3681,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('programs-list-container');
         if (!container) return;
         container.innerHTML = '';
-        mockProgramsDb.forEach(prog => {
+        programsCache.forEach(prog => {
             const card = document.createElement('div');
             card.className = "program-card bg-[#1C1C1E] border border-[#FFDB89]/20 hover:border-[#FFDB89]/50 p-5 rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(255,219,137,0.08)] transition duration-300 cursor-pointer relative group";
             card.dataset.id = prog._id || prog.id;
@@ -3605,7 +3694,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <h3 class="font-bold text-lg text-[#FFDB89]">${prog.name}</h3>
                     <span class="text-xs px-2 py-0.5 bg-[#FFDB89]/10 text-[#FFDB89]/70 border border-[#FFDB89]/20 rounded-full">${prog.tags || 'General'}</span>
                 </div>
-                <div class="mt-4 text-xs text-[#FFDB89]/40 pointer-events-none flex items-center gap-2"><i class="fas fa-layer-group text-[8px]"></i><span>${prog.weeks.length} ${prog.weeks.length === 1 ? 'Semana' : 'Semanas'}</span><span class="opacity-40">|</span><i class="fas fa-users text-[8px]"></i><span>${(() => { const n = mockClientsDb.filter(c => c.program === prog.name && !c.isDeleted).length; return `${n} ${n === 1 ? 'cliente' : 'clientes'}`; })()}</span></div>`;
+                <div class="mt-4 text-xs text-[#FFDB89]/40 pointer-events-none flex items-center gap-2"><i class="fas fa-layer-group text-[8px]"></i><span>${prog.weeks.length} ${prog.weeks.length === 1 ? 'Semana' : 'Semanas'}</span><span class="opacity-40">|</span><i class="fas fa-users text-[8px]"></i><span>${(() => { const n = clientsCache.filter(c => c.program === prog.name && !c.isDeleted).length; return `${n} ${n === 1 ? 'cliente' : 'clientes'}`; })()}</span></div>`;
             container.appendChild(card);
         });
     };
@@ -3614,7 +3703,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('builder-program-name').textContent = prog.name;
         const countEl = document.getElementById('builder-client-count');
         if (countEl) {
-            const n = mockClientsDb.filter(c => c.program === prog.name && !c.isDeleted).length;
+            const n = clientsCache.filter(c => c.program === prog.name && !c.isDeleted).length;
             countEl.textContent = `${n} ${n === 1 ? 'Cliente' : 'Clientes'}`;
         }
         document.getElementById('calendar-container').innerHTML = '';
@@ -3627,12 +3716,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const openProgramBuilder = async (id) => {
-        const prog = mockProgramsDb.find(p => (p.id == id) || (p._id == id));
+        const prog = programsCache.find(p => (p.id == id) || (p._id == id));
         if (!prog) return;
         currentProgramId = id;
         document.getElementById('programs-main-view').classList.add('hidden');
         document.getElementById('program-builder-view').classList.remove('hidden');
-        if (mockClientsDb.length === 0) await fetchClientsFromDB();
+        if (clientsCache.length === 0) await fetchClientsFromDB();
         renderProgramBuilder(prog);
     };
 
@@ -3715,7 +3804,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const openProgramDayView = (weekIndex, dayNum) => {
-        const prog = mockProgramsDb.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+        const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
         if (!prog) return;
         const day = prog.weeks?.[weekIndex]?.days?.[String(dayNum)];
         const dayNames = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
@@ -3823,7 +3912,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('edit-routine-modal').classList.remove('hidden');
         document.getElementById('exercise-list').innerHTML = '';
         exerciseCount = 0;
-        const prog = currentProgramId ? mockProgramsDb.find(p => (p.id == currentProgramId) || (p._id == currentProgramId)) : null;
+        const prog = currentProgramId ? programsCache.find(p => (p.id == currentProgramId) || (p._id == currentProgramId)) : null;
         const existingDay = prog?.weeks?.[currentEditingWeekIndex]?.days?.[String(dayNum)];
         if (existingDay) {
             document.getElementById('routine-name-input').value = existingDay.name || `Entrenamiento Día ${dayNum}`;
@@ -4037,7 +4126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const openDayNutrition = (dayNum, weekIndex) => {
-        const prog = currentProgramId ? mockProgramsDb.find(p => (p._id == currentProgramId) || (p.id == currentProgramId)) : null;
+        const prog = currentProgramId ? programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId)) : null;
         const existing = prog?.weeks?.[weekIndex]?.days?.[String(dayNum)]?.nutrition;
         dayNutritionState = {
             weekIndex,
@@ -4065,7 +4154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const saveDayNutrition = async () => {
-        const prog = mockProgramsDb.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+        const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
         if (!prog) return;
         const { weekIndex, dayNum } = dayNutritionState;
         if (!prog.weeks[weekIndex]) prog.weeks[weekIndex] = { weekNumber: weekIndex + 1, days: {} };
@@ -4084,8 +4173,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
             if (res.ok) {
                 const updated = await res.json();
-                const idx = mockProgramsDb.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
-                if (idx > -1) mockProgramsDb[idx] = updated;
+                const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+                if (idx > -1) programsCache[idx] = updated;
                 document.getElementById('day-nutrition-modal').classList.add('hidden');
                 renderProgramBuilder(updated);
             } else { showToast('Error guardando el plan de nutrición.', 'error'); }
@@ -4239,7 +4328,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Sets a program day as a rest day and saves to DB ---
     const setRestDay = async (weekIndex, dayNum) => {
-        const prog = mockProgramsDb.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+        const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
         if (!prog) return;
         if (!prog.weeks[weekIndex]) prog.weeks[weekIndex] = { weekNumber: weekIndex + 1, days: {} };
         if (!prog.weeks[weekIndex].days) prog.weeks[weekIndex].days = {};
@@ -4249,8 +4338,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
             if (res.ok) {
                 const updated = await res.json();
-                const idx = mockProgramsDb.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
-                if (idx > -1) mockProgramsDb[idx] = updated;
+                const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+                if (idx > -1) programsCache[idx] = updated;
                 renderProgramBuilder(updated);
             } else { showToast('Error guardando día de descanso.', 'error'); }
         } catch (e) { showToast('Error de conexión.', 'error'); }
@@ -4258,7 +4347,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Sets a program day as an active rest day and saves to DB ---
     const setActiveRestDay = async (weekIndex, dayNum) => {
-        const prog = mockProgramsDb.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+        const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
         if (!prog) return;
         if (!prog.weeks[weekIndex]) prog.weeks[weekIndex] = { weekNumber: weekIndex + 1, days: {} };
         if (!prog.weeks[weekIndex].days) prog.weeks[weekIndex].days = {};
@@ -4268,8 +4357,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
             if (res.ok) {
                 const updated = await res.json();
-                const idx = mockProgramsDb.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
-                if (idx > -1) mockProgramsDb[idx] = updated;
+                const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+                if (idx > -1) programsCache[idx] = updated;
                 renderProgramBuilder(updated);
             } else { showToast('Error guardando día de descanso activo.', 'error'); }
         } catch (e) { showToast('Error de conexión.', 'error'); }
@@ -4354,10 +4443,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Opens modal to assign the current program to a client ---
     const openAssignProgramModal = () => {
-        const prog = mockProgramsDb.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+        const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
         if (!prog) return;
 
-        const clients = mockClientsDb.filter(c => !c.isDeleted && c.isActive);
+        const clients = clientsCache.filter(c => !c.isDeleted && c.isActive);
         const todayStr = new Date().toISOString().split('T')[0];
 
         let existing = document.getElementById('assign-to-client-modal');
@@ -4422,7 +4511,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = e.target.closest('.assign-client-row');
             if (!row) return;
             const clientId = row.dataset.clientId;
-            const client = mockClientsDb.find(c => c._id === clientId);
+            const client = clientsCache.find(c => c._id === clientId);
             if (!client) return;
             const startDateStr = document.getElementById('assign-start-date')?.value || todayStr;
 
@@ -4444,7 +4533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const { created, skipped } = await pushProgramToCalendar(prog, clientId, startDateStr);
 
                 // 3. Update count badge in builder header
-                const assigned = mockClientsDb.filter(c => c.program === prog.name && !c.isDeleted).length;
+                const assigned = clientsCache.filter(c => c.program === prog.name && !c.isDeleted).length;
                 const countEl = document.getElementById('builder-client-count');
                 if (countEl) countEl.textContent = `${assigned} ${assigned === 1 ? 'Cliente' : 'Clientes'}`;
 
@@ -4468,7 +4557,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if(currentProgramId) {
-            const prog = mockProgramsDb.find(p => (p.id == currentProgramId) || (p._id == currentProgramId));
+            const prog = programsCache.find(p => (p.id == currentProgramId) || (p._id == currentProgramId));
             if(prog) {
                 if (!prog.weeks[currentEditingWeekIndex]) {
                     prog.weeks[currentEditingWeekIndex] = { weekNumber: currentEditingWeekIndex + 1, days: {} };
@@ -4503,8 +4592,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Sync the local cache with the server response so
                         // subsequent opens always reflect the latest saved data
                         const updated = await res.json();
-                        const idx = mockProgramsDb.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
-                        if (idx > -1) mockProgramsDb[idx] = updated;
+                        const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+                        if (idx > -1) programsCache[idx] = updated;
                     } else {
                         showToast('Error al guardar la rutina.', 'error');
                     }
@@ -4519,7 +4608,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(currentClientViewId) openClientProfile(currentClientViewId);
         // Re-render program builder if we're in program view
         if(currentProgramId && document.getElementById('program-builder-view') && !document.getElementById('program-builder-view').classList.contains('hidden')) {
-            const prog = mockProgramsDb.find(p => (p.id == currentProgramId) || (p._id == currentProgramId));
+            const prog = programsCache.find(p => (p.id == currentProgramId) || (p._id == currentProgramId));
             if(prog) renderProgramBuilder(prog);
         }
     };
@@ -4647,7 +4736,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Populate client select
         const sel = document.getElementById('inv-client');
         sel.innerHTML = '<option value="">— Selecciona cliente —</option>' +
-            mockClientsDb.map(c => `<option value="${c._id}">${c.name} ${c.lastName || ''}</option>`).join('');
+            clientsCache.map(c => `<option value="${c._id}">${c.name} ${c.lastName || ''}</option>`).join('');
         // Default due date to end of current month
         const now = new Date();
         const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -4915,7 +5004,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const area = cell.querySelector('.content-area');
                                 area.innerHTML = `
                                     <div class="workout-card-wrapper">${window._calendarWorkouts[targetDateStr] = pastedWorkout, ''}
-                                        <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk" onclick="window.toggleWorkoutExpand(this)">
+                                        <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk">
                                             <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
                                             <div class="min-w-0 flex-1">
                                                 <div class="text-sm font-bold text-[#FFDB89] truncate">${pastedWorkout.title}</div>
@@ -5254,6 +5343,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         let html = '';
 
+        // Show client's mood for this day if logged
+        if (workout.mood) {
+            const moodMap = {
+                amazing: { icon: 'fa-grin-stars', color: '#FFDB89', label: 'Increíble' },
+                great:   { icon: 'fa-smile',       color: '#4ade80', label: 'Genial'    },
+                neutral: { icon: 'fa-meh',         color: '#9ca3af', label: 'Normal'    },
+                tired:   { icon: 'fa-tired',       color: '#fb923c', label: 'Cansado'   },
+                bad:     { icon: 'fa-angry',       color: '#f87171', label: 'Mal'       },
+            };
+            const m = moodMap[workout.mood];
+            if (m) {
+                html += `<div class="flex items-center gap-2 py-2 mb-1 border-b border-[#FFDB89]/10">
+                    <span class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider">Estado de ánimo</span>
+                    <i class="fas ${m.icon} text-sm" style="color:${m.color}"></i>
+                    <span class="text-xs font-bold" style="color:${m.color}">${m.label}</span>
+                </div>`;
+            }
+        }
+
         if (workout.warmup) {
             html += `<div class="py-2 text-xs text-[#FFDB89]/50 italic border-b border-[#FFDB89]/10">${workout.warmup}</div>`;
         }
@@ -5390,7 +5498,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     window._calendarWorkouts[editorDateStr] = workoutData;
                     area.innerHTML = `
                         <div class="workout-card-wrapper">
-                            <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk" onclick="window.toggleWorkoutExpand(this)">
+                            <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk">
                                 <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
                                 <div class="min-w-0 flex-1">
                                     <div class="text-sm font-bold text-[#FFDB89] truncate">${workoutData.title}</div>
@@ -5697,9 +5805,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (target.id === 'logout-btn' || target.closest('#logout-btn')) {
-            localStorage.removeItem('auth_token');  // NEW: clear JWT
-            localStorage.removeItem('auth_user');
-            location.reload();
+            // H-2: Tell server to clear the HttpOnly cookie, then wipe local state
+            fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).finally(() => {
+                localStorage.removeItem('auth_user');
+                location.reload();
+            });
             return;
         }
 
@@ -5746,7 +5856,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         updateContent(linkText, html);
                         if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
                         if (moduleToLoad === 'programas_content') {
-                            await Promise.all([fetchProgramsFromDB(), mockClientsDb.length === 0 ? fetchClientsFromDB() : Promise.resolve()]);
+                            await Promise.all([fetchProgramsFromDB(), clientsCache.length === 0 ? fetchClientsFromDB() : Promise.resolve()]);
                             renderProgramsList();
                             // Wire up the tab bar and pre-render exercise/video library
                             switchLibraryTab('tab-programas');
@@ -5805,6 +5915,7 @@ document.addEventListener('DOMContentLoaded', () => {
             populateTimezones();
             renderGroupOptions();
             renderProgramOptions();
+            wireHeartRateCalc();
             // Reset invite toggle to ON for every new client
             const invToggle = document.getElementById('send-invite-toggle');
             const invBtn = document.getElementById('send-invite-btn');
@@ -5833,7 +5944,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         body: JSON.stringify({ name: groupName })
                     });
                     if (res.ok) {
-                        mockGroupsDb.push(groupName);
+                        groupsCache.push(groupName);
                         document.getElementById('add-group-modal').classList.add('hidden');
                         document.getElementById('new-group-name').value = '';
                         showToast(`Grupo "${groupName}" creado.`, 'success');
@@ -5849,14 +5960,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.classList.contains('delete-program-btn')) {
             e.stopPropagation();
             const progId = target.dataset.id;
-            const prog = mockProgramsDb.find(p => (p._id == progId) || (p.id == progId));
+            const prog = programsCache.find(p => (p._id == progId) || (p.id == progId));
             if (!prog) return;
             const yes = await showConfirm(`¿Borrar "${prog.name}"? Esta acción no se puede deshacer.`, { confirmLabel: 'Eliminar', danger: true });
             if (!yes) return;
             apiFetch(`/api/programs/${progId}`, { method: 'DELETE' })
                 .then(res => {
                     if (res.ok) {
-                        mockProgramsDb = mockProgramsDb.filter(p => (p._id != progId) && (p.id != progId));
+                        programsCache = programsCache.filter(p => (p._id != progId) && (p.id != progId));
                         renderProgramsList();
                     } else {
                         showToast('Error al borrar el programa.', 'error');
@@ -5903,7 +6014,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         if (target.classList.contains('action-copy')) {
-            const prog = mockProgramsDb.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+            const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
             if (!prog) return;
             const weekBlocks = Array.from(document.querySelectorAll('.week-block'));
             const weekIndex = weekBlocks.indexOf(target.closest('.week-block'));
@@ -5931,7 +6042,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (target.classList.contains('action-paste')) {
             if (!copiedProgramDayData) return; // shouldn't happen — button only appears after copy
-            const prog = mockProgramsDb.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+            const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
             if (!prog) return;
             const weekBlocks = Array.from(document.querySelectorAll('.week-block'));
             const weekIndex = weekBlocks.indexOf(target.closest('.week-block'));
@@ -5948,8 +6059,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
                 if (res.ok) {
                     const updated = await res.json();
-                    const idx = mockProgramsDb.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
-                    if (idx > -1) mockProgramsDb[idx] = updated;
+                    const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+                    if (idx > -1) programsCache[idx] = updated;
                     copiedProgramDayData = null; // clear clipboard after paste
                     renderProgramBuilder(updated); // re-renders cells as Copiar
                 } else { showToast('Error al pegar el día.', 'error'); }
@@ -8452,6 +8563,120 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         };
 
+        // --- BUILD UPCOMING VIEW ---
+        const buildUpcomingView = (workoutMap) => {
+            const container = document.getElementById('client-upcoming-container');
+            if (!container) return;
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+            const upcoming = Object.values(workoutMap)
+                .filter(w => w.date > todayStr && !w.isRest)
+                .sort((a, b) => a.date.localeCompare(b.date));
+
+            if (!upcoming.length) {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                        <div class="w-16 h-16 rounded-full bg-[#FFDB89]/10 flex items-center justify-center">
+                            <i class="fas fa-calendar-check text-2xl text-[#FFDB89]/40"></i>
+                        </div>
+                        <p class="text-[#FFDB89]/50 font-semibold">No hay entrenamientos próximos</p>
+                        <p class="text-xs text-[#FFDB89]/30">Tu entrenador aún no ha programado sesiones futuras</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = upcoming.map(w => {
+                const d = new Date(w.date + 'T00:00:00');
+                const dayName = dayNames[d.getDay()];
+                const exCount = (w.exercises || []).length;
+                const dateLabel = `${dayName} ${d.getDate()} de ${monthNames[d.getMonth()]}`;
+                return `
+                    <div class="flex items-center gap-4 p-4 bg-white/5 border border-[#FFDB89]/15 rounded-2xl hover:bg-[#FFDB89]/5 hover:border-[#FFDB89]/30 transition cursor-pointer client-upcoming-card"
+                         data-date="${escHtml(w.date)}">
+                        <div class="w-12 h-12 shrink-0 rounded-xl bg-[#FFDB89]/10 flex flex-col items-center justify-center">
+                            <span class="text-[10px] font-bold text-[#FFDB89]/50 uppercase">${dayName.slice(0,3)}</span>
+                            <span class="text-xl font-black text-[#FFDB89] leading-none">${d.getDate()}</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-bold text-[#FFDB89] truncate">${escHtml(w.title || 'Entrenamiento')}</p>
+                            <p class="text-xs text-[#FFDB89]/50 mt-0.5">${dateLabel} · ${exCount} ejercicio${exCount !== 1 ? 's' : ''}</p>
+                        </div>
+                        <i class="fas fa-chevron-right text-xs text-[#FFDB89]/40"></i>
+                    </div>`;
+            }).join('');
+
+            container.addEventListener('click', (e) => {
+                const card = e.target.closest('.client-upcoming-card');
+                if (!card) return;
+                const w = workoutMap[card.dataset.date];
+                if (w) showClientWorkoutDetail(w);
+            });
+        };
+
+        // --- BUILD HISTORY VIEW ---
+        const buildHistoryView = (workoutMap) => {
+            const container = document.getElementById('client-history-container');
+            if (!container) return;
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+            const history = Object.values(workoutMap)
+                .filter(w => w.date <= todayStr && !w.isRest)
+                .sort((a, b) => b.date.localeCompare(a.date));
+
+            if (!history.length) {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                        <div class="w-16 h-16 rounded-full bg-[#FFDB89]/10 flex items-center justify-center">
+                            <i class="fas fa-history text-2xl text-[#FFDB89]/40"></i>
+                        </div>
+                        <p class="text-[#FFDB89]/50 font-semibold">Sin historial de entrenamientos</p>
+                        <p class="text-xs text-[#FFDB89]/30">Tus entrenamientos completados aparecerán aquí</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = history.map(w => {
+                const d = new Date(w.date + 'T00:00:00');
+                const dayName = dayNames[d.getDay()];
+                const exCount = (w.exercises || []).length;
+                const dateLabel = `${dayName} ${d.getDate()} de ${monthNames[d.getMonth()]}`;
+                let statusIcon, statusColor, statusLabel;
+                if (w.isComplete) {
+                    statusIcon = 'fa-check-circle'; statusColor = 'text-green-400'; statusLabel = 'Completado';
+                } else if (w.isMissed) {
+                    statusIcon = 'fa-times-circle'; statusColor = 'text-red-400'; statusLabel = 'Perdido';
+                } else {
+                    statusIcon = 'fa-circle-dot'; statusColor = 'text-[#FFDB89]/30'; statusLabel = 'Sin estado';
+                }
+                return `
+                    <div class="flex items-center gap-4 p-4 bg-white/5 border border-[#FFDB89]/15 rounded-2xl hover:bg-[#FFDB89]/5 hover:border-[#FFDB89]/30 transition cursor-pointer client-history-card"
+                         data-date="${escHtml(w.date)}">
+                        <div class="w-12 h-12 shrink-0 rounded-xl bg-[#FFDB89]/10 flex flex-col items-center justify-center">
+                            <span class="text-[10px] font-bold text-[#FFDB89]/50 uppercase">${dayName.slice(0,3)}</span>
+                            <span class="text-xl font-black text-[#FFDB89] leading-none">${d.getDate()}</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-bold text-[#FFDB89] truncate">${escHtml(w.title || 'Entrenamiento')}</p>
+                            <p class="text-xs text-[#FFDB89]/50 mt-0.5">${dateLabel} · ${exCount} ejercicio${exCount !== 1 ? 's' : ''}</p>
+                        </div>
+                        <i class="fas ${statusIcon} ${statusColor}" title="${statusLabel}"></i>
+                    </div>`;
+            }).join('');
+
+            container.addEventListener('click', (e) => {
+                const card = e.target.closest('.client-history-card');
+                if (!card) return;
+                const w = workoutMap[card.dataset.date];
+                if (w) showClientWorkoutDetail(w);
+            });
+        };
+
         // Fetch and build
         try {
             const res = await apiFetch(`/api/client-workouts/${session.id}`);
@@ -8459,6 +8684,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const workoutMap = {};
             workouts.forEach(w => { workoutMap[w.date] = w; });
             buildClientCalendar(workoutMap);
+            buildUpcomingView(workoutMap);
+            buildHistoryView(workoutMap);
         } catch (e) {
             console.error('Error loading client calendar:', e);
             const container = document.getElementById('client-calendar-container');
@@ -8485,10 +8712,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 btn.classList.add('ring-2', 'ring-[#FFDB89]', 'bg-[#FFDB89]/10');
                 const indicator = document.getElementById('mood-saved-indicator');
                 try {
-                    await apiFetch('/api/nutrition-logs', {
-                        method: 'POST',
-                        body: JSON.stringify({ clientId: session.id, date: todayStr, mood: btn.dataset.mood })
-                    });
+                    await Promise.all([
+                        // Keep mood in nutrition log for client's own nutrition history
+                        apiFetch('/api/nutrition-logs', {
+                            method: 'POST',
+                            body: JSON.stringify({ clientId: session.id, date: todayStr, mood: btn.dataset.mood })
+                        }),
+                        // Also store mood on the workout document so the trainer can see it
+                        apiFetch(`/api/client-workouts/${session.id}/${todayStr}/mood`, {
+                            method: 'PATCH',
+                            body: JSON.stringify({ mood: btn.dataset.mood })
+                        })
+                    ]);
                     if (indicator) { indicator.classList.remove('hidden'); setTimeout(() => indicator.classList.add('hidden'), 2000); }
                 } catch (e) { console.error('Error saving mood:', e); }
             });
@@ -8502,6 +8737,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (todayEl) todayEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
             });
         }
+
+        // --- TAB SWITCHING ---
+        const progTabs = [
+            { btnId: 'client-tab-calendar', panelId: 'client-panel-calendar' },
+            { btnId: 'client-tab-upcoming', panelId: 'client-panel-upcoming' },
+            { btnId: 'client-tab-history',  panelId: 'client-panel-history'  },
+        ];
+        progTabs.forEach(({ btnId, panelId }) => {
+            const btnEl = document.getElementById(btnId);
+            if (!btnEl) return;
+            btnEl.addEventListener('click', () => {
+                progTabs.forEach(({ btnId: b, panelId: p }) => {
+                    const bEl = document.getElementById(b);
+                    const pEl = document.getElementById(p);
+                    const isActive = b === btnId;
+                    if (bEl) {
+                        bEl.classList.toggle('bg-[#FFDB89]',     isActive);
+                        bEl.classList.toggle('text-[#030303]',   isActive);
+                        bEl.classList.toggle('text-[#FFDB89]/60', !isActive);
+                        bEl.classList.toggle('hover:text-[#FFDB89]', !isActive);
+                    }
+                    if (pEl) pEl.classList.toggle('hidden', !isActive);
+                });
+                // Only the calendar tab needs the "Ir a Hoy" button
+                if (scrollBtn) scrollBtn.style.display = btnId === 'client-tab-calendar' ? '' : 'none';
+            });
+        });
     };
 
     // --- CLIENT WORKOUT DETAIL MODAL ---
@@ -8773,8 +9035,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Filter clients by type
         const clientsToRender = filterType === 'Todos'
-            ? mockClientsDb.filter(c => c.isActive)
-            : mockClientsDb.filter(c => c.isActive && c.type === filterType);
+            ? clientsCache.filter(c => c.isActive)
+            : clientsCache.filter(c => c.isActive && c.type === filterType);
 
         // Fetch today's workouts for filtered clients
         const feedItems = [];

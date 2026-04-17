@@ -27,10 +27,40 @@
         <span id="mood-saved-indicator" class="text-xs text-green-400 hidden"><i class="fas fa-check mr-1"></i>Guardado</span>
     </div>
 
-    <!-- Continuous Calendar -->
-    <div class="flex-grow overflow-y-auto bg-[#1C1C1E] rounded-xl" id="client-calendar-scroll">
+    <!-- Tab Bar -->
+    <div class="flex gap-1 shrink-0 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-xl p-1 mb-4">
+        <button id="client-tab-calendar"
+            class="client-prog-tab active flex-1 py-2 rounded-lg text-sm font-bold transition bg-[#FFDB89] text-[#030303]">
+            <i class="fas fa-calendar-alt mr-1.5"></i>Calendario
+        </button>
+        <button id="client-tab-upcoming"
+            class="client-prog-tab flex-1 py-2 rounded-lg text-sm font-bold transition text-[#FFDB89]/60 hover:text-[#FFDB89]">
+            <i class="fas fa-forward mr-1.5"></i>Próximos
+        </button>
+        <button id="client-tab-history"
+            class="client-prog-tab flex-1 py-2 rounded-lg text-sm font-bold transition text-[#FFDB89]/60 hover:text-[#FFDB89]">
+            <i class="fas fa-history mr-1.5"></i>Historial
+        </button>
+    </div>
+
+    <!-- Panel: Calendar (default) -->
+    <div id="client-panel-calendar" class="flex-grow overflow-y-auto rounded-xl" id="client-calendar-scroll">
         <div id="client-calendar-container">
             <p class="text-center text-[#FFDB89]/40 py-12 animate-pulse text-sm">Cargando calendario...</p>
+        </div>
+    </div>
+
+    <!-- Panel: Upcoming Workouts -->
+    <div id="client-panel-upcoming" class="flex-grow overflow-y-auto hidden">
+        <div id="client-upcoming-container" class="space-y-3">
+            <p class="text-center text-[#FFDB89]/40 py-12 animate-pulse text-sm">Cargando...</p>
+        </div>
+    </div>
+
+    <!-- Panel: History -->
+    <div id="client-panel-history" class="flex-grow overflow-y-auto hidden">
+        <div id="client-history-container" class="space-y-3">
+            <p class="text-center text-[#FFDB89]/40 py-12 animate-pulse text-sm">Cargando...</p>
         </div>
     </div>
 

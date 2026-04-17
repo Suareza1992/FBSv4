@@ -3,13 +3,16 @@ dotenv.config();
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';           // H-2: HttpOnly JWT cookie
+import helmet from 'helmet';                        // H-5: Security headers
+import rateLimit from 'express-rate-limit';         // H-4: Brute-force protection
 import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';                                          // FIX: top-level import instead of require()
-import jwt from 'jsonwebtoken';                                       // NEW: JWT for token generation
-import { authenticateToken, authorizeRoles } from './middleware/auth.js'; // NEW: auth middleware
+import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import { authenticateToken, authorizeRoles } from './middleware/auth.js';
 
 // ==========================================================================
 // --- CONFIGURATION ---
@@ -22,12 +25,57 @@ const APP_URL = process.env.APP_URL || 'http://localhost:3000';         // NEW: 
 const DEBUG = process.env.DEBUG === 'true'; // Set DEBUG=true in .env for local dev verbose logging
 
 app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser()); // H-2: parse cookies so auth middleware can read the JWT cookie
+
+// H-5: Security headers via Helmet
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc:     ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
+            scriptSrcAttr: ["'unsafe-inline'"], // allow onclick="..." attributes (SPA uses event delegation + inline handlers)
+            styleSrc:   ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
+            imgSrc:     ["'self'", "data:", "blob:", "https://images.unsplash.com"],
+            fontSrc:    ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+            connectSrc: ["'self'", "https://api.nal.usda.gov"],
+            frameSrc:   ["'none'"],
+        }
+    },
+    crossOriginEmbedderPolicy: false, // needed for embedded YouTube videos
+}));
 
 // FIX: Configure CORS with allowed origins instead of allowing everything
 app.use(cors({
     origin: process.env.CORS_ORIGIN || APP_URL,
     credentials: true
 }));
+
+// H-4: Rate limiters for sensitive auth endpoints
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Demasiados intentos. Intenta nuevamente en 15 minutos.' }
+});
+const inviteLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Demasiadas solicitudes. Intenta nuevamente más tarde.' }
+});
+
+// H-2: Helper — sets the JWT as an HttpOnly cookie (JS cannot read it)
+const IS_HTTPS = APP_URL.startsWith('https');
+const setAuthCookie = (res, token) => {
+    res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: IS_HTTPS,
+        sameSite: IS_HTTPS ? 'strict' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+};
 
 app.use(express.static('public'));
 
@@ -129,6 +177,7 @@ const UserSchema = new mongoose.Schema({
     weight: { type: Number, default: 0 },
     birthday: { type: String, default: "" },
     gender: { type: String, default: "" },
+    restingHr: { type: Number, default: null },
     thr: { type: Number, default: null },
     mahr: { type: Number, default: null },
     phone: { type: String, default: "" },
@@ -189,6 +238,7 @@ const ClientWorkoutSchema = new mongoose.Schema({
         isSuperset: { type: Boolean, default: false }
     }],
     rpe: { type: Number, min: 1, max: 10, default: null },
+    mood: { type: String, default: '' }, // client's mood for the day
     isComplete: { type: Boolean, default: false },
     isMissed:   { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
@@ -369,8 +419,8 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(403).json({ message: 'El registro público está deshabilitado. Contacta a tu entrenador para recibir una invitación.' });
 });
 
-// FIX: Login now returns a JWT token alongside user data
-app.post('/api/auth/login', async (req, res) => {
+// H-2+H-4: Login sets an HttpOnly cookie (token never exposed to JS) + rate limited
+app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
         if (!email || !password) {
@@ -383,13 +433,15 @@ app.post('/api/auth/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-        // NEW: Generate JWT token
         const tokenPayload = { id: user._id, email: user.email, role: user.role };
         const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
 
+        // H-2: Set HttpOnly cookie — JS cannot read this, so XSS can't steal it
+        setAuthCookie(res, token);
+
         res.json({
             message: 'Login successful',
-            token, // NEW: JWT token for the frontend to store
+            // token intentionally omitted — delivered via cookie only
             user: {
                 id: user._id,
                 name: user.name,
@@ -400,7 +452,13 @@ app.post('/api/auth/login', async (req, res) => {
                 profilePicture: user.profilePicture || ''
             }
         });
-    } catch (error) { res.status(500).json({ message: 'Server error', error }); }
+    } catch (error) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// H-2: Logout — clears the auth cookie server-side
+app.post('/api/auth/logout', (req, res) => {
+    res.clearCookie('auth_token', { httpOnly: true, secure: IS_HTTPS, sameSite: IS_HTTPS ? 'strict' : 'lax' });
+    res.json({ message: 'Logged out' });
 });
 
 // ==========================================================================
@@ -408,7 +466,7 @@ app.post('/api/auth/login', async (req, res) => {
 // ==========================================================================
 
 // FIX: Removed require() calls, using top-level imports. Fixed createTransporter typo.
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     try {
         const { email } = req.body;
         const user = await User.findOne({ email: email.toLowerCase() });
@@ -481,21 +539,22 @@ app.post('/api/auth/reset-password', async (req, res) => {
         // Hash the incoming token to compare against stored hash
         const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
-        const user = await User.findOne({
-            resetPasswordToken: hashedToken,
-            resetPasswordExpires: { $gt: Date.now() }
-        });
+        // C-4: Atomically find AND clear the token in one operation — prevents replay attacks.
+        // findOneAndUpdate with { new: false } returns the doc BEFORE the update.
+        // If two concurrent requests arrive, only one will match (the other gets null).
+        const user = await User.findOneAndUpdate(
+            { resetPasswordToken: hashedToken, resetPasswordExpires: { $gt: Date.now() } },
+            { $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 } },
+            { new: false }
+        );
 
         if (!user) {
             return res.status(400).json({ message: 'El enlace de recuperacion es invalido o ha expirado' });
         }
 
-        // FIX: Hash the new password before saving (was plaintext before!)
-        user.password = await bcrypt.hash(newPassword, 10);
-        user.resetPasswordToken = undefined;
-        user.resetPasswordExpires = undefined;
-        user.isFirstLogin = false;
-        await user.save();
+        // Token was valid — now safely set the new password
+        const hashed = await bcrypt.hash(newPassword, 10);
+        await User.findByIdAndUpdate(user._id, { password: hashed, isFirstLogin: false });
 
         res.json({ message: 'Contrasena actualizada exitosamente' });
     } catch (error) {
@@ -530,7 +589,7 @@ app.get('/api/auth/invite-info', async (req, res) => {
 });
 
 // Client accepts invite: validates token, sets their chosen password, auto-logs them in
-app.post('/api/auth/accept-invite', async (req, res) => {
+app.post('/api/auth/accept-invite', inviteLimiter, async (req, res) => {
     try {
         const { token, password } = req.body;
 
@@ -552,13 +611,14 @@ app.post('/api/auth/accept-invite', async (req, res) => {
         user.isFirstLogin = false;
         await user.save();
 
-        // Auto-login: return a JWT so the client lands directly in their dashboard
+        // Auto-login: set HttpOnly cookie so client lands directly in their dashboard
         const tokenPayload = { id: user._id, email: user.email, role: user.role };
         const jwtToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
+        setAuthCookie(res, jwtToken);
 
         res.json({
             message: 'Cuenta activada exitosamente',
-            token: jwtToken,
+            // token intentionally omitted — delivered via cookie only
             user: {
                 id: user._id,
                 name: user.name,
@@ -645,8 +705,20 @@ app.get('/api/me', authenticateToken, async (req, res) => {
     }
 });
 
+// H-7: Whitelist of allowed image data URI prefixes (no SVG — it can contain scripts)
+const ALLOWED_IMAGE_PREFIXES = ['data:image/jpeg;base64,', 'data:image/jpg;base64,', 'data:image/png;base64,', 'data:image/gif;base64,', 'data:image/webp;base64,'];
+const isValidImageData = (data) => typeof data === 'string' && ALLOWED_IMAGE_PREFIXES.some(p => data.startsWith(p));
+// 5 MB max for Base64 images (5 * 1024 * 1024 * (4/3) ≈ 6.9 MB in Base64)
+const MAX_IMAGE_B64_LEN = 7_000_000;
+
 app.put('/api/me', authenticateToken, async (req, res) => {
     try {
+        // H-7: Validate profile picture MIME type before saving
+        if (req.body.profilePicture) {
+            if (!isValidImageData(req.body.profilePicture) || req.body.profilePicture.length > MAX_IMAGE_B64_LEN) {
+                return res.status(400).json({ message: 'Formato de imagen no válido.' });
+            }
+        }
         // Safe profile fields any authenticated user can update
         const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'profilePicture', 'servingUnit'];
         const updates = {};
@@ -682,9 +754,14 @@ app.put('/api/me', authenticateToken, async (req, res) => {
 // --- PROTECTED: Clients (Trainer only) ---
 // ==========================================================================
 
+// Sensitive fields never sent to the browser — not even as hashed values
+const CLIENT_SAFE_SELECT = '-password -resetPasswordToken -resetPasswordExpires -inviteToken -inviteExpires';
+
 app.get('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
     try {
-        const clients = await User.find({ role: 'client', isDeleted: { $ne: true } }).sort({ createdAt: -1 });
+        const clients = await User.find({ role: 'client', isDeleted: { $ne: true } })
+            .select(CLIENT_SAFE_SELECT)
+            .sort({ createdAt: -1 });
         res.json(clients);
     } catch (error) { res.status(500).json({ message: 'Error fetching clients' }); }
 });
@@ -777,9 +854,20 @@ app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), 
 app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+
+        // C-2: Explicit allowlist — prevents role escalation and token overwrites
+        const ALLOWED = ['name','lastName','email','program','group','type','dueDate','isActive',
+                         'location','timezone','unitSystem','phone','height','weight','birthday',
+                         'gender','thr','mahr','restingHr','emailPreferences','hideFromDashboard',
+                         'profilePicture','equipment','macroSettings','waterGoal'];
+        const updates = {};
+        for (const key of ALLOWED) {
+            if (req.body[key] !== undefined) updates[key] = req.body[key];
+        }
+
         const prevClient = await User.findById(id);
-        const updatedClient = await User.findByIdAndUpdate(id, updates, { new: true });
+        const updatedClient = await User.findByIdAndUpdate(id, updates, { new: true })
+            .select(CLIENT_SAFE_SELECT);
 
         // Notify trainer if program was assigned or changed
         if (updates.program && updates.program !== 'Sin Asignar' &&
@@ -873,8 +961,10 @@ app.get('/api/library', authenticateToken, async (req, res) => {
 app.post('/api/library', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
     try {
         const { name, videoUrl, category } = req.body;
+        // H-3: Escape regex metacharacters to prevent ReDoS
+        const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const exercise = await Exercise.findOneAndUpdate(
-            { name: { $regex: new RegExp(`^${name}$`, 'i') } },
+            { name: { $regex: new RegExp(`^${safeName}$`, 'i') } },
             { name, videoUrl, category, lastUpdated: Date.now() },
             { new: true, upsert: true }
         );
@@ -899,7 +989,17 @@ app.post('/api/log', authenticateToken, async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Log Error' }); }
 });
 
+// C-3: Ownership guard — clients can only access their own data; trainers pass through
+const assertOwnership = (req, res, clientId) => {
+    if (req.user.role === 'client' && String(req.user.id) !== String(clientId)) {
+        res.status(403).json({ message: 'Forbidden' });
+        return false;
+    }
+    return true;
+};
+
 app.get('/api/log/:clientId', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
     try { const logs = await WorkoutLog.find({ clientId: req.params.clientId }); res.json(logs); }
     catch (e) { res.status(500).json({ message: 'Error fetching logs' }); }
 });
@@ -909,6 +1009,7 @@ app.get('/api/log/:clientId', authenticateToken, async (req, res) => {
 // ==========================================================================
 
 app.post('/api/client-workouts', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.body.clientId)) return;
     try {
         const { clientId, date, title, isRest, restType, warmup, warmupVideoUrl, cooldown, exercises } = req.body;
         const workout = await ClientWorkout.findOneAndUpdate(
@@ -940,6 +1041,7 @@ app.post('/api/client-workouts', authenticateToken, async (req, res) => {
 });
 
 app.get('/api/client-workouts/:clientId/:date', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const { clientId, date } = req.params;
         const workout = await ClientWorkout.findOne({ clientId, date });
@@ -954,6 +1056,7 @@ app.get('/api/client-workouts/:clientId/:date', authenticateToken, async (req, r
 });
 
 app.get('/api/client-workouts/:clientId', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const { clientId } = req.params;
         const workouts = await ClientWorkout.find({ clientId }).sort({ date: 1 });
@@ -964,8 +1067,29 @@ app.get('/api/client-workouts/:clientId', authenticateToken, async (req, res) =>
     }
 });
 
+// Save client mood for the day — upserts the workout document so mood is stored
+// even on rest days or days with no trainer-assigned workout.
+app.patch('/api/client-workouts/:clientId/:date/mood', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
+    const ALLOWED_MOODS = ['amazing', 'great', 'neutral', 'tired', 'bad', ''];
+    const { mood } = req.body;
+    if (!ALLOWED_MOODS.includes(mood)) return res.status(400).json({ message: 'Invalid mood value.' });
+    try {
+        const { clientId, date } = req.params;
+        const workout = await ClientWorkout.findOneAndUpdate(
+            { clientId, date },
+            { $set: { mood, updatedAt: Date.now() } },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+        res.json(workout);
+    } catch (error) {
+        res.status(500).json({ message: 'Error saving mood.' });
+    }
+});
+
 // Partial update (e.g. saving RPE without overwriting exercises/warmup/cooldown)
 app.patch('/api/client-workouts/:clientId/:date', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const { clientId, date } = req.params;
         // Read the BEFORE state so we only notify on a real status change
@@ -1036,6 +1160,7 @@ app.delete('/api/client-workouts/:clientId/:date', authenticateToken, authorizeR
 // ==========================================================================
 
 app.get('/api/weight-logs/:clientId', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const logs = await WeightLog.find({ clientId: req.params.clientId }).sort({ date: -1 }).limit(100);
         res.json(logs);
@@ -1043,6 +1168,7 @@ app.get('/api/weight-logs/:clientId', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/weight-logs', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.body.clientId)) return;
     try {
         const { clientId, date, weight, bodyFat, notes } = req.body;
         const log = await WeightLog.findOneAndUpdate(
@@ -1075,6 +1201,7 @@ app.post('/api/weight-logs', authenticateToken, async (req, res) => {
 // ==========================================================================
 
 app.get('/api/body-measurements/:clientId', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const measurements = await BodyMeasurement.find({ clientId: req.params.clientId }).sort({ date: 1 });
         res.json(measurements);
@@ -1112,6 +1239,7 @@ app.delete('/api/body-measurements/:id', authenticateToken, async (req, res) => 
 // ==========================================================================
 
 app.get('/api/nutrition-logs/:clientId', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const logs = await NutritionLog.find({ clientId: req.params.clientId }).sort({ date: -1 }).limit(100);
         res.json(logs);
@@ -1348,6 +1476,7 @@ app.post('/api/payments/:id/invoice', authenticateToken, authorizeRoles('trainer
 // ==========================================================================
 
 app.get('/api/progress-photos/:clientId', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const photos = await ProgressPhoto.find({ clientId: req.params.clientId }).sort({ date: -1 }).limit(50);
         res.json(photos);
@@ -1355,8 +1484,13 @@ app.get('/api/progress-photos/:clientId', authenticateToken, async (req, res) =>
 });
 
 app.post('/api/progress-photos', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.body.clientId)) return;
     try {
         const { clientId, date, imageData, notes, category } = req.body;
+        // H-7: Validate image MIME type and size server-side
+        if (!isValidImageData(imageData) || imageData.length > MAX_IMAGE_B64_LEN) {
+            return res.status(400).json({ message: 'Formato de imagen no válido.' });
+        }
         const photo = new ProgressPhoto({ clientId, date, imageData, notes, category });
         await photo.save();
 
@@ -1526,7 +1660,9 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
 
     // Supplement with USDA FoodData Central for English brand/food names
     try {
-        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY&query=${encodeURIComponent(q)}&pageSize=10&dataType=Foundation,SR%20Legacy&nutrients=1008,1003,1005,1004`;
+        const usdaKey = process.env.USDA_API_KEY;
+        if (!usdaKey) throw new Error('USDA_API_KEY is not set in environment variables.');
+        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaKey}&query=${encodeURIComponent(q)}&pageSize=10&dataType=Foundation,SR%20Legacy&nutrients=1008,1003,1005,1004`;
         const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
         const data = await r.json();
         const apiResults = (data.foods || [])
@@ -1699,7 +1835,12 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
 // Mark ONE as read
 app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
     try {
-        await Notification.findByIdAndUpdate(req.params.id, { isRead: true });
+        // H-6: Only mark read if this notification belongs to the requesting trainer
+        const updated = await Notification.findOneAndUpdate(
+            { _id: req.params.id, trainerId: req.user.id },
+            { isRead: true }
+        );
+        if (!updated) return res.status(404).json({ message: 'Notification not found' });
         res.json({ message: 'Marked as read' });
     } catch (error) {
         console.error('Error marking notification as read:', error);

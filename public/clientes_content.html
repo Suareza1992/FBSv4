@@ -17,14 +17,14 @@
 
     <div class="overflow-visible">
         <div class="py-3 px-px border-b border-[#FFDB89]/15 flex gap-4">
-            <input type="text" id="client-search-input" placeholder="Buscar por nombre..." class="w-full md:w-64 h-10 px-3 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50">
-            <select id="client-status-filter" class="h-10 px-3 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded text-sm text-[#FFDB89] focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50">
+            <input type="text" id="client-search-input" placeholder="Buscar por nombre..." class="w-full md:w-64 h-10 px-3 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50">
+            <select id="client-status-filter" class="h-10 px-3 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-sm text-[#FFDB89] focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50">
                 <option value="all">Todos</option>
-                <option value="active">Activos</option>
+                <option value="active" selected>Activos</option>
                 <option value="inactive">Inactivos</option>
             </select>
         </div>
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto rounded-2xl overflow-hidden border border-[#FFDB89]/10">
             <table class="min-w-full divide-y divide-[#FFDB89]/10">
                 <thead class="bg-[#1C1C1E]">
                     <tr>
@@ -190,14 +190,28 @@
                             <input type="date" id="opt-due-date" class="w-full p-3 bg-white/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition [color-scheme:dark]">
                         </div>
 
-                        <!-- THR / Max HR -->
+                        <!-- Resting HR → auto-calculates THR & Max HR -->
+                        <div>
+                            <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">FC en Reposo (bpm)</label>
+                            <input type="number" id="opt-resting-hr" min="30" max="120"
+                                class="w-full p-3 bg-white/5 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition placeholder-[#FFDB89]/20"
+                                placeholder="ej. 65">
+                        </div>
+
+                        <!-- THR / Max HR — auto-filled, still editable -->
                         <div class="grid grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">THR (bpm)</label>
+                                <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider flex items-center gap-1">
+                                    THR (bpm)
+                                    <span class="text-[#FFDB89]/30 normal-case font-normal tracking-normal">· auto</span>
+                                </label>
                                 <input type="number" id="opt-thr" class="w-full p-3 bg-white/5 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition placeholder-[#FFDB89]/20" placeholder="ej. 142">
                             </div>
                             <div>
-                                <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">Max HR (bpm)</label>
+                                <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider flex items-center gap-1">
+                                    Max HR (bpm)
+                                    <span class="text-[#FFDB89]/30 normal-case font-normal tracking-normal">· auto</span>
+                                </label>
                                 <input type="number" id="opt-mahr" class="w-full p-3 bg-white/5 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition placeholder-[#FFDB89]/20" placeholder="ej. 191">
                             </div>
                         </div>

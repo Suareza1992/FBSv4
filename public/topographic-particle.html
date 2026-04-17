@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Topographic Particle Wave</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0e0d08; }
+    canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+
+    let W, H;
+    function resize() {
+        W = canvas.width  = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ── Grid density ──────────────────────────────────────────────
+    // Denser than the original particle-wave for smooth contour lines
+    const COLS = 180;
+    const ROWS = 180;
+
+    // ── Contour settings ──────────────────────────────────────────
+    const NUM_CONTOURS   = 22;    // how many elevation bands
+    const BAND_TIGHTNESS = 0.30;  // how wide each contour stripe is (fraction of interval)
+    const INDEX_EVERY    = 5;     // every Nth contour is an index (bolder)
+
+    // ── Brand colours ─────────────────────────────────────────────
+    // Gold  #FFDB89  → R 255  G 219  B 137
+    // Dark  #0e0d08
+    const GR = 255, GG = 219, GB = 137;
+    const DR =  14, DG =  13, DB =   8;
+
+    // ── Camera — elevated side perspective (like refs 2 & 3) ──────
+    const FOCAL  = 750;    // perspective strength
+    const CAM_Z  = 480;    // camera pullback distance
+    const TILT_X = -0.78;  // ~45° downward tilt — steeper than original
+    const TILT_Y =  0.22;  // slight left-right angle for drama
+
+    const cosTX = Math.cos(TILT_X), sinTX = Math.sin(TILT_X);
+    const cosTY = Math.cos(TILT_Y), sinTY = Math.sin(TILT_Y);
+
+    let startTime = null;
+
+    // ── Terrain height field ──────────────────────────────────────
+    // Layered waves create organic peaks and valleys.
+    // Returns Z offset in world units — range roughly ±300.
+    function terrainZ(u, v, t) {
+        return (
+            // Primary ridge system
+            Math.sin(u * Math.PI * 3.2 + t * 0.14)
+                * Math.cos(v * Math.PI * 2.6 + t * 0.10) * 240 +
+            // Secondary undulations
+            Math.sin(v * Math.PI * 4.1 - t * 0.09) * 110 +
+            Math.cos((u + v) * Math.PI * 2.5 + t * 0.07) * 85 +
+            // Fine detail (smaller peaks / gullies)
+            Math.sin(u * Math.PI * 5.8 + v * Math.PI * 4.4 + t * 0.05) * 55 +
+            Math.cos(u * Math.PI * 1.9 - v * Math.PI * 3.1 + t * 0.06) * 45
+        );
+    }
+
+    // Contour levels spaced evenly across the full Z range (~±300)
+    const Z_RANGE = 600; // total range
+    const levels = Array.from({ length: NUM_CONTOURS }, (_, i) =>
+        -Z_RANGE / 2 + (Z_RANGE / (NUM_CONTOURS - 1)) * i
+    );
+    const interval = Z_RANGE / (NUM_CONTOURS - 1);
+
+    // Pre-allocate dot buffer
+    const dots = [];
+
+    function animate(ts) {
+        if (!startTime) startTime = ts;
+        const t = (ts - startTime) * 0.001;
+
+        ctx.fillStyle = '#0e0d08';
+        ctx.fillRect(0, 0, W, H);
+
+        // Terrain spans wider than viewport for full-bleed look
+        const span = Math.max(W, H) * 1.5;
+
+        dots.length = 0;
+
+        for (let ri = 0; ri < ROWS; ri++) {
+            for (let ci = 0; ci < COLS; ci++) {
+                const u = ci / (COLS - 1);
+                const v = ri / (ROWS - 1);
+
+                // ── World position ────────────────────────────────
+                const x0 = (u - 0.5) * span;
+                const y0 = (v - 0.5) * span;
+                const z0 = terrainZ(u, v, t);
+
+                // ── Contour test (before projection) ─────────────
+                // We test elevation in world space so contours sit
+                // at consistent heights on the terrain surface.
+                let minDist  = Infinity;
+                let minIndex = 0;
+                for (let li = 0; li < levels.length; li++) {
+                    const d = Math.abs(z0 - levels[li]);
+                    if (d < minDist) { minDist = d; minIndex = li; }
+                }
+
+                const threshold = interval * BAND_TIGHTNESS;
+                if (minDist > threshold) continue; // not near any contour — skip
+
+                // ── 3-D camera rotation ───────────────────────────
+                // Rotate X (tilt down)
+                const y1 = y0 * cosTX - z0 * sinTX;
+                const z1 = y0 * sinTX + z0 * cosTX;
+                // Rotate Y (slight pan)
+                const x2 =  x0 * cosTY + z1 * sinTY;
+                const z2 = -x0 * sinTY + z1 * cosTY;
+                const y2 = y1;
+
+                // ── Perspective projection ────────────────────────
+                const depth = FOCAL + z2 + CAM_Z;
+                if (depth <= 0) continue;
+                const scale = FOCAL / depth;
+
+                const px = W * 0.5 + x2 * scale;
+                const py = H * 0.5 + y2 * scale;
+
+                // ── Styling ───────────────────────────────────────
+                const isIndex   = (minIndex % INDEX_EVERY === 0);
+                const intensity = 1 - (minDist / threshold); // 1 = on contour
+                const normDepth = Math.min(1, Math.max(0, (z2 + 400) / 800));
+
+                // Blend contour sharpness with depth brightness
+                const bright = Math.min(1,
+                    intensity * (0.5 + normDepth * 0.5) + (isIndex ? 0.28 : 0)
+                );
+
+                const radius = isIndex
+                    ? Math.max(0.5, (0.7 + intensity * 1.5) * scale)
+                    : Math.max(0.4, (0.5 + intensity * 1.0) * scale);
+
+                dots.push({ px, py, z2, radius, bright, intensity });
+            }
+        }
+
+        // ── Sort back → front for correct depth overlap ───────────
+        dots.sort((a, b) => a.z2 - b.z2);
+
+        // ── Draw all visible contour dots ─────────────────────────
+        for (const d of dots) {
+            const r = Math.round(GR * d.bright + DR * (1 - d.bright));
+            const g = Math.round(GG * d.bright + DG * (1 - d.bright));
+            const b = Math.round(GB * d.bright + DB * (1 - d.bright));
+            const a = (0.10 + d.bright * 0.90).toFixed(2);
+
+            ctx.beginPath();
+            ctx.arc(d.px, d.py, d.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+            ctx.fill();
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>
