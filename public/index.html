@@ -436,10 +436,54 @@
           <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-4">¿Listo?</p>
           <h2 class="text-4xl md:text-5xl font-black text-white mb-4" data-key="ctaTitle">¿Listo para subir de nivel?</h2>
           <p class="text-fbs-gold/70 text-lg mb-10 max-w-xl mx-auto" data-key="ctaSub">Únete a la plataforma usada por atletas de alto rendimiento.</p>
-          <a href="https://www.instagram.com/fitbysuarez/" target="_blank"
+          <a href="#contact-section"
+            onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;"
             class="btn-gold px-10 py-4 rounded-full text-lg inline-flex items-center gap-3" data-key="ctaBtn">
-            <i class="fab fa-instagram"></i> Contáctame
+            <i class="fas fa-envelope"></i> Contáctame
           </a>
+        </div>
+      </section>
+
+      <!-- INTEREST / CONTACT FORM -->
+      <section id="contact-section" class="section-dim py-24 border-t border-fbs-gold/10">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="text-center mb-12">
+            <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3">Únete</p>
+            <h2 class="text-3xl md:text-4xl font-black text-white mb-4">¿Interesado en entrenar?</h2>
+            <p class="text-fbs-gold/70 text-base max-w-xl mx-auto">Cuéntanos sobre ti y tus metas. Te contactaré personalmente.</p>
+          </div>
+
+          <div class="section-card border border-fbs-gold/15 rounded-2xl p-8">
+            <form id="contact-form" novalidate>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Nombre completo *</label>
+                  <input type="text" id="contact-name" required autocomplete="name"
+                    class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="Ángel Suárez">
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Email *</label>
+                  <input type="email" id="contact-email" required autocomplete="email"
+                    class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="tu@email.com">
+                </div>
+              </div>
+              <div class="mb-4">
+                <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Teléfono <span class="font-normal normal-case opacity-60">(opcional)</span></label>
+                <input type="tel" id="contact-phone" autocomplete="tel"
+                  class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="+1 (787) 000-0000">
+              </div>
+              <div class="mb-6">
+                <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">¿Cuál es tu objetivo? *</label>
+                <textarea id="contact-message" required rows="4"
+                  class="fbs-input w-full p-4 rounded-xl text-sm resize-none"
+                  placeholder="Cuéntame sobre tus metas de entrenamiento, experiencia previa, disponibilidad..."></textarea>
+              </div>
+              <button type="submit" id="contact-submit-btn" class="btn-gold w-full p-4 rounded-xl text-base font-black flex items-center justify-center gap-2">
+                <i class="fas fa-paper-plane"></i>Enviar Mensaje
+              </button>
+              <p id="contact-status" class="text-center mt-4 text-sm font-bold hidden"></p>
+            </form>
+          </div>
         </div>
       </section>
 
@@ -458,12 +502,19 @@
 
             <div>
               <p class="text-xs font-bold text-fbs-gold/70 uppercase tracking-widest mb-4">Síguenos</p>
-              <div class="flex gap-2">
-                <a href="#" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-facebook-f"></i></a>
-                <a href="#" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-twitter"></i></a>
-                <a href="https://www.instagram.com/fitbysuarez/" target="_blank" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-instagram"></i></a>
-                <a href="#" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-threads"></i></a>
-                <a href="#" class="w-9 h-9 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:border-fbs-gold/50 hover:text-fbs-gold transition text-sm"><i class="fab fa-youtube"></i></a>
+              <div class="flex gap-3">
+                <a href="https://www.facebook.com/fitbysuarez" target="_blank" rel="noopener"
+                   class="w-10 h-10 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:bg-[#1877F2]/20 hover:border-[#1877F2]/60 hover:text-[#1877F2] transition text-sm" title="Facebook">
+                  <i class="fab fa-facebook-f"></i>
+                </a>
+                <a href="https://www.instagram.com/fitbysuarez/" target="_blank" rel="noopener"
+                   class="w-10 h-10 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:bg-[#E1306C]/20 hover:border-[#E1306C]/60 hover:text-[#E1306C] transition text-sm" title="Instagram">
+                  <i class="fab fa-instagram"></i>
+                </a>
+                <a href="https://www.youtube.com/@fitbysuarez" target="_blank" rel="noopener"
+                   class="w-10 h-10 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:bg-[#FF0000]/20 hover:border-[#FF0000]/60 hover:text-[#FF0000] transition text-sm" title="YouTube">
+                  <i class="fab fa-youtube"></i>
+                </a>
               </div>
             </div>
 
@@ -557,6 +608,57 @@
       });
       if (window.updateFitnessTipLanguage) window.updateFitnessTipLanguage(currentLang);
     }
+  </script>
+
+  <!-- ── Contact / Interest Form ─────────────────────────────────────── -->
+  <script>
+  (function () {
+    const form    = document.getElementById('contact-form');
+    const status  = document.getElementById('contact-status');
+    const btn     = document.getElementById('contact-submit-btn');
+
+    function showStatus(msg, ok) {
+      status.textContent = msg;
+      status.className = `text-center mt-4 text-sm font-bold ${ok ? 'text-green-400' : 'text-red-400'}`;
+      status.classList.remove('hidden');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name    = document.getElementById('contact-name').value.trim();
+      const email   = document.getElementById('contact-email').value.trim();
+      const phone   = document.getElementById('contact-phone').value.trim();
+      const message = document.getElementById('contact-message').value.trim();
+
+      if (!name || !email || !message) {
+        showStatus('Por favor completa los campos requeridos.', false);
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+
+      try {
+        const res = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, phone, message })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showStatus('¡Mensaje enviado! Te contactaré pronto. 💪', true);
+          form.reset();
+        } else {
+          showStatus(data.message || 'Error enviando el mensaje.', false);
+        }
+      } catch {
+        showStatus('Error de conexión. Intenta más tarde.', false);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Mensaje';
+      }
+    });
+  })();
   </script>
 
   <!-- ── Topographic Particle Wave ────────────────────────────────────── -->

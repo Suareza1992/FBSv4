@@ -266,6 +266,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const clickHandler = !n.isRead ? `onclick="window.markNotificationRead('${safeId}')"` : '';
         const readOpacity = n.isRead ? 'opacity-50' : 'cursor-pointer hover:border-[#FFDB89]/30';
 
+        // contact_inquiry has no linked client profile — render name as plain text
+        const isContact = n.type === 'contact_inquiry';
+        const nameHtml = isContact
+            ? `<span class="font-semibold text-[#FFDB89]">${escHtml(n.clientName)}</span>`
+            : `<span class="cursor-pointer hover:underline decoration-[#FFDB89]/40"
+                     onclick="event.stopPropagation(); window.openClientProfile('${safeClientId}')">${escHtml(n.clientName)}</span>`;
+
         return `
             <div class="flex items-start p-4 glass-chip rounded-xl border-l-4 ${readOpacity} transition-all"
                  style="border-left-color: ${config.color}"
@@ -273,8 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <i class="${config.icon} mt-0.5 mr-4 text-lg shrink-0" style="color:${config.color}"></i>
                 <div class="flex-grow min-w-0">
                     <p class="font-semibold text-[#FFDB89] text-sm leading-snug">
-                        <span class="cursor-pointer hover:underline decoration-[#FFDB89]/40"
-                              onclick="event.stopPropagation(); window.openClientProfile('${safeClientId}')">${escHtml(n.clientName)}</span>
+                        ${nameHtml}
                         <span class="font-normal text-[#FFDB89]/70"> ${escHtml(n.title)}</span>
                     </p>
                     <p class="text-xs text-[#FFDB89]/50 mt-0.5 truncate">${escHtml(n.message)}</p>
@@ -299,7 +305,8 @@ document.addEventListener('DOMContentLoaded', () => {
             reported_issue:    { icon: 'fas fa-triangle-exclamation', color: '#FB923C' },
             program_assigned:  { icon: 'fas fa-dumbbell',             color: '#FFDB89' },
             client_created:    { icon: 'fas fa-user-plus',            color: '#92A9E1' },
-            rpe_submitted:     { icon: 'fas fa-fire',                 color: '#FB923C' }
+            rpe_submitted:     { icon: 'fas fa-fire',                 color: '#FB923C' },
+            contact_inquiry:   { icon: 'fas fa-envelope-open-text',   color: '#34D399' }
         };
         return configs[type] || { icon: 'fas fa-bell', color: '#FFDB89' };
     };

@@ -265,7 +265,7 @@ const Program = mongoose.model('Program', ProgramSchema);
 // --- Notification Schema ---
 const NotificationSchema = new mongoose.Schema({
     trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    clientId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    clientId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     clientName: { type: String, required: true },
     type: {
         type: String,
@@ -275,7 +275,8 @@ const NotificationSchema = new mongoose.Schema({
             'progress_photos', 'weight_update',
             'workout_comment', 'video_upload',
             'reported_issue', 'metric_inactivity',
-            'program_assigned', 'client_created', 'rpe_submitted'
+            'program_assigned', 'client_created', 'rpe_submitted',
+            'contact_inquiry'
         ],
         required: true
     },
@@ -1865,6 +1866,64 @@ app.put('/api/equipment', authenticateToken, async (req, res) => {
         await User.findByIdAndUpdate(req.user.id, { equipment });
         res.json({ message: 'Equipment saved' });
     } catch (e) { res.status(500).json({ message: 'Error saving equipment' }); }
+});
+
+// ==========================================================================
+// --- PUBLIC CONTACT / INTEREST FORM (no auth required) ---
+// ==========================================================================
+const contactLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: 'Demasiados mensajes. Intenta más tarde.' } });
+
+app.post('/api/contact', contactLimiter, async (req, res) => {
+    const { name, email, phone, message } = req.body;
+    if (!name || !email || !message) {
+        return res.status(400).json({ message: 'Nombre, email y mensaje son requeridos.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ message: 'Email inválido.' });
+    }
+    if (message.length > 1000) {
+        return res.status(400).json({ message: 'El mensaje no puede superar 1000 caracteres.' });
+    }
+
+    try {
+        // 1) Send email to trainer
+        const transporter = createEmailTransporter();
+        await transporter.sendMail({
+            from: `"FitbySuárez Web" <${process.env.GMAIL_USER}>`,
+            to: process.env.GMAIL_USER,
+            subject: `Nuevo interesado: ${name}`,
+            html: `
+                <div style="font-family:sans-serif;max-width:560px;margin:auto;background:#1C1C1E;padding:32px;border-radius:12px;color:#fff;">
+                    <h2 style="color:#FFDB89;margin-top:0;">📩 Nuevo mensaje de interés</h2>
+                    <table style="width:100%;border-collapse:collapse;">
+                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;width:110px;">Nombre</td><td style="padding:8px 0;">${name}</td></tr>
+                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;">Email</td><td style="padding:8px 0;"><a href="mailto:${email}" style="color:#FFDB89;">${email}</a></td></tr>
+                        ${phone ? `<tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;">Teléfono</td><td style="padding:8px 0;">${phone}</td></tr>` : ''}
+                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;vertical-align:top;">Mensaje</td><td style="padding:8px 0;white-space:pre-wrap;">${message}</td></tr>
+                    </table>
+                </div>
+            `
+        });
+
+        // 2) Create trainer notification
+        const trainer = await User.findOne({ role: 'trainer' }).select('_id').lean();
+        if (trainer) {
+            await Notification.create({
+                trainerId:  trainer._id,
+                clientId:   null,
+                clientName: name,
+                type:       'contact_inquiry',
+                title:      'envió un mensaje de interés',
+                message:    `${email}${phone ? ' · ' + phone : ''} — ${message.slice(0, 120)}${message.length > 120 ? '…' : ''}`,
+                data:       { name, email, phone: phone || '', message }
+            });
+        }
+
+        res.json({ message: 'Mensaje enviado correctamente.' });
+    } catch (err) {
+        console.error('Contact form error:', err);
+        res.status(500).json({ message: 'Error enviando el mensaje. Intenta más tarde.' });
+    }
 });
 
 // ==========================================================================
