@@ -8,7 +8,7 @@ import helmet from 'helmet';                        // H-5: Security headers
 import rateLimit from 'express-rate-limit';         // H-4: Brute-force protection
 import path from 'path';
 import { fileURLToPath } from 'url';
-import nodemailer from 'nodemailer';
+// nodemailer removed — email is sent via Resend HTTP API (SMTP blocked by Railway)
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -377,12 +377,26 @@ const Payment = mongoose.model('Payment', PaymentSchema);
 // 2. API ROUTES
 // =============================================================================
 
-// --- Helper: Create email transporter ---
-const createEmailTransporter = () => {
-    return nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD }
+// --- Helper: Send email via Resend API ---
+const sendEmail = async ({ from, to, subject, html, text }) => {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) throw new Error('RESEND_API_KEY is not set in environment variables.');
+    const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            from: from || 'FitBySuárez <noreply@fitbysuarez.com>',
+            to: Array.isArray(to) ? to : [to],
+            subject,
+            html,
+            ...(text ? { text } : {})
+        })
     });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || `Resend error ${res.status}`);
+    }
+    return res.json();
 };
 
 // --- Helper: Generate random password ---
@@ -487,12 +501,10 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
 
         // Send the RAW token in the email (user clicks link with raw token)
         const resetLink = `${APP_URL}/?token=${resetToken}`;
-        const transporter = createEmailTransporter();
-
         const mailOptions = {
-            from: `"Coach Suarez" <${process.env.GMAIL_USER}>`,
+            from: 'FitBySuárez <noreply@fitbysuarez.com>',
             to: email,
-            subject: 'Recuperacion de Contrasena - FitBySuarez',
+            subject: 'Recuperación de Contraseña - FitBySuárez',
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                     <div style="text-align: center; margin-bottom: 30px;">
@@ -519,7 +531,7 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
             `
         };
 
-        await transporter.sendMail(mailOptions);
+        await sendEmail(mailOptions);
         res.json({ message: 'Enlace de recuperacion enviado a tu email' });
     } catch (error) {
         console.error('Forgot password error:', error);
@@ -659,11 +671,8 @@ app.post('/api/auth/update-password', authenticateToken, async (req, res) => {
 
 app.post('/api/send-welcome', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
     const { email, name, password } = req.body;
-    const transporter = createEmailTransporter();
-
-    // FIX: Use APP_URL instead of localhost
     const mailOptions = {
-        from: `"Coach Suarez" <${process.env.GMAIL_USER}>`,
+        from: 'FitBySuárez <noreply@fitbysuarez.com>',
         to: email,
         subject: 'Bienvenido a FitBySuarez',
         text: `Hola ${name},\n\nTu cuenta ha sido creada.\nAccede: ${APP_URL}\nUsuario: ${email}\nContrasena temporal: ${password}\n\nPor favor cambia tu contrasena al iniciar sesion.`,
@@ -683,7 +692,7 @@ app.post('/api/send-welcome', authenticateToken, authorizeRoles('trainer', 'admi
     };
 
     try {
-        await transporter.sendMail(mailOptions);
+        await sendEmail(mailOptions);
         res.status(200).json({ success: true, message: 'Email sent' });
     } catch (error) {
         console.error("Email Error:", error);
@@ -806,11 +815,10 @@ app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), 
         // Send invite email automatically if requested (default: true)
         if (sendInvite !== false) {
             const inviteLink = `${APP_URL}/?invite=${rawToken}`;
-            const transporter = createEmailTransporter();
             const mailOptions = {
-                from: `"Coach Suarez" <${process.env.GMAIL_USER}>`,
+                from: 'FitBySuárez <noreply@fitbysuarez.com>',
                 to: clientData.email,
-                subject: 'Tu acceso a FitBySuarez — Activa tu cuenta',
+                subject: 'Tu acceso a FitBySuárez — Activa tu cuenta',
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0a0a0a; color: #f5f5f5;">
                         <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 1px solid #FFDB8930;">
@@ -836,7 +844,7 @@ app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), 
                 `
             };
             try {
-                await transporter.sendMail(mailOptions);
+                await sendEmail(mailOptions);
                 return res.json({ ...newClient.toObject(), _inviteLink: inviteLink });
             } catch (emailErr) {
                 // Don't fail the whole request — client was created, trainer can resend later
@@ -905,11 +913,10 @@ app.post('/api/clients/:id/resend-invite', authenticateToken, authorizeRoles('tr
 
         // Try to send by email; always return the raw link so the trainer has a fallback
         try {
-            const transporter = createEmailTransporter();
-            await transporter.sendMail({
-                from: `"Coach Suarez" <${process.env.GMAIL_USER}>`,
+            await sendEmail({
+                from: 'FitBySuárez <noreply@fitbysuarez.com>',
                 to: client.email,
-                subject: 'Tu acceso a FitBySuarez — Activa tu cuenta',
+                subject: 'Tu acceso a FitBySuárez — Activa tu cuenta',
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0a0a0a; color: #f5f5f5;">
                         <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 1px solid #FFDB8930;">
@@ -1463,8 +1470,7 @@ app.post('/api/payments/:id/invoice', authenticateToken, authorizeRoles('trainer
             </div>`
         };
 
-        const transporter = createEmailTransporter();
-        await transporter.sendMail(mailOptions);
+        await sendEmail(mailOptions);
         res.json({ message: 'Invoice sent' });
     } catch (e) {
         console.error('Invoice email error:', e);
@@ -1887,9 +1893,8 @@ app.post('/api/contact', contactLimiter, async (req, res) => {
 
     try {
         // 1) Send email to trainer
-        const transporter = createEmailTransporter();
-        await transporter.sendMail({
-            from: `"FitbySuárez Web" <${process.env.GMAIL_USER}>`,
+        await sendEmail({
+            from: 'FitBySuárez <noreply@fitbysuarez.com>',
             to: process.env.GMAIL_USER,
             subject: `Nuevo interesado: ${name}`,
             html: `
