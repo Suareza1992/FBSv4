@@ -195,7 +195,7 @@
             </div>
             <h1 class="text-5xl md:text-6xl lg:text-7xl font-black leading-tight">
               <span data-key="heroTitle1">Entrena con</span><br>
-              <span class="text-fbs-gold" data-key="heroTitle2">Inteligencia.</span>
+              <span class="text-fbs-gold" data-key="heroTitle2">inteligencia.</span>
             </h1>
             <p class="text-lg text-fbs-gold/80 max-w-lg leading-relaxed" data-key="heroSub">
               La plataforma profesional para fitness serio. Rastrea entrenamientos, gestiona nutrición y visualiza tu progreso—todo en un solo lugar.
@@ -205,7 +205,7 @@
             <div class="flex flex-wrap gap-6 pt-2">
               <div>
                 <p class="text-3xl font-black text-fbs-gold">500+</p>
-                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider" data-key="heroTrusted">Atletas activos</p>
+                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider" data-key="heroTrusted">Cambios físicos</p>
               </div>
               <div class="w-px bg-fbs-gold/20"></div>
               <div>
@@ -227,7 +227,7 @@
             <div id="login-card" class="login-glass border border-fbs-gold/25 rounded-2xl shadow-2xl overflow-hidden">
               <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
               <div class="p-8">
-                <h2 class="text-2xl font-black text-white mb-1" data-key="signIn">Iniciar Sesión</h2>
+                <h2 class="text-2xl font-black text-white mb-1" data-key="signIn">Iniciar sesión</h2>
                 <p class="text-sm text-fbs-gold/50 mb-7" data-key="accessDash">Accede a tu panel</p>
 
                 <form id="login-form" onsubmit="event.preventDefault();">
@@ -274,7 +274,7 @@
                 </form>
                 <p id="forgot-message" class="text-center mt-4 text-sm font-bold hidden"></p>
                 <div class="mt-5 text-center">
-                  <button id="back-to-login" class="text-sm text-fbs-gold/50 hover:text-fbs-gold transition underline">Volver a Iniciar Sesión</button>
+                  <button id="back-to-login" class="text-sm text-fbs-gold/50 hover:text-fbs-gold transition underline">Volver a iniciar sesión</button>
                 </div>
               </div>
             </div>
@@ -345,6 +345,19 @@
         </div>
       </div>
 
+      <!-- CTA -->
+      <section class="section-dark py-20 border-t border-fbs-gold/15">
+        <div class="max-w-4xl mx-auto px-4 text-center">
+          <h2 class="text-4xl md:text-5xl font-black text-white mb-4" data-key="ctaTitle">¿Listo para subir de nivel?</h2>
+          <p class="text-fbs-gold/70 text-lg mb-10 max-w-xl mx-auto" data-key="ctaSub">Únete a la plataforma usada por atletas de alto rendimiento.</p>
+          <a href="#contact-section"
+            onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;"
+            class="btn-gold px-10 py-4 rounded-full text-lg inline-flex items-center gap-3" data-key="ctaBtn">
+            <i class="fas fa-envelope"></i> Contáctame
+          </a>
+        </div>
+      </section>
+
       <!-- FEATURES -->
       <section class="section-dark py-24">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -356,25 +369,31 @@
 
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="feat-card section-card p-8 rounded-2xl">
-              <div class="w-12 h-12 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold mb-5 text-xl">
-                <i class="fas fa-calendar-alt"></i>
+              <h3 class="text-xl font-black text-white mb-4" data-key="f1Title">Calendario Inteligente</h3>
+              <div class="flex items-start gap-4">
+                <div class="w-12 h-12 shrink-0 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                  <i class="fas fa-calendar-alt"></i>
+                </div>
+                <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f1Desc">Organiza tus semanas de entrenamiento de manera eficiente.</p>
               </div>
-              <h3 class="text-xl font-black text-white mb-2" data-key="f1Title">Calendario Inteligente</h3>
-              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f1Desc">Organiza tus semanas de entrenamiento de manera eficiente.</p>
             </div>
             <div class="feat-card section-card p-8 rounded-2xl">
-              <div class="w-12 h-12 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold mb-5 text-xl">
-                <i class="fas fa-video"></i>
+              <h3 class="text-xl font-black text-white mb-4" data-key="f2Title">Análisis de Video</h3>
+              <div class="flex items-start gap-4">
+                <div class="w-12 h-12 shrink-0 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                  <i class="fas fa-video"></i>
+                </div>
+                <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f2Desc">Sube videos de tu técnica y recibe feedback instantáneo.</p>
               </div>
-              <h3 class="text-xl font-black text-white mb-2" data-key="f2Title">Análisis de Video</h3>
-              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f2Desc">Sube videos de tu técnica y recibe feedback instantáneo.</p>
             </div>
             <div class="feat-card section-card p-8 rounded-2xl">
-              <div class="w-12 h-12 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold mb-5 text-xl">
-                <i class="fas fa-chart-line"></i>
+              <h3 class="text-xl font-black text-white mb-4" data-key="f3Title">Métricas de Progreso</h3>
+              <div class="flex items-start gap-4">
+                <div class="w-12 h-12 shrink-0 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                  <i class="fas fa-chart-line"></i>
+                </div>
+                <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f3Desc">Visualiza tus ganancias de fuerza y composición corporal.</p>
               </div>
-              <h3 class="text-xl font-black text-white mb-2" data-key="f3Title">Métricas de Progreso</h3>
-              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f3Desc">Visualiza tus ganancias de fuerza y composición corporal.</p>
             </div>
           </div>
         </div>
@@ -430,25 +449,10 @@
         </div>
       </section>
 
-      <!-- CTA -->
-      <section class="section-dark py-20 border-t border-fbs-gold/15">
-        <div class="max-w-4xl mx-auto px-4 text-center">
-          <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-4">¿Listo?</p>
-          <h2 class="text-4xl md:text-5xl font-black text-white mb-4" data-key="ctaTitle">¿Listo para subir de nivel?</h2>
-          <p class="text-fbs-gold/70 text-lg mb-10 max-w-xl mx-auto" data-key="ctaSub">Únete a la plataforma usada por atletas de alto rendimiento.</p>
-          <a href="#contact-section"
-            onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;"
-            class="btn-gold px-10 py-4 rounded-full text-lg inline-flex items-center gap-3" data-key="ctaBtn">
-            <i class="fas fa-envelope"></i> Contáctame
-          </a>
-        </div>
-      </section>
-
       <!-- INTEREST / CONTACT FORM -->
       <section id="contact-section" class="section-dim py-24 border-t border-fbs-gold/10">
         <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="text-center mb-12">
-            <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3">Únete</p>
             <h2 class="text-3xl md:text-4xl font-black text-white mb-4">¿Interesado en entrenar?</h2>
             <p class="text-fbs-gold/70 text-base max-w-xl mx-auto">Cuéntanos sobre ti y tus metas. Te contactaré personalmente.</p>
           </div>
@@ -470,7 +474,7 @@
               <div class="mb-4">
                 <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Teléfono <span class="font-normal normal-case opacity-60">(opcional)</span></label>
                 <input type="tel" id="contact-phone" autocomplete="tel"
-                  class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="+1 (787) 000-0000">
+                  class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="+1 (---) --- ----">
               </div>
               <div class="mb-6">
                 <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">¿Cuál es tu objetivo? *</label>
@@ -479,7 +483,7 @@
                   placeholder="Cuéntame sobre tus metas de entrenamiento, experiencia previa, disponibilidad..."></textarea>
               </div>
               <button type="submit" id="contact-submit-btn" class="btn-gold w-full p-4 rounded-xl text-base font-black flex items-center justify-center gap-2">
-                <i class="fas fa-paper-plane"></i>Enviar Mensaje
+                <i class="fas fa-paper-plane"></i>Enviar mensaje
               </button>
               <p id="contact-status" class="text-center mt-4 text-sm font-bold hidden"></p>
             </form>
@@ -501,7 +505,7 @@
             </div>
 
             <div>
-              <p class="text-xs font-bold text-fbs-gold/70 uppercase tracking-widest mb-4">Síguenos</p>
+              <p class="text-xs font-bold text-fbs-gold/70 uppercase tracking-widest mb-4">Sígueme</p>
               <div class="flex gap-3">
                 <a href="https://www.facebook.com/fitbysuarez" target="_blank" rel="noopener"
                    class="w-10 h-10 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:bg-[#1877F2]/20 hover:border-[#1877F2]/60 hover:text-[#1877F2] transition text-sm" title="Facebook">
@@ -547,10 +551,10 @@
     const translations = {
       es: {
         heroTitle1:   "Entrena con",
-        heroTitle2:   "Inteligencia.",
+        heroTitle2:   "inteligencia.",
         heroSub:      "La plataforma profesional para fitness serio. Rastrea entrenamientos, gestiona nutrición y visualiza tu progreso—todo en un solo lugar.",
-        heroTrusted:  "Atletas activos",
-        signIn:       "Iniciar Sesión",
+        heroTrusted:  "Cambios físicos",
+        signIn:       "Iniciar sesión",
         accessDash:   "Accede a tu panel",
         startTraining:"Comenzar",
         dailyTipLabel:"Tip del Día:",
@@ -655,7 +659,7 @@
         showStatus('Error de conexión. Intenta más tarde.', false);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Mensaje';
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar mensaje';
       }
     });
   })();
