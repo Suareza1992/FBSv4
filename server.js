@@ -399,6 +399,15 @@ const sendEmail = async ({ from, to, subject, html, text }) => {
     return res.json();
 };
 
+// --- Helper: Validate password strength ---
+const validatePassword = (pw) => {
+    if (!pw || pw.length < 8)      return 'La contraseña debe tener al menos 8 caracteres.';
+    if (!/[a-zA-Z]/.test(pw))      return 'La contraseña debe incluir al menos una letra.';
+    if (!/[0-9]/.test(pw))         return 'La contraseña debe incluir al menos un número.';
+    if (!/[^a-zA-Z0-9]/.test(pw))  return 'La contraseña debe incluir al menos un carácter especial (!@#$%...).';
+    return null; // null = valid
+};
+
 // --- Helper: Generate random password ---
 const generateTempPassword = () => {
     return crypto.randomBytes(4).toString('hex'); // 8-char random string like "a3f1b9c2"
@@ -545,9 +554,8 @@ app.post('/api/auth/reset-password', async (req, res) => {
     try {
         const { token, newPassword } = req.body;
 
-        if (!newPassword || newPassword.length < 6) {
-            return res.status(400).json({ message: 'La contrasena debe tener al menos 6 caracteres' });
-        }
+        const pwError = validatePassword(newPassword);
+        if (pwError) return res.status(400).json({ message: pwError });
 
         // Hash the incoming token to compare against stored hash
         const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
@@ -606,9 +614,8 @@ app.post('/api/auth/accept-invite', inviteLimiter, async (req, res) => {
     try {
         const { token, password } = req.body;
 
-        if (!password || password.length < 6) {
-            return res.status(400).json({ message: 'La contraseña debe tener al menos 6 caracteres' });
-        }
+        const pwError = validatePassword(password);
+        if (pwError) return res.status(400).json({ message: pwError });
 
         const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
         const user = await User.findOne({
@@ -656,9 +663,8 @@ app.post('/api/auth/accept-invite', inviteLimiter, async (req, res) => {
 app.post('/api/auth/update-password', authenticateToken, async (req, res) => {
     try {
         const { newPassword } = req.body;
-        if (!newPassword || newPassword.length < 6) {
-            return res.status(400).json({ message: 'Password must be at least 6 characters' });
-        }
+        const pwError = validatePassword(newPassword);
+        if (pwError) return res.status(400).json({ message: pwError });
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         await User.findByIdAndUpdate(req.user.id, { password: hashedPassword, isFirstLogin: false });
         res.json({ message: 'Password updated successfully' });
@@ -828,7 +834,7 @@ app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), 
                             <h2 style="color: #FFDB89; margin-top: 0;">¡Hola, ${clientData.name}!</h2>
                             <p style="color: #ccc; line-height: 1.7;">Tu entrenador ha creado tu cuenta en <strong style="color: #FFDB89;">FitBySuárez</strong>. Haz clic en el botón de abajo para activarla y crear tu contraseña personal.</p>
                             <div style="text-align: center; margin: 30px 0;">
-                                <a href="${inviteLink}" style="display: inline-block; background: #FFDB89; color: #030303; padding: 16px 36px; text-decoration: none; border-radius: 10px; font-weight: 900; font-size: 16px; letter-spacing: 0.5px;">Activar mi Cuenta</a>
+                                <a href="${inviteLink}" style="display: inline-block; background: #FFDB89; color: #030303; padding: 16px 36px; text-decoration: none; border-radius: 10px; font-weight: 900; font-size: 16px; letter-spacing: 0.5px;">Activar mi cuenta</a>
                             </div>
                             <p style="color: #888; font-size: 13px; line-height: 1.6;">O copia y pega este enlace en tu navegador:</p>
                             <p style="color: #FFDB89; word-break: break-all; font-size: 12px; background: #111; padding: 12px; border-radius: 8px;">${inviteLink}</p>
@@ -926,7 +932,7 @@ app.post('/api/clients/:id/resend-invite', authenticateToken, authorizeRoles('tr
                             <h2 style="color: #FFDB89; margin-top: 0;">¡Hola, ${client.name}!</h2>
                             <p style="color: #ccc; line-height: 1.7;">Tu entrenador te ha enviado un nuevo enlace para activar tu cuenta en <strong style="color: #FFDB89;">FitBySuárez</strong>.</p>
                             <div style="text-align: center; margin: 30px 0;">
-                                <a href="${inviteLink}" style="display: inline-block; background: #FFDB89; color: #030303; padding: 16px 36px; text-decoration: none; border-radius: 10px; font-weight: 900; font-size: 16px; letter-spacing: 0.5px;">Activar mi Cuenta</a>
+                                <a href="${inviteLink}" style="display: inline-block; background: #FFDB89; color: #030303; padding: 16px 36px; text-decoration: none; border-radius: 10px; font-weight: 900; font-size: 16px; letter-spacing: 0.5px;">Activar mi cuenta</a>
                             </div>
                             <p style="color: #888; font-size: 13px;">O copia este enlace en tu navegador:</p>
                             <p style="color: #FFDB89; word-break: break-all; font-size: 12px; background: #111; padding: 12px; border-radius: 8px;">${inviteLink}</p>

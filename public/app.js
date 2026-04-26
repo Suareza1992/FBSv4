@@ -959,7 +959,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (confirmBtn) {
                 confirmBtn.onclick = async () => {
                     const newPw = document.getElementById('new-password-input').value;
-                    if (newPw.length < 4) { showToast("La contraseña debe tener al menos 4 caracteres.", 'error'); return; }
+                    const pwErr = validatePassword(newPw);
+                    if (pwErr) { showToast(pwErr, 'error'); return; }
                     try {
                         const res = await apiFetch('/api/auth/update-password', {
                             method: 'POST',
@@ -1097,12 +1098,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if(newPassword.length < 6) {
-            showMessage('reset-message', 'La contraseña debe tener al menos 6 caracteres', 'error');
-            return;
-        }
-
-        if(newPassword !== confirmPassword) {
+        const pwError = validatePassword(newPassword);
+        if (pwError) { showMessage('reset-message', pwError, 'error'); return; }
+        if (newPassword !== confirmPassword) {
             showMessage('reset-message', 'Las contraseñas no coinciden', 'error');
             return;
         }
@@ -1194,6 +1192,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // --- Shared password validator (mirrors server.js validatePassword) ---
+    const validatePassword = (pw) => {
+        if (!pw || pw.length < 8)      return 'La contraseña debe tener al menos 8 caracteres.';
+        if (!/[a-zA-Z]/.test(pw))      return 'Incluye al menos una letra.';
+        if (!/[0-9]/.test(pw))         return 'Incluye al menos un número.';
+        if (!/[^a-zA-Z0-9]/.test(pw))  return 'Incluye al menos un carácter especial (!@#$%...).';
+        return null; // null = valid
+    };
+
     // --- INVITE: handle account activation form submission ---
     const handleAcceptInvite = async (e) => {
         e.preventDefault();
@@ -1207,10 +1214,8 @@ document.addEventListener('DOMContentLoaded', () => {
             showMessage('invite-message', 'Token de invitación no encontrado.', 'error');
             return;
         }
-        if (!password || password.length < 6) {
-            showMessage('invite-message', 'La contraseña debe tener al menos 6 caracteres.', 'error');
-            return;
-        }
+        const pwError = validatePassword(password);
+        if (pwError) { showMessage('invite-message', pwError, 'error'); return; }
         if (password !== confirmPassword) {
             showMessage('invite-message', 'Las contraseñas no coinciden.', 'error');
             return;
@@ -1231,11 +1236,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Clean URL and redirect to the appropriate dashboard
                 window.history.replaceState({}, document.title, '/');
                 setTimeout(() => {
-                    if (data.user.role === 'trainer' || data.user.role === 'admin') {
-                        window.location.href = '/trainer-dashboard.html';
-                    } else {
-                        window.location.href = '/client-dashboard.html';
-                    }
+                    window.location.href = '/'; // let index.html router show the right dashboard
                 }, 1500);
             } else {
                 showMessage('invite-message', data.message || 'Error al activar cuenta.', 'error');
@@ -1276,6 +1277,69 @@ document.addEventListener('DOMContentLoaded', () => {
         if(toggleBtn) {
             toggleBtn.addEventListener('click', togglePasswordVisibility);
         }
+
+        // --- Eye toggle helper ---
+        const makeToggle = (btnId, inputId) => {
+            const btn = document.getElementById(btnId);
+            const inp = document.getElementById(inputId);
+            if (!btn || !inp) return;
+            btn.addEventListener('click', () => {
+                const showing = inp.type === 'text';
+                inp.type = showing ? 'password' : 'text';
+                btn.innerHTML = `<i class="fas fa-eye${showing ? '' : '-slash'} text-sm"></i>`;
+            });
+        };
+        makeToggle('toggle-invite-password',         'invite-password');
+        makeToggle('toggle-invite-confirm-password', 'invite-confirm-password');
+        makeToggle('toggle-new-password',            'new-password');
+        makeToggle('toggle-confirm-password',        'confirm-password');
+
+        // --- Real-time password mismatch feedback ---
+        const wireMatchCheck = (confirmId, errorId, refId) => {
+            const confirmInput = document.getElementById(confirmId);
+            const refInput     = document.getElementById(refId);
+            const errorEl      = document.getElementById(errorId);
+            if (!confirmInput || !errorEl || !refInput) return;
+            confirmInput.addEventListener('input', () => {
+                const mismatch = confirmInput.value.length > 0 && confirmInput.value !== refInput.value;
+                errorEl.classList.toggle('hidden', !mismatch);
+            });
+        };
+        wireMatchCheck('invite-confirm-password', 'invite-password-match-error', 'invite-password');
+        wireMatchCheck('confirm-password',        'reset-password-match-error',  'new-password');
+
+        // --- Real-time password requirements checklist ---
+        const PW_RULES = [
+            { key: 'len',     label: 'Al menos 8 caracteres',                   test: pw => pw.length >= 8 },
+            { key: 'letter',  label: 'Al menos una letra',                       test: pw => /[a-zA-Z]/.test(pw) },
+            { key: 'number',  label: 'Al menos un número',                       test: pw => /[0-9]/.test(pw) },
+            { key: 'special', label: 'Al menos un carácter especial (!@#$%...)', test: pw => /[^a-zA-Z0-9]/.test(pw) },
+        ];
+        const wirePasswordRules = (inputId, containerId) => {
+            const input     = document.getElementById(inputId);
+            const container = document.getElementById(containerId);
+            if (!input || !container) return;
+            container.innerHTML = PW_RULES.map(r =>
+                `<div id="${containerId}-${r.key}" class="flex items-center gap-1.5 text-[#FFDB89]/40 transition-colors">
+                    <i class="fas fa-circle" style="font-size:6px"></i>
+                    <span>${r.label}</span>
+                </div>`
+            ).join('');
+            input.addEventListener('input', () => {
+                const pw = input.value;
+                PW_RULES.forEach(r => {
+                    const el = document.getElementById(`${containerId}-${r.key}`);
+                    if (!el) return;
+                    const passed = r.test(pw);
+                    const empty  = pw.length === 0;
+                    el.className = `flex items-center gap-1.5 transition-colors ${empty ? 'text-[#FFDB89]/40' : passed ? 'text-green-400' : 'text-red-400'}`;
+                    el.querySelector('i').className = `fas ${empty ? 'fa-circle' : passed ? 'fa-check-circle' : 'fa-times-circle'}`;
+                    el.querySelector('i').style.fontSize = empty ? '6px' : '10px';
+                });
+            });
+        };
+        wirePasswordRules('invite-password', 'invite-pw-rules');
+        wirePasswordRules('new-password',    'reset-pw-rules');
 
         const supportLink = document.getElementById('contact-support-link');
         if(supportLink) {

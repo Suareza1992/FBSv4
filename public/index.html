@@ -5,158 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FitbySuárez - Plataforma</title>
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            fbs: {
-              dark:    '#030303',
-              dim:     '#1C1C1E',
-              charcoal:'#2C2C2E',
-              gold:    '#FFDB89',
-              steel:   '#92A9E1',
-            }
-          }
-        }
-      }
-    }
-  </script>
-
+  <link rel="stylesheet" href="/output.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-
-  <style>
-    body { font-family: 'Inter', sans-serif; }
-
-    /* Hero Background */
-    .hero-bg {
-      background-image:
-        linear-gradient(135deg, rgba(3,3,3,0.82) 0%, rgba(28,28,30,0.72) 100%),
-        url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop');
-      background-size: cover;
-      background-position: center;
-      background-attachment: fixed;
-    }
-
-    /* Login card glass effect */
-    .login-glass {
-      background: rgba(3, 3, 3, 0.80);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-    }
-
-    /* Input focus */
-    .fbs-input {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 219, 137, 0.25);
-      color: white;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .fbs-input::placeholder { color: rgba(255,219,137,0.4); }
-    .fbs-input:focus {
-      outline: none;
-      border-color: #FFDB89;
-      box-shadow: 0 0 0 2px rgba(255,219,137,0.15);
-    }
-
-    /* Gold button */
-    .btn-gold {
-      background: #FFDB89;
-      color: #030303;
-      font-weight: 800;
-      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
-    }
-    .btn-gold:hover {
-      background: #ffe9a8;
-      transform: translateY(-1px);
-      box-shadow: 0 6px 24px rgba(255,219,137,0.3);
-    }
-    .btn-gold:active { transform: translateY(0); }
-
-    /* Section transitions */
-    .section-dark  { background-color: #030303; }
-    .section-dim   { background-color: #1C1C1E; }
-    .section-card  { background-color: #2C2C2E; }
-
-    /* Feat card hover glow */
-    .feat-card { border: 1px solid rgba(255,219,137,0.08); transition: border-color 0.25s, box-shadow 0.25s; }
-    .feat-card:hover { border-color: rgba(255,219,137,0.35); box-shadow: 0 0 24px rgba(255,219,137,0.06); }
-
-    /* Testimonial card */
-    .testi-card { border: 1px solid rgba(255,219,137,0.08); }
-
-    /* Animation */
-    .animate-fade-in-down { animation: fadeInDown 0.3s ease-out forwards; }
-    @keyframes fadeInDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
-
-    /* Tip bar scroll */
-    .tip-marquee { animation: marquee 30s linear infinite; }
-    @keyframes marquee { from { transform: translateX(100%); } to { transform: translateX(-100%); } }
-
-    /* Focus ring removal on click */
-    button:focus:not(:focus-visible), a:focus:not(:focus-visible),
-    input:focus:not(:focus-visible), select:focus:not(:focus-visible) {
-      outline: none; box-shadow: none;
-    }
-
-    /* Nav link — lock all browser default link states to gold, override visited/active/focus blue */
-    .nav-link-item,
-    .nav-link-item:link,
-    .nav-link-item:visited,
-    .nav-link-item:active,
-    .nav-link-item:focus {
-      color: #FFDB89;
-      text-decoration: none;
-      outline: none;
-    }
-    .nav-link-item:hover {
-      background-color: rgba(255, 219, 137, 0.12);
-      color: #FFDB89;
-      transform: translateX(3px);
-    }
-
-    /* Custom scrollbar */
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background-color: rgba(255,219,137,0.3); border-radius: 10px; }
-
-    /* Gold star */
-    .gold-star { color: #FFDB89; }
-
-    /* ── Dashboard ambient background ─────────────────────────────────────────
-       Three soft golden radial glows create visual depth for the glass cards
-       to blur against — without this, backdrop-blur has nothing to show.    */
-    .page-bg {
-      background:
-        radial-gradient(ellipse at 18% 52%, rgba(255,219,137,0.09) 0%, transparent 48%),
-        radial-gradient(ellipse at 82% 14%, rgba(255,219,137,0.06) 0%, transparent 40%),
-        radial-gradient(ellipse at 52% 92%, rgba(255,219,137,0.05) 0%, transparent 36%),
-        #030303;
-    }
-
-    /* ── Glassmorphism card ───────────────────────────────────────────────────
-       Used for the main content panel and any floating card that sits on top
-       of the gradient background.                                            */
-    .glass-card {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(28px);
-      -webkit-backdrop-filter: blur(28px);
-      border: 1px solid rgba(255, 255, 255, 0.075);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
-    }
-
-    /* ── Stat / feature cards (smaller glass chips) ───────────────────────── */
-    .glass-chip {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 219, 137, 0.10);
-    }
-  </style>
 </head>
 <body class="bg-fbs-dark text-white font-sans overflow-hidden">
 
@@ -284,14 +136,22 @@
               <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
               <div class="p-8">
                 <h2 class="text-2xl font-black text-white mb-1">Nueva Contraseña</h2>
-                <p class="text-sm text-fbs-gold/50 mb-7">Ingresa tu nueva contraseña (mínimo 6 caracteres).</p>
+                <p class="text-sm text-fbs-gold/50 mb-7">Ingresa tu nueva contraseña. Sigue los requisitos indicados.</p>
                 <form id="reset-password-form" onsubmit="event.preventDefault();">
-                  <div class="mb-4">
-                    <input type="password" id="new-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  <div class="mb-3 relative">
+                    <input type="password" id="new-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <button type="button" id="toggle-new-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
+                      <i class="fas fa-eye text-sm"></i>
+                    </button>
                   </div>
-                  <div class="mb-6">
-                    <input type="password" id="confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  <div id="reset-pw-rules" class="mb-3 text-xs space-y-1"></div>
+                  <div class="mb-1 relative">
+                    <input type="password" id="confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <button type="button" id="toggle-confirm-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
+                      <i class="fas fa-eye text-sm"></i>
+                    </button>
                   </div>
+                  <p id="reset-password-match-error" class="text-red-400 text-xs mb-4 hidden"><i class="fas fa-exclamation-circle mr-1"></i>Las contraseñas no coinciden.</p>
                   <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base">Guardar Contraseña</button>
                 </form>
                 <p id="reset-message" class="text-center mt-4 text-sm font-bold hidden"></p>
@@ -306,7 +166,7 @@
                   <div class="w-9 h-9 rounded-full bg-fbs-gold/15 border border-fbs-gold/30 flex items-center justify-center text-fbs-gold">
                     <i class="fas fa-user-check text-sm"></i>
                   </div>
-                  <h2 class="text-2xl font-black text-white">Activa tu Cuenta</h2>
+                  <h2 class="text-2xl font-black text-white">Activa tu cuenta</h2>
                 </div>
                 <p class="text-sm text-fbs-gold/50 mb-6 ml-12">Bienvenido/a. Crea tu contraseña para comenzar.</p>
 
@@ -319,14 +179,22 @@
                   <div class="mb-4">
                     <input type="email" id="invite-email-display" class="fbs-input w-full p-4 rounded-xl text-sm opacity-50 cursor-not-allowed" readonly placeholder="Correo electrónico">
                   </div>
-                  <div class="mb-4">
-                    <input type="password" id="invite-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  <div class="mb-3 relative">
+                    <input type="password" id="invite-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <button type="button" id="toggle-invite-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
+                      <i class="fas fa-eye text-sm"></i>
+                    </button>
                   </div>
-                  <div class="mb-6">
-                    <input type="password" id="invite-confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm">
+                  <div id="invite-pw-rules" class="mb-3 text-xs space-y-1"></div>
+                  <div class="mb-1 relative">
+                    <input type="password" id="invite-confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <button type="button" id="toggle-invite-confirm-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
+                      <i class="fas fa-eye text-sm"></i>
+                    </button>
                   </div>
+                  <p id="invite-password-match-error" class="text-red-400 text-xs mb-4 hidden"><i class="fas fa-exclamation-circle mr-1"></i>Las contraseñas no coinciden.</p>
                   <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base font-black">
-                    <i class="fas fa-unlock-alt mr-2"></i>Activar mi Cuenta
+                    <i class="fas fa-unlock-alt mr-2"></i>Activar mi cuenta
                   </button>
                 </form>
                 <p id="invite-message" class="text-center mt-4 text-sm font-bold hidden"></p>

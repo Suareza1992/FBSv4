@@ -5,6 +5,7 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
+    "build:css": "tailwindcss --content './public/**/*.{html,js}' -i ./src/input.css -o ./public/output.css --minify",
     "start": "node server.js"
   },
   "dependencies": {
@@ -19,5 +20,8 @@
     "mongodb": "^7.2.0",
     "mongoose": "^8.22.0",
     "nodemailer": "^7.0.13"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
   }
 }

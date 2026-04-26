@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Custom base ─────────────────────────────────────────────────────────── */
+body { font-family: 'Inter', sans-serif; }
+
+/* Hero Background */
+.hero-bg {
+  background-image:
+    linear-gradient(135deg, rgba(3,3,3,0.82) 0%, rgba(28,28,30,0.72) 100%),
+    url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+/* Login card glass effect */
+.login-glass {
+  background: rgba(3, 3, 3, 0.80);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* Input focus */
+.fbs-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 219, 137, 0.25);
+  color: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.fbs-input::placeholder { color: rgba(255,219,137,0.4); }
+.fbs-input:focus {
+  outline: none;
+  border-color: #FFDB89;
+  box-shadow: 0 0 0 2px rgba(255,219,137,0.15);
+}
+
+/* Gold button */
+.btn-gold {
+  background: #FFDB89;
+  color: #030303;
+  font-weight: 800;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+.btn-gold:hover {
+  background: #ffe9a8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(255,219,137,0.3);
+}
+.btn-gold:active { transform: translateY(0); }
+
+/* Section backgrounds */
+.section-dark  { background-color: #030303; }
+.section-dim   { background-color: #1C1C1E; }
+.section-card  { background-color: #2C2C2E; }
+
+/* Feature card hover glow */
+.feat-card { border: 1px solid rgba(255,219,137,0.08); transition: border-color 0.25s, box-shadow 0.25s; }
+.feat-card:hover { border-color: rgba(255,219,137,0.35); box-shadow: 0 0 24px rgba(255,219,137,0.06); }
+
+/* Testimonial card */
+.testi-card { border: 1px solid rgba(255,219,137,0.08); }
+
+/* Animation */
+.animate-fade-in-down { animation: fadeInDown 0.3s ease-out forwards; }
+@keyframes fadeInDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+
+/* Tip bar scroll */
+.tip-marquee { animation: marquee 30s linear infinite; }
+@keyframes marquee { from { transform: translateX(100%); } to { transform: translateX(-100%); } }
+
+/* Focus ring removal on click */
+button:focus:not(:focus-visible), a:focus:not(:focus-visible),
+input:focus:not(:focus-visible), select:focus:not(:focus-visible) {
+  outline: none; box-shadow: none;
+}
+
+/* Nav link — override all browser default link states */
+.nav-link-item,
+.nav-link-item:link,
+.nav-link-item:visited,
+.nav-link-item:active,
+.nav-link-item:focus {
+  color: #FFDB89;
+  text-decoration: none;
+  outline: none;
+}
+.nav-link-item:hover {
+  background-color: rgba(255, 219, 137, 0.12);
+  color: #FFDB89;
+  transform: translateX(3px);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: rgba(255,219,137,0.3); border-radius: 10px; }
+
+/* Gold star */
+.gold-star { color: #FFDB89; }
+
+/* Dashboard ambient background */
+.page-bg {
+  background:
+    radial-gradient(ellipse at 18% 52%, rgba(255,219,137,0.09) 0%, transparent 48%),
+    radial-gradient(ellipse at 82% 14%, rgba(255,219,137,0.06) 0%, transparent 40%),
+    radial-gradient(ellipse at 52% 92%, rgba(255,219,137,0.05) 0%, transparent 36%),
+    #030303;
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+/* Stat / feature cards */
+.glass-chip {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 219, 137, 0.10);
+}
