@@ -35,9 +35,9 @@ app.use(helmet({
             scriptSrc:     ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
             scriptSrcAttr: ["'unsafe-inline'"], // allow onclick="..." attributes (SPA uses event delegation + inline handlers)
             styleSrc:   ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
-            imgSrc:     ["'self'", "data:", "blob:", "https://images.unsplash.com"],
+            imgSrc:     ["'self'", "data:", "blob:", "https://images.unsplash.com", "https://i.pravatar.cc"],
             fontSrc:    ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-            connectSrc: ["'self'", "https://api.nal.usda.gov"],
+            connectSrc: ["'self'", "https://api.nal.usda.gov", "https://cdn.jsdelivr.net"],
             frameSrc:   ["'none'"],
         }
     },
