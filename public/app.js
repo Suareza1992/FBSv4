@@ -862,15 +862,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // Remove padding for calendar view to allow full edge-to-edge scrolling
         const isCalendar = contentHtml.includes('client-calendar-grid');
-        const paddingClass = isCalendar ? 'p-0' : 'p-14'; 
-        const titleClass = (isCalendar || !title) ? 'hidden' : 'text-4xl font-bold text-[#FFDB89] dark:text-[#FFDB89] mb-6 border-b border-[#FFDB89]/10 pb-3 flex-shrink-0';
+        const paddingClass = isCalendar ? 'p-0' : 'p-4 md:p-14';
+        const titleClass = (isCalendar || !title) ? 'hidden' : 'text-2xl md:text-4xl font-bold text-[#FFDB89] dark:text-[#FFDB89] mb-4 md:mb-6 border-b border-[#FFDB89]/10 pb-3 flex-shrink-0';
         const bgClass = isCalendar
             ? 'glass-card'
             : 'glass-card rounded-2xl';
 
         mainContentArea.innerHTML = `
         <div class="${paddingClass} ${bgClass} h-full flex flex-col relative overflow-hidden">
-            <h1 class="${titleClass}">${title}</h1>
+            ${title ? `<h1 class="${titleClass}">${title}</h1>` : ''}
             <div class="flex-grow overflow-auto relative h-full">${contentHtml}</div>
         </div>`;
     };
@@ -5934,7 +5934,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const res = await fetch(`${moduleToLoad}.html`);
                     if(res.ok) {
                         const html = await res.text();
-                        updateContent(linkText, html);
+                        const contentTitle = (moduleToLoad === 'trainer_home' || moduleToLoad === 'client_inicio') ? '' : linkText;
+                        updateContent(contentTitle, html);
                         if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
                         if (moduleToLoad === 'programas_content') {
                             await Promise.all([fetchProgramsFromDB(), clientsCache.length === 0 ? fetchClientsFromDB() : Promise.resolve()]);
@@ -6416,7 +6417,38 @@ document.addEventListener('DOMContentLoaded', () => {
     // ... (Clock Logic kept same) ...
     // CLOCK LOGIC
     let clockIntervalId = null; let stopwatchInterval = null; let timerInterval = null; let clockMode = 'CLOCK'; let stopwatchTime = 0; let timerTime = 0; let isClockRunning = false; let clockCanvas = null; let clockCtx = null; let clockIs24hr = true;
-    window.initClockModule = function() { clockCanvas = document.getElementById('clockCanvas'); if(!clockCanvas) return; clockCtx = clockCanvas.getContext('2d'); clockMode = 'CLOCK'; stopwatchTime = 0; timerTime = 0; isClockRunning = false; if(stopwatchInterval) clearInterval(stopwatchInterval); if(timerInterval) clearInterval(timerInterval); if(clockIntervalId) cancelAnimationFrame(clockIntervalId); const actionBtn = document.getElementById('actionBtn'); if(actionBtn) actionBtn.innerText = clockIs24hr ? '→ 12H' : '→ 24H'; window.clockDrawLoop(); };
+    // Auto-fit the clock face to whatever space is available
+    const fitClockToContainer = () => {
+        const root  = document.getElementById('clock-module-root');
+        const inner = document.querySelector('.clock-inner-container');
+        if (!root || !inner) return;
+        // Reserve ~120px for the controls below the clock face
+        const availW = root.offsetWidth;
+        const availH = root.offsetHeight - 120;
+        const scale  = Math.min(availW / 800, availH / 800, 0.75);
+        // transform: scale() doesn't affect layout — compensate with negative margins
+        const deadPx = Math.round(800 * (1 - scale) / 2);
+        inner.style.transform    = `scale(${scale})`;
+        inner.style.marginTop    = `-${deadPx}px`;
+        inner.style.marginBottom = `-${deadPx}px`;
+    };
+
+    window.initClockModule = function() {
+        clockCanvas = document.getElementById('clockCanvas');
+        if (!clockCanvas) return;
+        clockCtx = clockCanvas.getContext('2d');
+        clockMode = 'CLOCK'; stopwatchTime = 0; timerTime = 0; isClockRunning = false;
+        if (stopwatchInterval) clearInterval(stopwatchInterval);
+        if (timerInterval)     clearInterval(timerInterval);
+        if (clockIntervalId)   cancelAnimationFrame(clockIntervalId);
+        const actionBtn = document.getElementById('actionBtn');
+        if (actionBtn) actionBtn.innerText = clockIs24hr ? '→ 12H' : '→ 24H';
+        fitClockToContainer();
+        // Re-fit on resize (e.g. rotating the phone)
+        window.removeEventListener('resize', fitClockToContainer);
+        window.addEventListener('resize', fitClockToContainer);
+        window.clockDrawLoop();
+    };
     window.clockSetMode = function(mode) { clockMode = mode; const modeLabel = document.getElementById('modeLabel'); const timerInputArea = document.getElementById('timerInputArea'); const actionBtn = document.getElementById('actionBtn'); const timeDisplay = document.getElementById('timeDisplay'); const modeLabels = { CLOCK: 'Reloj', STOPWATCH: 'Cronómetro', TIMER: 'Cuenta Regresiva' }; if(modeLabel) modeLabel.innerText = modeLabels[mode] || mode; window.clockResetLogic(); if (mode === 'TIMER') { if(timerInputArea) timerInputArea.style.display = 'block'; if(timeDisplay) timeDisplay.innerText = "00:00"; } else { if(timerInputArea) timerInputArea.style.display = 'none'; } if(actionBtn) actionBtn.innerText = (mode === 'CLOCK') ? (clockIs24hr ? '→ 12H' : '→ 24H') : 'Iniciar'; };
     window.clockHandleAction = function() { if (clockMode === 'CLOCK') { clockIs24hr = !clockIs24hr; const actionBtn = document.getElementById('actionBtn'); if(actionBtn) actionBtn.innerText = clockIs24hr ? '→ 12H' : '→ 24H'; return; } if (isClockRunning) window.clockStopLogic(); else window.clockStartLogic(); };
     window.clockStartLogic = function() { const actionBtn = document.getElementById('actionBtn'); const timerInput = document.getElementById('timerInput'); isClockRunning = true; if(actionBtn) actionBtn.innerText = "Parar"; if (clockMode === 'STOPWATCH') { const startTime = Date.now() - stopwatchTime; stopwatchInterval = setInterval(() => { stopwatchTime = Date.now() - startTime; window.clockUpdateDisplay(stopwatchTime); }, 100); } else if (clockMode === 'TIMER') { if (timerTime === 0) timerTime = parseInt(timerInput ? timerInput.value || 0 : 0) * 1000; const endTime = Date.now() + timerTime; timerInterval = setInterval(() => { timerTime = endTime - Date.now(); if (timerTime <= 0) { timerTime = 0; clearInterval(timerInterval); showToast("¡Se acabó el tiempo!", 'info'); window.clockResetLogic(); } window.clockUpdateDisplay(timerTime); }, 100); } };
@@ -6944,12 +6976,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!container) return;
             container.innerHTML = weights.map(w => {
                 const isSelected = savedList && savedList.includes(w);
-                return `<button class="equipment-btn p-2.5 rounded-lg border-2 text-center font-bold text-sm transition cursor-pointer select-none
+                return `<button class="equipment-btn p-1.5 md:p-2.5 rounded-lg border-2 text-center font-bold text-xs md:text-sm transition cursor-pointer select-none
                     ${isSelected
                         ? 'border-[#FFDB89] bg-[#FFDB89]/20 text-[#FFDB89]'
                         : 'border-[#FFDB89]/20 text-[#FFDB89]/50 hover:border-[#FFDB89]/50 hover:text-[#FFDB89]/80'}"
                     data-weight="${w}" data-selected="${isSelected}">
-                    ${w}<span class="text-[10px] font-normal ml-0.5">${unit}</span>
+                    ${w}<span class="text-[8px] md:text-[10px] font-normal ml-0.5">${unit}</span>
                 </button>`;
             }).join('');
 
