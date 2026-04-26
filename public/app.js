@@ -880,7 +880,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if(trainerNameSpan) trainerNameSpan.textContent = userName;
         const sidebar = document.getElementById('sidebar');
         if(sidebar) sidebar.querySelectorAll('nav a').forEach(a => a.classList.add('nav-link-item'));
-        setTimeout(updateThemeIcon, 100); 
+
+        // Collapse sidebar by default on mobile (< 768px)
+        if (sidebar && window.innerWidth < 768) {
+            sidebar.classList.remove('w-60');
+            sidebar.classList.add('w-20');
+            sidebar.querySelectorAll('.nav-text').forEach(span => span.classList.add('hidden'));
+            const collapseIcon = document.getElementById('collapse-icon');
+            if (collapseIcon) collapseIcon.style.transform = 'rotate(180deg)';
+        }
+
+        setTimeout(updateThemeIcon, 100);
     };
 
     const loadModule = async (name) => {
@@ -922,9 +932,9 @@ document.addEventListener('DOMContentLoaded', () => {
             notificationPollInterval = setInterval(fetchNotificationCount, 60000);
         } else {
             const homeHtml = await loadModule('client_inicio');
-            updateContent('Inicio', homeHtml);
+            updateContent('', homeHtml);
             initClientHome();
-            updateDashboard('Inicio', user.name);
+            updateDashboard('', user.name);
         }
         setTimeout(updateThemeIcon, 100); 
 
