@@ -1,5 +1,153 @@
 <div class="space-y-8 pb-10">
 
+    <!-- ── Measurement Guide ──────────────────────────────────────────── -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-2xl p-4 md:p-6">
+        <h3 class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <i class="fas fa-ruler-combined"></i> Guía de medidas corporales
+        </h3>
+
+        <div class="flex flex-col md:flex-row gap-6 items-center md:items-start">
+
+            <!-- SVG body diagram -->
+            <div class="flex-shrink-0 flex justify-center">
+                <svg viewBox="0 0 300 540" xmlns="http://www.w3.org/2000/svg" class="w-56 md:w-64 h-auto">
+
+                    <!-- Single body silhouette (head + torso + arms + legs) -->
+                    <path d="
+                        M 90 10
+                        C 110 10, 116 22, 114 40
+                        C 112 55, 104 63, 96 67
+                        L 96 78
+                        C 110 79, 132 84, 148 92
+                        C 150 99, 149 116, 147 133
+                        C 145 149, 141 161, 135 168
+                        C 131 173, 127 177, 121 179
+                        C 121 188, 119 196, 119 202
+                        C 121 218, 125 233, 127 248
+                        C 125 260, 122 265, 118 268
+                        L 116 355
+                        L 114 432
+                        L 112 522
+                        L 100 526
+                        L 98 432
+                        L 100 355
+                        L 100 270
+                        L 80  270
+                        L 80  355
+                        L 82  432
+                        L 80  526
+                        L 68  522
+                        L 66  432
+                        L 64  355
+                        C 58 265, 55 260, 53 248
+                        C 55 233, 59 218, 61 202
+                        C 61 196, 59 188, 59 179
+                        C 53 177, 49 173, 45 168
+                        C 39 161, 35 149, 33 133
+                        C 31 116, 30 99, 32 92
+                        C 48 84, 70 79, 84 78
+                        L 84 67
+                        C 76 63, 68 55, 66 40
+                        C 64 22, 70 10, 90 10
+                        Z
+                    " fill="rgba(255,219,137,0.12)" stroke="rgba(255,219,137,0.45)" stroke-width="1.5" stroke-linejoin="round"/>
+
+                    <!-- ── Measurement lines ───────────────────────── -->
+
+                    <!-- Pecho (orange) -->
+                    <line x1="28"  y1="108" x2="158" y2="108" stroke="#F97316" stroke-width="2"   stroke-linecap="round"/>
+                    <line x1="160" y1="108" x2="176" y2="108" stroke="#F97316" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+                    <circle cx="179" cy="108" r="3.5" fill="#F97316"/>
+                    <text x="187" y="112" fill="#F97316" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Pecho</text>
+
+                    <!-- Bíceps (sky blue) -->
+                    <line x1="28"  y1="135" x2="158" y2="135" stroke="#38BDF8" stroke-width="2"   stroke-linecap="round"/>
+                    <line x1="160" y1="135" x2="176" y2="135" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+                    <circle cx="179" cy="135" r="3.5" fill="#38BDF8"/>
+                    <text x="187" y="139" fill="#38BDF8" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Bíceps</text>
+
+                    <!-- Cintura (teal) -->
+                    <line x1="57"  y1="202" x2="158" y2="202" stroke="#2DD4BF" stroke-width="2"   stroke-linecap="round"/>
+                    <line x1="160" y1="202" x2="176" y2="202" stroke="#2DD4BF" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+                    <circle cx="179" cy="202" r="3.5" fill="#2DD4BF"/>
+                    <text x="187" y="206" fill="#2DD4BF" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Cintura</text>
+
+                    <!-- Cadera (amber) -->
+                    <line x1="49"  y1="248" x2="158" y2="248" stroke="#FBBF24" stroke-width="2"   stroke-linecap="round"/>
+                    <line x1="160" y1="248" x2="176" y2="248" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+                    <circle cx="179" cy="248" r="3.5" fill="#FBBF24"/>
+                    <text x="187" y="252" fill="#FBBF24" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Cadera</text>
+
+                    <!-- Quads (pink) -->
+                    <line x1="60"  y1="355" x2="158" y2="355" stroke="#EC4899" stroke-width="2"   stroke-linecap="round"/>
+                    <line x1="160" y1="355" x2="176" y2="355" stroke="#EC4899" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+                    <circle cx="179" cy="355" r="3.5" fill="#EC4899"/>
+                    <text x="187" y="359" fill="#EC4899" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Quads</text>
+
+                    <!-- Pantorrillas (red) -->
+                    <line x1="62"  y1="432" x2="158" y2="432" stroke="#EF4444" stroke-width="2"   stroke-linecap="round"/>
+                    <line x1="160" y1="432" x2="176" y2="432" stroke="#EF4444" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+                    <circle cx="179" cy="432" r="3.5" fill="#EF4444"/>
+                    <text x="187" y="436" fill="#EF4444" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Pantorrillas</text>
+
+                </svg>
+            </div>
+
+            <!-- Instructions grid -->
+            <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+
+                <div class="flex items-start gap-3 bg-white/5 border border-[#FFDB89]/10 p-3 rounded-xl">
+                    <div class="w-3 h-3 rounded-full bg-[#F97316] mt-0.5 flex-shrink-0"></div>
+                    <div>
+                        <p class="text-xs font-bold text-[#F97316] mb-0.5">Pecho</p>
+                        <p class="text-xs text-[#FFDB89]/50 leading-relaxed">Rodea el pecho a la altura de los pezones, con los brazos relajados al costado.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-3 bg-white/5 border border-[#FFDB89]/10 p-3 rounded-xl">
+                    <div class="w-3 h-3 rounded-full bg-[#38BDF8] mt-0.5 flex-shrink-0"></div>
+                    <div>
+                        <p class="text-xs font-bold text-[#38BDF8] mb-0.5">Bíceps</p>
+                        <p class="text-xs text-[#FFDB89]/50 leading-relaxed">Mide en la parte más ancha del bíceps con el brazo relajado.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-3 bg-white/5 border border-[#FFDB89]/10 p-3 rounded-xl">
+                    <div class="w-3 h-3 rounded-full bg-[#2DD4BF] mt-0.5 flex-shrink-0"></div>
+                    <div>
+                        <p class="text-xs font-bold text-[#2DD4BF] mb-0.5">Cintura</p>
+                        <p class="text-xs text-[#FFDB89]/50 leading-relaxed">En la parte más estrecha del torso, aproximadamente 2 cm sobre el ombligo.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-3 bg-white/5 border border-[#FFDB89]/10 p-3 rounded-xl">
+                    <div class="w-3 h-3 rounded-full bg-[#FBBF24] mt-0.5 flex-shrink-0"></div>
+                    <div>
+                        <p class="text-xs font-bold text-[#FBBF24] mb-0.5">Cadera</p>
+                        <p class="text-xs text-[#FFDB89]/50 leading-relaxed">En la parte más ancha de las caderas y glúteos, con los pies juntos.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-3 bg-white/5 border border-[#FFDB89]/10 p-3 rounded-xl">
+                    <div class="w-3 h-3 rounded-full bg-[#EC4899] mt-0.5 flex-shrink-0"></div>
+                    <div>
+                        <p class="text-xs font-bold text-[#EC4899] mb-0.5">Quads</p>
+                        <p class="text-xs text-[#FFDB89]/50 leading-relaxed">En la parte más ancha del muslo, de pie con el peso distribuido en ambas piernas.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-3 bg-white/5 border border-[#FFDB89]/10 p-3 rounded-xl">
+                    <div class="w-3 h-3 rounded-full bg-[#EF4444] mt-0.5 flex-shrink-0"></div>
+                    <div>
+                        <p class="text-xs font-bold text-[#EF4444] mb-0.5">Pantorrillas</p>
+                        <p class="text-xs text-[#FFDB89]/50 leading-relaxed">En la parte más ancha de la pantorrilla, de pie.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
     <!-- Chart Card -->
     <div class="glass-card rounded-2xl overflow-hidden">
 

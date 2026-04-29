@@ -184,6 +184,7 @@ const UserSchema = new mongoose.Schema({
     emailPreferences: { dailyRoutine: { type: Boolean, default: true }, incompleteRoutine: { type: Boolean, default: false } },
     profilePicture: { type: String, default: "" },
     equipment: { type: mongoose.Schema.Types.Mixed, default: {} },
+    injuredMuscles: { type: mongoose.Schema.Types.Mixed, default: {} },
     macroSettings: {
         goal:         { type: String, default: 'maintain' }, // maintain | cut250 | cut500 | bulk250 | bulk500
         proteinRatio: { type: Number, default: 0.4 },
@@ -736,7 +737,7 @@ app.put('/api/me', authenticateToken, async (req, res) => {
             }
         }
         // Safe profile fields any authenticated user can update
-        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'profilePicture', 'servingUnit'];
+        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'profilePicture', 'servingUnit', 'injuredMuscles'];
         const updates = {};
         for (const key of allowedFields) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -874,7 +875,7 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
         const ALLOWED = ['name','lastName','email','program','group','type','dueDate','isActive',
                          'location','timezone','unitSystem','phone','height','weight','birthday',
                          'gender','thr','mahr','restingHr','emailPreferences','hideFromDashboard',
-                         'profilePicture','equipment','macroSettings','waterGoal'];
+                         'profilePicture','equipment','macroSettings','waterGoal','injuredMuscles'];
         const updates = {};
         for (const key of ALLOWED) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];

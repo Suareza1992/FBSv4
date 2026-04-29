@@ -61,6 +61,50 @@
         </div>
     </div>
 
+    <!-- ── Muscle Injury Map ─────────────────────────────────────────────── -->
+    <div class="border-b border-[#FFDB89]/20 mb-6 pb-6">
+        <div class="pb-4 mb-4 border-b border-[#FFDB89]/20">
+            <h3 class="text-lg font-semibold text-[#FFDB89]">Grupos musculares</h3>
+            <p class="text-sm text-[#FFDB89]/60">Marca los grupos que requieren atención especial. Tu entrenador lo verá al armar tu rutina.</p>
+        </div>
+
+        <!-- Legend -->
+        <div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
+            <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-green-400/60 border border-green-400/40"></div><span class="text-[#FFDB89]/60">Sin restricción</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-yellow-400/80 border border-yellow-400/60"></div><span class="text-[#FFDB89]/60">Precaución (amarillo)</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-red-400/80 border border-red-400/60"></div><span class="text-[#FFDB89]/60">Evitar (rojo)</span></div>
+            <span class="text-[#FFDB89]/25 italic">· Clic para cambiar estado</span>
+        </div>
+
+        <!-- Front / Back toggle -->
+        <div class="flex items-center gap-2 mb-5">
+            <button id="muscle-view-front" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition">Frente</button>
+            <button id="muscle-view-back"  class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition">Espalda</button>
+            <button id="muscle-clear-all"  class="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold text-[#FFDB89]/40 hover:text-[#FFDB89] border border-[#FFDB89]/10 hover:border-[#FFDB89]/30 transition">Limpiar todo</button>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-6 items-start">
+            <!-- SVG container (populated by JS) -->
+            <div id="muscle-svg-container" class="flex-shrink-0 flex justify-center w-full md:w-auto">
+                <div class="w-40 md:w-48 h-64 flex items-center justify-center text-[#FFDB89]/20 text-xs">Cargando...</div>
+            </div>
+
+            <!-- Flags list -->
+            <div class="flex-grow min-w-0">
+                <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-3">Estado actual</p>
+                <div id="injury-flags-list" class="space-y-2">
+                    <p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-4 mt-4 flex justify-end">
+            <button id="save-muscle-btn" class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-medium rounded-lg text-sm transition shadow-md">
+                Guardar grupos musculares
+            </button>
+        </div>
+    </div>
+
     <!-- Payment Handles (trainer only) -->
     <div id="payment-handles-section" class="border-b border-[#FFDB89]/20 mb-6 pb-6 hidden">
         <div class="pb-4 mb-4 border-b border-[#FFDB89]/20">

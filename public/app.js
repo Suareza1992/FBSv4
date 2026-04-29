@@ -344,6 +344,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // SETTINGS FUNCTIONS
     // =============================================================================
 
+    // ── Muscle group definitions for injury map ───────────────────────────────
+    const MUSCLE_DEFS = {
+        front: [
+            { id:'shoulders',   name:'Hombros',            shapes:[{type:'ellipse',cx:136,cy:92,rx:14,ry:11},{type:'ellipse',cx:44,cy:92,rx:14,ry:11}] },
+            { id:'chest',       name:'Pecho',              shapes:[{type:'ellipse',cx:90,cy:115,rx:27,ry:21}] },
+            { id:'biceps',      name:'Bíceps',             shapes:[{type:'ellipse',cx:139,cy:135,rx:9,ry:19},{type:'ellipse',cx:41,cy:135,rx:9,ry:19}] },
+            { id:'forearms',    name:'Antebrazos',         shapes:[{type:'ellipse',cx:136,cy:170,rx:9,ry:13},{type:'ellipse',cx:44,cy:170,rx:9,ry:13}] },
+            { id:'abs',         name:'Abdomen',            shapes:[{type:'ellipse',cx:90,cy:170,rx:20,ry:30}] },
+            { id:'obliques',    name:'Oblicuos',           shapes:[{type:'ellipse',cx:68,cy:170,rx:9,ry:28},{type:'ellipse',cx:112,cy:170,rx:9,ry:28}] },
+            { id:'hip_flexors', name:'Flexores de cadera', shapes:[{type:'ellipse',cx:90,cy:272,rx:22,ry:12}] },
+            { id:'quads',       name:'Cuádriceps',         shapes:[{type:'ellipse',cx:78,cy:348,rx:15,ry:52},{type:'ellipse',cx:102,cy:348,rx:15,ry:52}] },
+            { id:'tibialis',    name:'Tibiales',           shapes:[{type:'ellipse',cx:80,cy:455,rx:10,ry:28},{type:'ellipse',cx:100,cy:455,rx:10,ry:28}] },
+        ],
+        back: [
+            { id:'traps',       name:'Trapecio',           shapes:[{type:'ellipse',cx:90,cy:92,rx:26,ry:17}] },
+            { id:'rear_delts',  name:'Deltoides post.',    shapes:[{type:'ellipse',cx:44,cy:92,rx:12,ry:9},{type:'ellipse',cx:136,cy:92,rx:12,ry:9}] },
+            { id:'upper_back',  name:'Espalda alta',       shapes:[{type:'ellipse',cx:90,cy:128,rx:22,ry:19}] },
+            { id:'lats',        name:'Dorsales',           shapes:[{type:'ellipse',cx:63,cy:158,rx:13,ry:32},{type:'ellipse',cx:117,cy:158,rx:13,ry:32}] },
+            { id:'triceps',     name:'Tríceps',            shapes:[{type:'ellipse',cx:41,cy:148,rx:9,ry:22},{type:'ellipse',cx:139,cy:148,rx:9,ry:22}] },
+            { id:'lower_back',  name:'Lumbar',             shapes:[{type:'ellipse',cx:90,cy:198,rx:22,ry:14}] },
+            { id:'glutes',      name:'Glúteos',            shapes:[{type:'ellipse',cx:74,cy:255,rx:23,ry:28},{type:'ellipse',cx:106,cy:255,rx:23,ry:28}] },
+            { id:'hamstrings',  name:'Isquiotibiales',     shapes:[{type:'ellipse',cx:78,cy:352,rx:15,ry:52},{type:'ellipse',cx:102,cy:352,rx:15,ry:52}] },
+            { id:'calves',      name:'Pantorrillas',       shapes:[{type:'ellipse',cx:80,cy:448,rx:11,ry:30},{type:'ellipse',cx:100,cy:448,rx:11,ry:30}] },
+        ]
+    };
+    const BODY_PATH = 'M 90 10 C 110 10,116 22,114 40 C 112 55,104 63,96 67 L 96 78 C 110 79,132 84,148 92 C 150 99,149 116,147 133 C 145 149,141 161,135 168 C 131 173,127 177,121 179 C 121 188,119 196,119 202 C 121 218,125 233,127 248 C 125 260,122 265,118 268 L 116 355 L 114 432 L 112 522 L 100 526 L 98 432 L 100 355 L 100 270 L 80 270 L 80 355 L 82 432 L 80 526 L 68 522 L 66 432 L 64 355 C 58 265,55 260,53 248 C 55 233,59 218,61 202 C 61 196,59 188,59 179 C 53 177,49 173,45 168 C 39 161,35 149,33 133 C 31 116,30 99,32 92 C 48 84,70 79,84 78 L 84 67 C 76 63,68 55,66 40 C 64 22,70 10,90 10 Z';
+
     const initSettings = async () => {
         try {
             // Fetch current profile from API
@@ -693,6 +720,85 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 };
             }
+
+            // ── Muscle Injury Map ─────────────────────────────────────────────
+            let muscleState   = { ...(profile.injuredMuscles || {}) };
+            let muscleView    = 'front';
+            const allMuscles  = [...MUSCLE_DEFS.front, ...MUSCLE_DEFS.back];
+
+            const renderMuscleMap = () => {
+                const container = document.getElementById('muscle-svg-container');
+                if (!container) return;
+                const shapeHtml = MUSCLE_DEFS[muscleView].map(muscle => {
+                    const st  = muscleState[muscle.id] || null;
+                    const fill   = st === 'red'    ? 'rgba(239,68,68,0.5)'    : st === 'yellow' ? 'rgba(251,191,36,0.5)'  : 'rgba(34,197,94,0.07)';
+                    const stroke = st === 'red'    ? 'rgba(239,68,68,0.85)'   : st === 'yellow' ? 'rgba(251,191,36,0.85)' : 'rgba(34,197,94,0.18)';
+                    const sw = st ? 2 : 1;
+                    return muscle.shapes.map(s => {
+                        const attrs = `data-muscle="${muscle.id}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" style="cursor:pointer;transition:fill .15s,stroke .15s"`;
+                        return s.type === 'ellipse'
+                            ? `<ellipse ${attrs} cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"/>`
+                            : `<rect    ${attrs} x="${s.x}"  y="${s.y}"  width="${s.width}" height="${s.height}" rx="${s.rx||0}"/>`;
+                    }).join('');
+                }).join('');
+                container.innerHTML = `<svg viewBox="0 0 180 535" xmlns="http://www.w3.org/2000/svg" class="w-40 md:w-48 h-auto select-none" id="muscle-body-svg">
+                    <path d="${BODY_PATH}" fill="rgba(255,219,137,0.09)" stroke="rgba(255,219,137,0.38)" stroke-width="1.5" stroke-linejoin="round"/>
+                    ${shapeHtml}
+                </svg>`;
+                document.getElementById('muscle-body-svg')?.addEventListener('click', e => {
+                    const el = e.target.closest('[data-muscle]');
+                    if (!el) return;
+                    const id  = el.dataset.muscle;
+                    const cur = muscleState[id] || null;
+                    const nxt = cur === null ? 'yellow' : cur === 'yellow' ? 'red' : null;
+                    if (nxt === null) delete muscleState[id]; else muscleState[id] = nxt;
+                    renderMuscleMap();
+                    updateMuscleFlags();
+                });
+            };
+
+            const updateMuscleFlags = () => {
+                const list = document.getElementById('injury-flags-list');
+                if (!list) return;
+                const flagged = Object.entries(muscleState).filter(([, st]) => st);
+                if (!flagged.length) {
+                    list.innerHTML = '<p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas. Toca un músculo para cambiar su estado.</p>';
+                    return;
+                }
+                list.innerHTML = flagged.map(([id, st]) => {
+                    const name  = allMuscles.find(m => m.id === id)?.name || id;
+                    const isRed = st === 'red';
+                    return `<div class="flex items-center justify-between px-3 py-1.5 rounded-lg border ${isRed ? 'bg-red-500/10 border-red-400/25' : 'bg-yellow-400/10 border-yellow-400/25'}">
+                        <span class="text-xs font-medium ${isRed ? 'text-red-400' : 'text-yellow-400'}">${name}</span>
+                        <span class="text-xs font-bold ml-4 ${isRed ? 'text-red-400' : 'text-yellow-400'}">${isRed ? '🔴 Evitar' : '🟡 Precaución'}</span>
+                    </div>`;
+                }).join('');
+            };
+
+            const setMuscleView = (view) => {
+                muscleView = view;
+                const activeClass   = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition';
+                const inactiveClass = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition';
+                const fb = document.getElementById('muscle-view-front');
+                const bb = document.getElementById('muscle-view-back');
+                if (fb) fb.className = view === 'front' ? activeClass : inactiveClass;
+                if (bb) bb.className = view === 'back'  ? activeClass : inactiveClass;
+                renderMuscleMap();
+            };
+
+            document.getElementById('muscle-view-front')?.addEventListener('click', () => setMuscleView('front'));
+            document.getElementById('muscle-view-back')?.addEventListener('click',  () => setMuscleView('back'));
+            document.getElementById('muscle-clear-all')?.addEventListener('click',  () => { muscleState = {}; renderMuscleMap(); updateMuscleFlags(); });
+
+            document.getElementById('save-muscle-btn')?.addEventListener('click', async () => {
+                try {
+                    const r = await apiFetch('/api/me', { method: 'PUT', body: JSON.stringify({ injuredMuscles: muscleState }) });
+                    showToast(r.ok ? 'Grupos musculares guardados.' : 'Error al guardar.', r.ok ? 'success' : 'error');
+                } catch { showToast('Error de conexión.', 'error'); }
+            });
+
+            renderMuscleMap();
+            updateMuscleFlags();
 
         } catch (e) { console.error('Error loading settings:', e); }
     };
@@ -1536,6 +1642,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="metrics">Métricas</button>
                     <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="nutrition">Nutrición</button>
                     <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="photos">Fotos</button>
+                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="restrictions">Restricciones</button>
                 </div>
 
                 <!-- TAB: Calendar (default) -->
@@ -1561,6 +1668,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <!-- TAB: Photos -->
                 <div id="tab-photos" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
                     <p class="text-gray-400 text-sm animate-pulse">Cargando fotos...</p>
+                </div>
+
+                <!-- TAB: Restrictions -->
+                <div id="tab-restrictions" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
+                    <p class="text-gray-400 text-sm animate-pulse">Cargando restricciones...</p>
                 </div>
 
                 <!-- Modals (shared) -->
@@ -1644,6 +1756,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (tab.dataset.tab === 'metrics') loadClientMetrics(clientId);
                 if (tab.dataset.tab === 'nutrition') loadClientNutrition(clientId);
                 if (tab.dataset.tab === 'photos') loadClientPhotos(clientId);
+                if (tab.dataset.tab === 'restrictions') loadClientRestrictions(clientId);
             };
         });
 
@@ -2846,6 +2959,161 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await apiFetch(`/api/progress-photos/${photoId}`, { method: 'DELETE' });
             if (res.ok) loadClientPhotos(clientId);
         } catch (e) { showToast('Error eliminando foto.', 'error'); }
+    };
+
+    const loadClientRestrictions = (clientId) => {
+        const container = document.getElementById('tab-restrictions');
+        if (!container) return;
+
+        const client = clientsCache.find(c => (c._id == clientId) || (c.id == clientId));
+        let muscleState = (client && client.injuredMuscles) ? { ...client.injuredMuscles } : {};
+        let muscleView  = 'front';
+        const allMuscles = [...MUSCLE_DEFS.front, ...MUSCLE_DEFS.back];
+
+        const colorFor = (state) => state === 'red' ? '#ef4444' : state === 'yellow' ? '#facc15' : '#4ade80';
+        const fillFor  = (state) => state === 'red' ? 'rgba(239,68,68,0.35)' : state === 'yellow' ? 'rgba(250,204,21,0.35)' : 'rgba(74,222,128,0.25)';
+
+        const renderMap = () => {
+            const svgEl = document.getElementById('tr-muscle-svg-container');
+            if (!svgEl) return;
+            const defs = MUSCLE_DEFS[muscleView];
+            const shapesHtml = defs.map(muscle => {
+                const state = muscleState[muscle.id] || null;
+                const stroke = colorFor(state);
+                const fill   = fillFor(state);
+                return muscle.shapes.map(s =>
+                    `<ellipse data-muscle="${muscle.id}" cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"
+                        fill="${fill}" stroke="${stroke}" stroke-width="1.5"
+                        style="cursor:pointer;transition:fill .15s,stroke .15s;"
+                        opacity="0.9"/>`
+                ).join('');
+            }).join('');
+
+            svgEl.innerHTML = `
+                <svg viewBox="0 0 180 540" width="160" height="480" xmlns="http://www.w3.org/2000/svg" style="display:block">
+                    <path d="${BODY_PATH}" fill="rgba(255,219,137,0.07)" stroke="rgba(255,219,137,0.25)" stroke-width="1.5"/>
+                    ${shapesHtml}
+                </svg>`;
+
+            svgEl.querySelector('svg').addEventListener('click', (e) => {
+                const el = e.target.closest('[data-muscle]');
+                if (!el) return;
+                const id = el.dataset.muscle;
+                const cur = muscleState[id] || null;
+                if      (cur === null)     muscleState[id] = 'yellow';
+                else if (cur === 'yellow') muscleState[id] = 'red';
+                else                       delete muscleState[id];
+                renderMap();
+                renderFlags();
+            });
+        };
+
+        const renderFlags = () => {
+            const list = document.getElementById('tr-injury-flags-list');
+            if (!list) return;
+            const flagged = Object.entries(muscleState);
+            if (flagged.length === 0) {
+                list.innerHTML = '<p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas.</p>';
+                return;
+            }
+            list.innerHTML = flagged.map(([id, state]) => {
+                const def = allMuscles.find(m => m.id === id);
+                const name = def ? def.name : id;
+                const dotClass = state === 'red'
+                    ? 'bg-red-400/80 border-red-400/60'
+                    : 'bg-yellow-400/80 border-yellow-400/60';
+                const label = state === 'red' ? 'Evitar' : 'Precaución';
+                return `<div class="flex items-center justify-between p-2.5 rounded-lg bg-[#FFDB89]/5 border border-[#FFDB89]/10">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-3 h-3 rounded-full border ${dotClass} shrink-0"></div>
+                        <span class="text-sm font-medium text-[#FFDB89]/80">${name}</span>
+                    </div>
+                    <span class="text-xs font-bold text-[#FFDB89]/40">${label}</span>
+                </div>`;
+            }).join('');
+        };
+
+        const setView = (view) => {
+            muscleView = view;
+            const frontBtn = document.getElementById('tr-muscle-view-front');
+            const backBtn  = document.getElementById('tr-muscle-view-back');
+            if (!frontBtn || !backBtn) return;
+            if (view === 'front') {
+                frontBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition';
+                backBtn.className  = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition';
+            } else {
+                backBtn.className  = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition';
+                frontBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition';
+            }
+            renderMap();
+        };
+
+        container.innerHTML = `
+            <div class="max-w-2xl mx-auto space-y-6">
+                <div>
+                    <h3 class="text-xl font-bold text-[#FFDB89]">Grupos musculares</h3>
+                    <p class="text-sm text-[#FFDB89]/60 mt-1">Marca los grupos que requieren atención especial al armar la rutina de ${client ? client.name : 'este cliente'}.</p>
+                </div>
+
+                <!-- Legend -->
+                <div class="flex flex-wrap items-center gap-4 text-xs">
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-green-400/60 border border-green-400/40"></div><span class="text-[#FFDB89]/60">Sin restricción</span></div>
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-yellow-400/80 border border-yellow-400/60"></div><span class="text-[#FFDB89]/60">Precaución</span></div>
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-red-400/80 border border-red-400/60"></div><span class="text-[#FFDB89]/60">Evitar</span></div>
+                    <span class="text-[#FFDB89]/25 italic">· Clic para cambiar estado</span>
+                </div>
+
+                <!-- Toggle -->
+                <div class="flex items-center gap-2">
+                    <button id="tr-muscle-view-front" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition">Frente</button>
+                    <button id="tr-muscle-view-back"  class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition">Espalda</button>
+                    <button id="tr-muscle-clear-all"  class="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold text-[#FFDB89]/40 hover:text-[#FFDB89] border border-[#FFDB89]/10 hover:border-[#FFDB89]/30 transition">Limpiar todo</button>
+                </div>
+
+                <div class="flex flex-col md:flex-row gap-6 items-start">
+                    <div id="tr-muscle-svg-container" class="flex-shrink-0 flex justify-center w-full md:w-auto"></div>
+                    <div class="flex-grow min-w-0">
+                        <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-3">Estado actual</p>
+                        <div id="tr-injury-flags-list" class="space-y-2">
+                            <p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <button id="tr-save-muscle-btn" class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-medium rounded-lg text-sm transition shadow-md">
+                        Guardar restricciones
+                    </button>
+                </div>
+            </div>`;
+
+        renderMap();
+        renderFlags();
+
+        document.getElementById('tr-muscle-view-front').addEventListener('click', () => setView('front'));
+        document.getElementById('tr-muscle-view-back').addEventListener('click',  () => setView('back'));
+        document.getElementById('tr-muscle-clear-all').addEventListener('click',  () => {
+            muscleState = {};
+            renderMap();
+            renderFlags();
+        });
+        document.getElementById('tr-save-muscle-btn').addEventListener('click', async () => {
+            try {
+                const res = await apiFetch(`/api/clients/${clientId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ injuredMuscles: muscleState })
+                });
+                if (res.ok) {
+                    // Update local cache
+                    const idx = clientsCache.findIndex(c => (c._id == clientId) || (c.id == clientId));
+                    if (idx !== -1) clientsCache[idx].injuredMuscles = { ...muscleState };
+                    showToast('Restricciones guardadas.', 'success');
+                } else {
+                    showToast('Error al guardar.', 'error');
+                }
+            } catch (e) { showToast('Error de conexión.', 'error'); }
+        });
     };
 
     window.openEditClientModal = (clientId) => {
