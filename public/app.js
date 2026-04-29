@@ -1495,8 +1495,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!select) return;
         // Fetch programs if not yet loaded
         if (programsCache.length === 0) await fetchProgramsFromDB();
-        // Always start with "Sin Asignar"
-        select.innerHTML = '<option class="bg-gray-900" value="Sin Asignar">-- Sin programa --</option>';
+        // Always start with "Sin asignar"
+        select.innerHTML = '<option class="bg-gray-900" value="Sin asignar">-- Sin programa --</option>';
         programsCache.forEach(prog => {
             const opt = document.createElement('option');
             opt.value = prog.name;
@@ -2856,7 +2856,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.remove('hidden');
         populateTimezones();
         renderGroupOptions();
-        renderProgramOptions(client.program || "Sin Asignar");
+        renderProgramOptions(client.program || "Sin asignar");
 
         document.getElementById('new-client-name').value = client.name || "";
         document.getElementById('new-client-lastname').value = client.lastName || "";
@@ -3074,7 +3074,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const email = document.getElementById('new-client-email')?.value;
         const typeBtn = document.querySelector('.client-type-btn.ring-2');
         const type = typeBtn ? typeBtn.dataset.type : "Remoto";
-        const program = document.getElementById('new-client-program')?.value || "Sin Asignar";
+        const program = document.getElementById('new-client-program')?.value || "Sin asignar";
         const group = document.getElementById('new-client-group')?.value || "General";
         const location = document.getElementById('opt-location')?.value || "";
         const timezone = document.getElementById('opt-timezone')?.value || "";
@@ -3161,7 +3161,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('opt-weight').value = "";
 
                 // If a real program was selected, offer to push its workouts to the client's calendar
-                if (program && program !== 'Sin Asignar') {
+                if (program && program !== 'Sin asignar') {
                     const prog = programsCache.find(p => p.name === program);
                     if (prog) {
                         const today = new Date().toISOString().split('T')[0];
@@ -3270,7 +3270,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.innerHTML = `
                 <td class="px-6 py-4 whitespace-nowrap"><div class="flex items-center"><div class="h-10 w-10 rounded-full bg-[#FFDB89]/30 text-[#FFDB89] flex items-center justify-center font-bold mr-3">${initials}</div><div class="text-sm font-medium text-[#FFDB89]">${client.name} ${client.lastName || ''}</div></div></td>
                 <td class="px-6 py-4 whitespace-nowrap"><span class="bg-[#FFDB89]/10 text-[#FFDB89] px-2 py-1 rounded text-xs font-bold">${client.group || 'General'}</span></td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-[#FFDB89]/80">${client.program}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-[#FFDB89]/80">${(!client.program || client.program === 'Sin asignar' || client.program === 'Sin Asignar') ? 'Sin asignar' : client.program}</td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     <button data-toggle-status data-client-id="${client._id}" data-active="${client.isActive}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition ${client.isActive ? 'bg-green-900/40 text-green-300 hover:bg-green-900/60' : 'bg-red-900/40 text-red-300 hover:bg-red-900/60'}">
                         ${client.isActive ? 'Activo' : 'Inactivo'}
@@ -4561,7 +4561,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="w-8 h-8 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/20 flex items-center justify-center text-[#FFDB89]/60 text-xs font-bold shrink-0">${(c.name||'?')[0].toUpperCase()}</div>
                                 <div class="min-w-0">
                                     <div class="text-sm font-bold text-[#FFDB89] truncate">${c.name} ${c.lastName || ''}</div>
-                                    <div class="text-xs text-[#FFDB89]/40 truncate">${c.program && c.program !== 'Sin Asignar' ? `📋 ${c.program}` : 'Sin programa'}</div>
+                                    <div class="text-xs text-[#FFDB89]/40 truncate">${c.program && c.program !== 'Sin asignar' ? `📋 ${c.program}` : 'Sin programa'}</div>
                                 </div>
                                 <i class="fas fa-chevron-right text-[#FFDB89]/20 ml-auto shrink-0 text-xs"></i>
                             </button>`).join('')}
@@ -5934,7 +5934,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const res = await fetch(`${moduleToLoad}.html`);
                     if(res.ok) {
                         const html = await res.text();
-                        const contentTitle = (moduleToLoad === 'trainer_home' || moduleToLoad === 'client_inicio') ? '' : linkText;
+                        const contentTitle = (moduleToLoad === 'trainer_home' || moduleToLoad === 'client_inicio' || moduleToLoad === 'clientes_content') ? '' : linkText;
                         updateContent(contentTitle, html);
                         if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
                         if (moduleToLoad === 'programas_content') {
@@ -6293,7 +6293,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('clientes_content.html');
             if(res.ok) {
                 const html = await res.text();
-                updateContent('Clientes', html);
+                updateContent('', html);
                 renderClientsTable();
                 attachClientFilterListeners();
             }
@@ -6618,7 +6618,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (profileRes.ok) {
                 const profile = await profileRes.json();
                 const progEl = document.getElementById('stat-program');
-                if (progEl) progEl.textContent = profile.program || 'Sin Asignar';
+                if (progEl) progEl.textContent = profile.program || 'Sin asignar';
             }
         } catch (e) { /* silently fail */ }
 
