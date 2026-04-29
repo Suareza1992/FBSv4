@@ -353,7 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { id:'forearms',    name:'Antebrazos',         shapes:[{type:'ellipse',cx:136,cy:170,rx:9,ry:13},{type:'ellipse',cx:44,cy:170,rx:9,ry:13}] },
             { id:'abs',         name:'Abdomen',            shapes:[{type:'ellipse',cx:90,cy:170,rx:20,ry:30}] },
             { id:'obliques',    name:'Oblicuos',           shapes:[{type:'ellipse',cx:68,cy:170,rx:9,ry:28},{type:'ellipse',cx:112,cy:170,rx:9,ry:28}] },
-            { id:'hip_flexors', name:'Flexores de cadera', shapes:[{type:'ellipse',cx:90,cy:272,rx:22,ry:12}] },
+            { id:'hip_flexors', name:'Flexores de cadera', shapes:[{type:'ellipse',cx:90,cy:282,rx:22,ry:12}] },
             { id:'quads',       name:'Cuádriceps',         shapes:[{type:'ellipse',cx:78,cy:348,rx:15,ry:52},{type:'ellipse',cx:102,cy:348,rx:15,ry:52}] },
             { id:'tibialis',    name:'Tibiales',           shapes:[{type:'ellipse',cx:80,cy:455,rx:10,ry:28},{type:'ellipse',cx:100,cy:455,rx:10,ry:28}] },
         ],
@@ -364,12 +364,12 @@ document.addEventListener('DOMContentLoaded', () => {
             { id:'lats',        name:'Dorsales',           shapes:[{type:'ellipse',cx:63,cy:158,rx:13,ry:32},{type:'ellipse',cx:117,cy:158,rx:13,ry:32}] },
             { id:'triceps',     name:'Tríceps',            shapes:[{type:'ellipse',cx:41,cy:148,rx:9,ry:22},{type:'ellipse',cx:139,cy:148,rx:9,ry:22}] },
             { id:'lower_back',  name:'Lumbar',             shapes:[{type:'ellipse',cx:90,cy:198,rx:22,ry:14}] },
-            { id:'glutes',      name:'Glúteos',            shapes:[{type:'ellipse',cx:74,cy:255,rx:23,ry:28},{type:'ellipse',cx:106,cy:255,rx:23,ry:28}] },
+            { id:'glutes',      name:'Glúteos',            shapes:[{type:'ellipse',cx:74,cy:280,rx:23,ry:24},{type:'ellipse',cx:106,cy:280,rx:23,ry:24}] },
             { id:'hamstrings',  name:'Isquiotibiales',     shapes:[{type:'ellipse',cx:78,cy:352,rx:15,ry:52},{type:'ellipse',cx:102,cy:352,rx:15,ry:52}] },
             { id:'calves',      name:'Pantorrillas',       shapes:[{type:'ellipse',cx:80,cy:448,rx:11,ry:30},{type:'ellipse',cx:100,cy:448,rx:11,ry:30}] },
         ]
     };
-    const BODY_PATH = 'M 90 10 C 110 10,116 22,114 40 C 112 55,104 63,96 67 L 96 78 C 110 79,132 84,148 92 C 150 99,149 116,147 133 C 145 149,141 161,135 168 C 131 173,127 177,121 179 C 121 188,119 196,119 202 C 121 218,125 233,127 248 C 125 260,122 265,118 268 L 116 355 L 114 432 L 112 522 L 100 526 L 98 432 L 100 355 L 100 270 L 80 270 L 80 355 L 82 432 L 80 526 L 68 522 L 66 432 L 64 355 C 58 265,55 260,53 248 C 55 233,59 218,61 202 C 61 196,59 188,59 179 C 53 177,49 173,45 168 C 39 161,35 149,33 133 C 31 116,30 99,32 92 C 48 84,70 79,84 78 L 84 67 C 76 63,68 55,66 40 C 64 22,70 10,90 10 Z';
+    const BODY_PATH = 'M 90 8 C 108 8 120 16 120 28 C 120 44 108 52 96 54 L 97 62 C 110 65 135 72 152 84 C 160 92 162 112 162 148 C 162 182 158 218 153 252 C 150 270 148 286 146 302 C 145 312 142 322 137 325 C 133 327 130 322 130 314 C 130 296 130 268 129 240 C 128 212 127 180 126 155 C 125 130 124 106 124 90 C 124 84 126 82 128 82 C 128 88 127 110 126 135 C 124 162 121 192 119 222 C 117 238 113 255 112 268 C 114 278 120 288 120 298 C 119 310 118 334 117 364 C 115 394 113 424 111 454 C 110 474 109 496 109 512 L 114 526 L 114 533 L 96 533 L 95 520 C 95 506 95 494 94 480 C 94 450 93 420 92 390 C 91 358 91 328 91 312 L 90 303 L 89 312 C 89 328 89 358 88 390 C 87 420 87 450 86 480 C 85 494 85 506 85 520 L 84 533 L 66 533 L 66 526 L 71 512 C 71 496 70 474 69 454 C 67 424 65 394 63 364 C 62 334 61 310 60 298 C 60 288 66 278 68 268 C 67 255 63 238 61 222 C 59 192 56 162 54 135 C 53 110 52 88 52 82 C 54 82 56 84 56 90 C 56 106 55 130 54 155 C 51 180 50 212 49 240 C 48 268 48 296 48 314 C 48 322 45 327 41 325 C 36 322 33 312 32 302 C 30 286 28 270 25 252 C 20 218 16 182 16 148 C 16 112 20 92 28 84 C 45 72 70 65 83 62 L 84 54 C 72 52 60 44 60 28 C 60 16 72 8 90 8 Z';
 
     const initSettings = async () => {
         try {
