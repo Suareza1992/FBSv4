@@ -401,7 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         } catch (e) { showToast('Error de conexión.', 'error'); }
                         finally {
                             saveHandlesBtn.disabled = false;
-                            saveHandlesBtn.textContent = 'Guardar Métodos de Cobro';
+                            saveHandlesBtn.textContent = 'Guardar métodos de cobro';
                         }
                     });
                 }
@@ -1810,7 +1810,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <!-- Header -->
                     <div class="flex flex-wrap justify-between items-center gap-3">
                         <div>
-                            <h3 class="text-xl font-bold text-[#FFDB89]">Medidas Corporales</h3>
+                            <h3 class="text-xl font-bold text-[#FFDB89]">Medidas corporales</h3>
                             ${client ? `<p class="text-sm text-[#FFDB89]/60 mt-0.5">
                                 ${client.height ? `Estatura: ${hFt}'${hIn}"` : ''}
                                 ${client.thr  ? ` · THR: ${client.thr} bpm`   : ''}
@@ -1870,7 +1870,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Cintura</th>
                                     <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Cadera</th>
                                     <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Quads</th>
-                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Calves</th>
+                                    <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase whitespace-nowrap">Pantorrillas</th>
                                     <th class="px-3 py-3 text-center text-xs font-bold text-[#FFDB89] uppercase"></th>
                                 </tr>
                             </thead>
@@ -2124,7 +2124,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="text" id="m-quads" placeholder='18 7/8R 18 5/8L' class="${inputCls}">
                         </div>
                         <div>
-                            <label class="${labelCls}">Calves</label>
+                            <label class="${labelCls}">Pantorrillas</label>
                             <input type="text" id="m-calves" placeholder='13 5/8R 13 5/8L' class="${inputCls}">
                         </div>
                     </div>
@@ -2493,7 +2493,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="space-y-6 max-w-4xl mx-auto">
                     <div id="macro-calc-wrapper"></div>
                     <div class="flex justify-between items-center">
-                        <h3 class="text-xl font-bold text-[#FFDB89]">Historial de Nutrición</h3>
+                        <h3 class="text-xl font-bold text-[#FFDB89]">Historial de nutrición</h3>
                         <button onclick="window.showAddNutritionModal('${clientId}')" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg text-sm font-bold transition">
                             <i class="fas fa-plus mr-1"></i> Registrar nutrición
                         </button>
@@ -2639,7 +2639,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 container.innerHTML = `
                     <div class="space-y-4 max-w-4xl mx-auto">
                         <div class="flex flex-wrap justify-between items-center gap-3">
-                            <h3 class="text-xl font-bold text-[#FFDB89]">Fotos de Progreso</h3>
+                            <h3 class="text-xl font-bold text-[#FFDB89]">Fotos de progreso</h3>
                             <div class="flex items-center gap-2">
                                 ${photos.length >= 2 ? `
                                 <button id="tr-compare-toggle" class="px-3 py-2 rounded-lg text-xs font-bold border transition ${compareMode ? 'bg-[#92A9E1] text-white border-[#92A9E1]' : 'border-[#92A9E1]/30 text-[#92A9E1]/70 hover:text-[#92A9E1]'}">
@@ -2764,7 +2764,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Foto</label>
-                            <input type="file" id="photo-file" accept="image/jpeg,image/png,image/gif" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none">
+                            <label for="photo-file" class="flex items-center gap-3 w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg cursor-pointer hover:border-[#FFDB89] transition">
+                                <span class="shrink-0 bg-[#FFDB89]/20 hover:bg-[#FFDB89]/30 text-[#FFDB89] text-xs font-bold px-3 py-1.5 rounded-md transition">Seleccionar</span>
+                                <span id="photo-file-name" class="text-[#FFDB89]/50 text-sm truncate">Ningún archivo seleccionado</span>
+                            </label>
+                            <input type="file" id="photo-file" accept="image/jpeg,image/png,image/gif" class="hidden">
                         </div>
                         <div id="photo-preview-container" class="hidden">
                             <img id="photo-preview" class="w-full max-h-48 object-contain rounded-lg border border-[#FFDB89]/20">
@@ -2798,6 +2802,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const file = e.target.files[0];
                     if (!file) return;
                     if (file.size > 2 * 1024 * 1024) { showToast('La imagen debe ser menor a 2MB.', 'error'); return; }
+                    const nameEl = document.getElementById('photo-file-name');
+                    if (nameEl) nameEl.textContent = file.name;
                     const reader = new FileReader();
                     reader.onload = (ev) => {
                         document.getElementById('photo-preview').src = ev.target.result;
@@ -3532,7 +3538,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnText = document.getElementById('add-btn-text');
         const btn     = document.getElementById('add-new-item-btn');
         if (activeTabId === 'tab-programas') {
-            if (btnText) btnText.textContent = 'Nuevo Programa';
+            if (btnText) btnText.textContent = 'Nuevo programa';
             if (btn) btn.onclick = () => document.getElementById('create-program-modal')?.classList.remove('hidden');
         } else if (activeTabId === 'tab-ejercicios') {
             if (btnText) btnText.textContent = 'Nuevo Ejercicio';
@@ -4725,7 +4731,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (list.length === 0) {
             tbody.innerHTML = `<tr><td colspan="6" class="py-12 text-center text-[#FFDB89]/30 text-sm">
-                ${paymentsDb.length === 0 ? 'No hay facturas aún. Crea una con el botón <strong>Nueva Factura</strong>.' : 'Sin resultados para ese filtro.'}
+                ${paymentsDb.length === 0 ? 'No hay facturas aún. Crea una con el botón <strong>Nueva factura</strong>.' : 'Sin resultados para ese filtro.'}
             </td></tr>`;
             return;
         }
@@ -5934,7 +5940,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const res = await fetch(`${moduleToLoad}.html`);
                     if(res.ok) {
                         const html = await res.text();
-                        const contentTitle = (moduleToLoad === 'trainer_home' || moduleToLoad === 'client_inicio' || moduleToLoad === 'clientes_content') ? '' : linkText;
+                        const contentTitle = (moduleToLoad === 'trainer_home' || moduleToLoad === 'client_inicio' || moduleToLoad === 'clientes_content' || moduleToLoad === 'pagos_content') ? '' : linkText;
                         updateContent(contentTitle, html);
                         if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
                         if (moduleToLoad === 'programas_content') {
