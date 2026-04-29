@@ -347,29 +347,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Muscle group definitions for injury map ───────────────────────────────
     const MUSCLE_DEFS = {
         front: [
-            { id:'shoulders',   name:'Hombros',            shapes:[{type:'ellipse',cx:136,cy:92,rx:14,ry:11},{type:'ellipse',cx:44,cy:92,rx:14,ry:11}] },
+            { id:'shoulders',   name:'Hombros',            shapes:[{type:'ellipse',cx:150,cy:86,rx:12,ry:10},{type:'ellipse',cx:30,cy:86,rx:12,ry:10}] },
             { id:'chest',       name:'Pecho',              shapes:[{type:'ellipse',cx:90,cy:115,rx:27,ry:21}] },
-            { id:'biceps',      name:'Bíceps',             shapes:[{type:'ellipse',cx:139,cy:135,rx:9,ry:19},{type:'ellipse',cx:41,cy:135,rx:9,ry:19}] },
-            { id:'forearms',    name:'Antebrazos',         shapes:[{type:'ellipse',cx:136,cy:170,rx:9,ry:13},{type:'ellipse',cx:44,cy:170,rx:9,ry:13}] },
-            { id:'abs',         name:'Abdomen',            shapes:[{type:'ellipse',cx:90,cy:170,rx:20,ry:30}] },
-            { id:'obliques',    name:'Oblicuos',           shapes:[{type:'ellipse',cx:68,cy:170,rx:9,ry:28},{type:'ellipse',cx:112,cy:170,rx:9,ry:28}] },
-            { id:'hip_flexors', name:'Flexores de cadera', shapes:[{type:'ellipse',cx:90,cy:282,rx:22,ry:12}] },
-            { id:'quads',       name:'Cuádriceps',         shapes:[{type:'ellipse',cx:78,cy:348,rx:15,ry:52},{type:'ellipse',cx:102,cy:348,rx:15,ry:52}] },
-            { id:'tibialis',    name:'Tibiales',           shapes:[{type:'ellipse',cx:80,cy:455,rx:10,ry:28},{type:'ellipse',cx:100,cy:455,rx:10,ry:28}] },
+            { id:'biceps',      name:'Bíceps',             shapes:[{type:'ellipse',cx:150,cy:140,rx:10,ry:20},{type:'ellipse',cx:30,cy:140,rx:10,ry:20}] },
+            { id:'forearms',    name:'Antebrazos',         shapes:[{type:'ellipse',cx:148,cy:200,rx:9,ry:16},{type:'ellipse',cx:32,cy:200,rx:9,ry:16}] },
+            { id:'abs',         name:'Abdomen',            shapes:[{type:'ellipse',cx:90,cy:175,rx:20,ry:32}] },
+            { id:'obliques',    name:'Oblicuos',           shapes:[{type:'ellipse',cx:68,cy:175,rx:9,ry:28},{type:'ellipse',cx:112,cy:175,rx:9,ry:28}] },
+            { id:'hip_flexors', name:'Flexores de cadera', shapes:[{type:'ellipse',cx:90,cy:286,rx:22,ry:12}] },
+            { id:'quads',       name:'Cuádriceps',         shapes:[{type:'ellipse',cx:76,cy:370,rx:14,ry:50},{type:'ellipse',cx:103,cy:370,rx:14,ry:50}] },
+            { id:'tibialis',    name:'Tibiales',           shapes:[{type:'ellipse',cx:77,cy:460,rx:9,ry:26},{type:'ellipse',cx:103,cy:460,rx:9,ry:26}] },
         ],
         back: [
-            { id:'traps',       name:'Trapecio',           shapes:[{type:'ellipse',cx:90,cy:92,rx:26,ry:17}] },
-            { id:'rear_delts',  name:'Deltoides post.',    shapes:[{type:'ellipse',cx:44,cy:92,rx:12,ry:9},{type:'ellipse',cx:136,cy:92,rx:12,ry:9}] },
-            { id:'upper_back',  name:'Espalda alta',       shapes:[{type:'ellipse',cx:90,cy:128,rx:22,ry:19}] },
-            { id:'lats',        name:'Dorsales',           shapes:[{type:'ellipse',cx:63,cy:158,rx:13,ry:32},{type:'ellipse',cx:117,cy:158,rx:13,ry:32}] },
-            { id:'triceps',     name:'Tríceps',            shapes:[{type:'ellipse',cx:41,cy:148,rx:9,ry:22},{type:'ellipse',cx:139,cy:148,rx:9,ry:22}] },
-            { id:'lower_back',  name:'Lumbar',             shapes:[{type:'ellipse',cx:90,cy:198,rx:22,ry:14}] },
-            { id:'glutes',      name:'Glúteos',            shapes:[{type:'ellipse',cx:74,cy:280,rx:23,ry:24},{type:'ellipse',cx:106,cy:280,rx:23,ry:24}] },
-            { id:'hamstrings',  name:'Isquiotibiales',     shapes:[{type:'ellipse',cx:78,cy:352,rx:15,ry:52},{type:'ellipse',cx:102,cy:352,rx:15,ry:52}] },
-            { id:'calves',      name:'Pantorrillas',       shapes:[{type:'ellipse',cx:80,cy:448,rx:11,ry:30},{type:'ellipse',cx:100,cy:448,rx:11,ry:30}] },
+            { id:'traps',       name:'Trapecio',           shapes:[{type:'ellipse',cx:90,cy:90,rx:26,ry:17}] },
+            { id:'rear_delts',  name:'Deltoides post.',    shapes:[{type:'ellipse',cx:30,cy:86,rx:12,ry:10},{type:'ellipse',cx:150,cy:86,rx:12,ry:10}] },
+            { id:'upper_back',  name:'Espalda alta',       shapes:[{type:'ellipse',cx:90,cy:126,rx:22,ry:19}] },
+            { id:'lats',        name:'Dorsales',           shapes:[{type:'ellipse',cx:62,cy:162,rx:13,ry:32},{type:'ellipse',cx:118,cy:162,rx:13,ry:32}] },
+            { id:'triceps',     name:'Tríceps',            shapes:[{type:'ellipse',cx:30,cy:148,rx:10,ry:22},{type:'ellipse',cx:150,cy:148,rx:10,ry:22}] },
+            { id:'lower_back',  name:'Lumbar',             shapes:[{type:'ellipse',cx:90,cy:200,rx:22,ry:14}] },
+            { id:'glutes',      name:'Glúteos',            shapes:[{type:'ellipse',cx:74,cy:278,rx:22,ry:22},{type:'ellipse',cx:106,cy:278,rx:22,ry:22}] },
+            { id:'hamstrings',  name:'Isquiotibiales',     shapes:[{type:'ellipse',cx:76,cy:370,rx:14,ry:50},{type:'ellipse',cx:103,cy:370,rx:14,ry:50}] },
+            { id:'calves',      name:'Pantorrillas',       shapes:[{type:'ellipse',cx:77,cy:452,rx:10,ry:28},{type:'ellipse',cx:103,cy:452,rx:10,ry:28}] },
         ]
     };
-    const BODY_PATH = 'M 90 8 C 108 8 120 16 120 28 C 120 44 108 52 96 54 L 97 62 C 110 65 135 72 152 84 C 160 92 162 112 162 148 C 162 182 158 218 153 252 C 150 270 148 286 146 302 C 145 312 142 322 137 325 C 133 327 130 322 130 314 C 130 296 130 268 129 240 C 128 212 127 180 126 155 C 125 130 124 106 124 90 C 124 84 126 82 128 82 C 128 88 127 110 126 135 C 124 162 121 192 119 222 C 117 238 113 255 112 268 C 114 278 120 288 120 298 C 119 310 118 334 117 364 C 115 394 113 424 111 454 C 110 474 109 496 109 512 L 114 526 L 114 533 L 96 533 L 95 520 C 95 506 95 494 94 480 C 94 450 93 420 92 390 C 91 358 91 328 91 312 L 90 303 L 89 312 C 89 328 89 358 88 390 C 87 420 87 450 86 480 C 85 494 85 506 85 520 L 84 533 L 66 533 L 66 526 L 71 512 C 71 496 70 474 69 454 C 67 424 65 394 63 364 C 62 334 61 310 60 298 C 60 288 66 278 68 268 C 67 255 63 238 61 222 C 59 192 56 162 54 135 C 53 110 52 88 52 82 C 54 82 56 84 56 90 C 56 106 55 130 54 155 C 51 180 50 212 49 240 C 48 268 48 296 48 314 C 48 322 45 327 41 325 C 36 322 33 312 32 302 C 30 286 28 270 25 252 C 20 218 16 182 16 148 C 16 112 20 92 28 84 C 45 72 70 65 83 62 L 84 54 C 72 52 60 44 60 28 C 60 16 72 8 90 8 Z';
+    // 4-subpath body: head+neck · torso+legs · right arm · left arm
+    const BODY_PATH = 'M 90 2 C 101 2 112 12 112 24 C 112 38 104 48 97 54 L 97 64 L 83 64 L 83 54 C 76 48 68 38 68 24 C 68 12 79 2 90 2 Z M 50 64 C 87 58 93 58 130 64 C 133 74 134 92 133 114 C 132 140 129 168 126 192 C 123 212 120 230 117 248 C 115 260 116 272 120 283 C 123 293 121 303 119 310 C 117 322 116 346 115 370 C 114 396 113 422 112 446 C 111 466 110 488 110 504 L 115 519 L 115 525 L 97 525 L 96 513 C 96 493 95 474 95 454 C 94 428 93 402 92 376 C 91 350 91 330 91 318 L 91 310 L 89 310 L 89 318 C 89 330 89 350 88 376 C 87 402 86 428 85 454 C 85 474 84 493 84 513 L 83 525 L 65 525 L 65 519 L 70 504 C 70 488 69 466 68 446 C 67 422 66 396 65 370 C 64 346 63 322 61 310 C 59 303 57 293 60 283 C 64 272 65 260 63 248 C 60 230 57 212 54 192 C 51 168 48 140 47 114 C 46 92 47 74 50 64 Z M 138 64 C 152 66 162 84 162 122 C 162 163 160 203 157 243 C 154 268 152 284 150 296 C 148 310 143 320 139 318 C 135 315 133 305 134 295 C 135 279 136 263 136 243 C 136 203 137 163 137 122 C 137 86 138 72 138 64 Z M 42 64 C 28 66 18 84 18 122 C 18 163 20 203 23 243 C 26 268 28 284 30 296 C 32 310 37 320 41 318 C 45 315 47 305 46 295 C 45 279 44 263 44 243 C 44 203 43 163 43 122 C 43 86 42 72 42 64 Z';
 
     const initSettings = async () => {
         try {
