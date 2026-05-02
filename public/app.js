@@ -126,12 +126,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedCopyDays = new Set(); // Track selected days for multi-day copy
 
     // NEW: Workout Editor State (For the Orange Modal)
-    let editorExercises = []; 
+    let editorExercises = [];
     let editorDateStr = "";
     let editorWarmup = ""; // State for Warmup Text
     let editorWarmupVideoUrl = ""; // State for Warmup Video URL
+    let editorWarmupItems = []; // Individual warmup exercises [{id, name, videoUrl}]
     let editorWorkoutTitle = "";
     let editorCooldown = "";
+    let editorCooldownVideoUrl = ""; // State for Cooldown Video URL
+    let editorCooldownItems = []; // Individual cooldown exercises [{id, name, videoUrl}]
     let currentEditorExId = null; // Track which exercise is being edited for Video/History
     let editorIsDirty = false;
     let editorAutosaveInterval = null;
@@ -5453,7 +5456,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const workout = await response.json();
                     editorWarmup = workout.warmup || '';
                     editorWarmupVideoUrl = workout.warmupVideoUrl || '';
+                    editorWarmupItems = workout.warmupItems || [];
                     editorCooldown = workout.cooldown || '';
+                    editorCooldownVideoUrl = workout.cooldownVideoUrl || '';
+                    editorCooldownItems = workout.cooldownItems || [];
                     editorExercises = workout.exercises || [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
                     syncExerciseVideoUrls(); // backfill URLs from library for exercises that have none
                     editorIsComplete = workout.isComplete || false;
@@ -5463,7 +5469,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
                     editorWarmup = "";
                     editorWarmupVideoUrl = "";
+                    editorWarmupItems = [];
                     editorCooldown = "";
+                    editorCooldownVideoUrl = "";
+                    editorCooldownItems = [];
                     editorIsComplete = false;
                     editorIsMissed   = false;
                 }
@@ -5472,7 +5481,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
                 editorWarmup = "";
                 editorWarmupVideoUrl = "";
+                editorWarmupItems = [];
                 editorCooldown = "";
+                editorCooldownVideoUrl = "";
+                editorCooldownItems = [];
                 editorIsComplete = false;
                 editorIsMissed   = false;
             }
@@ -5505,6 +5517,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="flex justify-center -my-3 z-10 relative">
                             <button onclick="window.linkSuperset(${index})" class="bg-[#3a3a3c] hover:bg-[#FFDB89]/20 text-[#FFDB89] text-[10px] px-3 py-1 rounded-full shadow-md transition border border-[#FFDB89]/30 font-bold">
                                 <i class="fas fa-link mr-1"></i> Superset
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    supersetBtnHtml = `
+                        <div class="flex justify-center -my-3 z-10 relative">
+                            <button onclick="window.unlinkSuperset(${index + 1})" class="bg-[#3a3a3c] hover:bg-red-500/20 text-[#FFDB89]/50 hover:text-red-400 text-[10px] px-3 py-1 rounded-full shadow-md transition border border-[#FFDB89]/15 hover:border-red-400/40 font-bold">
+                                <i class="fas fa-unlink mr-1"></i> Superset
                             </button>
                         </div>
                     `;
@@ -5565,12 +5585,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 <!-- SCROLLABLE BODY -->
                 <div class="flex-1 overflow-y-auto">
                     <!-- WARMUP -->
-                    <div class="p-6 border-b border-[#FFDB89]/15 hover:bg-[#363640] transition group relative">
-                        <div class="flex items-center gap-3">
+                    <div class="p-5 border-b border-[#FFDB89]/15 bg-[#2a2a32]">
+                        <div class="flex items-center gap-2 mb-3">
                             <div class="w-6 h-6 bg-orange-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"><i class="fas fa-fire"></i></div>
-                            <textarea oninput="window.updateWarmup(this.value); window.markEditorDirty();" class="bg-transparent text-base text-[#FFDB89]/70 placeholder-[#FFDB89]/30 w-full outline-none resize-none" rows="2" placeholder="Calentamiento o instrucciones generales...">${editorWarmup}</textarea>
-                            <i class="fas fa-video ${editorWarmupVideoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] flex-shrink-0" onclick="window.openWarmupVideoModal()" title="Video URL"></i>
+                            <span class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Calentamiento</span>
                         </div>
+                        <div class="flex items-start gap-2 mb-3">
+                            <textarea oninput="window.updateWarmup(this.value); window.markEditorDirty();" class="bg-transparent text-sm text-[#FFDB89]/60 placeholder-[#FFDB89]/25 w-full outline-none resize-none" rows="2" placeholder="Instrucciones generales...">${editorWarmup}</textarea>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                ${editorWarmupVideoUrl ? `<button onclick="window.previewExerciseVideo('${editorWarmupVideoUrl.replace(/'/g,"\\'")}', 'Calentamiento'); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                                <i class="fas fa-video ${editorWarmupVideoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] text-sm" onclick="window.openWarmupVideoModal()" title="Video URL"></i>
+                            </div>
+                        </div>
+                        <div id="warmup-items-list" class="space-y-1.5">
+                            ${editorWarmupItems.map(item => `
+                            <div class="flex items-center gap-2 pl-1">
+                                <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
+                                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateWarmupItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de calentamiento...">
+                                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForWarmupItem(${item.id})" title="URL de video"></i>
+                                <button onclick="window.removeWarmupItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
+                            </div>`).join('')}
+                        </div>
+                        <button onclick="window.addWarmupItem()" class="mt-2 text-[#FFDB89]/35 hover:text-[#FFDB89]/70 text-xs transition flex items-center gap-1.5 pl-1">
+                            <i class="fas fa-plus text-[8px]"></i> Agregar ejercicio
+                        </button>
                     </div>
 
                     <div id="editor-exercises-list">${listHtml}</div>
@@ -5580,11 +5619,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
 
                     <!-- COOLDOWN -->
-                    <div class="p-6 border-t border-[#FFDB89]/15">
-                        <div class="flex items-center gap-3">
+                    <div class="p-5 border-t border-[#FFDB89]/15 bg-[#2a2a32]">
+                        <div class="flex items-center gap-2 mb-3">
                             <div class="w-6 h-6 bg-[#3a3a3c] border border-[#FFDB89]/30 rounded flex-shrink-0 flex items-center justify-center text-[#FFDB89] text-xs font-bold"><i class="fas fa-snowflake"></i></div>
-                            <textarea oninput="window.updateCooldown(this.value); window.markEditorDirty();" class="bg-transparent text-base text-[#FFDB89]/70 placeholder-[#FFDB89]/30 w-full outline-none resize-none" rows="2" placeholder="Enfriamiento (estiramientos, cardio ligero...)">${editorCooldown || ''}</textarea>
+                            <span class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Enfriamiento</span>
                         </div>
+                        <div class="flex items-start gap-2 mb-3">
+                            <textarea oninput="window.updateCooldown(this.value); window.markEditorDirty();" class="bg-transparent text-sm text-[#FFDB89]/60 placeholder-[#FFDB89]/25 w-full outline-none resize-none" rows="2" placeholder="Instrucciones generales...">${editorCooldown || ''}</textarea>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                ${editorCooldownVideoUrl ? `<button onclick="window.previewExerciseVideo('${editorCooldownVideoUrl.replace(/'/g,"\\'")}', 'Enfriamiento'); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                                <i class="fas fa-video ${editorCooldownVideoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] text-sm" onclick="window.openCooldownVideoModal()" title="Video URL"></i>
+                            </div>
+                        </div>
+                        <div id="cooldown-items-list" class="space-y-1.5">
+                            ${editorCooldownItems.map(item => `
+                            <div class="flex items-center gap-2 pl-1">
+                                <i class="fas fa-circle text-blue-300/40 text-[6px] shrink-0"></i>
+                                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateCooldownItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de enfriamiento...">
+                                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForCooldownItem(${item.id})" title="URL de video"></i>
+                                <button onclick="window.removeCooldownItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
+                            </div>`).join('')}
+                        </div>
+                        <button onclick="window.addCooldownItem()" class="mt-2 text-[#FFDB89]/35 hover:text-[#FFDB89]/70 text-xs transition flex items-center gap-1.5 pl-1">
+                            <i class="fas fa-plus text-[8px]"></i> Agregar ejercicio
+                        </button>
                     </div>
                 </div>
 
@@ -5689,6 +5748,79 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     window.updateCooldown = (val) => { editorCooldown = val; };
     window.updateWorkoutTitle = (val) => { editorWorkoutTitle = val; };
+
+    // ── Warmup items ──────────────────────────────────────────────────────
+    window.addWarmupItem = () => {
+        editorWarmupItems.push({ id: Date.now(), name: '', videoUrl: '' });
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+    };
+    window.removeWarmupItem = (id) => {
+        editorWarmupItems = editorWarmupItems.filter(i => i.id !== id);
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+    };
+    window.updateWarmupItem = (id, field, val) => {
+        const item = editorWarmupItems.find(i => i.id === id);
+        if (item) item[field] = val;
+    };
+    window.openVideoForWarmupItem = (id) => {
+        currentEditorExId = `warmup-item-${id}`;
+        const item = editorWarmupItems.find(i => i.id === id);
+        document.getElementById('video-url-input').value = item?.videoUrl || '';
+        const titleEl = document.getElementById('video-modal-title');
+        const nameInput = document.getElementById('video-library-name');
+        if (titleEl) titleEl.textContent = item?.name || 'Video de calentamiento';
+        if (nameInput) nameInput.value = item?.name || '';
+        document.getElementById('video-upload-modal').classList.remove('hidden');
+        initVideoNameAutocomplete();
+    };
+
+    // ── Cooldown items ────────────────────────────────────────────────────
+    window.addCooldownItem = () => {
+        editorCooldownItems.push({ id: Date.now(), name: '', videoUrl: '' });
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+    };
+    window.removeCooldownItem = (id) => {
+        editorCooldownItems = editorCooldownItems.filter(i => i.id !== id);
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+    };
+    window.updateCooldownItem = (id, field, val) => {
+        const item = editorCooldownItems.find(i => i.id === id);
+        if (item) item[field] = val;
+    };
+    window.openVideoForCooldownItem = (id) => {
+        currentEditorExId = `cooldown-item-${id}`;
+        const item = editorCooldownItems.find(i => i.id === id);
+        document.getElementById('video-url-input').value = item?.videoUrl || '';
+        const titleEl = document.getElementById('video-modal-title');
+        const nameInput = document.getElementById('video-library-name');
+        if (titleEl) titleEl.textContent = item?.name || 'Video de enfriamiento';
+        if (nameInput) nameInput.value = item?.name || '';
+        document.getElementById('video-upload-modal').classList.remove('hidden');
+        initVideoNameAutocomplete();
+    };
+    window.openCooldownVideoModal = () => {
+        currentEditorExId = 'cooldown';
+        document.getElementById('video-url-input').value = editorCooldownVideoUrl || '';
+        const titleEl = document.getElementById('video-modal-title');
+        const nameInput = document.getElementById('video-library-name');
+        if (titleEl) titleEl.textContent = 'Enfriamiento';
+        if (nameInput) nameInput.value = '';
+        document.getElementById('video-upload-modal').classList.remove('hidden');
+        initVideoNameAutocomplete();
+    };
+
+    // ── Unlink superset ───────────────────────────────────────────────────
+    window.unlinkSuperset = (index) => {
+        if (!editorExercises[index]) return;
+        editorExercises[index].isSuperset = false;
+        // If the exercise after it is also superset-linked, it now becomes the new chain start — keep its flag
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+    };
 
     window._calendarWorkouts = window._calendarWorkouts || {};
 
@@ -5851,7 +5983,10 @@ document.addEventListener('DOMContentLoaded', () => {
             title: titleInput?.value || editorDateStr,
             warmup: editorWarmup,
             warmupVideoUrl: editorWarmupVideoUrl,
+            warmupItems: editorWarmupItems.map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
             cooldown: editorCooldown,
+            cooldownVideoUrl: editorCooldownVideoUrl,
+            cooldownItems: editorCooldownItems.map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
             exercises: editorExercises.map(ex => ({
                 id: ex.id, name: ex.name, instructions: ex.instructions || '',
                 results: ex.results || '', videoUrl: ex.videoUrl || '', isSuperset: ex.isSuperset || false
@@ -6018,14 +6153,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.saveEditorVideo = () => {
-        const url = document.getElementById('video-url-input').value;
-        if(currentEditorExId === 'warmup') {
+        const url = document.getElementById('video-url-input').value.trim();
+        if (currentEditorExId === 'warmup') {
             editorWarmupVideoUrl = url;
-            currentEditorExId = null;
-        } else if(currentEditorExId) {
+        } else if (currentEditorExId === 'cooldown') {
+            editorCooldownVideoUrl = url;
+        } else if (typeof currentEditorExId === 'string' && currentEditorExId.startsWith('warmup-item-')) {
+            const id = Number(currentEditorExId.replace('warmup-item-', ''));
+            const item = editorWarmupItems.find(i => i.id === id);
+            if (item) item.videoUrl = url;
+        } else if (typeof currentEditorExId === 'string' && currentEditorExId.startsWith('cooldown-item-')) {
+            const id = Number(currentEditorExId.replace('cooldown-item-', ''));
+            const item = editorCooldownItems.find(i => i.id === id);
+            if (item) item.videoUrl = url;
+        } else if (currentEditorExId) {
             const ex = editorExercises.find(e => e.id === currentEditorExId);
-            if(ex) ex.videoUrl = url;
+            if (ex) ex.videoUrl = url;
         }
+        currentEditorExId = null;
         document.getElementById('video-upload-modal').classList.add('hidden');
         renderWorkoutEditorUI();
         window.markEditorDirty();
