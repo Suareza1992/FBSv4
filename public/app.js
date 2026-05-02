@@ -5430,6 +5430,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // Backfill missing videoUrls from the exercise library (by matching name)
+    const syncExerciseVideoUrls = () => {
+        editorExercises = editorExercises.map(ex => {
+            if (!ex.videoUrl && ex.name) {
+                const libMatch = globalExerciseLibrary.find(l => l.name.toLowerCase() === ex.name.toLowerCase());
+                if (libMatch?.videoUrl) return { ...ex, videoUrl: libMatch.videoUrl };
+            }
+            return ex;
+        });
+    };
+
     // NEW WORKOUT EDITOR UI
     const openWorkoutEditor = async (dateStr) => {
         editorDateStr = dateStr;
@@ -5444,6 +5455,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     editorWarmupVideoUrl = workout.warmupVideoUrl || '';
                     editorCooldown = workout.cooldown || '';
                     editorExercises = workout.exercises || [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
+                    syncExerciseVideoUrls(); // backfill URLs from library for exercises that have none
                     editorIsComplete = workout.isComplete || false;
                     editorIsMissed   = workout.isMissed   || false;
                 } else {
@@ -5502,13 +5514,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return `
             <div class="p-6 border-b border-[#FFDB89]/15 bg-[#32323c] relative">
                 <div class="flex items-start gap-2 mb-2 min-w-0">
-                    <div class="flex flex-col items-center gap-1 pt-1 shrink-0">
-                        <input type="checkbox" class="ex-checkbox w-4 h-4 rounded accent-[#FFDB89] bg-gray-700 border-[#FFDB89]/30" data-id="${ex.id}" ${ex.isSuperset ? 'checked' : ''}>
-                        <i class="fas fa-grip-lines text-[#FFDB89]/30 cursor-move hover:text-[#FFDB89] text-xs" title="Move"></i>
+                    <div class="flex flex-col items-center gap-0.5 pt-1 shrink-0">
+                        <input type="checkbox" class="ex-checkbox w-4 h-4 rounded accent-[#FFDB89] bg-gray-700 border-[#FFDB89]/30 cursor-pointer" data-id="${ex.id}" ${ex._selected ? 'checked' : ''} onchange="window.toggleExerciseSelect(${ex.id}, this.checked)" title="Seleccionar para eliminar">
+                        <button onclick="window.moveExerciseUp(${index})" class="text-[#FFDB89]/25 hover:text-[#FFDB89] transition leading-none py-0.5 ${index === 0 ? 'invisible' : ''}" title="Mover arriba"><i class="fas fa-chevron-up text-[9px]"></i></button>
+                        <button onclick="window.moveExerciseDown(${index})" class="text-[#FFDB89]/25 hover:text-[#FFDB89] transition leading-none py-0.5 ${index === editorExercises.length - 1 ? 'invisible' : ''}" title="Mover abajo"><i class="fas fa-chevron-down text-[9px]"></i></button>
                     </div>
                     <h3 class="text-[#FFDB89] font-bold text-lg shrink-0">${letter})</h3>
                     <input type="text" value="${ex.name}" class="bg-transparent text-[#FFDB89] font-bold outline-none min-w-0 flex-1 placeholder-[#FFDB89]/30" placeholder="Título del ejercicio" oninput="window.updateExName(${ex.id}, this.value); window.markEditorDirty();">
                     <div class="flex items-center gap-1.5 shrink-0">
+                        ${ex._selected ? `<button onclick="window.deleteEditorExercise(${ex.id})" class="text-red-400/80 hover:text-red-400 transition" title="Eliminar ejercicio"><i class="fas fa-trash-alt text-sm"></i></button>` : ''}
                         ${ex.videoUrl ? `<button onclick="window.previewExerciseVideo('${ex.videoUrl.replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}'); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
                         <i class="fas fa-video ${ex.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] mt-0.5" onclick="window.openVideoModalForEditor(${ex.id})" title="Editar URL del video"></i>
                     </div>
@@ -5900,9 +5914,47 @@ document.addEventListener('DOMContentLoaded', () => {
         if (editorExercises[index + 1]) {
             editorExercises[index + 1].isSuperset = true;
             if (index > 0 && editorExercises[index].isSuperset) { /* already in chain */ }
-            else { editorExercises[index].isSuperset = true; } 
+            else { editorExercises[index].isSuperset = true; }
             renderWorkoutEditorUI();
         }
+    };
+
+    // Select exercise (for deletion)
+    window.toggleExerciseSelect = (id, checked) => {
+        const ex = editorExercises.find(e => e.id === id);
+        if (ex) ex._selected = checked;
+        renderWorkoutEditorUI();
+    };
+
+    // Delete selected exercise
+    window.deleteEditorExercise = (id) => {
+        const idx = editorExercises.findIndex(e => e.id === id);
+        if (idx === -1) return;
+        // If deleting the first exercise of a superset group, unlink the next one
+        if (idx < editorExercises.length - 1 && editorExercises[idx].isSuperset && !editorExercises[idx - 1]?.isSuperset) {
+            editorExercises[idx + 1].isSuperset = false;
+        }
+        editorExercises.splice(idx, 1);
+        // Ensure there's always at least one exercise
+        if (editorExercises.length === 0) {
+            editorExercises.push({ id: Date.now(), name: '', instructions: '', results: '', isSuperset: false, videoUrl: '' });
+        }
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+    };
+
+    // Move exercise up/down (works across and within superset groups)
+    window.moveExerciseUp = (index) => {
+        if (index <= 0) return;
+        [editorExercises[index - 1], editorExercises[index]] = [editorExercises[index], editorExercises[index - 1]];
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+    };
+    window.moveExerciseDown = (index) => {
+        if (index >= editorExercises.length - 1) return;
+        [editorExercises[index], editorExercises[index + 1]] = [editorExercises[index + 1], editorExercises[index]];
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
     };
 
     // Helper: convert YouTube/Vimeo URL to embeddable URL
@@ -6000,6 +6052,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const idx = globalExerciseLibrary.findIndex(e => e.name === savedEx.name);
                 if (idx > -1) globalExerciseLibrary[idx] = savedEx;
                 else globalExerciseLibrary.push(savedEx);
+
+                // Sync URL into any other exercises in the current editor that share the same name
+                editorExercises = editorExercises.map(ex =>
+                    (!ex.videoUrl && ex.name?.toLowerCase() === name.toLowerCase())
+                        ? { ...ex, videoUrl: url }
+                        : ex
+                );
+
                 const toast = document.createElement('div');
                 toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-5 py-2.5 rounded-full shadow-xl pointer-events-none';
                 toast.innerHTML = `<i class="fas fa-bookmark mr-2 text-[#FFDB89]"></i>"${name}" guardado en la librería`;
