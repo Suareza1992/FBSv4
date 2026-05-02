@@ -140,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let editorAutosaveInterval = null;
     let editorIsComplete = false;
     let editorIsMissed   = false;
+    let editorHistory = []; // undo stack — snapshots of editor state
 
     // MUSCLE GROUPS DEFINITION
     const muscleGroups = [
@@ -5284,7 +5285,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const dateStr = dateId.replace('day-', '');
         
         if (action === 'add') {
-            editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
+            editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
             editorDateStr = dateStr;
             editorWarmup = "";
             editorWarmupVideoUrl = "";
@@ -5454,19 +5455,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await apiFetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`);
                 if(response.ok) {
                     const workout = await response.json();
+                    editorWorkoutTitle = workout.title || editorDateStr;
                     editorWarmup = workout.warmup || '';
                     editorWarmupVideoUrl = workout.warmupVideoUrl || '';
                     editorWarmupItems = workout.warmupItems || [];
                     editorCooldown = workout.cooldown || '';
                     editorCooldownVideoUrl = workout.cooldownVideoUrl || '';
                     editorCooldownItems = workout.cooldownItems || [];
-                    editorExercises = workout.exercises || [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
+                    editorExercises = workout.exercises || [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
+                    // Backward-compat migration: old data used isSuperset=true on ALL exercises
+                    // in a group (including the first). New model uses supersetHead=true on the
+                    // first and isSuperset=true only on continuations.
+                    editorExercises.forEach((ex, i) => {
+                        if (ex.supersetHead === undefined) ex.supersetHead = false;
+                        // An exercise with isSuperset=true that has no predecessor with
+                        // isSuperset=true or supersetHead=true is the group's first exercise.
+                        const prevIsChained = i > 0 && (editorExercises[i - 1].isSuperset || editorExercises[i - 1].supersetHead);
+                        if (ex.isSuperset && !prevIsChained) {
+                            ex.supersetHead = true;
+                            ex.isSuperset   = false;
+                        }
+                    });
                     syncExerciseVideoUrls(); // backfill URLs from library for exercises that have none
                     editorIsComplete = workout.isComplete || false;
                     editorIsMissed   = workout.isMissed   || false;
                 } else {
                     // New workout - initialize empty
-                    editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
+                    editorWorkoutTitle = editorDateStr;
+                    editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
                     editorWarmup = "";
                     editorWarmupVideoUrl = "";
                     editorWarmupItems = [];
@@ -5478,7 +5494,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch(e) {
                 // Network error - initialize empty
-                editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }];
+                editorWorkoutTitle = editorDateStr;
+                editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
                 editorWarmup = "";
                 editorWarmupVideoUrl = "";
                 editorWarmupItems = [];
@@ -5491,6 +5508,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         editorIsDirty = false;
+        editorHistory = []; // clear undo stack on fresh open
         clearInterval(editorAutosaveInterval);
         editorAutosaveInterval = setInterval(async () => {
             if (editorIsDirty) await window.performWorkoutSave(true);
@@ -5567,8 +5585,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <!-- TITLE always on top -->
                 <div class="px-5 py-4 border-b border-[#FFDB89]/15 bg-[#26262c] shrink-0 flex items-center gap-3">
-                    <input type="text" id="workout-title-input" value="${editorDateStr}" oninput="window.updateWorkoutTitle(this.value); window.markEditorDirty();" class="bg-transparent text-2xl font-bold text-[#FFDB89] placeholder-[#FFDB89]/30 w-full outline-none" placeholder="Nombre del Entrenamiento">
+                    <input type="text" id="workout-title-input" value="${(editorWorkoutTitle || editorDateStr).replace(/"/g,'&quot;')}" oninput="window.updateWorkoutTitle(this.value); window.markEditorDirty();" class="bg-transparent text-2xl font-bold text-[#FFDB89] placeholder-[#FFDB89]/30 w-full outline-none" placeholder="Nombre del Entrenamiento">
                     <div class="flex gap-3 text-[#FFDB89]/40 shrink-0">
+                        <button onclick="window.undoEditorChange()" id="editor-undo-btn" class="hover:text-[#FFDB89] transition opacity-30" title="Deshacer (Ctrl+Z)" disabled><i class="fas fa-undo text-sm"></i></button>
                         <button onclick="document.getElementById('editor-panel').classList.toggle('editor-expanded')" class="hover:text-[#FFDB89] transition"><i class="fas fa-expand-alt text-sm"></i></button>
                         <button onclick="window.closeWorkoutEditor()" class="hover:text-[#FFDB89] transition"><i class="fas fa-times text-sm"></i></button>
                     </div>
@@ -5721,22 +5740,41 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // SUPERSET LETTER LOGIC
+    // Two-flag model:
+    //   supersetHead:true  = first exercise of a new superset group (not linked to previous)
+    //   isSuperset:true    = continuation of the exercise above (same group)
     const getLetter = (index, arr) => {
-        let charCode = 65; 
+        let charCode = 65;
         let subIndex = 0;
         let letters = [];
-        for(let i=0; i<arr.length; i++) {
-            if(i > 0 && arr[i].isSuperset && arr[i-1].isSuperset) { subIndex++; } 
-            else { if(i > 0) charCode++; subIndex = 1; }
-            if(arr[i].isSuperset) { letters.push(String.fromCharCode(charCode) + subIndex); } 
-            else { letters.push(String.fromCharCode(charCode)); }
+        for (let i = 0; i < arr.length; i++) {
+            const isContinuation = i > 0 && !!arr[i].isSuperset;
+            const isHead         = !!arr[i].supersetHead;
+            if (isContinuation) {
+                subIndex++;
+            } else {
+                if (i > 0) charCode++;
+                subIndex = isHead ? 1 : 0;
+            }
+            letters.push((isHead || isContinuation)
+                ? String.fromCharCode(charCode) + subIndex
+                : String.fromCharCode(charCode));
         }
         return letters[index];
     };
 
     // HELPERS
     window.updateWarmup = (val) => { editorWarmup = val; };
-    window.addEditorExercise = () => { editorExercises.push({ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, videoUrl: "" }); renderWorkoutEditorUI(); window.markEditorDirty(); };
+    // Remove supersetHead from any exercise whose next sibling is no longer a continuation
+    const cleanupSupersetHeads = () => {
+        editorExercises.forEach((ex, i) => {
+            if (ex.supersetHead && (!editorExercises[i + 1] || !editorExercises[i + 1].isSuperset)) {
+                ex.supersetHead = false;
+            }
+        });
+    };
+
+    window.addEditorExercise = () => { captureEditorSnapshot(); editorExercises.push({ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }); renderWorkoutEditorUI(); window.markEditorDirty(); };
     window.updateExName = (id, val) => { const ex = editorExercises.find(e => e.id === id); if(ex) ex.name = val; };
     window.updateExInstructions = (id, val) => {
         const ex = editorExercises.find(e => e.id === id);
@@ -5749,13 +5787,65 @@ document.addEventListener('DOMContentLoaded', () => {
     window.updateCooldown = (val) => { editorCooldown = val; };
     window.updateWorkoutTitle = (val) => { editorWorkoutTitle = val; };
 
+    // ── Undo history ──────────────────────────────────────────────────────
+    const captureEditorSnapshot = () => {
+        editorHistory.push(JSON.parse(JSON.stringify({
+            exercises:        editorExercises,
+            title:            editorWorkoutTitle,
+            warmup:           editorWarmup,
+            warmupVideoUrl:   editorWarmupVideoUrl,
+            warmupItems:      editorWarmupItems,
+            cooldown:         editorCooldown,
+            cooldownVideoUrl: editorCooldownVideoUrl,
+            cooldownItems:    editorCooldownItems,
+        })));
+        if (editorHistory.length > 50) editorHistory.shift(); // cap at 50 steps
+        // Enable the undo button
+        const btn = document.getElementById('editor-undo-btn');
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-30'); btn.classList.add('opacity-100'); }
+    };
+
+    window.undoEditorChange = () => {
+        if (!editorHistory.length) return;
+        const snap = editorHistory.pop();
+        editorExercises        = snap.exercises;
+        editorWorkoutTitle     = snap.title;
+        editorWarmup           = snap.warmup;
+        editorWarmupVideoUrl   = snap.warmupVideoUrl;
+        editorWarmupItems      = snap.warmupItems;
+        editorCooldown         = snap.cooldown;
+        editorCooldownVideoUrl = snap.cooldownVideoUrl;
+        editorCooldownItems    = snap.cooldownItems;
+        // Sync title input so it reflects the restored value
+        const titleEl = document.getElementById('workout-title-input');
+        if (titleEl) titleEl.value = editorWorkoutTitle;
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+        if (!editorHistory.length) {
+            const btn = document.getElementById('editor-undo-btn');
+            if (btn) { btn.disabled = true; btn.classList.add('opacity-30'); btn.classList.remove('opacity-100'); }
+        }
+    };
+
+    // Ctrl/Cmd+Z shortcut — fires only when the editor panel is open
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            if (document.getElementById('editor-panel')) {
+                e.preventDefault();
+                window.undoEditorChange();
+            }
+        }
+    });
+
     // ── Warmup items ──────────────────────────────────────────────────────
     window.addWarmupItem = () => {
+        captureEditorSnapshot();
         editorWarmupItems.push({ id: Date.now(), name: '', videoUrl: '' });
         renderWorkoutEditorUI();
         window.markEditorDirty();
     };
     window.removeWarmupItem = (id) => {
+        captureEditorSnapshot();
         editorWarmupItems = editorWarmupItems.filter(i => i.id !== id);
         renderWorkoutEditorUI();
         window.markEditorDirty();
@@ -5778,11 +5868,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Cooldown items ────────────────────────────────────────────────────
     window.addCooldownItem = () => {
+        captureEditorSnapshot();
         editorCooldownItems.push({ id: Date.now(), name: '', videoUrl: '' });
         renderWorkoutEditorUI();
         window.markEditorDirty();
     };
     window.removeCooldownItem = (id) => {
+        captureEditorSnapshot();
         editorCooldownItems = editorCooldownItems.filter(i => i.id !== id);
         renderWorkoutEditorUI();
         window.markEditorDirty();
@@ -5816,8 +5908,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Unlink superset ───────────────────────────────────────────────────
     window.unlinkSuperset = (index) => {
         if (!editorExercises[index]) return;
+        captureEditorSnapshot();
         editorExercises[index].isSuperset = false;
-        // If the exercise after it is also superset-linked, it now becomes the new chain start — keep its flag
+        // If the now-detached exercise is followed by another continuation, it becomes a new head
+        if (editorExercises[index + 1]?.isSuperset) {
+            editorExercises[index].supersetHead = true;
+        } else {
+            editorExercises[index].supersetHead = false;
+        }
+        // Clean up the exercise above — if it was a supersetHead and no longer has a successor, strip the flag
+        cleanupSupersetHeads();
         renderWorkoutEditorUI();
         window.markEditorDirty();
     };
@@ -5989,7 +6089,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cooldownItems: editorCooldownItems.map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
             exercises: editorExercises.map(ex => ({
                 id: ex.id, name: ex.name, instructions: ex.instructions || '',
-                results: ex.results || '', videoUrl: ex.videoUrl || '', isSuperset: ex.isSuperset || false
+                results: ex.results || '', videoUrl: ex.videoUrl || '', isSuperset: ex.isSuperset || false, supersetHead: ex.supersetHead || false
             }))
         };
         try {
@@ -6046,15 +6146,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     // LINK SUPERSET BUTTON ACTION
     window.linkSuperset = (index) => {
-        if (editorExercises[index + 1]) {
-            editorExercises[index + 1].isSuperset = true;
-            if (index > 0 && editorExercises[index].isSuperset) { /* already in chain */ }
-            else { editorExercises[index].isSuperset = true; }
-            renderWorkoutEditorUI();
+        const curr = editorExercises[index];
+        const next = editorExercises[index + 1];
+        if (!curr || !next) return;
+        captureEditorSnapshot();
+        // Mark the next exercise as a continuation
+        next.isSuperset = true;
+        next.supersetHead = false;
+        // If curr is a plain (non-linked) exercise, it now starts a NEW superset group
+        if (!curr.isSuperset && !curr.supersetHead) {
+            curr.supersetHead = true;
+            // curr.isSuperset stays false — it is NOT linked to whatever is above it
         }
+        // If curr already has isSuperset=true or supersetHead=true it's already in a chain — just extend
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
     };
 
-    // Select exercise (for deletion)
+    // Select exercise (for deletion) — no snapshot needed, selection is not undoable
     window.toggleExerciseSelect = (id, checked) => {
         const ex = editorExercises.find(e => e.id === id);
         if (ex) ex._selected = checked;
@@ -6063,16 +6172,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Delete selected exercise
     window.deleteEditorExercise = (id) => {
+        captureEditorSnapshot();
         const idx = editorExercises.findIndex(e => e.id === id);
         if (idx === -1) return;
-        // If deleting the first exercise of a superset group, unlink the next one
-        if (idx < editorExercises.length - 1 && editorExercises[idx].isSuperset && !editorExercises[idx - 1]?.isSuperset) {
-            editorExercises[idx + 1].isSuperset = false;
+        const dying = editorExercises[idx];
+        const next  = editorExercises[idx + 1];
+        // If deleting a supersetHead, promote the next exercise as the new group start
+        if (dying.supersetHead && next?.isSuperset) {
+            next.isSuperset = false;
+            next.supersetHead = true;
         }
+        // If deleting a plain continuation, the chain just shortens — nothing special needed
         editorExercises.splice(idx, 1);
+        // Clean up any now-orphaned supersetHead flags
+        cleanupSupersetHeads();
         // Ensure there's always at least one exercise
         if (editorExercises.length === 0) {
-            editorExercises.push({ id: Date.now(), name: '', instructions: '', results: '', isSuperset: false, videoUrl: '' });
+            editorExercises.push({ id: Date.now(), name: '', instructions: '', results: '', isSuperset: false, supersetHead: false, videoUrl: '' });
         }
         renderWorkoutEditorUI();
         window.markEditorDirty();
@@ -6081,13 +6197,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Move exercise up/down (works across and within superset groups)
     window.moveExerciseUp = (index) => {
         if (index <= 0) return;
+        captureEditorSnapshot();
         [editorExercises[index - 1], editorExercises[index]] = [editorExercises[index], editorExercises[index - 1]];
+        cleanupSupersetHeads();
         renderWorkoutEditorUI();
         window.markEditorDirty();
     };
     window.moveExerciseDown = (index) => {
         if (index >= editorExercises.length - 1) return;
+        captureEditorSnapshot();
         [editorExercises[index], editorExercises[index + 1]] = [editorExercises[index + 1], editorExercises[index]];
+        cleanupSupersetHeads();
         renderWorkoutEditorUI();
         window.markEditorDirty();
     };
@@ -6153,6 +6273,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.saveEditorVideo = () => {
+        captureEditorSnapshot();
         const url = document.getElementById('video-url-input').value.trim();
         if (currentEditorExId === 'warmup') {
             editorWarmupVideoUrl = url;
@@ -6257,10 +6378,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 name: ex.name,
                 instructions: ex.instructions || '',
                 videoUrl: ex.videoUrl || '',
-                isSuperset: ex.isSuperset || false
+                isSuperset: ex.isSuperset || false,
+                supersetHead: ex.supersetHead || false
             }))
         };
-        
+
         try {
             const response = await apiFetch('/api/client-workouts', {
                 method: 'POST',
