@@ -852,10 +852,14 @@ document.addEventListener('DOMContentLoaded', () => {
         style.innerHTML = `
             .exercise-name-input::-webkit-calendar-picker-indicator { display: none !important; opacity: 0 !important; }
             .exercise-name-input { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: none !important; }
-            .autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; background-color: #1f2937; border: 1px solid #374151; border-top: none; border-radius: 0 0 0.5rem 0.5rem; max-height: 200px; overflow-y: auto; z-index: 50; }
-            .autocomplete-item { padding: 0.75rem 1rem; cursor: pointer; color: #f3f4f6; }
-            .autocomplete-item:hover { background-color: #374151; }
-            .autocomplete-item strong { color: #a78bfa; }
+            .autocomplete-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background-color: #1C1C1E; border: 1px solid rgba(255,219,137,0.2); border-radius: 0.625rem; max-height: 220px; overflow-y: auto; z-index: 100; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+            .autocomplete-item { padding: 0.6rem 0.875rem; cursor: pointer; color: rgba(255,219,137,0.7); font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(255,219,137,0.06); }
+            .autocomplete-item:last-child { border-bottom: none; }
+            .autocomplete-item:first-child { border-radius: 0.625rem 0.625rem 0 0; }
+            .autocomplete-item:last-child { border-radius: 0 0 0.625rem 0.625rem; }
+            .autocomplete-item:only-child { border-radius: 0.625rem; }
+            .autocomplete-item:hover { background-color: rgba(255,219,137,0.08); color: #FFDB89; }
+            .autocomplete-item mark { background: transparent; color: #FFDB89; font-weight: 700; }
             
             /* CALENDAR & EDITOR STYLES */
             .category-pill { cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: all 0.2s; }
@@ -4440,32 +4444,46 @@ document.addEventListener('DOMContentLoaded', () => {
         const suggestionsBox = item.querySelector('.autocomplete-list');
         const videoBtn = item.querySelector('.open-video-modal');
 
+        const hideSuggestions = () => suggestionsBox.classList.add('hidden');
+
         input.addEventListener('input', (e) => {
             const val = e.target.value.trim();
             suggestionsBox.innerHTML = '';
-            suggestionsBox.classList.add('hidden');
+            hideSuggestions();
             if (!val) return;
-            const matches = globalExerciseLibrary.filter(ex => ex.name.toLowerCase().startsWith(val.toLowerCase()));
-            if (matches.length > 0) {
-                suggestionsBox.classList.remove('hidden');
-                matches.forEach(match => {
-                    const div = document.createElement('div');
-                    div.className = "autocomplete-item";
-                    div.innerHTML = `<strong>${match.name.substr(0, val.length)}</strong>${match.name.substr(val.length)}`;
-                    div.addEventListener('click', () => {
-                        input.value = match.name;
-                        suggestionsBox.classList.add('hidden');
-                        if(match.videoUrl) {
-                            videoBtn.dataset.video = match.videoUrl;
-                            videoBtn.querySelector('i').classList.remove('text-gray-400');
-                            videoBtn.querySelector('i').classList.add('text-[#FFDB89]');
-                        }
-                    });
-                    suggestionsBox.appendChild(div);
+            const lc = val.toLowerCase();
+            const matches = globalExerciseLibrary
+                .filter(ex => ex.name.toLowerCase().includes(lc))
+                .slice(0, 8);
+            if (!matches.length) return;
+            suggestionsBox.classList.remove('hidden');
+            matches.forEach(match => {
+                const div = document.createElement('div');
+                div.className = 'autocomplete-item';
+                // Highlight the matched portion wherever it appears
+                const idx = match.name.toLowerCase().indexOf(lc);
+                const before  = match.name.slice(0, idx);
+                const matched = match.name.slice(idx, idx + val.length);
+                const after   = match.name.slice(idx + val.length);
+                div.innerHTML = `
+                    <span class="flex-1 min-w-0 truncate">${before}<mark>${matched}</mark>${after}</span>
+                    ${match.videoUrl ? '<i class="fas fa-video text-[9px] text-green-400/60 shrink-0"></i>' : ''}`;
+                div.addEventListener('click', () => {
+                    input.value = match.name;
+                    hideSuggestions();
+                    if (match.videoUrl) {
+                        videoBtn.dataset.video = match.videoUrl;
+                        videoBtn.classList.remove('text-[#FFDB89]/40');
+                        videoBtn.classList.add('text-[#FFDB89]');
+                    }
                 });
-            }
+                suggestionsBox.appendChild(div);
+            });
         });
-        document.addEventListener('click', (e) => { if (!item.contains(e.target)) suggestionsBox.classList.add('hidden'); });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') hideSuggestions();
+        });
+        document.addEventListener('click', (e) => { if (!item.contains(e.target)) hideSuggestions(); });
     };
 
     // Expose to global scope so inline onclick in HTML can reach it
