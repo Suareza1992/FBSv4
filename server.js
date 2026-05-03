@@ -52,7 +52,7 @@ app.use(helmet({
             imgSrc:     ["'self'", "data:", "blob:", "https://images.unsplash.com", "https://i.pravatar.cc"],
             fontSrc:    ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
             connectSrc: ["'self'", "https://api.nal.usda.gov", "https://cdn.jsdelivr.net"],
-            frameSrc:   ["'none'"],
+            frameSrc:   ["'self'", "https://www.youtube.com", "https://youtube.com", "https://player.vimeo.com", "https://drive.google.com"],
         }
     },
     crossOriginEmbedderPolicy: false, // needed for embedded YouTube videos
