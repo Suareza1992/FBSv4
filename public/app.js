@@ -6360,8 +6360,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Helper: convert YouTube/Vimeo URL to embeddable URL
     const getVideoEmbedUrl = (url) => {
         if (!url) return null;
-        // YouTube
-        const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?/\s]+)/);
+        // YouTube (watch, short URL, embed, Shorts)
+        const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&?/\s]+)/);
         if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1&rel=0`;
         // Vimeo
         const vi = url.match(/vimeo\.com\/(\d+)/);
