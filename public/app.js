@@ -9668,22 +9668,84 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const exercisesHtml = (workout.exercises || []).map((ex, i) => {
+
+        // Working copy of exercises — client can type results without mutating the original yet
+        const clientExercises = (workout.exercises || []).map(ex => ({ ...ex }));
+
+        // Debounced auto-save for client results
+        let _resultsSaveTimer = null;
+        const scheduleResultsSave = () => {
+            clearTimeout(_resultsSaveTimer);
+            const indicator = document.getElementById('client-results-indicator');
+            if (indicator) { indicator.textContent = ''; indicator.className = 'text-xs text-[#FFDB89]/30'; }
+            _resultsSaveTimer = setTimeout(async () => {
+                if (indicator) { indicator.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...'; indicator.className = 'text-xs text-[#FFDB89]/50'; }
+                try {
+                    const session = loadSession();
+                    const clientId = workout.clientId || session?.id;
+                    const res = await apiFetch(`/api/client-workouts/${clientId}/${workout.date}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ exercises: clientExercises })
+                    });
+                    if (res.ok) {
+                        workout.exercises = clientExercises.map(e => ({ ...e }));
+                        if (indicator) { indicator.innerHTML = '<i class="fas fa-check mr-1"></i>Guardado'; indicator.className = 'text-xs text-green-400/60'; }
+                        setTimeout(() => { if (indicator) indicator.textContent = ''; }, 2000);
+                    } else {
+                        if (indicator) { indicator.innerHTML = '<i class="fas fa-exclamation mr-1"></i>Error al guardar'; indicator.className = 'text-xs text-red-400/60'; }
+                    }
+                } catch(e) {
+                    if (indicator) { indicator.innerHTML = '<i class="fas fa-wifi mr-1"></i>Sin conexión'; indicator.className = 'text-xs text-red-400/60'; }
+                }
+            }, 800);
+        };
+
+        const exercisesHtml = clientExercises.map((ex, i) => {
             const hasVideo = !!ex.videoUrl;
             const safeUrl  = (ex.videoUrl || '').replace(/'/g, "\\'");
             const safeName = (ex.name || '').replace(/'/g, "\\'");
+            const safeResults = (ex.results || '').replace(/"/g, '&quot;');
             return `
-            <div class="flex gap-4 p-4 bg-white/5 border border-[#FFDB89]/15 rounded-xl transition-colors ${hasVideo ? 'cursor-pointer hover:bg-[#FFDB89]/5 hover:border-[#FFDB89]/30 group/excard' : ''}"
-                 ${hasVideo ? `onclick="window.previewExerciseVideo('${safeUrl}','${safeName}')"` : ''}>
-                <div class="w-8 h-8 shrink-0 rounded-lg bg-[#FFDB89]/10 flex items-center justify-center text-[#FFDB89] font-black text-sm">${letters[i] || i+1}</div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                        <p class="font-bold text-white flex-1">${ex.name}</p>
-                        ${hasVideo ? `<i class="fas fa-play-circle text-green-400/60 group-hover/excard:text-green-400 text-base shrink-0 transition-colors"></i>` : ''}
+            <div class="bg-white/5 border border-[#FFDB89]/15 rounded-xl overflow-hidden">
+                <div class="flex gap-3 p-4 ${hasVideo ? 'cursor-pointer hover:bg-[#FFDB89]/5 group/excard' : ''}"
+                     ${hasVideo ? `onclick="window.previewExerciseVideo('${safeUrl}','${safeName}')"` : ''}>
+                    <div class="w-8 h-8 shrink-0 rounded-lg bg-[#FFDB89]/10 flex items-center justify-center text-[#FFDB89] font-black text-sm">${letters[i] || i+1}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                            <p class="font-bold text-white flex-1">${ex.name}</p>
+                            ${hasVideo ? `<i class="fas fa-play-circle text-green-400/60 group-hover/excard:text-green-400 text-base shrink-0 transition-colors"></i>` : ''}
+                        </div>
+                        ${ex.instructions ? `<p class="text-sm text-[#FFDB89]/60 mt-0.5">${ex.instructions}</p>` : ''}
                     </div>
-                    ${ex.instructions ? `<p class="text-sm text-[#FFDB89]/60 mt-0.5">${ex.instructions}</p>` : ''}
-                    ${hasVideo ? `<p class="text-xs text-green-400/50 mt-1 group-hover/excard:text-green-400/80 transition-colors"><i class="fas fa-play text-[10px] mr-1"></i>Toca para ver el video</p>` : ''}
                 </div>
+                <div class="px-4 pb-3 border-t border-[#FFDB89]/10 pt-2.5">
+                    <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-1.5">Mis resultados</p>
+                    <textarea data-ex-index="${i}" rows="2"
+                        class="client-result-input w-full bg-[#0D0D0D] border border-[#FFDB89]/10 focus:border-[#FFDB89]/30 rounded-lg px-3 py-2 text-sm text-[#FFDB89]/80 placeholder-[#FFDB89]/20 outline-none resize-none transition"
+                        placeholder="Sets, reps, peso... ej: 3×12 @ 60kg">${safeResults}</textarea>
+                </div>
+            </div>`;
+        }).join('');
+
+        // Warmup items for client view
+        const warmupItemsHtml = (workout.warmupItems || []).map(item => {
+            const safeUrl = (item.videoUrl || '').replace(/'/g, "\\'");
+            const safeName = (item.name || '').replace(/'/g, "\\'");
+            return `<div class="flex items-center gap-2 py-1">
+                <i class="fas fa-circle text-orange-400/50 text-[6px] shrink-0"></i>
+                <span class="text-sm text-white/70 flex-1">${item.name || ''}</span>
+                ${item.videoUrl ? `<button onclick="event.stopPropagation();window.previewExerciseVideo('${safeUrl}','${safeName}')" class="text-green-400/60 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
+            </div>`;
+        }).join('');
+
+        // Cooldown items for client view
+        const cooldownItemsHtml = (workout.cooldownItems || []).map(item => {
+            const safeUrl = (item.videoUrl || '').replace(/'/g, "\\'");
+            const safeName = (item.name || '').replace(/'/g, "\\'");
+            return `<div class="flex items-center gap-2 py-1">
+                <i class="fas fa-circle text-blue-300/50 text-[6px] shrink-0"></i>
+                <span class="text-sm text-white/70 flex-1">${item.name || ''}</span>
+                ${item.videoUrl ? `<button onclick="event.stopPropagation();window.previewExerciseVideo('${safeUrl}','${safeName}')" class="text-green-400/60 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
             </div>`;
         }).join('');
 
@@ -9708,9 +9770,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button id="close-client-workout-detail" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl"><i class="fas fa-times"></i></button>
                     </div>
                     <div class="overflow-y-auto p-5 space-y-3 flex-1">
-                        ${workout.warmup ? `<div class="flex items-start gap-3 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg"><i class="fas fa-fire text-orange-400 mt-0.5"></i><div><p class="text-xs font-bold text-orange-400 uppercase">Calentamiento</p><p class="text-sm text-white/80 mt-0.5">${workout.warmup}</p></div></div>` : ''}
+                        ${(workout.warmup || warmupItemsHtml) ? `
+                        <div class="p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl">
+                            <p class="text-xs font-bold text-orange-400 uppercase mb-1.5"><i class="fas fa-fire mr-1"></i>Calentamiento</p>
+                            ${workout.warmup ? `<p class="text-sm text-white/80 mb-2">${workout.warmup}</p>` : ''}
+                            ${warmupItemsHtml ? `<div class="space-y-0.5">${warmupItemsHtml}</div>` : ''}
+                        </div>` : ''}
+                        <div class="flex items-center justify-between">
+                            <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider">Ejercicios</p>
+                            <span id="client-results-indicator" class="text-xs text-[#FFDB89]/30"></span>
+                        </div>
                         ${exercisesHtml}
-                        ${workout.cooldown ? `<div class="flex items-start gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg"><i class="fas fa-snowflake text-blue-400 mt-0.5"></i><div><p class="text-xs font-bold text-blue-400 uppercase">Enfriamiento</p><p class="text-sm text-white/80 mt-0.5">${workout.cooldown}</p></div></div>` : ''}
+                        ${(workout.cooldown || cooldownItemsHtml) ? `
+                        <div class="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                            <p class="text-xs font-bold text-blue-400 uppercase mb-1.5"><i class="fas fa-snowflake mr-1"></i>Enfriamiento</p>
+                            ${workout.cooldown ? `<p class="text-sm text-white/80 mb-2">${workout.cooldown}</p>` : ''}
+                            ${cooldownItemsHtml ? `<div class="space-y-0.5">${cooldownItemsHtml}</div>` : ''}
+                        </div>` : ''}
                         ${!exercisesHtml && !workout.warmup ? '<p class="text-center text-[#FFDB89]/40 py-6">Día de descanso</p>' : ''}
                     </div>
 
@@ -9750,6 +9826,17 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         document.getElementById('client-workout-detail-modal').addEventListener('click', (e) => {
             if (e.target === e.currentTarget) e.currentTarget.remove();
+        });
+
+        // Wire result textareas — auto-save on input with debounce
+        document.querySelectorAll('.client-result-input').forEach(textarea => {
+            textarea.addEventListener('input', () => {
+                const idx = parseInt(textarea.dataset.exIndex);
+                if (!isNaN(idx) && clientExercises[idx]) {
+                    clientExercises[idx].results = textarea.value;
+                    scheduleResultsSave();
+                }
+            });
         });
 
         // RPE picker interaction

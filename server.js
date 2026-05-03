@@ -239,26 +239,48 @@ const WorkoutLog = mongoose.model('WorkoutLog', WorkoutLogSchema);
 
 const ClientWorkoutSchema = new mongoose.Schema({
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    date: { type: String, required: true },
-    title: { type: String, default: "Workout" },
-    isRest: { type: Boolean, default: false },
-    restType: { type: String, default: '' }, // 'rest' | 'active_rest'
-    warmup: { type: String, default: "" },
-    warmupVideoUrl: { type: String, default: "" },
-    cooldown: { type: String, default: "" },
-    exercises: [{
-        id: Number,
-        name: String,
-        instructions: String,
-        videoUrl: String,
-        isSuperset: { type: Boolean, default: false }
+    date:     { type: String, required: true },
+    title:    { type: String, default: 'Workout' },
+    isRest:   { type: Boolean, default: false },
+    restType: { type: String, default: '' },          // 'rest' | 'active_rest'
+
+    // ── Warmup ─────────────────────────────────────────────────────────────────
+    warmup:        { type: String, default: '' },     // general instructions text
+    warmupVideoUrl:{ type: String, default: '' },     // section-level video (legacy)
+    warmupItems: [{                                   // individual warmup exercises
+        id:       Number,
+        name:     { type: String, default: '' },
+        videoUrl: { type: String, default: '' },
     }],
-    rpe: { type: Number, min: 1, max: 10, default: null },
-    mood: { type: String, default: '' }, // client's mood for the day
+
+    // ── Exercises ──────────────────────────────────────────────────────────────
+    exercises: [{
+        id:           Number,
+        name:         { type: String, default: '' },
+        instructions: { type: String, default: '' },  // trainer's prescribed sets/reps/etc.
+        results:      { type: String, default: '' },  // client's logged results
+        videoUrl:     { type: String, default: '' },
+        isSuperset:   { type: Boolean, default: false },
+        supersetHead: { type: Boolean, default: false },
+    }],
+
+    // ── Cooldown ───────────────────────────────────────────────────────────────
+    cooldown:        { type: String, default: '' },   // general instructions text
+    cooldownVideoUrl:{ type: String, default: '' },   // section-level video (legacy)
+    cooldownItems: [{                                 // individual cooldown exercises
+        id:       Number,
+        name:     { type: String, default: '' },
+        videoUrl: { type: String, default: '' },
+    }],
+
+    // ── Client feedback ────────────────────────────────────────────────────────
+    rpe:        { type: Number, min: 1, max: 10, default: null },
+    mood:       { type: String, default: '' },        // client's mood for the day
     isComplete: { type: Boolean, default: false },
     isMissed:   { type: Boolean, default: false },
+
     createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
+    updatedAt: { type: Date, default: Date.now },
 });
 ClientWorkoutSchema.index({ clientId: 1, date: 1 }, { unique: true });
 const ClientWorkout = mongoose.model('ClientWorkout', ClientWorkoutSchema);
@@ -1050,10 +1072,27 @@ app.get('/api/log/:clientId', authenticateToken, async (req, res) => {
 app.post('/api/client-workouts', authenticateToken, async (req, res) => {
     if (!assertOwnership(req, res, req.body.clientId)) return;
     try {
-        const { clientId, date, title, isRest, restType, warmup, warmupVideoUrl, cooldown, exercises } = req.body;
+        const {
+            clientId, date, title, isRest, restType,
+            warmup, warmupVideoUrl, warmupItems,
+            exercises,
+            cooldown, cooldownVideoUrl, cooldownItems,
+        } = req.body;
         const workout = await ClientWorkout.findOneAndUpdate(
             { clientId, date },
-            { title, isRest: !!isRest, restType: restType || '', warmup: warmup || '', warmupVideoUrl: warmupVideoUrl || '', cooldown: cooldown || '', exercises: exercises || [], updatedAt: Date.now() },
+            {
+                title:            title || '',
+                isRest:           !!isRest,
+                restType:         restType         || '',
+                warmup:           warmup            || '',
+                warmupVideoUrl:   warmupVideoUrl    || '',
+                warmupItems:      warmupItems       || [],
+                exercises:        exercises         || [],
+                cooldown:         cooldown          || '',
+                cooldownVideoUrl: cooldownVideoUrl  || '',
+                cooldownItems:    cooldownItems     || [],
+                updatedAt:        Date.now(),
+            },
             { new: true, upsert: true }
         );
 
