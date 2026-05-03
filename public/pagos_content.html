@@ -80,12 +80,26 @@
 
 <!-- ── New Invoice Modal ─────────────────────────────────────── -->
 <div id="new-invoice-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm">
-    <div class="bg-[#1C1C1E] rounded-2xl border border-[#FFDB89]/20 shadow-2xl w-full max-w-md mx-4 p-6">
-        <div class="flex items-center justify-between mb-6">
+    <div class="bg-[#1C1C1E] rounded-2xl border border-[#FFDB89]/20 shadow-2xl w-full max-w-md mx-4 p-6 max-h-[92vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold text-[#FFDB89]"><i class="fas fa-file-invoice-dollar mr-2"></i>Nueva factura</h3>
             <button id="close-invoice-modal" class="text-[#FFDB89]/40 hover:text-[#FFDB89] transition text-xl">&times;</button>
         </div>
+
+        <!-- Payment method toggle -->
+        <div class="flex gap-2 mb-5 p-1 bg-[#0D0D0D] rounded-xl border border-[#FFDB89]/10">
+            <button id="inv-tab-manual" onclick="window.switchInvoiceTab('manual')"
+                class="flex-1 py-2 rounded-lg text-xs font-bold transition bg-[#FFDB89] text-[#030303]">
+                <i class="fas fa-handshake mr-1"></i> Manual
+            </button>
+            <button id="inv-tab-stripe" onclick="window.switchInvoiceTab('stripe')"
+                class="flex-1 py-2 rounded-lg text-xs font-bold transition text-[#FFDB89]/50 hover:text-[#FFDB89]">
+                <i class="fab fa-stripe-s mr-1"></i> Stripe
+            </button>
+        </div>
+
         <div class="space-y-4">
+            <!-- Common fields -->
             <div>
                 <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase mb-1">Cliente</label>
                 <select id="inv-client" class="w-full p-2.5 pr-9 bg-[#2C2C2E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/40 appearance-none cursor-pointer" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 10px center;">
@@ -114,7 +128,44 @@
                 <input type="text" id="inv-notes" placeholder="Mensualidad de entrenamiento..."
                     class="w-full p-2.5 bg-[#2C2C2E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/40 placeholder:text-[#FFDB89]/30">
             </div>
+
+            <!-- ── Stripe-only fields ────────────────────────────── -->
+            <div id="stripe-extra-fields" class="hidden space-y-4 border-t border-[#FFDB89]/10 pt-4">
+                <div>
+                    <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase mb-1">Tipo de cobro</label>
+                    <select id="inv-stripe-type" onchange="window.onStripeTypeChange()"
+                        class="w-full p-2.5 pr-9 bg-[#2C2C2E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/40 appearance-none cursor-pointer" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 10px center;">
+                        <option value="subscription">Suscripción mensual</option>
+                        <option value="one_time">Pago único</option>
+                        <option value="stripe_invoice">Factura Stripe (email directo)</option>
+                        <option value="trial">Período de prueba + suscripción</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase mb-1">Nombre del plan</label>
+                    <input type="text" id="inv-plan-label" placeholder="Ej: Plan Mensual de Entrenamiento"
+                        class="w-full p-2.5 bg-[#2C2C2E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/40 placeholder:text-[#FFDB89]/30">
+                </div>
+                <div id="inv-trial-days-row" class="hidden">
+                    <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase mb-1">Días de prueba gratuita</label>
+                    <input type="number" id="inv-trial-days" placeholder="7" min="1" max="365"
+                        class="w-full p-2.5 bg-[#2C2C2E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/40 placeholder:text-[#FFDB89]/30">
+                </div>
+                <!-- Link output area (shown after Stripe session created) -->
+                <div id="stripe-link-output" class="hidden">
+                    <label class="block text-xs font-bold text-green-400/80 uppercase mb-1"><i class="fas fa-link mr-1"></i>Link de pago generado</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="stripe-link-value" readonly
+                            class="flex-1 p-2.5 bg-[#0D0D0D] border border-green-500/30 rounded-lg text-green-400 text-xs outline-none truncate">
+                        <button onclick="window.copyStripeLink()" class="px-3 py-2 bg-green-500/15 border border-green-500/30 text-green-400 rounded-lg text-xs font-bold hover:bg-green-500/25 transition">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-[#FFDB89]/40 mt-1">Copia este link y envíaselo al cliente para que pague.</p>
+                </div>
+            </div>
         </div>
+
         <div class="flex gap-3 mt-6">
             <button id="close-invoice-modal-2"
                 class="flex-1 py-2.5 border border-[#FFDB89]/20 text-[#FFDB89]/60 hover:text-[#FFDB89] rounded-xl text-sm font-medium transition">

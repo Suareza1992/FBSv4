@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { authenticateToken, authorizeRoles } from './middleware/auth.js';
+import Stripe from 'stripe';
 
 // ==========================================================================
 // --- CONFIGURATION ---
@@ -24,7 +25,20 @@ const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION'; // NEW: 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';         // NEW: app URL from env
 const DEBUG = process.env.DEBUG === 'true'; // Set DEBUG=true in .env for local dev verbose logging
 
-app.use(express.json({ limit: '2mb' }));
+// --- STRIPE ---
+const stripe = process.env.STRIPE_SECRET_KEY
+    ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' })
+    : null;
+const stripeReady = (res) => {
+    if (!stripe) { res.status(503).json({ message: 'Stripe no está configurado. Agrega STRIPE_SECRET_KEY en .env.' }); return false; }
+    return true;
+};
+
+// Stripe webhook needs raw body for signature verification — exclude it from json parsing
+app.use((req, res, next) => {
+    if (req.path === '/api/stripe/webhook') return next();
+    express.json({ limit: '2mb' })(req, res, next);
+});
 app.use(cookieParser()); // H-2: parse cookies so auth middleware can read the JWT cookie
 
 // H-5: Security headers via Helmet
@@ -201,6 +215,7 @@ const UserSchema = new mongoose.Schema({
     resetPasswordExpires: Date,
     inviteToken: String,
     inviteExpires: Date,
+    stripeCustomerId: { type: String, default: null },  // Stripe customer ID for this client
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -369,7 +384,16 @@ const PaymentSchema = new mongoose.Schema({
     dueDate:     { type: String, required: true },                            // YYYY-MM-DD
     paidDate:    { type: String, default: null },                             // YYYY-MM-DD when marked paid
     notes:       { type: String, default: '' },
-    createdAt:   { type: Date, default: Date.now }
+    createdAt:   { type: Date, default: Date.now },
+    // ── Stripe fields ──────────────────────────────────────────────────────────
+    type:                    { type: String, enum: ['manual','subscription','one_time','stripe_invoice','trial'], default: 'manual' },
+    planLabel:               { type: String, default: '' },         // e.g. "Monthly Coaching Plan"
+    stripeCheckoutSessionId: { type: String, default: null },
+    stripePaymentIntentId:   { type: String, default: null },
+    stripeSubscriptionId:    { type: String, default: null },
+    stripeInvoiceId:         { type: String, default: null },
+    stripePaymentLink:       { type: String, default: null },       // Hosted Checkout / Invoice URL
+    trialDays:               { type: Number, default: 0 },
 });
 PaymentSchema.index({ trainerId: 1, dueDate: -1 });
 const Payment = mongoose.model('Payment', PaymentSchema);
@@ -1935,6 +1959,238 @@ app.post('/api/contact', contactLimiter, async (req, res) => {
     } catch (err) {
         console.error('Contact form error:', err);
         res.status(500).json({ message: 'Error enviando el mensaje. Intenta más tarde.' });
+    }
+});
+
+// ==========================================================================
+// --- STRIPE ROUTES ---
+// ==========================================================================
+
+// Helper: find or create a Stripe Customer for a client user
+const getOrCreateStripeCustomer = async (clientUser) => {
+    if (clientUser.stripeCustomerId) {
+        try { return await stripe.customers.retrieve(clientUser.stripeCustomerId); } catch (_) {}
+    }
+    const customer = await stripe.customers.create({
+        name:  `${clientUser.name} ${clientUser.lastName || ''}`.trim(),
+        email: clientUser.email,
+        metadata: { clientId: clientUser._id.toString() },
+    });
+    await User.findByIdAndUpdate(clientUser._id, { stripeCustomerId: customer.id });
+    return customer;
+};
+
+// POST /api/stripe/checkout — create a Stripe Checkout Session or Invoice
+// Body: { clientId, amount, periodLabel, dueDate, notes, type, planLabel, trialDays }
+app.post('/api/stripe/checkout', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    if (!stripeReady(res)) return;
+    try {
+        const { clientId, amount, periodLabel, dueDate, notes, type, planLabel, trialDays } = req.body;
+        if (!clientId || !amount || !dueDate || !type) return res.status(400).json({ message: 'Faltan campos requeridos.' });
+
+        const client = await User.findById(clientId).select('name lastName email stripeCustomerId');
+        if (!client) return res.status(404).json({ message: 'Cliente no encontrado.' });
+
+        const trainer = await User.findById(req.user.id).select('name lastName');
+        const amountCents = Math.round(Number(amount) * 100);
+        const description = planLabel || periodLabel || `Entrenamiento — ${periodLabel}`;
+        const trainerName = `${trainer.name} ${trainer.lastName || ''}`.trim();
+
+        let stripePaymentLink = null;
+        let stripeCheckoutSessionId = null;
+        let stripeInvoiceId = null;
+        let stripeSubscriptionId = null;
+
+        // ── Stripe Invoice (send directly via Stripe) ────────────────────────
+        if (type === 'stripe_invoice') {
+            const customer = await getOrCreateStripeCustomer(client);
+            await stripe.invoiceItems.create({
+                customer: customer.id,
+                amount:   amountCents,
+                currency: 'usd',
+                description,
+            });
+            const invoice = await stripe.invoices.create({
+                customer:          customer.id,
+                collection_method: 'send_invoice',
+                days_until_due:    7,
+                description:       `FitBySuarez — ${trainerName}`,
+                metadata:          { trainerId: req.user.id, period: periodLabel || '' },
+            });
+            const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
+            await stripe.invoices.sendInvoice(finalizedInvoice.id);
+            stripeInvoiceId    = finalizedInvoice.id;
+            stripePaymentLink  = finalizedInvoice.hosted_invoice_url;
+
+        // ── Checkout Session (subscription / one-time / trial) ───────────────
+        } else {
+            const customer = await getOrCreateStripeCustomer(client);
+            const isRecurring = type === 'subscription' || type === 'trial';
+            const priceData = {
+                currency:     'usd',
+                unit_amount:  amountCents,
+                product_data: { name: description, metadata: { trainerId: req.user.id } },
+                ...(isRecurring ? { recurring: { interval: 'month' } } : {}),
+            };
+
+            const sessionParams = {
+                customer:   customer.id,
+                mode:       isRecurring ? 'subscription' : 'payment',
+                line_items: [{ price_data: priceData, quantity: 1 }],
+                success_url: `${process.env.APP_URL}?stripe=success&session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url:  `${process.env.APP_URL}?stripe=cancelled`,
+                metadata:    { trainerId: req.user.id, clientId: clientId.toString(), period: periodLabel || '' },
+            };
+
+            if (type === 'trial' && trialDays > 0) {
+                sessionParams.subscription_data = { trial_period_days: Number(trialDays) };
+            }
+
+            const session = await stripe.checkout.sessions.create(sessionParams);
+            stripeCheckoutSessionId = session.id;
+            stripePaymentLink       = session.url;
+        }
+
+        // ── Save Payment record to MongoDB ───────────────────────────────────
+        const payment = new Payment({
+            clientId:  clientId,
+            trainerId: req.user.id,
+            amount:    Number(amount),
+            status:    'pending',
+            method:    'stripe',
+            periodLabel,
+            dueDate,
+            notes:     notes || '',
+            type,
+            planLabel: planLabel || '',
+            trialDays: Number(trialDays) || 0,
+            stripeCheckoutSessionId,
+            stripeInvoiceId,
+            stripeSubscriptionId,
+            stripePaymentLink,
+        });
+        await payment.save();
+        res.status(201).json({ payment, checkoutUrl: stripePaymentLink });
+    } catch (e) {
+        console.error('Stripe checkout error:', e);
+        res.status(500).json({ message: e.message || 'Error creando sesión de Stripe.' });
+    }
+});
+
+// POST /api/stripe/webhook — Stripe sends events here automatically
+// Raw body required — registered BEFORE express.json() via middleware exclusion above
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    const sig    = req.headers['stripe-signature'];
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!stripe || !secret) return res.status(503).send('Stripe webhook not configured.');
+
+    let event;
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, secret);
+    } catch (err) {
+        console.error('Stripe webhook signature error:', err.message);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    try {
+        switch (event.type) {
+            // ── Checkout completed (one-time or subscription first payment) ──
+            case 'checkout.session.completed': {
+                const session = event.data.object;
+                const payment = await Payment.findOne({ stripeCheckoutSessionId: session.id });
+                if (payment) {
+                    payment.status = 'paid';
+                    payment.paidDate = new Date().toISOString().split('T')[0];
+                    if (session.subscription)  payment.stripeSubscriptionId  = session.subscription;
+                    if (session.payment_intent) payment.stripePaymentIntentId = session.payment_intent;
+                    await payment.save();
+                }
+                break;
+            }
+            // ── Recurring subscription invoice paid ──────────────────────────
+            case 'invoice.paid': {
+                const invoice = event.data.object;
+                if (!invoice.subscription) break;
+                // Mark existing record paid (first cycle) or create a new one for subsequent cycles
+                const existing = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
+                if (existing) {
+                    if (existing.status !== 'paid') {
+                        existing.status  = 'paid';
+                        existing.paidDate = new Date().toISOString().split('T')[0];
+                        await existing.save();
+                    } else {
+                        // Subsequent cycle — create a new payment record for this billing period
+                        const periodEnd   = new Date(invoice.period_end * 1000).toISOString().split('T')[0];
+                        const periodStart = new Date(invoice.period_start * 1000);
+                        const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+                        const newPayment = new Payment({
+                            clientId:            existing.clientId,
+                            trainerId:           existing.trainerId,
+                            amount:              invoice.amount_paid / 100,
+                            status:              'paid',
+                            method:              'stripe',
+                            paidDate:            new Date().toISOString().split('T')[0],
+                            dueDate:             periodEnd,
+                            periodLabel:         `${months[periodStart.getMonth()]} ${periodStart.getFullYear()}`,
+                            type:                'subscription',
+                            planLabel:           existing.planLabel,
+                            stripeSubscriptionId: invoice.subscription,
+                            stripeInvoiceId:     invoice.id,
+                            stripePaymentLink:   invoice.hosted_invoice_url,
+                        });
+                        await newPayment.save();
+                    }
+                }
+                break;
+            }
+            // ── Subscription cancelled ───────────────────────────────────────
+            case 'customer.subscription.deleted': {
+                const sub = event.data.object;
+                await Payment.updateMany(
+                    { stripeSubscriptionId: sub.id, status: 'pending' },
+                    { $set: { status: 'overdue', notes: 'Suscripción cancelada en Stripe.' } }
+                );
+                break;
+            }
+        }
+    } catch (e) {
+        console.error('Stripe webhook handler error:', e);
+    }
+    res.json({ received: true });
+});
+
+// POST /api/stripe/portal — open Stripe Billing Portal for a client
+app.post('/api/stripe/portal', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    if (!stripeReady(res)) return;
+    try {
+        const { clientId } = req.body;
+        const client = await User.findById(clientId).select('stripeCustomerId name');
+        if (!client?.stripeCustomerId) return res.status(404).json({ message: 'Este cliente no tiene cuenta en Stripe aún.' });
+        const session = await stripe.billingPortal.sessions.create({
+            customer:   client.stripeCustomerId,
+            return_url: process.env.APP_URL,
+        });
+        res.json({ portalUrl: session.url });
+    } catch (e) {
+        console.error('Stripe portal error:', e);
+        res.status(500).json({ message: e.message || 'Error abriendo el portal de Stripe.' });
+    }
+});
+
+// POST /api/stripe/subscription/cancel — cancel subscription at period end
+app.post('/api/stripe/subscription/cancel', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    if (!stripeReady(res)) return;
+    try {
+        const { paymentId } = req.body;
+        const payment = await Payment.findOne({ _id: paymentId, trainerId: req.user.id });
+        if (!payment?.stripeSubscriptionId) return res.status(404).json({ message: 'No hay suscripción de Stripe para cancelar.' });
+        await stripe.subscriptions.update(payment.stripeSubscriptionId, { cancel_at_period_end: true });
+        payment.notes = (payment.notes ? payment.notes + ' | ' : '') + 'Cancelación solicitada — termina al final del período.';
+        await payment.save();
+        res.json({ message: 'Suscripción programada para cancelar al final del período.' });
+    } catch (e) {
+        console.error('Stripe cancel error:', e);
+        res.status(500).json({ message: e.message || 'Error cancelando la suscripción.' });
     }
 });
 

@@ -5015,10 +5015,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30"><i class="fas fa-clock mr-1"></i>Pendiente</span>`;
         };
 
-        tbody.innerHTML = list.map(p => `
+        tbody.innerHTML = list.map(p => {
+            const isStripe = p.type && p.type !== 'manual';
+            const stripeBadge = isStripe
+                ? `<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[#635BFF]/15 border border-[#635BFF]/30 text-[#7B73FF] font-bold">Stripe</span>`
+                : '';
+            const typeLabel = { subscription: 'Suscripción', one_time: 'Pago único', stripe_invoice: 'Factura', trial: 'Prueba' }[p.type] || '';
+            const typeHint = isStripe && typeLabel ? `<span class="block text-[10px] text-[#635BFF]/70">${typeLabel}</span>` : '';
+
+            return `
             <tr class="hover:bg-[#FFDB89]/5 transition group">
-                <td class="px-4 py-3 text-sm font-bold text-[#FFDB89]">${p.clientName}</td>
-                <td class="px-4 py-3 text-sm text-[#FFDB89]/70">${p.periodLabel || '—'}</td>
+                <td class="px-4 py-3 text-sm font-bold text-[#FFDB89]">${p.clientName}${stripeBadge}</td>
+                <td class="px-4 py-3 text-sm text-[#FFDB89]/70">${p.periodLabel || p.planLabel || '—'}${typeHint}</td>
                 <td class="px-4 py-3 text-sm font-bold text-[#FFDB89]">$${Number(p.amount).toFixed(2)}</td>
                 <td class="px-4 py-3 text-sm text-[#FFDB89]/60">${p.dueDate}</td>
                 <td class="px-4 py-3 text-center">${statusBadge(p._status)}</td>
@@ -5033,17 +5041,33 @@ document.addEventListener('DOMContentLoaded', () => {
                             class="px-2 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20 text-xs font-bold transition" title="Revertir a pendiente">
                             <i class="fas fa-undo mr-1"></i>Revertir
                         </button>`}
+                        ${isStripe && p.stripePaymentLink ? `
+                        <button onclick="navigator.clipboard.writeText('${p.stripePaymentLink.replace(/'/g,"\\'")}').then(()=>showToast('Link copiado.','success'))"
+                            class="px-2 py-1 rounded-lg bg-[#635BFF]/10 border border-[#635BFF]/30 text-[#7B73FF] hover:bg-[#635BFF]/20 text-xs font-bold transition" title="Copiar link de pago Stripe">
+                            <i class="fas fa-link mr-1"></i>Link
+                        </button>` : `
                         <button onclick="window.sendPaymentInvoice('${p._id}', '${p.clientName}')"
                             class="px-2 py-1 rounded-lg bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89]/70 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 text-xs font-bold transition" title="Enviar factura por email">
                             <i class="fas fa-envelope mr-1"></i>Factura
-                        </button>
+                        </button>`}
+                        ${isStripe && p.stripeSubscriptionId ? `
+                        <button onclick="window.cancelStripeSubscription('${p._id}')"
+                            class="px-2 py-1 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 text-xs font-bold transition" title="Cancelar suscripción al final del período">
+                            <i class="fas fa-ban mr-1"></i>Cancelar
+                        </button>` : ''}
+                        ${isStripe ? `
+                        <button onclick="window.openStripePortal('${p.clientId || ''}')"
+                            class="px-2 py-1 rounded-lg bg-[#635BFF]/10 border border-[#635BFF]/30 text-[#7B73FF] hover:bg-[#635BFF]/20 text-xs transition" title="Portal de facturación Stripe">
+                            <i class="fab fa-stripe-s"></i>
+                        </button>` : ''}
                         <button onclick="window.deletePayment('${p._id}')"
                             class="px-2 py-1 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-500/10 text-xs transition" title="Eliminar">
                             <i class="fas fa-trash-alt"></i>
                         </button>
                     </div>
                 </td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
     };
 
     // ── Load payments from API then render ────────────────────────────────────
@@ -5089,6 +5113,43 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.error(e); showToast('Error de conexión.', 'error'); }
     };
 
+    // ── Invoice modal tab switching ───────────────────────────────────────────
+    let _invTab = 'manual'; // current active tab
+    window.switchInvoiceTab = (tab) => {
+        _invTab = tab;
+        const stripeFields = document.getElementById('stripe-extra-fields');
+        const tabManual    = document.getElementById('inv-tab-manual');
+        const tabStripe    = document.getElementById('inv-tab-stripe');
+        const saveBtn      = document.getElementById('save-invoice-btn');
+        const activeClass  = ['bg-[#FFDB89]', 'text-[#030303]'];
+        const inactiveClass= ['text-[#FFDB89]/50', 'hover:text-[#FFDB89]'];
+        if (tab === 'stripe') {
+            stripeFields?.classList.remove('hidden');
+            tabStripe?.classList.add(...activeClass); tabStripe?.classList.remove(...inactiveClass);
+            tabManual?.classList.remove(...activeClass); tabManual?.classList.add(...inactiveClass);
+            if (saveBtn) saveBtn.innerHTML = '<i class="fab fa-stripe-s mr-1"></i> Crear con Stripe';
+        } else {
+            stripeFields?.classList.add('hidden');
+            tabManual?.classList.add(...activeClass); tabManual?.classList.remove(...inactiveClass);
+            tabStripe?.classList.remove(...activeClass); tabStripe?.classList.add(...inactiveClass);
+            if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Crear Factura';
+        }
+        // Reset link output when switching tabs
+        document.getElementById('stripe-link-output')?.classList.add('hidden');
+    };
+
+    window.onStripeTypeChange = () => {
+        const type    = document.getElementById('inv-stripe-type')?.value;
+        const trialRow = document.getElementById('inv-trial-days-row');
+        if (trialRow) trialRow.classList.toggle('hidden', type !== 'trial');
+    };
+
+    window.copyStripeLink = () => {
+        const val = document.getElementById('stripe-link-value')?.value;
+        if (!val) return;
+        navigator.clipboard.writeText(val).then(() => showToast('Link copiado al portapapeles.', 'success'));
+    };
+
     // ── New Invoice modal ─────────────────────────────────────────────────────
     const openNewInvoiceModal = () => {
         const modal = document.getElementById('new-invoice-modal');
@@ -5104,6 +5165,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Default period label
         const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
         document.getElementById('inv-period').value = `${months[now.getMonth()]} ${now.getFullYear()}`;
+        // Reset to manual tab
+        window.switchInvoiceTab('manual');
+        document.getElementById('stripe-link-output')?.classList.add('hidden');
         modal.classList.remove('hidden');
         modal.classList.add('flex');
     };
@@ -5116,17 +5180,57 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const handleCreateInvoice = async () => {
-        const clientId   = document.getElementById('inv-client')?.value;
-        const amount     = document.getElementById('inv-amount')?.value;
+        const clientId    = document.getElementById('inv-client')?.value;
+        const amount      = document.getElementById('inv-amount')?.value;
         const periodLabel = document.getElementById('inv-period')?.value.trim();
-        const dueDate    = document.getElementById('inv-due')?.value;
-        const notes      = document.getElementById('inv-notes')?.value.trim();
+        const dueDate     = document.getElementById('inv-due')?.value;
+        const notes       = document.getElementById('inv-notes')?.value.trim();
 
         if (!clientId)  { showToast('Selecciona un cliente.', 'error'); return; }
         if (!amount || Number(amount) <= 0) { showToast('Ingresa un monto válido.', 'error'); return; }
         if (!dueDate)   { showToast('La fecha límite es requerida.', 'error'); return; }
 
         const btn = document.getElementById('save-invoice-btn');
+
+        // ── Stripe path ──────────────────────────────────────────────────────
+        if (_invTab === 'stripe') {
+            const type      = document.getElementById('inv-stripe-type')?.value || 'subscription';
+            const planLabel = document.getElementById('inv-plan-label')?.value.trim();
+            const trialDays = Number(document.getElementById('inv-trial-days')?.value) || 0;
+
+            btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Creando con Stripe...';
+            try {
+                const res = await apiFetch('/api/stripe/checkout', {
+                    method: 'POST',
+                    body: JSON.stringify({ clientId, amount: Number(amount), periodLabel, dueDate, notes, type, planLabel, trialDays })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    // Show the generated payment link inside the modal
+                    const linkOutput = document.getElementById('stripe-link-output');
+                    const linkInput  = document.getElementById('stripe-link-value');
+                    if (linkOutput && linkInput) {
+                        linkInput.value = data.checkoutUrl || '';
+                        linkOutput.classList.remove('hidden');
+                    }
+                    showToast('Sesión de Stripe creada. Copia el link y envíaselo al cliente.', 'success');
+                    paymentsDb.unshift({ ...data.payment, clientName: clientsCache.find(c => c._id === clientId)?.name || 'Cliente' });
+                    renderPaymentsTable();
+                    // Don't close the modal — let trainer copy the link
+                    btn.disabled = false; btn.innerHTML = '<i class="fab fa-stripe-s mr-1"></i> Crear con Stripe';
+                } else {
+                    const err = await res.json();
+                    showToast(err.message || 'Error con Stripe.', 'error');
+                    btn.disabled = false; btn.innerHTML = '<i class="fab fa-stripe-s mr-1"></i> Crear con Stripe';
+                }
+            } catch (e) {
+                showToast('Error de conexión con Stripe.', 'error');
+                btn.disabled = false; btn.innerHTML = '<i class="fab fa-stripe-s mr-1"></i> Crear con Stripe';
+            }
+            return;
+        }
+
+        // ── Manual path (existing behavior) ──────────────────────────────────
         btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Creando...';
         try {
             const res = await apiFetch('/api/payments', {
@@ -5136,7 +5240,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 showToast('Factura creada.', 'success');
                 closeNewInvoiceModal();
-                // Clear form
                 document.getElementById('inv-amount').value = '';
                 document.getElementById('inv-notes').value = '';
                 await renderPaymentsView();
@@ -5189,6 +5292,39 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await apiFetch(`/api/payments/${paymentId}/invoice`, { method: 'POST' });
             if (res.ok) { showToast(`Factura enviada a ${clientName}.`, 'success'); }
             else { showToast('Error enviando la factura.', 'error'); }
+        } catch (e) { showToast('Error de conexión.', 'error'); }
+    };
+
+    // ── Stripe: cancel subscription ───────────────────────────────────────────
+    window.cancelStripeSubscription = async (paymentId) => {
+        const yes = await showConfirm(
+            '¿Cancelar esta suscripción? <br><span class="text-xs text-[#FFDB89]/60">El cliente mantendrá acceso hasta el final del período de facturación actual.</span>',
+            { confirmLabel: 'Cancelar suscripción', danger: true }
+        );
+        if (!yes) return;
+        try {
+            const res = await apiFetch('/api/stripe/subscription/cancel', {
+                method: 'POST', body: JSON.stringify({ paymentId })
+            });
+            if (res.ok) { showToast('Suscripción cancelada al final del período.', 'success'); await renderPaymentsView(); }
+            else { const err = await res.json(); showToast(err.message || 'Error cancelando suscripción.', 'error'); }
+        } catch (e) { showToast('Error de conexión.', 'error'); }
+    };
+
+    // ── Stripe: open billing portal ───────────────────────────────────────────
+    window.openStripePortal = async (clientId) => {
+        if (!clientId) { showToast('ID de cliente no disponible.', 'error'); return; }
+        try {
+            const res = await apiFetch('/api/stripe/portal', {
+                method: 'POST', body: JSON.stringify({ clientId })
+            });
+            if (res.ok) {
+                const { portalUrl } = await res.json();
+                window.open(portalUrl, '_blank');
+            } else {
+                const err = await res.json();
+                showToast(err.message || 'Error abriendo el portal.', 'error');
+            }
         } catch (e) { showToast('Error de conexión.', 'error'); }
     };
 
