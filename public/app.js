@@ -4324,27 +4324,42 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderRoutineItems = () => {
         const wList = document.getElementById('routine-warmup-items-list');
         const cList = document.getElementById('routine-cooldown-items-list');
+        // Programas aesthetic: same card style as the textarea rows above (subtle bg tint + border + rounded)
         if (wList) wList.innerHTML = routineWarmupItems.map(item => `
-            <div class="flex items-center gap-2 pl-1">
-                <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
+            <div class="flex items-center gap-2">
                 <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}"
                     oninput="window.updateRoutineWarmupItem(${item.id}, this.value)"
-                    class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none border-b border-[#FFDB89]/10 focus:border-[#FFDB89]/30 pb-0.5 transition"
+                    class="flex-1 min-w-0 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/25 outline-none focus:border-[#FFDB89]/40 transition"
                     placeholder="Ejercicio de calentamiento...">
-                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
-                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0 transition" onclick="window.openVideoForRoutineWarmupItem(${item.id})" title="URL de video"></i>
-                <button onclick="window.removeRoutineWarmupItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0"><i class="fas fa-times"></i></button>
+                ${item.videoUrl
+                    ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');"
+                        class="p-2.5 bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 rounded-lg transition shrink-0" title="Ver video">
+                        <i class="fas fa-play text-xs"></i></button>`
+                    : ''}
+                <button onclick="window.openVideoForRoutineWarmupItem(${item.id})"
+                    class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition shrink-0" title="Asignar video">
+                    <i class="fas fa-video text-xs"></i></button>
+                <button onclick="window.removeRoutineWarmupItem(${item.id})"
+                    class="p-2.5 text-[#FFDB89]/25 hover:text-red-400 transition shrink-0" title="Eliminar">
+                    <i class="fas fa-times text-xs"></i></button>
             </div>`).join('');
         if (cList) cList.innerHTML = routineCooldownItems.map(item => `
-            <div class="flex items-center gap-2 pl-1">
-                <i class="fas fa-circle text-blue-300/40 text-[6px] shrink-0"></i>
+            <div class="flex items-center gap-2">
                 <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}"
                     oninput="window.updateRoutineCooldownItem(${item.id}, this.value)"
-                    class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none border-b border-[#FFDB89]/10 focus:border-[#FFDB89]/30 pb-0.5 transition"
+                    class="flex-1 min-w-0 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/25 outline-none focus:border-[#FFDB89]/40 transition"
                     placeholder="Ejercicio de enfriamiento...">
-                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
-                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0 transition" onclick="window.openVideoForRoutineCooldownItem(${item.id})" title="URL de video"></i>
-                <button onclick="window.removeRoutineCooldownItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0"><i class="fas fa-times"></i></button>
+                ${item.videoUrl
+                    ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');"
+                        class="p-2.5 bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 rounded-lg transition shrink-0" title="Ver video">
+                        <i class="fas fa-play text-xs"></i></button>`
+                    : ''}
+                <button onclick="window.openVideoForRoutineCooldownItem(${item.id})"
+                    class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition shrink-0" title="Asignar video">
+                    <i class="fas fa-video text-xs"></i></button>
+                <button onclick="window.removeRoutineCooldownItem(${item.id})"
+                    class="p-2.5 text-[#FFDB89]/25 hover:text-red-400 transition shrink-0" title="Eliminar">
+                    <i class="fas fa-times text-xs"></i></button>
             </div>`).join('');
     };
 
@@ -4363,12 +4378,14 @@ document.addEventListener('DOMContentLoaded', () => {
     window.openVideoForRoutineWarmupItem = (id) => {
         currentVideoTarget = `routine-warmup-item-${id}`;
         const item = routineWarmupItems.find(i => i.id === id);
-        const modal = document.getElementById('video-upload-modal');
-        const input = document.getElementById('video-url-input');
-        const title = document.getElementById('video-modal-title');
-        if (input) input.value = item?.videoUrl || '';
-        if (title) title.textContent = 'Video del ejercicio';
-        if (modal) modal.classList.remove('hidden');
+        const modal    = document.getElementById('video-upload-modal');
+        const input    = document.getElementById('video-url-input');
+        const nameInp  = document.getElementById('video-library-name');
+        const title    = document.getElementById('video-modal-title');
+        if (input)   input.value   = item?.videoUrl || '';
+        if (nameInp) nameInp.value = item?.name     || '';
+        if (title)   title.textContent = 'Video del ejercicio';
+        if (modal)   modal.classList.remove('hidden');
     };
 
     window.addRoutineCooldownItem = () => {
@@ -4386,12 +4403,14 @@ document.addEventListener('DOMContentLoaded', () => {
     window.openVideoForRoutineCooldownItem = (id) => {
         currentVideoTarget = `routine-cooldown-item-${id}`;
         const item = routineCooldownItems.find(i => i.id === id);
-        const modal = document.getElementById('video-upload-modal');
-        const input = document.getElementById('video-url-input');
-        const title = document.getElementById('video-modal-title');
-        if (input) input.value = item?.videoUrl || '';
-        if (title) title.textContent = 'Video del ejercicio';
-        if (modal) modal.classList.remove('hidden');
+        const modal    = document.getElementById('video-upload-modal');
+        const input    = document.getElementById('video-url-input');
+        const nameInp  = document.getElementById('video-library-name');
+        const title    = document.getElementById('video-modal-title');
+        if (input)   input.value   = item?.videoUrl || '';
+        if (nameInp) nameInp.value = item?.name     || '';
+        if (title)   title.textContent = 'Video del ejercicio';
+        if (modal)   modal.classList.remove('hidden');
     };
 
     const addExerciseToBuilder = (data = null) => {
