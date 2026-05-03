@@ -5772,12 +5772,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="w-6 h-6 bg-orange-500 rounded flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"><i class="fas fa-fire"></i></div>
                             <span class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Calentamiento</span>
                         </div>
-                        <div class="flex items-start gap-2 mb-3">
+                        <div class="mb-3">
                             <textarea oninput="window.updateWarmup(this.value); window.markEditorDirty();" class="bg-transparent text-sm text-[#FFDB89]/60 placeholder-[#FFDB89]/25 w-full outline-none resize-none" rows="2" placeholder="Instrucciones generales...">${editorWarmup}</textarea>
-                            <div class="flex items-center gap-1.5 shrink-0">
-                                ${editorWarmupVideoUrl ? `<button onclick="window.previewExerciseVideo('${editorWarmupVideoUrl.replace(/'/g,"\\'")}', 'Calentamiento'); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
-                                <i class="fas fa-video ${editorWarmupVideoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] text-sm" onclick="window.openWarmupVideoModal()" title="Video URL"></i>
-                            </div>
                         </div>
                         <div id="warmup-items-list" class="space-y-1.5">
                             ${warmupItemsHtml}
@@ -5799,12 +5795,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="w-6 h-6 bg-[#3a3a3c] border border-[#FFDB89]/30 rounded flex-shrink-0 flex items-center justify-center text-[#FFDB89] text-xs font-bold"><i class="fas fa-snowflake"></i></div>
                             <span class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Enfriamiento</span>
                         </div>
-                        <div class="flex items-start gap-2 mb-3">
+                        <div class="mb-3">
                             <textarea oninput="window.updateCooldown(this.value); window.markEditorDirty();" class="bg-transparent text-sm text-[#FFDB89]/60 placeholder-[#FFDB89]/25 w-full outline-none resize-none" rows="2" placeholder="Instrucciones generales...">${editorCooldown || ''}</textarea>
-                            <div class="flex items-center gap-1.5 shrink-0">
-                                ${editorCooldownVideoUrl ? `<button onclick="window.previewExerciseVideo('${editorCooldownVideoUrl.replace(/'/g,"\\'")}', 'Enfriamiento'); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
-                                <i class="fas fa-video ${editorCooldownVideoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] text-sm" onclick="window.openCooldownVideoModal()" title="Video URL"></i>
-                            </div>
                         </div>
                         <div id="cooldown-items-list" class="space-y-1.5">
                             ${cooldownItemsHtml}
