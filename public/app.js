@@ -5712,9 +5712,36 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }).join('');
 
-        // If the panel already exists just swap the exercise list — no full re-render, no animation
+        // Helper: render warmup items rows (used both for full and partial re-render)
+        const warmupItemsHtml = editorWarmupItems.map(item => `
+            <div class="flex items-center gap-2 pl-1">
+                <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
+                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateWarmupItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de calentamiento...">
+                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForWarmupItem(${item.id})" title="URL de video"></i>
+                <button onclick="window.removeWarmupItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
+            </div>`).join('');
+
+        // Helper: render cooldown items rows
+        const cooldownItemsHtml = editorCooldownItems.map(item => `
+            <div class="flex items-center gap-2 pl-1">
+                <i class="fas fa-circle text-blue-300/40 text-[6px] shrink-0"></i>
+                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateCooldownItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de enfriamiento...">
+                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForCooldownItem(${item.id})" title="URL de video"></i>
+                <button onclick="window.removeCooldownItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
+            </div>`).join('');
+
+        // If the panel already exists just swap the exercise + items lists — no full re-render, no animation
         const existingList = document.getElementById('editor-exercises-list');
-        if (existingList) { existingList.innerHTML = listHtml; return; }
+        if (existingList) {
+            existingList.innerHTML = listHtml;
+            const wList = document.getElementById('warmup-items-list');
+            if (wList) wList.innerHTML = warmupItemsHtml;
+            const cList = document.getElementById('cooldown-items-list');
+            if (cList) cList.innerHTML = cooldownItemsHtml;
+            return;
+        }
 
         modal.innerHTML = `
             <div id="editor-panel" class="bg-[#2d2d35] w-full max-w-md h-full shadow-2xl flex flex-col border-l border-[#FFDB89]/15 slide-in-right transition-all duration-300">
@@ -5753,17 +5780,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                         <div id="warmup-items-list" class="space-y-1.5">
-                            ${editorWarmupItems.map(item => `
-                            <div class="flex items-center gap-2 pl-1">
-                                <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
-                                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateWarmupItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de calentamiento...">
-                                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
-                                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForWarmupItem(${item.id})" title="URL de video"></i>
-                                <button onclick="window.removeWarmupItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
-                            </div>`).join('')}
+                            ${warmupItemsHtml}
                         </div>
                         <button onclick="window.addWarmupItem()" class="mt-2 text-[#FFDB89]/35 hover:text-[#FFDB89]/70 text-xs transition flex items-center gap-1.5 pl-1">
-                            <i class="fas fa-plus text-[8px]"></i> Agregar ejercicio
+                            <i class="fas fa-plus text-[8px]"></i> Agregar calentamiento
                         </button>
                     </div>
 
@@ -5787,17 +5807,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                         <div id="cooldown-items-list" class="space-y-1.5">
-                            ${editorCooldownItems.map(item => `
-                            <div class="flex items-center gap-2 pl-1">
-                                <i class="fas fa-circle text-blue-300/40 text-[6px] shrink-0"></i>
-                                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateCooldownItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de enfriamiento...">
-                                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
-                                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForCooldownItem(${item.id})" title="URL de video"></i>
-                                <button onclick="window.removeCooldownItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
-                            </div>`).join('')}
+                            ${cooldownItemsHtml}
                         </div>
                         <button onclick="window.addCooldownItem()" class="mt-2 text-[#FFDB89]/35 hover:text-[#FFDB89]/70 text-xs transition flex items-center gap-1.5 pl-1">
-                            <i class="fas fa-plus text-[8px]"></i> Agregar ejercicio
+                            <i class="fas fa-plus text-[8px]"></i> Agregar enfriamiento
                         </button>
                     </div>
                 </div>
