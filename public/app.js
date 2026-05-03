@@ -852,7 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
         style.innerHTML = `
             .exercise-name-input::-webkit-calendar-picker-indicator { display: none !important; opacity: 0 !important; }
             .exercise-name-input { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: none !important; }
-            .autocomplete-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background-color: #1C1C1E; border: 1px solid rgba(255,219,137,0.2); border-radius: 0.625rem; max-height: 220px; overflow-y: auto; z-index: 100; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+            .autocomplete-list { background-color: #1C1C1E; border: 1px solid rgba(255,219,137,0.2); border-radius: 0.625rem; max-height: 220px; overflow-y: auto; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
             .autocomplete-item { padding: 0.6rem 0.875rem; cursor: pointer; color: rgba(255,219,137,0.7); font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(255,219,137,0.06); }
             .autocomplete-item:last-child { border-bottom: none; }
             .autocomplete-item:first-child { border-radius: 0.625rem 0.625rem 0 0; }
@@ -4417,6 +4417,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modal)   modal.classList.remove('hidden');
     };
 
+    // ── Exercise-name autocomplete portal ────────────────────────────────────
+    // Attached to <body> so it's never clipped by overflow-y:auto ancestors.
+    let _exAcPortal = null;
+    const getExAcPortal = () => {
+        if (!_exAcPortal) {
+            _exAcPortal = document.createElement('div');
+            _exAcPortal.className = 'autocomplete-list hidden';
+            _exAcPortal.style.cssText = 'position:fixed;z-index:9999;';
+            document.body.appendChild(_exAcPortal);
+        }
+        return _exAcPortal;
+    };
+    const hideExAc = () => getExAcPortal().classList.add('hidden');
+    const positionExAc = (inputEl) => {
+        const r = inputEl.getBoundingClientRect();
+        const p = getExAcPortal();
+        p.style.top   = (r.bottom + 4) + 'px';
+        p.style.left  = r.left + 'px';
+        p.style.width = r.width + 'px';
+    };
+    // Close portal when clicking outside it
+    document.addEventListener('click', (e) => {
+        const p = _exAcPortal;
+        if (p && !p.contains(e.target) && !e.target.classList.contains('exercise-name-input')) hideExAc();
+    });
+
     const addExerciseToBuilder = (data = null) => {
         const list = document.getElementById('exercise-list');
         const label = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[exerciseCount++ % 26];
@@ -4430,9 +4456,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="pt-2 shrink-0"><span class="text-2xl font-black text-[#FFDB89]/20 exercise-label">${label}</span></div>
                 <div class="flex-grow space-y-3">
-                    <div class="flex gap-2 relative">
+                    <div class="flex gap-2">
                         <input type="text" class="exercise-name-input w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off">
-                        <div class="autocomplete-list hidden"></div>
                         <button class="p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition open-video-modal" data-video="${data?.video || ''}"><i class="fas fa-video text-sm"></i></button>
                     </div>
                     <textarea class="exercise-stats-input w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89]/80 placeholder:text-[#FFDB89]/25 text-sm resize-none focus:border-[#FFDB89]/40 focus:ring-2 focus:ring-[#FFDB89]/20 outline-none transition" rows="3" placeholder="Sets x Reps — Ej: 4x10 @ 70%, descanso 90s...">${data ? data.stats : ''}</textarea>
@@ -4440,50 +4465,47 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
         list.appendChild(item);
 
-        const input = item.querySelector('.exercise-name-input');
-        const suggestionsBox = item.querySelector('.autocomplete-list');
+        const input   = item.querySelector('.exercise-name-input');
         const videoBtn = item.querySelector('.open-video-modal');
-
-        const hideSuggestions = () => suggestionsBox.classList.add('hidden');
 
         input.addEventListener('input', (e) => {
             const val = e.target.value.trim();
-            suggestionsBox.innerHTML = '';
-            hideSuggestions();
+            const portal = getExAcPortal();
+            portal.innerHTML = '';
+            hideExAc();
             if (!val) return;
             const lc = val.toLowerCase();
             const matches = globalExerciseLibrary
                 .filter(ex => ex.name.toLowerCase().includes(lc))
                 .slice(0, 8);
             if (!matches.length) return;
-            suggestionsBox.classList.remove('hidden');
+            positionExAc(input);
+            portal.classList.remove('hidden');
             matches.forEach(match => {
                 const div = document.createElement('div');
                 div.className = 'autocomplete-item';
-                // Highlight the matched portion wherever it appears
-                const idx = match.name.toLowerCase().indexOf(lc);
+                const idx     = match.name.toLowerCase().indexOf(lc);
                 const before  = match.name.slice(0, idx);
                 const matched = match.name.slice(idx, idx + val.length);
                 const after   = match.name.slice(idx + val.length);
                 div.innerHTML = `
                     <span class="flex-1 min-w-0 truncate">${before}<mark>${matched}</mark>${after}</span>
                     ${match.videoUrl ? '<i class="fas fa-video text-[9px] text-green-400/60 shrink-0"></i>' : ''}`;
-                div.addEventListener('click', () => {
+                div.addEventListener('mousedown', (ev) => {
+                    ev.preventDefault(); // keep focus on input
                     input.value = match.name;
-                    hideSuggestions();
+                    hideExAc();
                     if (match.videoUrl) {
                         videoBtn.dataset.video = match.videoUrl;
                         videoBtn.classList.remove('text-[#FFDB89]/40');
                         videoBtn.classList.add('text-[#FFDB89]');
                     }
                 });
-                suggestionsBox.appendChild(div);
+                portal.appendChild(div);
             });
         });
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') hideSuggestions();
-        });
-        document.addEventListener('click', (e) => { if (!item.contains(e.target)) hideSuggestions(); });
+        input.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideExAc(); });
+        input.addEventListener('blur',    ()  => { setTimeout(hideExAc, 150); });
     };
 
     // Expose to global scope so inline onclick in HTML can reach it
