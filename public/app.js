@@ -4423,6 +4423,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Exercise-name autocomplete portal ────────────────────────────────────
     // Attached to <body> so it's never clipped by overflow-y:auto ancestors.
+
+    // Build a deduplicated exercise list from the library + every exercise ever
+    // used in any program (so names typed in routines show up even if the library
+    // section is empty).
+    const getAllKnownExercises = () => {
+        const seen = new Set();
+        const all  = [];
+        const add  = (name, videoUrl) => {
+            if (!name) return;
+            const k = name.toLowerCase().trim();
+            if (seen.has(k)) return;
+            seen.add(k);
+            all.push({ name: name.trim(), videoUrl: videoUrl || '' });
+        };
+        globalExerciseLibrary.forEach(ex => add(ex.name, ex.videoUrl));
+        programsCache.forEach(prog => {
+            prog.weeks?.forEach(week => {
+                Object.values(week.days || {}).forEach(day => {
+                    (day.exercises    || []).forEach(ex   => add(ex.name,   ex.videoUrl));
+                    (day.warmupItems  || []).forEach(item => add(item.name, item.videoUrl));
+                    (day.cooldownItems|| []).forEach(item => add(item.name, item.videoUrl));
+                });
+            });
+        });
+        return all;
+    };
+
     let _exAcPortal = null;
     const getExAcPortal = () => {
         if (!_exAcPortal) {
@@ -4484,7 +4511,7 @@ document.addEventListener('DOMContentLoaded', () => {
             hideExAc();
             if (!val) return;
             const lc = val.toLowerCase();
-            const matches = globalExerciseLibrary
+            const matches = getAllKnownExercises()
                 .filter(ex => ex.name.toLowerCase().includes(lc))
                 .slice(0, 8);
             if (!matches.length) return;
@@ -4530,7 +4557,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hideExAc();
         if (!val) return;
         const lc = val.toLowerCase();
-        const matches = globalExerciseLibrary
+        const matches = getAllKnownExercises()
             .filter(ex => ex.name.toLowerCase().includes(lc))
             .slice(0, 8);
         if (!matches.length) return;
