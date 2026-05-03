@@ -4332,7 +4332,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (wList) wList.innerHTML = routineWarmupItems.map(item => `
             <div class="flex items-center gap-2">
                 <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}"
-                    oninput="window.updateRoutineWarmupItem(${item.id}, this.value)"
+                    oninput="window.updateRoutineWarmupItem(${item.id}, this.value); window.showRoutineItemAc(this, ${item.id}, 'warmup')"
+                    onkeydown="if(event.key==='Escape') window._hideExAc()"
+                    onblur="setTimeout(window._hideExAc, 150)"
                     class="flex-1 min-w-0 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/25 outline-none focus:border-[#FFDB89]/40 transition"
                     placeholder="Ejercicio de calentamiento...">
                 ${item.videoUrl
@@ -4350,7 +4352,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cList) cList.innerHTML = routineCooldownItems.map(item => `
             <div class="flex items-center gap-2">
                 <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}"
-                    oninput="window.updateRoutineCooldownItem(${item.id}, this.value)"
+                    oninput="window.updateRoutineCooldownItem(${item.id}, this.value); window.showRoutineItemAc(this, ${item.id}, 'cooldown')"
+                    onkeydown="if(event.key==='Escape') window._hideExAc()"
+                    onblur="setTimeout(window._hideExAc, 150)"
                     class="flex-1 min-w-0 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/25 outline-none focus:border-[#FFDB89]/40 transition"
                     placeholder="Ejercicio de enfriamiento...">
                 ${item.videoUrl
@@ -4437,10 +4441,15 @@ document.addEventListener('DOMContentLoaded', () => {
         p.style.left  = r.left + 'px';
         p.style.width = r.width + 'px';
     };
-    // Close portal when clicking outside it
+    // Close portal when clicking outside it or outside any exercise/routine name input
     document.addEventListener('click', (e) => {
         const p = _exAcPortal;
-        if (p && !p.contains(e.target) && !e.target.classList.contains('exercise-name-input')) hideExAc();
+        if (!p || p.contains(e.target)) return;
+        const t = e.target;
+        if (t.classList.contains('exercise-name-input')) return;
+        // routine item inputs (warmup/cooldown) live inside these lists
+        if (t.closest('#routine-warmup-items-list, #routine-cooldown-items-list')) return;
+        hideExAc();
     });
 
     const addExerciseToBuilder = (data = null) => {
@@ -4510,6 +4519,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Expose to global scope so inline onclick in HTML can reach it
     window.addExerciseToBuilder = addExerciseToBuilder;
+    // Expose hideExAc so inline onblur/onkeydown in renderRoutineItems can call it
+    window._hideExAc = hideExAc;
+
+    // Autocomplete for warmup / cooldown item inputs (rendered via innerHTML in renderRoutineItems)
+    window.showRoutineItemAc = (inputEl, itemId, type) => {
+        const val = inputEl.value.trim();
+        const portal = getExAcPortal();
+        portal.innerHTML = '';
+        hideExAc();
+        if (!val) return;
+        const lc = val.toLowerCase();
+        const matches = globalExerciseLibrary
+            .filter(ex => ex.name.toLowerCase().includes(lc))
+            .slice(0, 8);
+        if (!matches.length) return;
+        positionExAc(inputEl);
+        portal.classList.remove('hidden');
+        matches.forEach(match => {
+            const div = document.createElement('div');
+            div.className = 'autocomplete-item';
+            const idx     = match.name.toLowerCase().indexOf(lc);
+            const before  = match.name.slice(0, idx);
+            const matched = match.name.slice(idx, idx + val.length);
+            const after   = match.name.slice(idx + val.length);
+            div.innerHTML = `
+                <span class="flex-1 min-w-0 truncate">${before}<mark>${matched}</mark>${after}</span>
+                ${match.videoUrl ? '<i class="fas fa-video text-[9px] text-green-400/60 shrink-0"></i>' : ''}`;
+            div.addEventListener('mousedown', (ev) => {
+                ev.preventDefault();
+                inputEl.value = match.name;
+                hideExAc();
+                if (type === 'warmup') {
+                    window.updateRoutineWarmupItem(itemId, match.name);
+                    if (match.videoUrl) {
+                        const it = routineWarmupItems.find(i => i.id === itemId);
+                        if (it) { it.videoUrl = match.videoUrl; renderRoutineItems(); }
+                    }
+                } else {
+                    window.updateRoutineCooldownItem(itemId, match.name);
+                    if (match.videoUrl) {
+                        const it = routineCooldownItems.find(i => i.id === itemId);
+                        if (it) { it.videoUrl = match.videoUrl; renderRoutineItems(); }
+                    }
+                }
+            });
+            portal.appendChild(div);
+        });
+    };
 
     // =========================================================================
     // NUTRITION DAY PLANNER
