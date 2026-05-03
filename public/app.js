@@ -4188,7 +4188,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p class="text-sm text-[#FFDB89]/40">Recuperación completa</p>
             </div>`;
         } else if (day?.exercises?.length > 0) {
-            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
             const warmupHtml = day.warmup ? `
                 <div class="flex items-start gap-3 p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl mb-4">
                     <div class="w-7 h-7 bg-orange-500/20 rounded-lg flex items-center justify-center shrink-0 mt-0.5"><i class="fas fa-fire text-orange-400 text-xs"></i></div>
@@ -4200,7 +4199,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>` : '';
 
             const exercisesHtml = day.exercises.map((ex, idx) => {
-                const letter = letters[idx % 26];
+                const letter = (window.getExerciseLetter ? window.getExerciseLetter(idx, day.exercises) : String.fromCharCode(65 + idx % 26));
                 const hasVideo = ex.video || ex.videoUrl;
                 const videoUrl = ex.video || ex.videoUrl || '';
                 return `
@@ -5903,6 +5902,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return letters[index];
     };
+
+    // Expose letter resolver globally so calendar / feed views can reuse it
+    window.getExerciseLetter = getLetter;
 
     // HELPERS
     window.updateWarmup = (val) => { editorWarmup = val; };
@@ -9667,8 +9669,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
         // Working copy of exercises — client can type results without mutating the original yet
         const clientExercises = (workout.exercises || []).map(ex => ({ ...ex }));
 
@@ -9705,11 +9705,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const safeUrl  = (ex.videoUrl || '').replace(/'/g, "\\'");
             const safeName = (ex.name || '').replace(/'/g, "\\'");
             const safeResults = (ex.results || '').replace(/"/g, '&quot;');
+            const exLabel = (window.getExerciseLetter ? window.getExerciseLetter(i, clientExercises) : String.fromCharCode(65 + i % 26));
             return `
             <div class="bg-white/5 border border-[#FFDB89]/15 rounded-xl overflow-hidden">
                 <div class="flex gap-3 p-4 ${hasVideo ? 'cursor-pointer hover:bg-[#FFDB89]/5 group/excard' : ''}"
                      ${hasVideo ? `onclick="window.previewExerciseVideo('${safeUrl}','${safeName}')"` : ''}>
-                    <div class="w-8 h-8 shrink-0 rounded-lg bg-[#FFDB89]/10 flex items-center justify-center text-[#FFDB89] font-black text-sm">${letters[i] || i+1}</div>
+                    <div class="w-8 h-8 shrink-0 rounded-lg bg-[#FFDB89]/10 flex items-center justify-center text-[#FFDB89] font-black text-sm">${exLabel}</div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2">
                             <p class="font-bold text-white flex-1">${ex.name}</p>
@@ -9974,7 +9975,6 @@ document.addEventListener('DOMContentLoaded', () => {
         feedContainer.innerHTML = '<p class="text-center text-[#FFDB89]/50 py-8"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando actividad...</p>';
 
         const todayStr = new Date().toISOString().split('T')[0];
-        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
         // Filter clients by type
         const clientsToRender = filterType === 'Todos'
@@ -10002,7 +10002,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         warmup: workout.warmup || '',
                         cooldown: workout.cooldown || '',
                         exercises: (workout.exercises || []).map((ex, i) => ({
-                            letter: letters[i] || (i + 1),
+                            letter: (window.getExerciseLetter ? window.getExerciseLetter(i, workout.exercises) : String.fromCharCode(65 + i % 26)),
                             name: ex.name,
                             instructions: ex.instructions || ''
                         }))
