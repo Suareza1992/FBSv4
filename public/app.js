@@ -119,6 +119,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentVideoTarget = null;   // null = exercise btn, 'warmup', 'cooldown'
     let routineWarmupVideo = '';
     let routineCooldownVideo = '';
+    let routineWarmupItems = [];     // [{id, name, videoUrl}] — per-item rows in program builder
+    let routineCooldownItems = [];   // [{id, name, videoUrl}]
     let currentClientViewId = null;
     let currentNotifFilter = '7days';
     let copiedWorkoutData = null; // Store copied workout (single day)
@@ -4188,12 +4190,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p class="text-sm text-[#FFDB89]/40">Recuperación completa</p>
             </div>`;
         } else if (day?.exercises?.length > 0) {
-            const warmupHtml = day.warmup ? `
+            const warmupItemsHtml = (day.warmupItems || []).map(item => `
+                <div class="flex items-center gap-2 pl-1">
+                    <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
+                    <span class="text-sm text-[#FFDB89]/70 flex-1">${item.name || ''}</span>
+                    ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
+                </div>`).join('');
+            const warmupHtml = (day.warmup || day.warmupItems?.length) ? `
                 <div class="flex items-start gap-3 p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl mb-4">
                     <div class="w-7 h-7 bg-orange-500/20 rounded-lg flex items-center justify-center shrink-0 mt-0.5"><i class="fas fa-fire text-orange-400 text-xs"></i></div>
-                    <div>
+                    <div class="flex-1 min-w-0">
                         <p class="text-xs font-bold text-orange-400/80 uppercase tracking-wider mb-1">Calentamiento</p>
-                        <p class="text-sm text-[#FFDB89]/70 leading-relaxed">${day.warmup}</p>
+                        ${day.warmup ? `<p class="text-sm text-[#FFDB89]/70 leading-relaxed mb-2">${day.warmup}</p>` : ''}
+                        ${warmupItemsHtml ? `<div class="space-y-1.5">${warmupItemsHtml}</div>` : ''}
                         ${day.warmupVideo ? `<button onclick="window.previewExerciseVideo('${day.warmupVideo.replace(/'/g,"\\'")}','Calentamiento')" class="mt-2 text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] flex items-center gap-1.5 transition"><i class="fas fa-play-circle text-green-400"></i>Ver video</button>` : ''}
                     </div>
                 </div>` : '';
@@ -4217,12 +4226,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
             }).join('');
 
-            const cooldownHtml = day.cooldown ? `
+            const cooldownItemsHtml = (day.cooldownItems || []).map(item => `
+                <div class="flex items-center gap-2 pl-1">
+                    <i class="fas fa-circle text-sky-400/40 text-[6px] shrink-0"></i>
+                    <span class="text-sm text-[#FFDB89]/60 flex-1">${item.name || ''}</span>
+                    ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
+                </div>`).join('');
+            const cooldownHtml = (day.cooldown || day.cooldownItems?.length) ? `
                 <div class="flex items-start gap-3 p-4 bg-sky-400/5 border border-sky-400/20 rounded-xl mt-4">
                     <div class="w-7 h-7 bg-sky-400/20 rounded-lg flex items-center justify-center shrink-0 mt-0.5"><i class="fas fa-snowflake text-sky-400 text-xs"></i></div>
-                    <div>
+                    <div class="flex-1 min-w-0">
                         <p class="text-xs font-bold text-sky-400/70 uppercase tracking-wider mb-1">Enfriamiento</p>
-                        <p class="text-sm text-[#FFDB89]/60 leading-relaxed">${day.cooldown}</p>
+                        ${day.cooldown ? `<p class="text-sm text-[#FFDB89]/60 leading-relaxed mb-2">${day.cooldown}</p>` : ''}
+                        ${cooldownItemsHtml ? `<div class="space-y-1.5">${cooldownItemsHtml}</div>` : ''}
                         ${day.cooldownVideo ? `<button onclick="window.previewExerciseVideo('${day.cooldownVideo.replace(/'/g,"\\'")}','Enfriamiento')" class="mt-2 text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] flex items-center gap-1.5 transition"><i class="fas fa-play-circle text-green-400"></i>Ver video</button>` : ''}
                     </div>
                 </div>` : '';
@@ -4279,6 +4295,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('routine-cooldown').value = existingDay.cooldown || '';
             routineWarmupVideo   = existingDay.warmupVideo   || '';
             routineCooldownVideo = existingDay.cooldownVideo || '';
+            routineWarmupItems   = (existingDay.warmupItems  || []).map(i => ({ ...i }));
+            routineCooldownItems = (existingDay.cooldownItems|| []).map(i => ({ ...i }));
             if (existingDay.exercises?.length > 0) {
                 existingDay.exercises.forEach(ex => addExerciseToBuilder(ex));
             } else {
@@ -4290,13 +4308,90 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('routine-cooldown').value = '';
             routineWarmupVideo   = '';
             routineCooldownVideo = '';
+            routineWarmupItems   = [];
+            routineCooldownItems = [];
             addExerciseToBuilder();
         }
+        renderRoutineItems();
         // Update video button colours to gold when a URL is already stored
         const wBtn = document.getElementById('warmup-video-btn');
         const cBtn = document.getElementById('cooldown-video-btn');
         if (wBtn) { wBtn.classList.toggle('text-[#FFDB89]', !!routineWarmupVideo); wBtn.classList.toggle('text-[#FFDB89]/40', !routineWarmupVideo); }
         if (cBtn) { cBtn.classList.toggle('text-[#FFDB89]', !!routineCooldownVideo); cBtn.classList.toggle('text-[#FFDB89]/40', !routineCooldownVideo); }
+    };
+
+    // ── Routine builder warmup / cooldown items ───────────────────────────────
+    const renderRoutineItems = () => {
+        const wList = document.getElementById('routine-warmup-items-list');
+        const cList = document.getElementById('routine-cooldown-items-list');
+        if (wList) wList.innerHTML = routineWarmupItems.map(item => `
+            <div class="flex items-center gap-2 pl-1">
+                <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
+                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}"
+                    oninput="window.updateRoutineWarmupItem(${item.id}, this.value)"
+                    class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none border-b border-[#FFDB89]/10 focus:border-[#FFDB89]/30 pb-0.5 transition"
+                    placeholder="Ejercicio de calentamiento...">
+                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0 transition" onclick="window.openVideoForRoutineWarmupItem(${item.id})" title="URL de video"></i>
+                <button onclick="window.removeRoutineWarmupItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0"><i class="fas fa-times"></i></button>
+            </div>`).join('');
+        if (cList) cList.innerHTML = routineCooldownItems.map(item => `
+            <div class="flex items-center gap-2 pl-1">
+                <i class="fas fa-circle text-blue-300/40 text-[6px] shrink-0"></i>
+                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}"
+                    oninput="window.updateRoutineCooldownItem(${item.id}, this.value)"
+                    class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none border-b border-[#FFDB89]/10 focus:border-[#FFDB89]/30 pb-0.5 transition"
+                    placeholder="Ejercicio de enfriamiento...">
+                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0 transition" onclick="window.openVideoForRoutineCooldownItem(${item.id})" title="URL de video"></i>
+                <button onclick="window.removeRoutineCooldownItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0"><i class="fas fa-times"></i></button>
+            </div>`).join('');
+    };
+
+    window.addRoutineWarmupItem = () => {
+        routineWarmupItems.push({ id: Date.now(), name: '', videoUrl: '' });
+        renderRoutineItems();
+    };
+    window.removeRoutineWarmupItem = (id) => {
+        routineWarmupItems = routineWarmupItems.filter(i => i.id !== id);
+        renderRoutineItems();
+    };
+    window.updateRoutineWarmupItem = (id, val) => {
+        const item = routineWarmupItems.find(i => i.id === id);
+        if (item) item.name = val;
+    };
+    window.openVideoForRoutineWarmupItem = (id) => {
+        currentVideoTarget = `routine-warmup-item-${id}`;
+        const item = routineWarmupItems.find(i => i.id === id);
+        const modal = document.getElementById('video-upload-modal');
+        const input = document.getElementById('video-url-input');
+        const title = document.getElementById('video-modal-title');
+        if (input) input.value = item?.videoUrl || '';
+        if (title) title.textContent = 'Video del ejercicio';
+        if (modal) modal.classList.remove('hidden');
+    };
+
+    window.addRoutineCooldownItem = () => {
+        routineCooldownItems.push({ id: Date.now(), name: '', videoUrl: '' });
+        renderRoutineItems();
+    };
+    window.removeRoutineCooldownItem = (id) => {
+        routineCooldownItems = routineCooldownItems.filter(i => i.id !== id);
+        renderRoutineItems();
+    };
+    window.updateRoutineCooldownItem = (id, val) => {
+        const item = routineCooldownItems.find(i => i.id === id);
+        if (item) item.name = val;
+    };
+    window.openVideoForRoutineCooldownItem = (id) => {
+        currentVideoTarget = `routine-cooldown-item-${id}`;
+        const item = routineCooldownItems.find(i => i.id === id);
+        const modal = document.getElementById('video-upload-modal');
+        const input = document.getElementById('video-url-input');
+        const title = document.getElementById('video-modal-title');
+        if (input) input.value = item?.videoUrl || '';
+        if (title) title.textContent = 'Video del ejercicio';
+        if (modal) modal.classList.remove('hidden');
     };
 
     const addExerciseToBuilder = (data = null) => {
@@ -4759,8 +4854,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 body: JSON.stringify({
                                     clientId, date: dateStr,
                                     title: dayData.name || `Semana ${wIdx + 1} — Día ${dayNum}`,
-                                    warmup:   dayData.warmup   || '',
-                                    cooldown: dayData.cooldown || '',
+                                    warmup:        dayData.warmup        || '',
+                                    warmupVideoUrl: dayData.warmupVideo  || '',
+                                    warmupItems:   (dayData.warmupItems  || []).map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
+                                    cooldown:      dayData.cooldown      || '',
+                                    cooldownVideoUrl: dayData.cooldownVideo || '',
+                                    cooldownItems: (dayData.cooldownItems|| []).map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
                                     exercises: dayData.exercises.map((ex, idx) => ({
                                         id:           Date.now() + idx,
                                         name:         ex.name,
@@ -4930,13 +5029,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const existing = prog.weeks[currentEditingWeekIndex].days[currentEditingDay] || {};
                 const dayData = {
                     ...existing,
-                    name:         name,
-                    exercises:    exercises,
-                    warmup:       document.getElementById('routine-warmup').value.trim(),
-                    cooldown:     document.getElementById('routine-cooldown').value.trim(),
-                    warmupVideo:  routineWarmupVideo,
+                    name:          name,
+                    exercises:     exercises,
+                    warmup:        document.getElementById('routine-warmup').value.trim(),
+                    cooldown:      document.getElementById('routine-cooldown').value.trim(),
+                    warmupVideo:   routineWarmupVideo,
                     cooldownVideo: routineCooldownVideo,
-                    isRest:       false
+                    warmupItems:   routineWarmupItems.map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
+                    cooldownItems: routineCooldownItems.map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
+                    isRest:        false
                 };
 
                 prog.weeks[currentEditingWeekIndex].days[currentEditingDay] = dayData;
@@ -6965,43 +7066,32 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // ── Video modal: save to exercise library ─────────────────────────────
+        // ── Video modal: save — always persists to library AND applies to context ─
         if (target.id === 'save-video-btn') {
             const url  = (document.getElementById('video-url-input')?.value  || '').trim();
             const name = (document.getElementById('video-library-name')?.value || '').trim();
             if (!url)  { showToast('Por favor ingresa una URL de video.', 'error'); return; }
-            if (!name) { showToast('Por favor ingresa un nombre para guardar en la librería.', 'error'); return; }
-            if (!await checkVideoDuplicate(url, name)) {
-                // Exact duplicate — close modal without API call but still apply URL to context
-                if (currentVideoTarget === 'warmup') { routineWarmupVideo = url; const b = document.getElementById('warmup-video-btn'); if(b){b.classList.add('text-[#FFDB89]');b.classList.remove('text-[#FFDB89]/40');} }
-                else if (currentVideoTarget === 'cooldown') { routineCooldownVideo = url; const b = document.getElementById('cooldown-video-btn'); if(b){b.classList.add('text-[#FFDB89]');b.classList.remove('text-[#FFDB89]/40');} }
-                else if (currentVideoTarget !== 'library-standalone' && currentVideoExerciseBtn) { currentVideoExerciseBtn.dataset.video = url; currentVideoExerciseBtn.classList.add('text-[#FFDB89]'); currentVideoExerciseBtn.classList.remove('text-[#FFDB89]/40'); }
-                currentVideoTarget = null; currentVideoExerciseBtn = null;
-                document.getElementById('video-upload-modal')?.classList.add('hidden');
-                return;
+            if (!name) { showToast('Por favor ingresa el nombre del ejercicio.', 'error'); return; }
+
+            // Save to library (skip API call only if exact duplicate already exists)
+            if (await checkVideoDuplicate(url, name)) {
+                try {
+                    const res = await apiFetch('/api/library', {
+                        method: 'POST',
+                        body: JSON.stringify({ name, videoUrl: url, category: ['General'] })
+                    });
+                    if (res.ok) {
+                        const savedEx = await res.json();
+                        const idx = globalExerciseLibrary.findIndex(e => e.name === savedEx.name);
+                        if (idx > -1) globalExerciseLibrary[idx] = savedEx;
+                        else globalExerciseLibrary.push(savedEx);
+                        window.renderVideoLibrary();
+                        window.renderExerciseLibrary();
+                    }
+                } catch(e) { console.error('Error saving to library:', e); }
             }
-            try {
-                const res = await apiFetch('/api/library', {
-                    method: 'POST',
-                    body: JSON.stringify({ name, videoUrl: url, category: ['General'] })
-                });
-                if (res.ok) {
-                    const savedEx = await res.json();
-                    const idx = globalExerciseLibrary.findIndex(e => e.name === savedEx.name);
-                    if (idx > -1) globalExerciseLibrary[idx] = savedEx;
-                    else globalExerciseLibrary.push(savedEx);
-                    // Refresh panels if visible
-                    window.renderVideoLibrary();
-                    window.renderExerciseLibrary();
-                    // Show subtle confirmation
-                    const toast = document.createElement('div');
-                    toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-5 py-2.5 rounded-full shadow-xl pointer-events-none';
-                    toast.innerHTML = `<i class="fas fa-bookmark mr-2 text-[#FFDB89]"></i>"${name}" guardado en la librería`;
-                    document.body.appendChild(toast);
-                    setTimeout(() => toast.remove(), 2500);
-                }
-            } catch(e) { console.error('Error saving to library:', e); }
-            // Also apply URL to current context (same as save-video-url-btn)
+
+            // Apply URL to whichever context opened the modal
             if (currentVideoTarget === 'warmup') {
                 routineWarmupVideo = url;
                 const btn = document.getElementById('warmup-video-btn');
@@ -7010,37 +7100,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 routineCooldownVideo = url;
                 const btn = document.getElementById('cooldown-video-btn');
                 if (btn) { btn.classList.toggle('text-[#FFDB89]', !!url); btn.classList.toggle('text-[#FFDB89]/40', !url); }
+            } else if (typeof currentVideoTarget === 'string' && currentVideoTarget.startsWith('routine-warmup-item-')) {
+                const id = Number(currentVideoTarget.replace('routine-warmup-item-', ''));
+                const item = routineWarmupItems.find(i => i.id === id);
+                if (item) { item.videoUrl = url; renderRoutineItems(); }
+            } else if (typeof currentVideoTarget === 'string' && currentVideoTarget.startsWith('routine-cooldown-item-')) {
+                const id = Number(currentVideoTarget.replace('routine-cooldown-item-', ''));
+                const item = routineCooldownItems.find(i => i.id === id);
+                if (item) { item.videoUrl = url; renderRoutineItems(); }
             } else if (currentVideoTarget !== 'library-standalone' && currentVideoExerciseBtn) {
                 currentVideoExerciseBtn.dataset.video = url;
                 currentVideoExerciseBtn.classList.toggle('text-[#FFDB89]', !!url);
                 currentVideoExerciseBtn.classList.toggle('text-[#FFDB89]/40', !url);
             }
+
+            showToast(`"${name}" guardado en la librería.`, 'success');
             currentVideoTarget = null;
             currentVideoExerciseBtn = null;
             document.getElementById('video-upload-modal')?.classList.add('hidden');
-            return;
-        }
-
-        // ── Video modal: save URL (context only, no library) ──────────────────
-        if (target.id === 'save-video-url-btn') {
-            const url = (document.getElementById('video-url-input')?.value || '').trim();
-            if (currentVideoTarget === 'warmup') {
-                routineWarmupVideo = url;
-                const btn = document.getElementById('warmup-video-btn');
-                if (btn) { btn.classList.toggle('text-[#FFDB89]', !!url); btn.classList.toggle('text-[#FFDB89]/40', !url); }
-            } else if (currentVideoTarget === 'cooldown') {
-                routineCooldownVideo = url;
-                const btn = document.getElementById('cooldown-video-btn');
-                if (btn) { btn.classList.toggle('text-[#FFDB89]', !!url); btn.classList.toggle('text-[#FFDB89]/40', !url); }
-            } else if (currentVideoExerciseBtn) {
-                currentVideoExerciseBtn.dataset.video = url;
-                currentVideoExerciseBtn.classList.toggle('text-[#FFDB89]', !!url);
-                currentVideoExerciseBtn.classList.toggle('text-[#FFDB89]/40', !url);
-            }
-            currentVideoTarget = null;
-            currentVideoExerciseBtn = null;
-            const modal = document.getElementById('video-upload-modal');
-            if (modal) modal.classList.add('hidden');
             return;
         }
 

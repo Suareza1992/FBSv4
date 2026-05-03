@@ -185,12 +185,22 @@
 
         <div class="flex-grow p-6 space-y-6 overflow-y-auto min-h-0">
 
-            <div>
-                <label class="text-xs font-bold text-[#FFDB89]/50 uppercase mb-2 block tracking-wider">Calentamiento</label>
-                <div class="flex gap-2 items-start">
-                    <textarea id="routine-warmup" class="flex-grow p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 resize-none outline-none focus:border-[#FFDB89]/50" rows="2" placeholder="Ej: 5 min caminadora..."></textarea>
-                    <button id="warmup-video-btn" class="p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition open-video-modal shrink-0" data-target="warmup" title="Agregar video de calentamiento"><i class="fas fa-video text-sm"></i></button>
+            <!-- ── Calentamiento ───────────────────────────────────────────── -->
+            <div class="p-4 bg-[#FFDB89]/3 border border-[#FFDB89]/15 rounded-xl space-y-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-5 h-5 bg-orange-500/80 rounded flex items-center justify-center shrink-0"><i class="fas fa-fire text-white text-[9px]"></i></div>
+                    <label class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Calentamiento</label>
                 </div>
+                <!-- General instructions text -->
+                <div class="flex gap-2 items-start">
+                    <textarea id="routine-warmup" class="flex-grow p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 resize-none outline-none focus:border-[#FFDB89]/40 text-sm" rows="2" placeholder="Instrucciones generales (opcional)..."></textarea>
+                    <button id="warmup-video-btn" class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition open-video-modal shrink-0" data-target="warmup" title="Video general de calentamiento"><i class="fas fa-video text-sm"></i></button>
+                </div>
+                <!-- Per-item rows -->
+                <div id="routine-warmup-items-list" class="space-y-1.5"></div>
+                <button onclick="window.addRoutineWarmupItem()" class="text-[#FFDB89]/40 hover:text-[#FFDB89]/80 text-xs transition flex items-center gap-1.5 pt-0.5">
+                    <i class="fas fa-plus text-[8px]"></i> Agregar ejercicio de calentamiento
+                </button>
             </div>
 
             <div id="exercise-list" class="space-y-6 pl-4 border-l-2 border-[#FFDB89]/20">
@@ -205,12 +215,22 @@
                 </button>
             </div>
 
-            <div>
-                <label class="text-xs font-bold text-[#FFDB89]/50 uppercase mb-2 block tracking-wider">Enfriamiento</label>
-                <div class="flex gap-2 items-start">
-                    <textarea id="routine-cooldown" class="flex-grow p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 resize-none outline-none focus:border-[#FFDB89]/50" rows="2" placeholder="Ej: Estiramientos..."></textarea>
-                    <button id="cooldown-video-btn" class="p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition open-video-modal shrink-0" data-target="cooldown" title="Agregar video de enfriamiento"><i class="fas fa-video text-sm"></i></button>
+            <!-- ── Enfriamiento ────────────────────────────────────────────── -->
+            <div class="p-4 bg-[#FFDB89]/3 border border-[#FFDB89]/15 rounded-xl space-y-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-5 h-5 bg-[#3a3a3c] border border-[#FFDB89]/30 rounded flex items-center justify-center shrink-0"><i class="fas fa-snowflake text-[#FFDB89] text-[9px]"></i></div>
+                    <label class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Enfriamiento</label>
                 </div>
+                <!-- General instructions text -->
+                <div class="flex gap-2 items-start">
+                    <textarea id="routine-cooldown" class="flex-grow p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 resize-none outline-none focus:border-[#FFDB89]/40 text-sm" rows="2" placeholder="Instrucciones generales (opcional)..."></textarea>
+                    <button id="cooldown-video-btn" class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition open-video-modal shrink-0" data-target="cooldown" title="Video general de enfriamiento"><i class="fas fa-video text-sm"></i></button>
+                </div>
+                <!-- Per-item rows -->
+                <div id="routine-cooldown-items-list" class="space-y-1.5"></div>
+                <button onclick="window.addRoutineCooldownItem()" class="text-[#FFDB89]/40 hover:text-[#FFDB89]/80 text-xs transition flex items-center gap-1.5 pt-0.5">
+                    <i class="fas fa-plus text-[8px]"></i> Agregar ejercicio de enfriamiento
+                </button>
             </div>
 
         </div>
@@ -242,23 +262,20 @@
 
         <!-- Library name input -->
         <div class="mb-5 pt-4 border-t border-[#FFDB89]/10">
-            <label class="block text-xs font-bold mb-2 text-[#FFDB89]/50 uppercase tracking-wider">Guardar en librería como</label>
+            <label class="block text-xs font-bold mb-2 text-[#FFDB89]/50 uppercase tracking-wider">Nombre del ejercicio</label>
             <div class="relative">
                 <input type="text" id="video-library-name" autocomplete="off" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50 transition" placeholder="Nombre del ejercicio o sección...">
                 <div id="video-lib-name-suggestions" class="absolute left-0 right-0 top-full mt-1 bg-[#111113] border border-[#FFDB89]/25 rounded-lg z-[90] overflow-hidden shadow-xl hidden max-h-48 overflow-y-auto"></div>
             </div>
-            <p class="text-[10px] text-[#FFDB89]/30 mt-1.5">Déjalo vacío si no quieres guardarlo en la librería</p>
+            <p class="text-[10px] text-[#FFDB89]/30 mt-1.5">Se guarda en tu librería para uso futuro.</p>
         </div>
 
         <!-- Buttons -->
-        <div class="flex items-center gap-3 flex-wrap">
-            <button id="save-video-url-btn" class="px-5 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] rounded-lg font-bold transition flex items-center gap-2">
-                <i class="fas fa-check text-sm"></i> Guardar URL
+        <div class="flex items-center gap-3">
+            <button id="save-video-btn" class="flex-1 px-5 py-2.5 bg-[#FFDB89] text-[#030303] rounded-lg font-bold transition hover:bg-[#FFDB89]/80 flex items-center justify-center gap-2">
+                <i class="fas fa-check text-sm"></i> Guardar
             </button>
-            <button id="save-video-btn" class="px-5 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] rounded-lg font-bold transition flex items-center gap-2">
-                <i class="fas fa-bookmark text-sm"></i> Guardar en librería
-            </button>
-            <button id="cancel-video-btn" class="px-4 py-2 text-[#FFDB89]/50 hover:text-[#FFDB89] font-bold transition">Cancelar</button>
+            <button id="cancel-video-btn" class="px-4 py-2.5 text-[#FFDB89]/50 hover:text-[#FFDB89] font-bold transition border border-[#FFDB89]/20 rounded-lg">Cancelar</button>
         </div>
 
     </div>
