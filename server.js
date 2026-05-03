@@ -1950,7 +1950,21 @@ app.put('/api/equipment', authenticateToken, async (req, res) => {
 const contactLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: 'Demasiados mensajes. Intenta más tarde.' } });
 
 app.post('/api/contact', contactLimiter, async (req, res) => {
-    const { name, email, phone, message } = req.body;
+    const { name, email, phone, message, _honeypot, _formLoadTime } = req.body;
+
+    // ── Bot defenses ──────────────────────────────────────────────────────
+    // 1) Honeypot: hidden field that real users never fill; bots always do
+    if (_honeypot) {
+        // Silent accept so bots think they succeeded
+        return res.json({ message: 'Mensaje enviado correctamente.' });
+    }
+    // 2) Timing check: real humans take at least 4 seconds to fill a form
+    const elapsed = Date.now() - Number(_formLoadTime || 0);
+    if (elapsed < 4000) {
+        return res.status(429).json({ message: 'Enviado demasiado rápido. Por favor intenta de nuevo.' });
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     if (!name || !email || !message) {
         return res.status(400).json({ message: 'Nombre, email y mensaje son requeridos.' });
     }
