@@ -4764,9 +4764,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                     exercises: dayData.exercises.map((ex, idx) => ({
                                         id:           Date.now() + idx,
                                         name:         ex.name,
-                                        instructions: ex.stats || '',
-                                        videoUrl:     ex.video || '',
-                                        isSuperset:   false
+                                        instructions: ex.stats || ex.instructions || '',
+                                        videoUrl:     ex.video || ex.videoUrl || '',
+                                        isSuperset:   ex.isSuperset   || false,
+                                        supersetHead: ex.supersetHead || false
                                     }))
                                 })
                             });
@@ -6085,7 +6086,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const workout = window._calendarWorkouts[dateStr];
         if (!workout) { window.loadWorkoutForEditing(dateStr, currentClientViewId); return; }
 
-        const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         let html = '';
 
         // Show client's mood for this day if logged
@@ -6111,13 +6111,15 @@ document.addEventListener('DOMContentLoaded', () => {
             html += `<div class="py-2 text-xs text-[#FFDB89]/50 italic border-b border-[#FFDB89]/10">${workout.warmup}</div>`;
         }
 
-        (workout.exercises || []).forEach((ex, i) => {
+        const _exArr = workout.exercises || [];
+        _exArr.forEach((ex, i) => {
+            const exLetter = window.getExerciseLetter ? window.getExerciseLetter(i, _exArr) : String.fromCharCode(65 + i % 26);
             const hasVideo = !!ex.videoUrl;
             const clickAttr = hasVideo
                 ? `onclick="event.stopPropagation(); window.previewExerciseVideo('${(ex.videoUrl||'').replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}')"`
                 : '';
             html += `<div class="py-2 flex items-start gap-2 border-b border-[#FFDB89]/10 last:border-0 ${hasVideo ? 'cursor-pointer group/exrow hover:bg-[#FFDB89]/5 rounded-lg px-1 -mx-1 transition-colors' : ''}" ${clickAttr}>
-                <span class="text-xs font-bold text-[#FFDB89]/50 shrink-0 mt-0.5">${L[i] || '?'})</span>
+                <span class="text-xs font-bold text-[#FFDB89]/50 shrink-0 mt-0.5">${exLetter})</span>
                 <div class="min-w-0 flex-1">
                     <div class="text-xs font-bold ${hasVideo ? 'text-[#FFDB89] group-hover/exrow:text-[#FFDB89]' : 'text-[#FFDB89]/80'}">${ex.name || '<span class="opacity-40 italic">Sin nombre</span>'}</div>
                     ${ex.instructions ? `<div class="text-xs text-[#FFDB89]/40 mt-0.5 leading-relaxed">${ex.instructions}</div>` : ''}
@@ -6358,17 +6360,58 @@ document.addEventListener('DOMContentLoaded', () => {
     // Helper: convert YouTube/Vimeo URL to embeddable URL
     const getVideoEmbedUrl = (url) => {
         if (!url) return null;
+        // YouTube
         const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?/\s]+)/);
         if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1&rel=0`;
+        // Vimeo
         const vi = url.match(/vimeo\.com\/(\d+)/);
         if (vi) return `https://player.vimeo.com/video/${vi[1]}?autoplay=1`;
-        return null; // direct links handled separately
+        // Google Drive  (drive.google.com/file/d/ID/view  →  /preview)
+        const gd = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+        if (gd) return `https://drive.google.com/file/d/${gd[1]}/preview`;
+        // Direct video files — signal with a special prefix the caller checks
+        if (/\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url)) return `__direct__${url}`;
+        return null; // unknown — open-in-tab fallback
     };
 
     window.previewExerciseVideo = (url, name) => {
         document.getElementById('video-preview-overlay')?.remove();
         if (!url) return;
         const embedUrl = getVideoEmbedUrl(url);
+        const isDirectVideo = embedUrl && embedUrl.startsWith('__direct__');
+        const directSrc = isDirectVideo ? embedUrl.slice(10) : null;
+
+        let playerHtml;
+        if (isDirectVideo) {
+            // HTML5 <video> for direct .mp4 / .webm / .mov links
+            playerHtml = `
+                <div class="relative w-full bg-black" style="aspect-ratio:16/9">
+                    <video class="absolute inset-0 w-full h-full" src="${directSrc}"
+                        controls autoplay playsinline
+                        style="outline:none;background:#000">
+                        Tu navegador no soporta reproducción de video.
+                    </video>
+                </div>`;
+        } else if (embedUrl) {
+            // iframe for YouTube, Vimeo, Google Drive
+            playerHtml = `
+                <div class="relative w-full bg-black" style="aspect-ratio:16/9">
+                    <iframe src="${embedUrl}" class="absolute inset-0 w-full h-full" frameborder="0"
+                        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+                </div>`;
+        } else {
+            // Unknown URL type — show a friendly fallback (no new tab forced)
+            playerHtml = `
+                <div class="p-8 text-center space-y-4">
+                    <i class="fas fa-film text-3xl text-[#FFDB89]/40"></i>
+                    <p class="text-[#FFDB89]/60 text-sm">No se puede reproducir este tipo de enlace directamente.</p>
+                    <a href="${url}" target="_blank" rel="noopener noreferrer"
+                        class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#FFDB89] text-[#030303] font-bold rounded-xl hover:bg-[#f5cb6e] transition text-sm">
+                        <i class="fas fa-external-link-alt"></i>Abrir en nueva pestaña
+                    </a>
+                </div>`;
+        }
+
         const overlay = document.createElement('div');
         overlay.id = 'video-preview-overlay';
         overlay.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4';
@@ -6378,20 +6421,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p class="font-bold text-[#FFDB89] truncate flex items-center gap-2"><i class="fas fa-play-circle text-sm"></i>${name || 'Video del ejercicio'}</p>
                     <button id="close-video-preview" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl leading-none"><i class="fas fa-times"></i></button>
                 </div>
-                ${embedUrl
-                    ? `<div class="relative w-full bg-black" style="aspect-ratio:16/9">
-                           <iframe src="${embedUrl}" class="absolute inset-0 w-full h-full" frameborder="0"
-                               allow="autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>
-                       </div>`
-                    : `<div class="p-8 text-center space-y-4">
-                           <i class="fas fa-external-link-alt text-3xl text-[#FFDB89]/40"></i>
-                           <p class="text-[#FFDB89]/60 text-sm">Este enlace no se puede incrustar directamente.</p>
-                           <a href="${url}" target="_blank" rel="noopener noreferrer"
-                               class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#FFDB89] text-[#030303] font-bold rounded-xl hover:bg-[#f5cb6e] transition text-sm">
-                               <i class="fas fa-external-link-alt"></i>Abrir en nueva pestaña
-                           </a>
-                       </div>`
-                }
+                ${playerHtml}
                 <div class="px-5 py-3 border-t border-[#FFDB89]/10">
                     <p class="text-[10px] text-[#FFDB89]/30 truncate">${url}</p>
                 </div>
