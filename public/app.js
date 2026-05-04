@@ -1737,8 +1737,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="flex justify-end gap-2 flex-wrap">
                             <button onclick="document.getElementById('video-upload-modal').classList.add('hidden')" class="px-4 py-2 text-[#FFDB89]/60 hover:text-[#FFDB89] font-medium transition">Cancelar</button>
-                            <button onclick="window.saveEditorVideoToLibrary()" class="px-4 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] rounded-lg font-bold transition text-sm"><i class="fas fa-bookmark mr-1"></i>+ Librería</button>
-                            <button onclick="window.saveEditorVideo()" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg font-bold transition">Guardar</button>
+                            <button onclick="window.saveEditorVideoSmart()" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg font-bold transition">Guardar</button>
                         </div>
                      </div>
                 </div>
@@ -3957,6 +3956,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button onclick="window.copySelectedDays()" class="bg-[#2C2C2E] text-[#FFDB89] font-bold px-4 py-1.5 rounded-full text-sm hover:bg-[#2C2C2E]/80 transition">
                     <i class="fas fa-copy mr-1"></i> Copiar
                 </button>
+                <button onclick="window.deleteSelectedDays()" class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full text-sm hover:bg-red-700 transition">
+                    <i class="fas fa-trash mr-1"></i> Borrar
+                </button>
                 <button onclick="window.clearCopySelection()" class="text-white/70 hover:text-white transition text-sm">
                     <i class="fas fa-times"></i>
                 </button>
@@ -4004,6 +4006,42 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedCopyDays.clear();
         document.querySelectorAll('.copy-day-checkbox').forEach(cb => cb.checked = false);
         window.updateCopyBar();
+    };
+
+    window.deleteSelectedDays = async () => {
+        if (selectedCopyDays.size === 0 || !currentClientViewId) return;
+        const count = selectedCopyDays.size;
+        const yes = await showConfirm(
+            `¿Borrar el workout de ${count} día${count > 1 ? 's' : ''} seleccionado${count > 1 ? 's' : ''}? Esta acción no se puede deshacer.`,
+            { confirmLabel: 'Borrar', danger: true }
+        );
+        if (!yes) return;
+
+        const datesToDelete = [...selectedCopyDays];
+        let deleted = 0;
+        for (const dateStr of datesToDelete) {
+            try {
+                const res = await apiFetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`, { method: 'DELETE' });
+                if (res.ok) {
+                    deleted++;
+                    // Clear the cell UI
+                    const cell = document.getElementById(`day-${dateStr}`);
+                    if (cell) {
+                        const area = cell.querySelector('.content-area');
+                        if (area) area.innerHTML = '';
+                        const cb = cell.querySelector('.copy-day-checkbox');
+                        if (cb) cb.classList.add('hidden');
+                    }
+                    // Remove from in-memory cache
+                    if (window._calendarWorkouts) delete window._calendarWorkouts[dateStr];
+                }
+            } catch (e) {
+                console.error('Error deleting workout:', e);
+            }
+        }
+
+        window.clearCopySelection();
+        showToast(`${deleted} día${deleted > 1 ? 's' : ''} borrado${deleted > 1 ? 's' : ''} exitosamente.`, 'success');
     };
 
     // =============================================================================
@@ -6767,6 +6805,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (nameInput) nameInput.value = ex?.name?.trim() || '';
         document.getElementById('video-upload-modal').classList.remove('hidden');
         initVideoNameAutocomplete();
+    };
+
+    // Single smart save: saves to library if name is filled, otherwise just applies URL
+    window.saveEditorVideoSmart = async () => {
+        const url  = (document.getElementById('video-url-input')?.value  || '').trim();
+        const name = (document.getElementById('video-library-name')?.value || '').trim();
+        if (!url) { showToast('Por favor ingresa una URL de video.', 'error'); return; }
+        if (name) {
+            await window.saveEditorVideoToLibrary();
+        } else {
+            window.saveEditorVideo();
+        }
     };
 
     window.saveEditorVideo = () => {
