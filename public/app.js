@@ -6602,6 +6602,23 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Helper: convert YouTube/Vimeo URL to embeddable URL
+    // Returns { embedUrl, ytId, isYt } so callers can build fallback links
+    const getVideoEmbedInfo = (url) => {
+        if (!url) return { embedUrl: null, ytId: null, isYt: false };
+        const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&?/\s]+)/);
+        if (yt) return {
+            embedUrl: `https://www.youtube.com/embed/${yt[1]}?autoplay=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`,
+            ytId: yt[1],
+            isYt: true
+        };
+        const vi = url.match(/vimeo\.com\/(\d+)/);
+        if (vi) return { embedUrl: `https://player.vimeo.com/video/${vi[1]}?autoplay=1`, ytId: null, isYt: false };
+        const gd = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+        if (gd) return { embedUrl: `https://drive.google.com/file/d/${gd[1]}/preview`, ytId: null, isYt: false };
+        if (/\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url)) return { embedUrl: `__direct__${url}`, ytId: null, isYt: false };
+        return { embedUrl: null, ytId: null, isYt: false };
+    };
+    // Backward-compat shim — older callers that only need the URL string
     const getVideoEmbedUrl = (url) => {
         if (!url) return null;
         // YouTube (watch, short URL, embed, Shorts)
@@ -6623,19 +6640,31 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('video-preview-overlay')?.remove();
         if (!url) return;
 
-        const embedUrl      = getVideoEmbedUrl(url);
+        const { embedUrl, ytId, isYt } = getVideoEmbedInfo(url);
         const isDirectVideo = embedUrl?.startsWith('__direct__');
         const directSrc     = isDirectVideo ? embedUrl.slice(10) : null;
+
+        // "Watch on YouTube" button shown beneath all YouTube embeds as a reliable fallback
+        const ytFallbackBar = isYt ? `
+            <div style="padding:.4rem .75rem;background:#0a0a0a;text-align:center;border-top:1px solid rgba(255,219,137,.08)">
+                <a href="${url}" target="_blank" rel="noopener"
+                   style="color:rgba(255,219,137,.45);font-size:.7rem;text-decoration:none;
+                          display:inline-flex;align-items:center;gap:.35rem">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.5 6.2a3 3 0 00-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 00.5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 002.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 002.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.7 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
+                    Ver en YouTube
+                </a>
+            </div>` : '';
 
         let playerHtml;
         if (isDirectVideo) {
             playerHtml = `<video class="w-full block" style="aspect-ratio:16/9;background:#000"
                 src="${directSrc}" controls autoplay playsinline></video>`;
         } else if (embedUrl) {
-            playerHtml = `<div style="aspect-ratio:16/9;position:relative;background:#000">
-                <iframe src="${embedUrl}" style="position:absolute;inset:0;width:100%;height:100%;border:0"
+            playerHtml = `<div id="yt-player-wrap" style="aspect-ratio:16/9;position:relative;background:#000">
+                <iframe id="yt-embed-frame" src="${embedUrl}"
+                    style="position:absolute;inset:0;width:100%;height:100%;border:0"
                     allow="autoplay;encrypted-media;picture-in-picture" allowfullscreen></iframe>
-            </div>`;
+            </div>${ytFallbackBar}`;
         } else {
             playerHtml = `<div style="padding:1.5rem;text-align:center">
                 <p style="color:rgba(255,219,137,.5);font-size:.8125rem;margin-bottom:.75rem">
@@ -6696,12 +6725,50 @@ document.addEventListener('DOMContentLoaded', () => {
         card.style.top  = top  + 'px';
         card.style.left = left + 'px';
 
+        const closeCard = () => {
+            card.remove();
+            if (ytMsgHandler) window.removeEventListener('message', ytMsgHandler);
+            document.removeEventListener('click', onOutside);
+        };
+
         // Close button
-        card.querySelector('#close-video-preview').addEventListener('click', () => card.remove());
+        card.querySelector('#close-video-preview').addEventListener('click', closeCard);
+
+        // YouTube postMessage error detection (fires for Error 150/151/153 = embedding disabled)
+        let ytMsgHandler = null;
+        if (isYt) {
+            ytMsgHandler = (ev) => {
+                try {
+                    const data = JSON.parse(ev.data);
+                    // YouTube sends { event:'infoDelivery', info:{ error: 150|151|153 } }
+                    const errCode = data?.info?.error;
+                    if (data?.event === 'infoDelivery' && errCode) {
+                        const wrap = card.querySelector('#yt-player-wrap');
+                        if (wrap) {
+                            wrap.style.aspectRatio = 'unset';
+                            wrap.innerHTML = `
+                                <div style="padding:2rem 1.5rem;text-align:center;background:#0d0d0d">
+                                    <p style="color:rgba(255,219,137,.5);font-size:.8125rem;margin-bottom:1rem;line-height:1.5">
+                                        Este video no permite reproducción embebida.</p>
+                                    <a href="${url}" target="_blank" rel="noopener"
+                                        style="display:inline-flex;align-items:center;gap:.5rem;
+                                               padding:.6rem 1.25rem;background:#FF0000;color:#fff;
+                                               border-radius:.5rem;font-weight:700;font-size:.8125rem;text-decoration:none">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M23.5 6.2a3 3 0 00-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 00.5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 002.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 002.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.7 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
+                                        Ver en YouTube
+                                    </a>
+                                </div>`;
+                        }
+                        window.removeEventListener('message', ytMsgHandler);
+                    }
+                } catch(e) { /* non-JSON postMessage — ignore */ }
+            };
+            window.addEventListener('message', ytMsgHandler);
+        }
 
         // Click outside to close (defer one tick so the triggering click doesn't immediately close it)
         const onOutside = (e) => {
-            if (!card.contains(e.target)) { card.remove(); document.removeEventListener('click', onOutside); }
+            if (!card.contains(e.target)) closeCard();
         };
         setTimeout(() => document.addEventListener('click', onOutside), 0);
     };
