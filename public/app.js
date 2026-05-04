@@ -6644,27 +6644,54 @@ document.addEventListener('DOMContentLoaded', () => {
         const isDirectVideo = embedUrl?.startsWith('__direct__');
         const directSrc     = isDirectVideo ? embedUrl.slice(10) : null;
 
-        // "Watch on YouTube" button shown beneath all YouTube embeds as a reliable fallback
-        const ytFallbackBar = isYt ? `
-            <div style="padding:.4rem .75rem;background:#0a0a0a;text-align:center;border-top:1px solid rgba(255,219,137,.08)">
-                <a href="${url}" target="_blank" rel="noopener"
-                   style="color:rgba(255,219,137,.45);font-size:.7rem;text-decoration:none;
-                          display:inline-flex;align-items:center;gap:.35rem">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.5 6.2a3 3 0 00-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 00.5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 002.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 002.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.7 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
-                    Ver en YouTube
-                </a>
-            </div>` : '';
-
         let playerHtml;
-        if (isDirectVideo) {
-            playerHtml = `<video class="w-full block" style="aspect-ratio:16/9;background:#000"
+        if (isYt) {
+            // YouTube: show thumbnail + play button that opens YouTube directly.
+            // Never use an iframe — embedding restrictions (Error 150/151/153) make it unreliable.
+            const thumb    = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+            const watchUrl = url.includes('shorts/') ? url : `https://www.youtube.com/watch?v=${ytId}`;
+            playerHtml = `
+                <a href="${watchUrl}" target="_blank" rel="noopener"
+                   style="display:block;position:relative;aspect-ratio:16/9;background:#000;
+                          overflow:hidden;text-decoration:none;cursor:pointer">
+                    <img src="${thumb}" alt="${name}"
+                         style="width:100%;height:100%;object-fit:cover;opacity:.85;display:block"
+                         onerror="this.src='https://img.youtube.com/vi/${ytId}/mqdefault.jpg'">
+                    <!-- Red play button -->
+                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+                        <div style="width:62px;height:62px;background:rgba(255,0,0,.92);border-radius:50%;
+                                    display:flex;align-items:center;justify-content:center;
+                                    box-shadow:0 4px 24px rgba(0,0,0,.6);
+                                    transition:transform .15s,background .15s"
+                             onmouseover="this.style.background='#ff0000';this.style.transform='scale(1.1)'"
+                             onmouseout="this.style.background='rgba(255,0,0,.92)';this.style.transform='scale(1)'">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                                <path d="M8 5v14l11-7z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <!-- YouTube logo watermark -->
+                    <div style="position:absolute;bottom:.5rem;right:.5rem;opacity:.8">
+                        <svg width="44" height="30" viewBox="0 0 46 32">
+                            <rect width="46" height="32" rx="7" fill="#FF0000"/>
+                            <path d="M19 10l12 6-12 6V10z" fill="white"/>
+                        </svg>
+                    </div>
+                </a>
+                <div style="padding:.35rem .75rem;background:#0a0a0a;text-align:center">
+                    <span style="color:rgba(255,219,137,.35);font-size:.68rem">
+                        Haz clic para ver en YouTube
+                    </span>
+                </div>`;
+        } else if (isDirectVideo) {
+            playerHtml = `<video style="width:100%;display:block;aspect-ratio:16/9;background:#000"
                 src="${directSrc}" controls autoplay playsinline></video>`;
         } else if (embedUrl) {
-            playerHtml = `<div id="yt-player-wrap" style="aspect-ratio:16/9;position:relative;background:#000">
-                <iframe id="yt-embed-frame" src="${embedUrl}"
-                    style="position:absolute;inset:0;width:100%;height:100%;border:0"
+            // Vimeo, Google Drive, etc. — iframe still makes sense here
+            playerHtml = `<div style="aspect-ratio:16/9;position:relative;background:#000">
+                <iframe src="${embedUrl}" style="position:absolute;inset:0;width:100%;height:100%;border:0"
                     allow="autoplay;encrypted-media;picture-in-picture" allowfullscreen></iframe>
-            </div>${ytFallbackBar}`;
+            </div>`;
         } else {
             playerHtml = `<div style="padding:1.5rem;text-align:center">
                 <p style="color:rgba(255,219,137,.5);font-size:.8125rem;margin-bottom:.75rem">
@@ -6727,44 +6754,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const closeCard = () => {
             card.remove();
-            if (ytMsgHandler) window.removeEventListener('message', ytMsgHandler);
             document.removeEventListener('click', onOutside);
         };
 
         // Close button
         card.querySelector('#close-video-preview').addEventListener('click', closeCard);
-
-        // YouTube postMessage error detection (fires for Error 150/151/153 = embedding disabled)
-        let ytMsgHandler = null;
-        if (isYt) {
-            ytMsgHandler = (ev) => {
-                try {
-                    const data = JSON.parse(ev.data);
-                    // YouTube sends { event:'infoDelivery', info:{ error: 150|151|153 } }
-                    const errCode = data?.info?.error;
-                    if (data?.event === 'infoDelivery' && errCode) {
-                        const wrap = card.querySelector('#yt-player-wrap');
-                        if (wrap) {
-                            wrap.style.aspectRatio = 'unset';
-                            wrap.innerHTML = `
-                                <div style="padding:2rem 1.5rem;text-align:center;background:#0d0d0d">
-                                    <p style="color:rgba(255,219,137,.5);font-size:.8125rem;margin-bottom:1rem;line-height:1.5">
-                                        Este video no permite reproducción embebida.</p>
-                                    <a href="${url}" target="_blank" rel="noopener"
-                                        style="display:inline-flex;align-items:center;gap:.5rem;
-                                               padding:.6rem 1.25rem;background:#FF0000;color:#fff;
-                                               border-radius:.5rem;font-weight:700;font-size:.8125rem;text-decoration:none">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M23.5 6.2a3 3 0 00-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 00.5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 002.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 002.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.7 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
-                                        Ver en YouTube
-                                    </a>
-                                </div>`;
-                        }
-                        window.removeEventListener('message', ytMsgHandler);
-                    }
-                } catch(e) { /* non-JSON postMessage — ignore */ }
-            };
-            window.addEventListener('message', ytMsgHandler);
-        }
 
         // Click outside to close (defer one tick so the triggering click doesn't immediately close it)
         const onOutside = (e) => {
