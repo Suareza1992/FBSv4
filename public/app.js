@@ -4198,7 +4198,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="flex items-center gap-2 pl-1">
                     <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
                     <span class="text-sm text-[#FFDB89]/70 flex-1">${item.name || ''}</span>
-                    ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
+                    ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
                 </div>`).join('');
             const warmupHtml = (day.warmup || day.warmupItems?.length) ? `
                 <div class="flex items-start gap-3 p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl mb-4">
@@ -4207,7 +4207,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="text-xs font-bold text-orange-400/80 uppercase tracking-wider mb-1">Calentamiento</p>
                         ${day.warmup ? `<p class="text-sm text-[#FFDB89]/70 leading-relaxed mb-2">${day.warmup}</p>` : ''}
                         ${warmupItemsHtml ? `<div class="space-y-1.5">${warmupItemsHtml}</div>` : ''}
-                        ${day.warmupVideo ? `<button onclick="window.previewExerciseVideo('${day.warmupVideo.replace(/'/g,"\\'")}','Calentamiento')" class="mt-2 text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] flex items-center gap-1.5 transition"><i class="fas fa-play-circle text-green-400"></i>Ver video</button>` : ''}
+                        ${day.warmupVideo ? `<button onclick="window.previewExerciseVideo('${day.warmupVideo.replace(/'/g,"\\'")}','Calentamiento',this)" class="mt-2 text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] flex items-center gap-1.5 transition"><i class="fas fa-play-circle text-green-400"></i>Ver video</button>` : ''}
                     </div>
                 </div>` : '';
 
@@ -4221,7 +4221,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex-1 min-w-0">
                         <div class="flex items-start justify-between gap-2">
                             <p class="font-bold text-[#FFDB89] text-sm leading-snug">${ex.name || '—'}</p>
-                            ${hasVideo ? `<button onclick="window.previewExerciseVideo('${videoUrl.replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}'); event.stopPropagation();" class="shrink-0 text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video del ejercicio"><i class="fas fa-play-circle"></i></button>` : ''}
+                            ${hasVideo ? `<button onclick="window.previewExerciseVideo('${videoUrl.replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}',this); event.stopPropagation();" class="shrink-0 text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video del ejercicio"><i class="fas fa-play-circle"></i></button>` : ''}
                         </div>
                         ${ex.stats ? `<p class="text-xs text-[#FFDB89]/50 mt-1 leading-relaxed whitespace-pre-line">${ex.stats}</p>` : ''}
                         ${ex.instructions ? `<p class="text-xs text-[#FFDB89]/50 mt-1 leading-relaxed whitespace-pre-line">${ex.instructions}</p>` : ''}
@@ -4234,7 +4234,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="flex items-center gap-2 pl-1">
                     <i class="fas fa-circle text-sky-400/40 text-[6px] shrink-0"></i>
                     <span class="text-sm text-[#FFDB89]/60 flex-1">${item.name || ''}</span>
-                    ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
+                    ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
                 </div>`).join('');
             const cooldownHtml = (day.cooldown || day.cooldownItems?.length) ? `
                 <div class="flex items-start gap-3 p-4 bg-sky-400/5 border border-sky-400/20 rounded-xl mt-4">
@@ -4243,7 +4243,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="text-xs font-bold text-sky-400/70 uppercase tracking-wider mb-1">Enfriamiento</p>
                         ${day.cooldown ? `<p class="text-sm text-[#FFDB89]/60 leading-relaxed mb-2">${day.cooldown}</p>` : ''}
                         ${cooldownItemsHtml ? `<div class="space-y-1.5">${cooldownItemsHtml}</div>` : ''}
-                        ${day.cooldownVideo ? `<button onclick="window.previewExerciseVideo('${day.cooldownVideo.replace(/'/g,"\\'")}','Enfriamiento')" class="mt-2 text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] flex items-center gap-1.5 transition"><i class="fas fa-play-circle text-green-400"></i>Ver video</button>` : ''}
+                        ${day.cooldownVideo ? `<button onclick="window.previewExerciseVideo('${day.cooldownVideo.replace(/'/g,"\\'")}','Enfriamiento',this)" class="mt-2 text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] flex items-center gap-1.5 transition"><i class="fas fa-play-circle text-green-400"></i>Ver video</button>` : ''}
                     </div>
                 </div>` : '';
 
@@ -4338,7 +4338,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     class="flex-1 min-w-0 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/25 outline-none focus:border-[#FFDB89]/40 transition"
                     placeholder="Ejercicio de calentamiento...">
                 ${item.videoUrl
-                    ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');"
+                    ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);"
                         class="p-2.5 bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 rounded-lg transition shrink-0" title="Ver video">
                         <i class="fas fa-play text-xs"></i></button>`
                     : ''}
@@ -4358,7 +4358,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     class="flex-1 min-w-0 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/25 outline-none focus:border-[#FFDB89]/40 transition"
                     placeholder="Ejercicio de enfriamiento...">
                 ${item.videoUrl
-                    ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');"
+                    ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);"
                         class="p-2.5 bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 rounded-lg transition shrink-0" title="Ver video">
                         <i class="fas fa-play text-xs"></i></button>`
                     : ''}
@@ -5941,7 +5941,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="text" value="${ex.name}" class="bg-transparent text-[#FFDB89] font-bold outline-none min-w-0 flex-1 placeholder-[#FFDB89]/30" placeholder="Título del ejercicio" oninput="window.updateExName(${ex.id}, this.value); window.markEditorDirty();">
                     <div class="flex items-center gap-1.5 shrink-0">
                         ${ex._selected ? `<button onclick="window.deleteEditorExercise(${ex.id})" class="text-red-400/80 hover:text-red-400 transition" title="Eliminar ejercicio"><i class="fas fa-trash-alt text-sm"></i></button>` : ''}
-                        ${ex.videoUrl ? `<button onclick="window.previewExerciseVideo('${ex.videoUrl.replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}'); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                        ${ex.videoUrl ? `<button onclick="window.previewExerciseVideo('${ex.videoUrl.replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}',this); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
                         <i class="fas fa-video ${ex.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] mt-0.5" onclick="window.openVideoModalForEditor(${ex.id})" title="Editar URL del video"></i>
                     </div>
                 </div>
@@ -5961,7 +5961,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="flex items-center gap-2 pl-1">
                 <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
                 <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateWarmupItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de calentamiento...">
-                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
                 <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForWarmupItem(${item.id})" title="URL de video"></i>
                 <button onclick="window.removeWarmupItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
             </div>`).join('');
@@ -5971,7 +5971,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="flex items-center gap-2 pl-1">
                 <i class="fas fa-circle text-blue-300/40 text-[6px] shrink-0"></i>
                 <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateCooldownItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de enfriamiento...">
-                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}');" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
+                ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
                 <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForCooldownItem(${item.id})" title="URL de video"></i>
                 <button onclick="window.removeCooldownItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
             </div>`).join('');
@@ -6360,7 +6360,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const exLetter = window.getExerciseLetter ? window.getExerciseLetter(i, _exArr) : String.fromCharCode(65 + i % 26);
             const hasVideo = !!ex.videoUrl;
             const clickAttr = hasVideo
-                ? `onclick="event.stopPropagation(); window.previewExerciseVideo('${(ex.videoUrl||'').replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}')"`
+                ? `onclick="event.stopPropagation(); window.previewExerciseVideo('${(ex.videoUrl||'').replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}',this)"`
                 : '';
             html += `<div class="py-2 flex items-start gap-2 border-b border-[#FFDB89]/10 last:border-0 ${hasVideo ? 'cursor-pointer group/exrow hover:bg-[#FFDB89]/5 rounded-lg px-1 -mx-1 transition-colors' : ''}" ${clickAttr}>
                 <span class="text-xs font-bold text-[#FFDB89]/50 shrink-0 mt-0.5">${exLetter})</span>
@@ -6618,61 +6618,92 @@ document.addEventListener('DOMContentLoaded', () => {
         return null; // unknown — open-in-tab fallback
     };
 
-    window.previewExerciseVideo = (url, name) => {
+    window.previewExerciseVideo = (url, name, triggerEl) => {
+        // Remove any existing popover
         document.getElementById('video-preview-overlay')?.remove();
         if (!url) return;
-        const embedUrl = getVideoEmbedUrl(url);
-        const isDirectVideo = embedUrl && embedUrl.startsWith('__direct__');
-        const directSrc = isDirectVideo ? embedUrl.slice(10) : null;
+
+        const embedUrl      = getVideoEmbedUrl(url);
+        const isDirectVideo = embedUrl?.startsWith('__direct__');
+        const directSrc     = isDirectVideo ? embedUrl.slice(10) : null;
 
         let playerHtml;
         if (isDirectVideo) {
-            // HTML5 <video> for direct .mp4 / .webm / .mov links
-            playerHtml = `
-                <div class="relative w-full bg-black" style="aspect-ratio:16/9">
-                    <video class="absolute inset-0 w-full h-full" src="${directSrc}"
-                        controls autoplay playsinline
-                        style="outline:none;background:#000">
-                        Tu navegador no soporta reproducción de video.
-                    </video>
-                </div>`;
+            playerHtml = `<video class="w-full block" style="aspect-ratio:16/9;background:#000"
+                src="${directSrc}" controls autoplay playsinline></video>`;
         } else if (embedUrl) {
-            // iframe for YouTube, Vimeo, Google Drive
-            playerHtml = `
-                <div class="relative w-full bg-black" style="aspect-ratio:16/9">
-                    <iframe src="${embedUrl}" class="absolute inset-0 w-full h-full" frameborder="0"
-                        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>
-                </div>`;
+            playerHtml = `<div style="aspect-ratio:16/9;position:relative;background:#000">
+                <iframe src="${embedUrl}" style="position:absolute;inset:0;width:100%;height:100%;border:0"
+                    allow="autoplay;encrypted-media;picture-in-picture" allowfullscreen></iframe>
+            </div>`;
         } else {
-            // Unknown URL type — show a friendly fallback (no new tab forced)
-            playerHtml = `
-                <div class="p-8 text-center space-y-4">
-                    <i class="fas fa-film text-3xl text-[#FFDB89]/40"></i>
-                    <p class="text-[#FFDB89]/60 text-sm">No se puede reproducir este tipo de enlace directamente.</p>
-                    <a href="${url}" target="_blank" rel="noopener noreferrer"
-                        class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#FFDB89] text-[#030303] font-bold rounded-xl hover:bg-[#f5cb6e] transition text-sm">
-                        <i class="fas fa-external-link-alt"></i>Abrir en nueva pestaña
-                    </a>
-                </div>`;
+            playerHtml = `<div style="padding:1.5rem;text-align:center">
+                <p style="color:rgba(255,219,137,.5);font-size:.8125rem;margin-bottom:.75rem">
+                    No se puede reproducir este enlace directamente.</p>
+                <a href="${url}" target="_blank" rel="noopener noreferrer"
+                    style="display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1.1rem;
+                           background:#FFDB89;color:#030303;border-radius:.5rem;font-weight:700;font-size:.8125rem">
+                    <i class="fas fa-external-link-alt"></i>Abrir en nueva pestaña</a>
+            </div>`;
         }
 
-        const overlay = document.createElement('div');
-        overlay.id = 'video-preview-overlay';
-        overlay.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4';
-        overlay.innerHTML = `
-            <div class="bg-[#1C1C1E] border border-[#FFDB89]/25 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
-                <div class="flex items-center justify-between px-5 py-3.5 border-b border-[#FFDB89]/15">
-                    <p class="font-bold text-[#FFDB89] truncate flex items-center gap-2"><i class="fas fa-play-circle text-sm"></i>${name || 'Video del ejercicio'}</p>
-                    <button id="close-video-preview" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl leading-none"><i class="fas fa-times"></i></button>
-                </div>
-                ${playerHtml}
-                <div class="px-5 py-3 border-t border-[#FFDB89]/10">
-                    <p class="text-[10px] text-[#FFDB89]/30 truncate">${url}</p>
-                </div>
-            </div>`;
-        document.body.appendChild(overlay);
-        overlay.querySelector('#close-video-preview')?.addEventListener('click', () => overlay.remove());
-        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        // Build the floating card
+        const CARD_W = 340;
+        const card   = document.createElement('div');
+        card.id      = 'video-preview-overlay';
+        card.style.cssText = `position:fixed;z-index:9998;width:${CARD_W}px;
+            background:#1C1C1E;border:1px solid rgba(255,219,137,.22);
+            border-radius:1rem;box-shadow:0 12px 40px rgba(0,0,0,.7);overflow:hidden;`;
+        card.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;
+                        padding:.625rem .875rem;border-bottom:1px solid rgba(255,219,137,.12)">
+                <span style="font-weight:700;color:#FFDB89;font-size:.875rem;
+                             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">
+                    ${name || 'Video'}</span>
+                <button id="close-video-preview"
+                    style="margin-left:.5rem;color:rgba(255,219,137,.4);background:none;border:none;
+                           cursor:pointer;font-size:1rem;line-height:1;padding:0"
+                    onmouseover="this.style.color='#FFDB89'" onmouseout="this.style.color='rgba(255,219,137,.4)'">
+                    <i class="fas fa-times"></i></button>
+            </div>
+            ${playerHtml}`;
+        document.body.appendChild(card);
+
+        // Smart positioning near the trigger button
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const CARD_H = 240; // approximate (header ~40px + 16:9 video ~190px)
+        let top, left;
+        if (triggerEl) {
+            const r = triggerEl.getBoundingClientRect();
+            // Prefer left side; fall back to right, then below
+            if (r.left - CARD_W - 10 >= 0) {
+                left = r.left - CARD_W - 8;
+                top  = r.top;
+            } else if (r.right + CARD_W + 10 <= vw) {
+                left = r.right + 8;
+                top  = r.top;
+            } else {
+                left = Math.max(8, Math.min(r.left, vw - CARD_W - 8));
+                top  = r.bottom + 8;
+            }
+            // Keep within vertical viewport
+            top = Math.max(8, Math.min(top, vh - CARD_H - 8));
+        } else {
+            // No anchor — centre it
+            top  = vh / 2 - CARD_H / 2;
+            left = vw / 2 - CARD_W / 2;
+        }
+        card.style.top  = top  + 'px';
+        card.style.left = left + 'px';
+
+        // Close button
+        card.querySelector('#close-video-preview').addEventListener('click', () => card.remove());
+
+        // Click outside to close (defer one tick so the triggering click doesn't immediately close it)
+        const onOutside = (e) => {
+            if (!card.contains(e.target)) { card.remove(); document.removeEventListener('click', onOutside); }
+        };
+        setTimeout(() => document.addEventListener('click', onOutside), 0);
     };
 
     // MODAL ACTIONS
@@ -9959,7 +9990,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return `
             <div class="bg-white/5 border border-[#FFDB89]/15 rounded-xl overflow-hidden">
                 <div class="flex gap-3 p-4 ${hasVideo ? 'cursor-pointer hover:bg-[#FFDB89]/5 group/excard' : ''}"
-                     ${hasVideo ? `onclick="window.previewExerciseVideo('${safeUrl}','${safeName}')"` : ''}>
+                     ${hasVideo ? `onclick="window.previewExerciseVideo('${safeUrl}','${safeName}',this)"` : ''}>
                     <div class="w-8 h-8 shrink-0 rounded-lg bg-[#FFDB89]/10 flex items-center justify-center text-[#FFDB89] font-black text-sm">${exLabel}</div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2">
@@ -9985,7 +10016,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<div class="flex items-center gap-2 py-1">
                 <i class="fas fa-circle text-orange-400/50 text-[6px] shrink-0"></i>
                 <span class="text-sm text-white/70 flex-1">${item.name || ''}</span>
-                ${item.videoUrl ? `<button onclick="event.stopPropagation();window.previewExerciseVideo('${safeUrl}','${safeName}')" class="text-green-400/60 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
+                ${item.videoUrl ? `<button onclick="event.stopPropagation();window.previewExerciseVideo('${safeUrl}','${safeName}',this)" class="text-green-400/60 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
             </div>`;
         }).join('');
 
@@ -9996,7 +10027,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<div class="flex items-center gap-2 py-1">
                 <i class="fas fa-circle text-blue-300/50 text-[6px] shrink-0"></i>
                 <span class="text-sm text-white/70 flex-1">${item.name || ''}</span>
-                ${item.videoUrl ? `<button onclick="event.stopPropagation();window.previewExerciseVideo('${safeUrl}','${safeName}')" class="text-green-400/60 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
+                ${item.videoUrl ? `<button onclick="event.stopPropagation();window.previewExerciseVideo('${safeUrl}','${safeName}',this)" class="text-green-400/60 hover:text-green-400 transition text-sm shrink-0"><i class="fas fa-play-circle"></i></button>` : ''}
             </div>`;
         }).join('');
 
