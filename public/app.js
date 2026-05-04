@@ -6607,7 +6607,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!url) return { embedUrl: null, ytId: null, isYt: false };
         const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&?/\s]+)/);
         if (yt) return {
-            embedUrl: `https://www.youtube.com/embed/${yt[1]}?autoplay=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`,
+            embedUrl: `https://www.youtube.com/embed/${yt[1]}?autoplay=1&rel=0`,
             ytId: yt[1],
             isYt: true
         };
@@ -6645,52 +6645,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const directSrc     = isDirectVideo ? embedUrl.slice(10) : null;
 
         let playerHtml;
-        if (isYt) {
-            // YouTube: show thumbnail + play button that opens YouTube directly.
-            // Never use an iframe — embedding restrictions (Error 150/151/153) make it unreliable.
-            const thumb    = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
-            const watchUrl = url.includes('shorts/') ? url : `https://www.youtube.com/watch?v=${ytId}`;
-            playerHtml = `
-                <a href="${watchUrl}" target="_blank" rel="noopener"
-                   style="display:block;position:relative;aspect-ratio:16/9;background:#000;
-                          overflow:hidden;text-decoration:none;cursor:pointer">
-                    <img src="${thumb}" alt="${name}"
-                         style="width:100%;height:100%;object-fit:cover;opacity:.85;display:block"
-                         onerror="this.src='https://img.youtube.com/vi/${ytId}/mqdefault.jpg'">
-                    <!-- Red play button -->
-                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
-                        <div style="width:62px;height:62px;background:rgba(255,0,0,.92);border-radius:50%;
-                                    display:flex;align-items:center;justify-content:center;
-                                    box-shadow:0 4px 24px rgba(0,0,0,.6);
-                                    transition:transform .15s,background .15s"
-                             onmouseover="this.style.background='#ff0000';this.style.transform='scale(1.1)'"
-                             onmouseout="this.style.background='rgba(255,0,0,.92)';this.style.transform='scale(1)'">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                                <path d="M8 5v14l11-7z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <!-- YouTube logo watermark -->
-                    <div style="position:absolute;bottom:.5rem;right:.5rem;opacity:.8">
-                        <svg width="44" height="30" viewBox="0 0 46 32">
-                            <rect width="46" height="32" rx="7" fill="#FF0000"/>
-                            <path d="M19 10l12 6-12 6V10z" fill="white"/>
-                        </svg>
-                    </div>
-                </a>
-                <div style="padding:.35rem .75rem;background:#0a0a0a;text-align:center">
-                    <span style="color:rgba(255,219,137,.35);font-size:.68rem">
-                        Haz clic para ver en YouTube
-                    </span>
-                </div>`;
-        } else if (isDirectVideo) {
+        if (isDirectVideo) {
             playerHtml = `<video style="width:100%;display:block;aspect-ratio:16/9;background:#000"
                 src="${directSrc}" controls autoplay playsinline></video>`;
         } else if (embedUrl) {
-            // Vimeo, Google Drive, etc. — iframe still makes sense here
             playerHtml = `<div style="aspect-ratio:16/9;position:relative;background:#000">
                 <iframe src="${embedUrl}" style="position:absolute;inset:0;width:100%;height:100%;border:0"
-                    allow="autoplay;encrypted-media;picture-in-picture" allowfullscreen></iframe>
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
             </div>`;
         } else {
             playerHtml = `<div style="padding:1.5rem;text-align:center">

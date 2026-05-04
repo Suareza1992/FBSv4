@@ -49,13 +49,19 @@ app.use(helmet({
             scriptSrc:     ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
             scriptSrcAttr: ["'unsafe-inline'"], // allow onclick="..." attributes (SPA uses event delegation + inline handlers)
             styleSrc:   ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
-            imgSrc:     ["'self'", "data:", "blob:", "https://images.unsplash.com", "https://i.pravatar.cc"],
+            imgSrc:     ["'self'", "data:", "blob:", "https://images.unsplash.com", "https://i.pravatar.cc",
+                         "https://img.youtube.com", "https://i.ytimg.com", "https://*.ytimg.com"], // YouTube thumbnails
             fontSrc:    ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
             connectSrc: ["'self'", "https://api.nal.usda.gov", "https://cdn.jsdelivr.net"],
-            frameSrc:   ["'self'", "https://www.youtube.com", "https://youtube.com", "https://player.vimeo.com", "https://drive.google.com"],
+            frameSrc:   ["'self'", "https://www.youtube.com", "https://youtube.com",
+                         "https://www.youtube-nocookie.com", "https://player.vimeo.com", "https://drive.google.com"],
         }
     },
-    crossOriginEmbedderPolicy: false, // needed for embedded YouTube videos
+    crossOriginEmbedderPolicy: false, // needed for embedded iframes
+    // Allow our origin to be sent as Referer when loading YouTube iframes.
+    // Helmet's default is "no-referrer" which strips the Referer header, causing
+    // YouTube's player to fail with Error 153 (can't verify the embedding domain).
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
 }));
 
 // FIX: Configure CORS with allowed origins instead of allowing everything
