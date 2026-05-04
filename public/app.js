@@ -998,16 +998,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const sidebar = document.getElementById('sidebar');
         if(sidebar) sidebar.querySelectorAll('nav a').forEach(a => a.classList.add('nav-link-item'));
 
-        // Collapse sidebar by default on mobile (< 768px)
-        if (sidebar && window.innerWidth < 768) {
-            sidebar.classList.remove('w-60');
-            sidebar.classList.add('w-20');
-            sidebar.querySelectorAll('.nav-text').forEach(span => span.classList.add('hidden'));
-            const collapseIcon = document.getElementById('collapse-icon');
-            if (collapseIcon) collapseIcon.style.transform = 'rotate(180deg)';
-        }
+        // On mobile the sidebar is hidden off-screen; hamburger controls it.
+        // On desktop it stays visible as normal.
+        initMobileMenu();
 
         setTimeout(updateThemeIcon, 100);
+    };
+
+    const initMobileMenu = () => {
+        const hamburgerBtn = document.getElementById('hamburger-btn');
+        const overlay = document.getElementById('mobile-sidebar-overlay');
+        const sp = document.getElementById('sidebar-placeholder');
+        if (!hamburgerBtn || !overlay || !sp || hamburgerBtn.dataset.mobileInit) return;
+        hamburgerBtn.dataset.mobileInit = '1';
+
+        const openMenu = () => {
+            sp.classList.add('mobile-open');
+            overlay.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        };
+        const closeMenu = () => {
+            sp.classList.remove('mobile-open');
+            overlay.classList.add('hidden');
+            document.body.style.overflow = '';
+        };
+
+        hamburgerBtn.addEventListener('click', openMenu);
+        overlay.addEventListener('click', closeMenu);
+
+        // Close on nav item click when on mobile
+        sp.addEventListener('click', (e) => {
+            if (e.target.closest('.nav-link-item') && window.innerWidth < 768) {
+                closeMenu();
+            }
+        });
     };
 
     const loadModule = async (name) => {
@@ -1311,8 +1335,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (greetingText) greetingText.textContent = `¡Hola, ${data.name}! Tu entrenador te ha dado acceso.`;
                 if (emailDisplay) emailDisplay.value = data.email;
             } else {
-                showMessage('invite-message', 'Este enlace de invitación es inválido o ya expiró.', 'error');
+                showMessage('invite-message', 'Este enlace es inválido o ya expiró. Si ya activaste tu cuenta, inicia sesión.', 'error');
                 document.getElementById('accept-invite-form')?.querySelectorAll('input, button').forEach(el => el.disabled = true);
+                const backWrap = document.getElementById('invite-back-login-wrap');
+                if (backWrap) backWrap.classList.remove('hidden');
+                const backBtn = document.getElementById('invite-back-to-login-btn');
+                if (backBtn) backBtn.addEventListener('click', () => showCard('login-card'), { once: true });
+                setTimeout(() => showCard('login-card'), 5000);
             }
         } catch (err) {
             console.error('Invite info fetch error:', err);
@@ -7035,6 +7064,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (target.id === 'logout-btn' || target.closest('#logout-btn')) {
+            const confirmed = await showConfirm('¿Estás seguro que quieres cerrar sesión?', {
+                confirmLabel: 'Cerrar sesión',
+                cancelLabel: 'Cancelar',
+                danger: true
+            });
+            if (!confirmed) return;
             // H-2: Tell server to clear the HttpOnly cookie, then wipe local state
             fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).finally(() => {
                 localStorage.removeItem('auth_user');
@@ -10026,7 +10061,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <h3 class="text-xl font-bold" style="color:${color}">${label}</h3>
                                 <p class="text-xs mt-0.5" style="color:${color}88">${workout.date}</p>
                             </div>
-                            <button id="close-client-workout-detail" class="text-xl transition" style="color:${color}66"><i class="fas fa-times"></i></button>
+                            <button id="close-client-workout-detail" class="w-11 h-11 flex items-center justify-center rounded-full transition hover:bg-white/10" style="color:${color}aa"><i class="fas fa-times text-lg"></i></button>
                         </div>
                         <div class="p-6 flex flex-col items-center gap-4">
                             <div class="w-20 h-20 rounded-full flex items-center justify-center" style="background:${color}22">
@@ -10148,7 +10183,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <h3 class="text-xl font-bold text-[#FFDB89]">${workout.title || 'Entrenamiento'}</h3>
                             <p class="text-xs text-[#FFDB89]/50 mt-0.5">${workout.date}</p>
                         </div>
-                        <button id="close-client-workout-detail" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl"><i class="fas fa-times"></i></button>
+                        <button id="close-client-workout-detail" class="w-11 h-11 flex items-center justify-center rounded-full text-[#FFDB89]/50 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition"><i class="fas fa-times text-lg"></i></button>
                     </div>
                     <div class="overflow-y-auto p-5 space-y-3 flex-1">
                         ${(workout.warmup || warmupItemsHtml) ? `

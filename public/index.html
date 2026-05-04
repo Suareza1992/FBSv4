@@ -9,6 +9,32 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    /* ── Mobile sidebar overlay ────────────────────────────────────────────── */
+    @media (max-width: 767px) {
+      #sidebar-placeholder {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        z-index: 50 !important;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        flex-shrink: 0;
+      }
+      #sidebar-placeholder.mobile-open {
+        transform: translateX(0);
+      }
+      /* Push content below the mobile topbar */
+      #mobile-main-wrap {
+        padding-top: 56px;
+      }
+    }
+    @media (min-width: 768px) {
+      #mobile-topbar { display: none !important; }
+      #mobile-sidebar-overlay { display: none !important; }
+    }
+  </style>
 </head>
 <body class="bg-fbs-dark text-white font-sans overflow-hidden">
 
@@ -22,12 +48,12 @@
       <!-- NAV -->
       <nav class="sticky top-0 z-50 bg-fbs-dark/90 backdrop-blur-md border-b border-fbs-gold/15">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div class="flex justify-between items-center h-18 py-4">
-            <div class="flex items-center gap-2.5">
-              <i class="fas fa-dumbbell text-2xl text-fbs-gold"></i>
-              <span class="font-black text-xl tracking-tight text-white">FitbySuárez</span>
+          <div class="flex justify-between items-center py-3 sm:py-4 gap-2">
+            <div class="flex items-center gap-2 min-w-0 flex-shrink">
+              <i class="fas fa-dumbbell text-lg sm:text-2xl text-fbs-gold flex-shrink-0"></i>
+              <span class="font-black text-base sm:text-xl tracking-tight text-white truncate">FitbySuárez</span>
             </div>
-            <button onclick="toggleLanguage()" class="flex items-center gap-2 px-4 py-2 rounded-full border border-fbs-gold/30 text-fbs-gold hover:border-fbs-gold hover:text-fbs-gold transition text-sm font-bold">
+            <button onclick="toggleLanguage()" class="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-fbs-gold/30 text-fbs-gold hover:border-fbs-gold hover:text-fbs-gold transition text-sm font-bold flex-shrink-0">
               <i class="fas fa-globe text-xs"></i>
               <span id="lang-btn-text">EN</span>
             </button>
@@ -198,6 +224,9 @@
                   </button>
                 </form>
                 <p id="invite-message" class="text-center mt-4 text-sm font-bold hidden"></p>
+                <div id="invite-back-login-wrap" class="hidden mt-2 text-center">
+                  <button id="invite-back-to-login-btn" class="text-sm text-fbs-gold/50 hover:text-fbs-gold transition underline">Volver a iniciar sesión</button>
+                </div>
               </div>
             </div>
 
@@ -434,8 +463,17 @@
          DASHBOARD CONTAINER (injected after login)
     ===================================================================== -->
     <div id="dashboard-container" class="flex flex-grow hidden h-screen overflow-hidden">
+      <!-- Mobile topbar (hamburger) — hidden on md+ via CSS -->
+      <div id="mobile-topbar" class="fixed top-0 left-0 right-0 z-30 flex items-center h-14 px-3 border-b border-[#FFDB89]/15 bg-[#2C2C2E] dark:bg-[#030303]">
+        <button id="hamburger-btn" class="w-10 h-10 flex items-center justify-center text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition" aria-label="Abrir menú">
+          <i class="fas fa-bars text-xl"></i>
+        </button>
+      </div>
+      <!-- Backdrop overlay for mobile sidebar -->
+      <div id="mobile-sidebar-overlay" class="fixed inset-0 z-40 bg-black/60 hidden backdrop-blur-sm"></div>
+
       <div id="sidebar-placeholder" class="h-full flex-shrink-0 z-20 shadow-2xl"></div>
-      <div class="flex-grow flex flex-col h-full relative overflow-hidden bg-[#2C2C2E] dark:bg-[#030303]">
+      <div id="mobile-main-wrap" class="flex-grow flex flex-col h-full relative overflow-hidden bg-[#2C2C2E] dark:bg-[#030303]">
         <!-- Topographic particle wave canvas — sits behind all content -->
         <canvas id="topo-canvas" class="absolute inset-0 w-full h-full pointer-events-none" style="z-index:0;"></canvas>
         <main id="main-content" class="flex-grow p-4 md:p-6 overflow-hidden relative" style="z-index:1;"></main>
