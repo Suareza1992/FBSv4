@@ -1006,24 +1006,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const initMobileMenu = () => {
-        const hamburgerBtn = document.getElementById('hamburger-btn');
         const overlay = document.getElementById('mobile-sidebar-overlay');
         const sp = document.getElementById('sidebar-placeholder');
-        if (!hamburgerBtn || !overlay || !sp || hamburgerBtn.dataset.mobileInit) return;
-        hamburgerBtn.dataset.mobileInit = '1';
+        if (!overlay || !sp || sp.dataset.mobileInit) return;
+        sp.dataset.mobileInit = '1';
 
-        const openMenu = () => {
-            sp.classList.add('mobile-open');
-            overlay.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-        };
         const closeMenu = () => {
             sp.classList.remove('mobile-open');
             overlay.classList.add('hidden');
             document.body.style.overflow = '';
         };
 
-        hamburgerBtn.addEventListener('click', openMenu);
         overlay.addEventListener('click', closeMenu);
 
         // Close on nav item click when on mobile
@@ -8510,6 +8503,27 @@ document.addEventListener('DOMContentLoaded', () => {
             setBar('bar-protein', 'bar-protein-label', totalPro,   goalPro);
             setBar('bar-carbs',   'bar-carbs-label',   totalCarbs, goalCarbs);
             setBar('bar-fat',     'bar-fat-label',      totalFat,   goalFat);
+
+            // Calorie ring (SVG stroke animation)
+            const ring = document.getElementById('calorie-ring');
+            if (ring) {
+                const pct = derivedCalGoal > 0 ? Math.min(1, totalCal / derivedCalGoal) : 0;
+                ring.style.strokeDashoffset = (314.16 * (1 - pct)).toFixed(2);
+                ring.style.stroke = (derivedCalGoal > 0 && totalCal > derivedCalGoal) ? '#ef4444' : '#FFDB89';
+            }
+            // Remaining calories display
+            const remainEl = document.getElementById('calories-remaining-display');
+            if (remainEl) {
+                if (derivedCalGoal > 0) {
+                    const diff = Math.round(derivedCalGoal - totalCal);
+                    remainEl.textContent = Math.abs(diff) + ' cal';
+                    remainEl.style.color = diff >= 0 ? 'rgba(255,219,137,0.65)' : '#ef4444';
+                    remainEl.title = diff >= 0 ? 'restantes' : 'excedidas';
+                } else {
+                    remainEl.textContent = '--';
+                    remainEl.style.color = 'rgba(255,219,137,0.4)';
+                }
+            }
         };
 
         // --- RENDER MEALS ---
@@ -8520,40 +8534,41 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!container) return;
             container.innerHTML = mealsData.map((meal, mi) => `
                 <div class="bg-white/5 border border-[#FFDB89]/15 rounded-xl overflow-hidden">
-                    <div class="flex items-center justify-between px-5 py-3 border-b border-[#FFDB89]/10">
-                        <h4 class="font-bold text-white">${meal.name}</h4>
+                    <div class="flex items-center justify-between px-4 py-3 border-b border-[#FFDB89]/10">
+                        <h4 class="font-bold text-white text-sm">${meal.name}</h4>
                         <div class="flex items-center gap-3">
-                            <span class="text-xs text-[#FFDB89]/50">${(meal.foods||[]).reduce((s,f)=>s+(parseFloat(f.calories)||0),0)} cal</span>
+                            <span class="text-sm font-black text-[#FFDB89]">${Math.round((meal.foods||[]).reduce((s,f)=>s+(parseFloat(f.calories)||0),0))} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
                             ${mealsData.length > 1 ? `<button class="text-red-400/30 hover:text-red-400 transition text-xs" onclick="window._nutriRemoveMeal(${mi})" title="Eliminar comida"><i class="fas fa-trash-alt"></i></button>` : ''}
                         </div>
                     </div>
-                    <div class="p-4 space-y-2">
-                        ${(meal.foods || []).length === 0 ? `<p class="text-xs text-[#FFDB89]/30 py-2 text-center italic">Sin alimentos. Añade tu primera entrada.</p>` : ''}
+                    <div class="px-4 pt-2 pb-3">
+                        ${(meal.foods || []).length === 0 ? `<p class="text-xs text-[#FFDB89]/30 py-3 text-center italic">Sin alimentos aún.</p>` : ''}
                         ${(meal.foods || []).map((food, fi) => {
                             const hasServing = food.servingAmount && food.servingUnit;
                             const missingMacros = !(parseFloat(food.protein)||0) && !(parseFloat(food.carbs)||0) && !(parseFloat(food.fat)||0);
+                            const cal  = Math.round(parseFloat(food.calories) || 0);
+                            const pro  = Math.round(parseFloat(food.protein)  || 0);
+                            const carb = Math.round(parseFloat(food.carbs)    || 0);
+                            const fat  = Math.round(parseFloat(food.fat)      || 0);
                             return `
-                            <div class="flex items-center gap-2 text-sm ${missingMacros && food.name ? 'opacity-70' : ''}">
-                                <div class="flex-1 min-w-0">
-                                    <input type="text" value="${(food.name||'').replace(/"/g,'&quot;')}" placeholder="Alimento"
-                                        class="w-full p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white outline-none focus:ring-1 focus:ring-[#FFDB89] text-sm placeholder-[#FFDB89]/30"
-                                        onchange="window._nutriUpdateFood(${mi},${fi},'name',this.value)">
-                                    ${hasServing ? `<p class="text-[10px] text-[#FFDB89]/30 pl-1 mt-0.5">${food.servingAmount}${food.servingUnit}</p>` : ''}
+                            <div class="py-2.5 border-b border-[#FFDB89]/8 last:border-0 group/foodrow${missingMacros && food.name ? ' opacity-60' : ''}">
+                                <div class="flex items-start justify-between gap-2 mb-1">
+                                    <p class="text-sm font-semibold text-white leading-snug flex-1 min-w-0">${(food.name||'Sin nombre').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+                                    <div class="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/foodrow:opacity-100 transition">
+                                        <button class="text-[#FFDB89]/50 hover:text-[#FFDB89] p-1.5 rounded-lg hover:bg-[#FFDB89]/10 transition" onclick="window._editFoodEntry(${mi},${fi})" title="Editar"><i class="fas fa-pencil-alt text-xs"></i></button>
+                                        <button class="text-red-400/40 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-400/10 transition" onclick="window._nutriRemoveFood(${mi},${fi})" title="Eliminar"><i class="fas fa-times text-xs"></i></button>
+                                    </div>
                                 </div>
-                                <input type="number" value="${food.calories||''}" placeholder="Cal" min="0"
-                                    class="w-16 p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] font-bold outline-none focus:ring-1 focus:ring-[#FFDB89] text-sm text-center"
-                                    onchange="window._nutriUpdateFood(${mi},${fi},'calories',this.value)">
-                                <input type="number" value="${food.protein||''}" placeholder="P"  min="0"
-                                    class="w-14 p-2 bg-white/10 border ${missingMacros && food.name ? 'border-red-400/40' : 'border-red-400/20'} rounded-lg text-red-400 font-bold outline-none focus:ring-1 focus:ring-red-400 text-sm text-center"
-                                    onchange="window._nutriUpdateFood(${mi},${fi},'protein',this.value)">
-                                <input type="number" value="${food.carbs||''}"   placeholder="C"  min="0"
-                                    class="w-14 p-2 bg-white/10 border ${missingMacros && food.name ? 'border-yellow-400/40' : 'border-yellow-400/20'} rounded-lg text-yellow-400 font-bold outline-none focus:ring-1 focus:ring-yellow-400 text-sm text-center"
-                                    onchange="window._nutriUpdateFood(${mi},${fi},'carbs',this.value)">
-                                <input type="number" value="${food.fat||''}"     placeholder="G"  min="0"
-                                    class="w-14 p-2 bg-white/10 border ${missingMacros && food.name ? 'border-orange-400/40' : 'border-orange-400/20'} rounded-lg text-orange-400 font-bold outline-none focus:ring-1 focus:ring-orange-400 text-sm text-center"
-                                    onchange="window._nutriUpdateFood(${mi},${fi},'fat',this.value)">
-                                <button class="text-[#FFDB89]/30 hover:text-[#FFDB89]/80 transition shrink-0" onclick="window._editFoodEntry(${mi},${fi})" title="Editar"><i class="fas fa-pencil-alt text-xs"></i></button>
-                                <button class="text-red-400/50 hover:text-red-400 transition shrink-0" onclick="window._nutriRemoveFood(${mi},${fi})" title="Eliminar"><i class="fas fa-times text-xs"></i></button>
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                        ${hasServing ? `<span class="text-[10px] text-[#FFDB89]/30">${food.servingAmount}${food.servingUnit} ·</span>` : ''}
+                                        <span class="text-[10px] text-red-400/70">P:${pro}g</span>
+                                        <span class="text-[10px] text-yellow-400/70">C:${carb}g</span>
+                                        <span class="text-[10px] text-orange-400/70">G:${fat}g</span>
+                                        ${missingMacros && food.name ? '<span class="text-[10px] text-yellow-500/60 ml-1"><i class="fas fa-exclamation-triangle"></i> sin macros</span>' : ''}
+                                    </div>
+                                    <span class="text-sm font-black text-[#FFDB89] shrink-0">${cal}<span class="text-[10px] font-normal text-[#FFDB89]/40 ml-0.5">cal</span></span>
+                                </div>
                             </div>`;
                         }).join('')}
                         ${(meal.foods || []).length > 0 ? (() => {
@@ -8561,17 +8576,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             const mPro  = (meal.foods||[]).reduce((s,f)=>s+(parseFloat(f.protein) ||0),0);
                             const mCarb = (meal.foods||[]).reduce((s,f)=>s+(parseFloat(f.carbs)   ||0),0);
                             const mFat  = (meal.foods||[]).reduce((s,f)=>s+(parseFloat(f.fat)     ||0),0);
-                            return `<div class="flex items-center gap-2 mt-3 pt-3 border-t border-[#FFDB89]/10 text-xs font-black">
-                                <span class="flex-1 text-[#FFDB89]/40 uppercase tracking-wider text-[10px]">Total comida</span>
-                                <span class="w-16 text-center text-[#FFDB89]">${Math.round(mCal)}</span>
-                                <span class="w-14 text-center text-red-400">${Math.round(mPro)}g</span>
-                                <span class="w-14 text-center text-yellow-400">${Math.round(mCarb)}g</span>
-                                <span class="w-14 text-center text-orange-400">${Math.round(mFat)}g</span>
-                                <span class="w-4"></span><span class="w-4"></span>
+                            return `<div class="flex items-center gap-3 mt-1 pt-2.5 border-t border-[#FFDB89]/10 text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider">
+                                <span class="flex-1">Total</span>
+                                <span class="text-[#FFDB89]/70">${Math.round(mCal)} cal</span>
+                                <span class="text-red-400/70">P:${Math.round(mPro)}g</span>
+                                <span class="text-yellow-400/70">C:${Math.round(mCarb)}g</span>
+                                <span class="text-orange-400/70">G:${Math.round(mFat)}g</span>
                             </div>`;
                         })() : ''}
-                        <button class="text-xs text-[#FFDB89]/60 hover:text-[#FFDB89] transition flex items-center gap-1.5 mt-3 py-1 px-2 rounded-lg hover:bg-[#FFDB89]/10" onclick="window._openAddFoodModal(${mi})">
-                            <i class="fas fa-plus-circle"></i> Añadir alimento
+                        <button class="w-full text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] transition flex items-center justify-center gap-1.5 mt-2 py-2 rounded-xl border border-dashed border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/5" onclick="window._openAddFoodModal(${mi})">
+                            <i class="fas fa-plus text-[10px]"></i> Añadir alimento
                         </button>
                     </div>
                 </div>
@@ -8921,43 +8935,92 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             // ==================================================
-            // TAB: SEARCH
+            // TAB: SEARCH  (instant live search + recent foods)
             // ==================================================
             const showSearchTab = () => {
                 document.getElementById('food-modal-body').innerHTML = `
-                    <div class="p-5 space-y-4">
-                        <div class="flex gap-2">
-                            <input type="text" id="off-search-input" placeholder="Ej: huevo, pechuga, arroz integral..." autocomplete="off"
-                                class="flex-1 p-3 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30">
-                            <button id="off-search-btn" class="px-4 bg-[#FFDB89] hover:bg-[#ffe9a8] text-[#030303] rounded-xl font-bold transition flex items-center gap-2 shrink-0">
-                                <i class="fas fa-search"></i>
-                            </button>
+                    <div class="p-4 space-y-3">
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-[#FFDB89]/30 text-sm pointer-events-none"></i>
+                            <input type="text" id="off-search-input" placeholder="Buscar alimento (huevo, pechuga, arroz...)" autocomplete="off"
+                                class="w-full pl-10 pr-4 py-3 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30">
                         </div>
-                        <div id="off-results" class="space-y-2">
-                            <p class="text-xs text-[#FFDB89]/40 text-center py-6">Busca un alimento y luego elige la cantidad</p>
-                        </div>
+                        <div id="off-results" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
                     </div>`;
 
                 const searchInput = document.getElementById('off-search-input');
-                const searchBtn   = document.getElementById('off-search-btn');
                 const resultsDiv  = document.getElementById('off-results');
                 let lastProducts  = [];
+                let searchTimer   = null;
 
-                // ── Render the results list ──
+                // ── Show recent foods (from history) ──
+                const showRecentFoods = () => {
+                    if (!foodHistory.length) {
+                        resultsDiv.innerHTML = `
+                            <p class="text-xs text-[#FFDB89]/35 text-center py-4">Escribe para buscar alimentos en la base de datos.</p>
+                            <div class="text-center pb-2">
+                                <button class="add-manual-cta text-xs font-bold text-[#FFDB89]/60 border border-[#FFDB89]/20 hover:border-[#FFDB89]/50 hover:bg-[#FFDB89]/8 hover:text-[#FFDB89] px-4 py-2 rounded-xl transition">
+                                    <i class="fas fa-plus-circle mr-1.5"></i>Añadir manualmente
+                                </button>
+                            </div>`;
+                        return;
+                    }
+                    const recent = foodHistory.slice(-10).reverse();
+                    resultsDiv.innerHTML = `
+                        <p class="text-[10px] text-[#FFDB89]/30 uppercase tracking-wider font-bold px-1 pb-1">Usados recientemente</p>
+                        ${recent.map(f => `
+                        <button class="history-food-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition"
+                            data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}">
+                            <div class="flex justify-between items-center gap-2">
+                                <p class="text-sm font-semibold text-white leading-tight truncate">${(f.name||'').replace(/</g,'&lt;')}</p>
+                                <span class="text-sm font-black text-[#FFDB89] shrink-0">${f.calories||0} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
+                            </div>
+                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">P:${f.protein||0}g · C:${f.carbs||0}g · G:${f.fat||0}g</p>
+                        </button>`).join('')}
+                        <div class="text-center pt-1 pb-1">
+                            <button class="add-manual-cta text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] border border-[#FFDB89]/20 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/8 px-4 py-2 rounded-xl transition">
+                                <i class="fas fa-plus-circle mr-1.5"></i>¿No encuentras tu alimento? Añadir manualmente
+                            </button>
+                        </div>`;
+
+                    resultsDiv.querySelectorAll('.history-food-item').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const cal  = parseFloat(btn.dataset.cal)  || 0;
+                            const pro  = parseFloat(btn.dataset.pro)  || 0;
+                            const carb = parseFloat(btn.dataset.carb) || 0;
+                            const fat  = parseFloat(btn.dataset.fat)  || 0;
+                            baseNutrients = {
+                                name: btn.dataset.name,
+                                calories_100g: cal, protein_100g: pro,
+                                carbs_100g: carb, fat_100g: fat
+                            };
+                            servingG = 100;
+                            setPreview({ name: btn.dataset.name, calories: cal, protein: pro, carbs: carb, fat: fat }, true);
+                            syncServingDisplay();
+                        });
+                    });
+                };
+
+                // ── Render the API results list ──
                 const showResultsList = (products) => {
                     if (!products.length) {
-                        resultsDiv.innerHTML = '<p class="text-xs text-[#FFDB89]/40 text-center py-6">Sin resultados. Prueba otro término o usa la pestaña Manual.</p>';
+                        resultsDiv.innerHTML = `
+                        <div class="py-4 text-center space-y-3">
+                            <p class="text-xs text-[#FFDB89]/40">Sin resultados. Prueba otro término.</p>
+                            <button class="add-manual-cta text-xs font-bold text-[#FFDB89] border border-[#FFDB89]/30 hover:border-[#FFDB89]/60 hover:bg-[#FFDB89]/10 px-4 py-2 rounded-xl transition">
+                                <i class="fas fa-plus-circle mr-1.5"></i>Añadir manualmente
+                            </button>
+                        </div>`;
                         return;
                     }
                     resultsDiv.innerHTML = products.map((p, i) => {
-                        const brand = p.brand ? `<span class="text-[#FFDB89]/50 mr-1">${p.brand} ·</span>` : '';
-                        return `<button class="off-result-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 rounded-xl transition"
-                            data-idx="${i}">
+                        const brand = p.brand ? `<span class="text-[#FFDB89]/40">${p.brand} · </span>` : '';
+                        return `<button class="off-result-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition" data-idx="${i}">
                             <div class="flex justify-between items-center gap-2">
-                                <p class="text-sm font-bold text-white leading-tight">${p.name}</p>
-                                <span class="text-xs font-bold text-[#FFDB89] shrink-0">${p.cal100} kcal/100g</span>
+                                <p class="text-sm font-semibold text-white leading-tight">${p.name}</p>
+                                <span class="text-sm font-black text-[#FFDB89] shrink-0">${p.cal100} <span class="text-[10px] font-normal text-[#FFDB89]/40">kcal</span></span>
                             </div>
-                            <p class="text-xs mt-0.5 text-[#FFDB89]/40">${brand}P:${p.p100}g · C:${p.c100}g · G:${p.f100}g</p>
+                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">${brand}P:${p.p100}g · C:${p.c100}g · G:${p.f100}g</p>
                         </button>`;
                     }).join('');
 
@@ -8967,7 +9030,55 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (p) showQtyPicker(p);
                         });
                     });
+                    // "Add manually" fallback at the bottom of results
+                    resultsDiv.insertAdjacentHTML('beforeend', `
+                        <div class="text-center pt-1 pb-1">
+                            <button class="add-manual-cta text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] border border-[#FFDB89]/20 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/8 px-4 py-2 rounded-xl transition">
+                                <i class="fas fa-plus-circle mr-1.5"></i>¿No encuentras tu alimento? Añadir manualmente
+                            </button>
+                        </div>`);
                 };
+
+                // ── Instant search (debounced 350ms) ──
+                const doSearch = async () => {
+                    const q = searchInput.value.trim();
+                    if (!q) { showRecentFoods(); return; }
+                    resultsDiv.innerHTML = '<p class="text-xs text-[#FFDB89]/40 text-center py-4 animate-pulse"><i class="fas fa-spinner fa-spin mr-2"></i>Buscando...</p>';
+                    try {
+                        const res = await apiFetch(`/api/food-search?q=${encodeURIComponent(q)}`);
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        lastProducts = await res.json();
+                        showResultsList(lastProducts);
+                    } catch (e) {
+                        resultsDiv.innerHTML = `<div class="text-center py-4 space-y-2">
+                            <p class="text-xs text-red-400/70">No se pudo completar la búsqueda.</p>
+                            <button id="retry-search-btn" class="text-xs text-[#FFDB89]/60 hover:text-[#FFDB89] underline transition">Intentar de nuevo</button>
+                        </div>`;
+                        document.getElementById('retry-search-btn')?.addEventListener('click', doSearch);
+                    }
+                };
+
+                searchInput?.addEventListener('input', () => {
+                    clearTimeout(searchTimer);
+                    if (!searchInput.value.trim()) { showRecentFoods(); return; }
+                    searchTimer = setTimeout(doSearch, 350);
+                });
+                searchInput?.addEventListener('keydown', e => {
+                    if (e.key === 'Enter') { clearTimeout(searchTimer); doSearch(); }
+                });
+
+                // Show recent foods immediately on tab open
+                showRecentFoods();
+
+                // Delegated listener: any ".add-manual-cta" button inside resultsDiv → switch to Manual tab
+                resultsDiv.addEventListener('click', e => {
+                    if (e.target.closest('.add-manual-cta')) {
+                        modal.querySelector('.food-tab-btn[data-tab="manual"]')?.click();
+                    }
+                });
+
+                // Auto-focus search input
+                setTimeout(() => searchInput?.focus(), 80);
 
                 // ── Quantity picker shown after selecting a food ──
                 const showQtyPicker = (p) => {
@@ -8996,7 +9107,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="flex gap-2 items-end">
                                 <div class="flex flex-col gap-1" style="width:90px">
                                     <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider">Cantidad</label>
-                                    <input type="number" id="off-qty" value="1" min="1" step="1"
+                                    <input type="number" id="off-qty" value="1" min="0.1" step="any"
                                         class="p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-center text-lg font-black outline-none focus:ring-2 focus:ring-[#FFDB89]">
                                 </div>
                                 <div class="flex-1 flex flex-col gap-1">
@@ -9020,9 +9131,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const unitSel   = document.getElementById('off-unit');
                     const macroRow  = document.getElementById('off-macro-row');
 
-                    const recalc = () => {
-                        const qty     = Math.max(1, Math.round(parseFloat(qtyInput.value) || 1));
-                        qtyInput.value = qty;
+                    const recalc = (clampValue = false) => {
+                        const raw = parseFloat(qtyInput.value);
+                        // While typing, allow empty/partial input — don't force-overwrite the field.
+                        // Only clamp (and write back) on blur or explicit request.
+                        const qty = (!isNaN(raw) && raw > 0) ? raw : 1;
+                        if (clampValue) qtyInput.value = qty;
+
                         const gPerU   = parseFloat(unitSel.value)  || unitG;
                         servingG      = qty * gPerU;
                         const scale   = servingG / 100;
@@ -9053,9 +9168,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         syncServingDisplay();
                     };
 
-                    qtyInput.addEventListener('input', recalc);
+                    // Live preview while typing — never overwrite what the user is typing
+                    qtyInput.addEventListener('input', () => recalc(false));
+                    // On blur: clamp empty/zero to 1 and refresh
+                    qtyInput.addEventListener('blur', () => recalc(true));
                     unitSel.addEventListener('change', recalc);
-                    recalc();   // initialise
+                    recalc(true);   // initialise with clamped value
 
                     document.getElementById('off-back-btn')?.addEventListener('click', () => {
                         baseNutrients = null;
@@ -9065,27 +9183,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 };
 
-                // ── Search ──
-                const doSearch = async () => {
-                    const q = searchInput.value.trim();
-                    if (!q) return;
-                    resultsDiv.innerHTML = '<p class="text-xs text-[#FFDB89]/50 text-center py-6 animate-pulse"><i class="fas fa-spinner fa-spin mr-2"></i>Buscando...</p>';
-                    try {
-                        const res = await apiFetch(`/api/food-search?q=${encodeURIComponent(q)}`);
-                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                        lastProducts = await res.json();
-                        showResultsList(lastProducts);
-                    } catch (e) {
-                        resultsDiv.innerHTML = `<div class="text-center py-6 space-y-2">
-                            <p class="text-xs text-red-400/70">No se pudo completar la búsqueda.</p>
-                            <button id="retry-search-btn" class="text-xs text-[#FFDB89]/60 hover:text-[#FFDB89] underline transition">Intentar de nuevo</button>
-                        </div>`;
-                        document.getElementById('retry-search-btn')?.addEventListener('click', doSearch);
-                    }
-                };
-
-                searchBtn?.addEventListener('click', doSearch);
-                searchInput?.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
             };
 
             // ==================================================
@@ -9288,9 +9385,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // --- WATER TRACKER ---
+        // Key for localStorage persistence: scoped per client + date so switching
+        // dates doesn't bleed data from one day to another.
+        const waterKey = () => {
+            const d = document.getElementById('nutri-date')?.value || todayStr;
+            return `fbs_water_${session.id}_${d}`;
+        };
+        const saveWaterLocal = () => localStorage.setItem(waterKey(), waterOz);
+        const loadWaterLocal = (dateStr) => {
+            const v = localStorage.getItem(`fbs_water_${session.id}_${dateStr}`);
+            return v !== null ? (parseInt(v) || 0) : null;
+        };
+
+        // Single source of truth for all water UI — keeps both displays in sync.
         const updateWaterDisplay = () => {
-            const el = document.getElementById('water-count-display');
-            if (el) el.textContent = waterOz + ' oz';
+            const tracker = document.getElementById('water-count-display');
+            if (tracker) tracker.textContent = waterOz + ' oz';
+            const macro = document.getElementById('total-water-display');
+            if (macro) macro.textContent = waterOz;
         };
 
         const renderWaterCups = () => {
@@ -9313,6 +9425,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const oz = parseInt(btn.dataset.oz);
                     waterOz = waterOz === oz ? oz - 8 : oz;
                     if (waterOz < 0) waterOz = 0;
+                    saveWaterLocal();          // persist instantly — survives navigation
                     renderWaterCups();
                     recalcTotals();
                     doSaveNutrition({ silent: true });
@@ -9325,6 +9438,7 @@ document.addEventListener('DOMContentLoaded', () => {
             waterSetBtn.addEventListener('click', () => {
                 const val = parseInt(document.getElementById('water-manual-input')?.value) || 0;
                 waterOz = val;
+                saveWaterLocal();
                 renderWaterCups();
                 recalcTotals();
                 doSaveNutrition({ silent: true });
@@ -9333,6 +9447,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- LOAD LOG FOR A DATE ---
         const loadLogForDate = async (dateStr) => {
+            // Immediately show any locally-cached water value so the UI is correct
+            // while we wait for the network, preventing a flash of "0 oz".
+            const cachedWater = loadWaterLocal(dateStr);
+            if (cachedWater !== null) {
+                waterOz = cachedWater;
+                renderWaterCups();
+                recalcTotals();
+            }
+
             try {
                 const res = await apiFetch(`/api/nutrition-logs/${session.id}`);
                 if (!res.ok) return;
@@ -9340,14 +9463,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const log = logs.find(l => l.date === dateStr);
                 if (log) {
                     mealsData = log.meals ? (Array.isArray(log.meals) ? log.meals : Object.values(log.meals)) : [];
+                    // DB is authoritative — use its value, then sync localStorage with it
                     waterOz = log.water || 0;
+                    localStorage.setItem(`fbs_water_${session.id}_${dateStr}`, waterOz);
                     const notesEl = document.getElementById('nutrition-notes');
                     if (notesEl) notesEl.value = log.notes || '';
 
                     // (Goals come from macroSettings on /api/me, not from the consumed log values)
                 } else {
                     mealsData = mealNames.slice(0, 3).map(name => ({ name, foods: [] }));
-                    waterOz = 0;
+                    // No DB entry yet — check localStorage for any unsaved click state
+                    const cached = loadWaterLocal(dateStr);
+                    waterOz = cached !== null ? cached : 0;
                     const notesEl = document.getElementById('nutrition-notes');
                     if (notesEl) notesEl.value = '';
                 }

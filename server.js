@@ -1696,7 +1696,6 @@ const LOCAL_FOODS = [
     { name: 'Aderezo cesar',         brand: null, serving: 30,  cal100: 340, p100: 3.0,  c100: 3.0,  f100: 35.0 },
     { name: 'Aderezo italiano',      brand: null, serving: 30,  cal100: 180, p100: 0.3,  c100: 4.0,  f100: 18.0 },
     { name: 'Aderezo balsámico',     brand: null, serving: 15,  cal100: 133, p100: 0.5,  c100: 27.0, f100: 0.4  },
-    { name: 'Aceite de oliva',       brand: null, serving: 14,  cal100: 884, p100: 0.0,  c100: 0.0,  f100: 100.0},
     { name: 'Vinagre de manzana',    brand: null, serving: 15,  cal100: 21,  p100: 0.0,  c100: 0.9,  f100: 0.0  },
     { name: 'Crema agria',           brand: null, serving: 30,  cal100: 193, p100: 2.1,  c100: 4.4,  f100: 19.0 },
     { name: 'Guacamole',             brand: null, serving: 30,  cal100: 157, p100: 1.9,  c100: 8.6,  f100: 14.0 },
@@ -1713,16 +1712,111 @@ function normalizeStr(s) {
     return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+// English/alternate aliases for bilingual search support
+const FOOD_ALIASES = {
+    'Huevo entero':                  ['egg','eggs','whole egg','boiled egg','hard boiled egg'],
+    'Huevo (clara)':                 ['egg white','egg whites','white egg'],
+    'Huevo (yema)':                  ['egg yolk','egg yolks','yolk'],
+    'Pechuga de pollo':              ['chicken breast','chicken','grilled chicken','pollo'],
+    'Muslo de pollo':                ['chicken thigh','chicken leg','thigh'],
+    'Carne molida 80/20':            ['ground beef','hamburger','burger meat','beef'],
+    'Carne molida 90/10':            ['lean ground beef','lean beef','90 10 beef'],
+    'Salmon':                        ['salmon','fish','atlantic salmon'],
+    'Atun en agua':                  ['tuna','canned tuna','tuna fish','tuna in water'],
+    'Camarones':                     ['shrimp','prawns','seafood'],
+    'Jamon de pavo':                 ['turkey ham','deli turkey','turkey'],
+    'Jamon de cerdo':                ['ham','pork ham','deli ham'],
+    'Tocino / Bacon':                ['bacon','crispy bacon'],
+    'Tilapia':                       ['tilapia','white fish'],
+    'Pavo molido':                   ['ground turkey','turkey ground'],
+    'Leche entera':                  ['whole milk','milk','dairy'],
+    'Leche descremada':              ['skim milk','fat free milk','low fat milk','nonfat milk'],
+    'Yogurt griego (0%)':            ['greek yogurt','nonfat greek yogurt','yogurt','0 percent greek'],
+    'Yogurt griego (2%)':            ['greek yogurt 2','2 percent greek yogurt','yogurt'],
+    'Queso cheddar':                 ['cheddar cheese','cheddar','cheese'],
+    'Queso cottage':                 ['cottage cheese','cottage'],
+    'Queso mozzarella':              ['mozzarella','mozzarella cheese','mozz'],
+    'Mantequilla':                   ['butter','unsalted butter'],
+    'Arroz blanco (cocido)':         ['white rice','rice','cooked rice'],
+    'Arroz integral (cocido)':       ['brown rice','whole grain rice'],
+    'Avena (cruda)':                 ['oats','oatmeal','rolled oats','raw oats'],
+    'Pan blanco':                    ['white bread','bread','loaf'],
+    'Pan integral':                  ['whole wheat bread','whole grain bread','brown bread'],
+    'Pasta (cocida)':                ['pasta','cooked pasta','noodles','spaghetti','penne'],
+    'Papa / Patata':                 ['potato','potatoes','russet potato','baked potato'],
+    'Camote / Batata':               ['sweet potato','yam','sweet potatoes'],
+    'Tortilla de maiz':              ['corn tortilla','tortilla','taco shell'],
+    'Tortilla de harina':            ['flour tortilla','wrap','flour tortilla'],
+    'Quinoa (cocida)':               ['quinoa','cooked quinoa'],
+    'Aceite de oliva':               ['olive oil','oil','extra virgin olive oil','evoo'],
+    'Aguacate / Palta':              ['avocado','avo'],
+    'Almendras':                     ['almonds','almond'],
+    'Mani / Cacahuate':              ['peanuts','peanut','groundnut'],
+    'Mantequilla de mani':           ['peanut butter','pb','nut butter'],
+    'Nueces':                        ['walnuts','walnut','nuts'],
+    'Aceite de coco':                ['coconut oil','coconut'],
+    'Brocoli':                       ['broccoli','brocoli'],
+    'Espinaca':                      ['spinach'],
+    'Lechuga romana':                ['romaine lettuce','lettuce','romaine','salad'],
+    'Pepino':                        ['cucumber'],
+    'Tomate':                        ['tomato','tomatoes'],
+    'Zanahoria':                     ['carrot','carrots'],
+    'Cebolla':                       ['onion','onions'],
+    'Ajo':                           ['garlic','garlic clove'],
+    'Maiz (grano)':                  ['corn','sweet corn','corn kernel'],
+    'Frijoles negros (cocidos)':     ['black beans','beans','cooked black beans'],
+    'Lentejas (cocidas)':            ['lentils','cooked lentils'],
+    'Manzana':                       ['apple','apples'],
+    'Banana / Platano':              ['banana','plantain','bananas'],
+    'Naranja':                       ['orange','oranges'],
+    'Mango':                         ['mango','mangoes'],
+    'Fresas / Frutillas':            ['strawberries','strawberry'],
+    'Arandanos':                     ['blueberries','blueberry','cranberry','cranberries'],
+    'Pina':                          ['pineapple','pine apple'],
+    'Proteina en polvo (whey)':      ['whey protein','protein powder','protein shake','whey'],
+    'Proteina en polvo (planta)':    ['plant protein','vegan protein','plant based protein'],
+    'Huevos revueltos':              ['scrambled eggs','scrambled'],
+    'Pechuga a la plancha':          ['grilled chicken breast','grilled chicken'],
+    'Mayonesa':                      ['mayo','mayonnaise'],
+    'Mayonesa light':                ['light mayo','light mayonnaise','low fat mayo'],
+    'Ketchup / Catsup':              ['ketchup','catsup','tomato ketchup'],
+    'Mostaza amarilla':              ['yellow mustard','mustard'],
+    'Mostaza Dijon':                 ['dijon mustard','dijon'],
+    'Salsa de soya':                 ['soy sauce','soya sauce','tamari'],
+    'Salsa Worcestershire':          ['worcestershire sauce','worcestershire'],
+    'Salsa picante / hot sauce':     ['hot sauce','sriracha','tabasco','chili sauce'],
+    'Salsa BBQ':                     ['bbq sauce','barbecue sauce','barbeque sauce'],
+    'Salsa de tomate (marinara)':    ['marinara sauce','tomato sauce','pasta sauce','marinara'],
+    'Aderezo ranch':                 ['ranch dressing','ranch'],
+    'Aderezo cesar':                 ['caesar dressing','caesar salad dressing','caesar'],
+    'Aderezo italiano':              ['italian dressing'],
+    'Aderezo balsamico':             ['balsamic dressing','balsamic vinegar','balsamic'],
+    'Vinagre de manzana':            ['apple cider vinegar','acv','vinegar'],
+    'Crema agria':                   ['sour cream'],
+    'Guacamole':                     ['guacamole','guac'],
+    'Hummus':                        ['hummus','chickpea dip'],
+    'Mermelada / Jelly':             ['jam','jelly','marmalade','fruit spread'],
+    'Miel':                          ['honey','raw honey'],
+    'Syrup / Jarabe de maple':       ['maple syrup','syrup','pancake syrup'],
+    'Crema de cacahuate (PB)':       ['peanut butter','pb','nut butter'],
+    'Nutella / Hazelnut spread':     ['nutella','hazelnut spread','chocolate spread','hazelnut'],
+};
+
 function searchLocalFoods(q) {
     const normQ = normalizeStr(q);
     const terms = normQ.split(/\s+/).filter(Boolean);
     const scored = LOCAL_FOODS
         .map(f => {
-            const hay = normalizeStr(f.name + ' ' + (f.brand || ''));
+            const aliasKey = Object.keys(FOOD_ALIASES).find(k => normalizeStr(k) === normalizeStr(f.name));
+            const aliases  = aliasKey ? FOOD_ALIASES[aliasKey] : [];
+            const hay = normalizeStr(f.name + ' ' + (f.brand || '') + ' ' + aliases.join(' '));
             const matches = terms.every(t => hay.includes(t));
             if (!matches) return null;
-            // Score: starts-with match ranks higher
-            const score = hay.startsWith(normQ) ? 2 : (hay.includes(normQ) ? 1 : 0);
+            // Score: name starts-with = 3, name includes = 2, alias match = 1
+            const normName = normalizeStr(f.name);
+            let score = 1;
+            if (normName.startsWith(normQ)) score = 3;
+            else if (normName.includes(normQ)) score = 2;
             return { food: f, score };
         })
         .filter(Boolean)

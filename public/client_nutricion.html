@@ -35,71 +35,108 @@
         </div>
     </div>
 
-    <!-- Daily Totals -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center col-span-2 md:col-span-1">
-            <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1">Calorías</p>
-            <p class="text-3xl font-black text-[#FFDB89]" id="total-calories-display">0</p>
-            <p class="text-xs text-[#FFDB89]/40">/ <span id="calorie-goal-display">--</span> meta</p>
-        </div>
-        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center">
-            <p class="text-xs font-bold text-red-400/70 uppercase tracking-wider mb-1">Proteína</p>
-            <p class="text-2xl font-black text-red-400" id="total-protein-display">0g</p>
-        </div>
-        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center">
-            <p class="text-xs font-bold text-yellow-400/70 uppercase tracking-wider mb-1">Carbos</p>
-            <p class="text-2xl font-black text-yellow-400" id="total-carbs-display">0g</p>
-        </div>
-        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center">
-            <p class="text-xs font-bold text-orange-400/70 uppercase tracking-wider mb-1">Grasas</p>
-            <p class="text-2xl font-black text-orange-400" id="total-fat-display">0g</p>
-        </div>
-        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-4 rounded-xl text-center">
-            <p class="text-xs font-bold text-sky-400/70 uppercase tracking-wider mb-1">Agua (oz)</p>
-            <p class="text-2xl font-black text-sky-400" id="total-water-display">0</p>
-        </div>
-    </div>
+    <!-- Daily Summary: Calorie Ring + Macro Bars -->
+    <div class="flex flex-col sm:flex-row gap-4">
 
-    <!-- Macro progress bars -->
-    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-5 rounded-xl space-y-4">
-        <div class="flex items-center justify-between">
-            <h3 class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider">Progreso del día</h3>
-            <button id="toggle-goals-btn" class="text-[10px] text-[#FFDB89]/40 hover:text-[#FFDB89] transition flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[#FFDB89]/10">
-                <i class="fas fa-sliders-h text-[9px]"></i> Editar metas
-            </button>
-        </div>
-
-        <!-- Editable goal targets (hidden by default, toggled by button) -->
-        <div id="goals-edit-row" class="hidden grid grid-cols-3 gap-2 pb-4 border-b border-[#FFDB89]/10">
-            <div>
-                <label class="text-[10px] text-red-400/60 uppercase tracking-wider block mb-1">Proteína meta (g)</label>
-                <input type="number" id="goal-protein" min="0" step="5" placeholder="120"
-                    class="w-full p-2 bg-red-400/5 border border-red-400/20 rounded-xl text-red-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-red-400">
+        <!-- Calorie Ring -->
+        <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-2xl p-5 flex flex-col items-center justify-center sm:min-w-[190px]">
+            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-3">Calorías del día</p>
+            <div class="relative w-36 h-36">
+                <svg viewBox="0 0 120 120" class="w-full h-full" style="transform:rotate(-90deg)">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,219,137,0.08)" stroke-width="10"/>
+                    <circle id="calorie-ring" cx="60" cy="60" r="50" fill="none" stroke="#FFDB89" stroke-width="10"
+                        stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="314.16"
+                        style="transition:stroke-dashoffset 0.7s ease,stroke 0.3s ease"/>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <p class="text-3xl font-black text-[#FFDB89] leading-none" id="total-calories-display">0</p>
+                    <p class="text-[10px] text-[#FFDB89]/35 uppercase tracking-wider mt-1">comidas</p>
+                </div>
             </div>
-            <div>
-                <label class="text-[10px] text-yellow-400/60 uppercase tracking-wider block mb-1">Carbos meta (g)</label>
-                <input type="number" id="goal-carbs" min="0" step="5" placeholder="200"
-                    class="w-full p-2 bg-yellow-400/5 border border-yellow-400/20 rounded-xl text-yellow-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-yellow-400">
-            </div>
-            <div>
-                <label class="text-[10px] text-orange-400/60 uppercase tracking-wider block mb-1">Grasas meta (g)</label>
-                <input type="number" id="goal-fat" min="0" step="5" placeholder="65"
-                    class="w-full p-2 bg-orange-400/5 border border-orange-400/20 rounded-xl text-orange-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-orange-400">
+            <div class="text-center mt-3 space-y-1">
+                <p class="text-xs text-[#FFDB89]/50">Meta: <span class="font-bold text-[#FFDB89]" id="calorie-goal-display">--</span></p>
+                <p class="text-xs">Restante: <span class="font-bold" id="calories-remaining-display" style="color:rgba(255,219,137,0.6)">--</span></p>
             </div>
         </div>
 
-        <!-- Bars -->
-        <div>
-            <div class="flex justify-between text-xs mb-1.5"><span class="text-red-400 font-bold">Proteína</span><span id="bar-protein-label" class="text-[#FFDB89]/40">0 / 0g</span></div>
-            <div class="h-2.5 bg-white/10 rounded-full overflow-hidden"><div id="bar-protein" class="h-full bg-red-400 rounded-full transition-all duration-500" style="width:0%"></div></div>
-        </div>
-        <div>
-            <div class="flex justify-between text-xs mb-1.5"><span class="text-yellow-400 font-bold">Carbohidratos</span><span id="bar-carbs-label" class="text-[#FFDB89]/40">0 / 0g</span></div>
-            <div class="h-2.5 bg-white/10 rounded-full overflow-hidden"><div id="bar-carbs" class="h-full bg-yellow-400 rounded-full transition-all duration-500" style="width:0%"></div></div>
-        </div>
-        <div>
-            <div class="flex justify-between text-xs mb-1.5"><span class="text-orange-400 font-bold">Grasas</span><span id="bar-fat-label" class="text-[#FFDB89]/40">0 / 0g</span></div>
-            <div class="h-2.5 bg-white/10 rounded-full overflow-hidden"><div id="bar-fat" class="h-full bg-orange-400 rounded-full transition-all duration-500" style="width:0%"></div></div>
+        <!-- Macro Bars -->
+        <div class="flex-1 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider">Macros del día</h3>
+                <button id="toggle-goals-btn" class="text-[10px] text-[#FFDB89]/40 hover:text-[#FFDB89] transition flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[#FFDB89]/10">
+                    <i class="fas fa-sliders-h text-[9px]"></i> Editar metas
+                </button>
+            </div>
+
+            <!-- Editable goal targets (hidden by default) -->
+            <div id="goals-edit-row" class="hidden grid grid-cols-3 gap-2 pb-4 border-b border-[#FFDB89]/10">
+                <div>
+                    <label class="text-[10px] text-red-400/60 uppercase tracking-wider block mb-1">Proteína meta (g)</label>
+                    <input type="number" id="goal-protein" min="0" step="5" placeholder="120"
+                        class="w-full p-2 bg-red-400/5 border border-red-400/20 rounded-xl text-red-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-red-400">
+                </div>
+                <div>
+                    <label class="text-[10px] text-yellow-400/60 uppercase tracking-wider block mb-1">Carbos meta (g)</label>
+                    <input type="number" id="goal-carbs" min="0" step="5" placeholder="200"
+                        class="w-full p-2 bg-yellow-400/5 border border-yellow-400/20 rounded-xl text-yellow-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-yellow-400">
+                </div>
+                <div>
+                    <label class="text-[10px] text-orange-400/60 uppercase tracking-wider block mb-1">Grasas meta (g)</label>
+                    <input type="number" id="goal-fat" min="0" step="5" placeholder="65"
+                        class="w-full p-2 bg-orange-400/5 border border-orange-400/20 rounded-xl text-orange-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-orange-400">
+                </div>
+            </div>
+
+            <!-- Protein bar -->
+            <div>
+                <div class="flex justify-between items-baseline mb-1.5">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-red-400">Proteína</span>
+                        <span class="text-sm font-black text-red-400" id="total-protein-display">0g</span>
+                    </div>
+                    <span id="bar-protein-label" class="text-[10px] text-[#FFDB89]/35">0 / 0g</span>
+                </div>
+                <div class="h-2.5 bg-white/10 rounded-full overflow-hidden">
+                    <div id="bar-protein" class="h-full bg-red-400 rounded-full transition-all duration-500" style="width:0%"></div>
+                </div>
+            </div>
+
+            <!-- Carbs bar -->
+            <div>
+                <div class="flex justify-between items-baseline mb-1.5">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-yellow-400">Carbohidratos</span>
+                        <span class="text-sm font-black text-yellow-400" id="total-carbs-display">0g</span>
+                    </div>
+                    <span id="bar-carbs-label" class="text-[10px] text-[#FFDB89]/35">0 / 0g</span>
+                </div>
+                <div class="h-2.5 bg-white/10 rounded-full overflow-hidden">
+                    <div id="bar-carbs" class="h-full bg-yellow-400 rounded-full transition-all duration-500" style="width:0%"></div>
+                </div>
+            </div>
+
+            <!-- Fat bar -->
+            <div>
+                <div class="flex justify-between items-baseline mb-1.5">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-orange-400">Grasas</span>
+                        <span class="text-sm font-black text-orange-400" id="total-fat-display">0g</span>
+                    </div>
+                    <span id="bar-fat-label" class="text-[10px] text-[#FFDB89]/35">0 / 0g</span>
+                </div>
+                <div class="h-2.5 bg-white/10 rounded-full overflow-hidden">
+                    <div id="bar-fat" class="h-full bg-orange-400 rounded-full transition-all duration-500" style="width:0%"></div>
+                </div>
+            </div>
+
+            <!-- Water inline -->
+            <div class="flex items-center justify-between pt-3 border-t border-[#FFDB89]/10">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-tint text-sky-400 text-xs"></i>
+                    <span class="text-xs font-bold text-sky-400">Agua</span>
+                </div>
+                <span class="text-sm font-black text-sky-400" id="total-water-display">0</span>
+            </div>
         </div>
     </div>
 
