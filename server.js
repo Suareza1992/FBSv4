@@ -268,6 +268,7 @@ const ClientWorkoutSchema = new mongoose.Schema({
         videoUrl:     { type: String, default: '' },
         isSuperset:   { type: Boolean, default: false },
         supersetHead: { type: Boolean, default: false },
+        isComplete:   { type: Boolean, default: false }, // per-exercise completion by client
     }],
 
     // ── Cooldown ───────────────────────────────────────────────────────────────

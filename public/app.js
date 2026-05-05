@@ -1002,6 +1002,29 @@ document.addEventListener('DOMContentLoaded', () => {
         // On desktop it stays visible as normal.
         initMobileMenu();
 
+        // ── Sidebar collapse/expand button ────────────────────────────────────
+        // Wire up directly on the element so it works regardless of event delegation.
+        const collapseBtn = document.getElementById('collapse-btn');
+        if (collapseBtn && !collapseBtn.dataset.wired) {
+            collapseBtn.dataset.wired = '1';
+            collapseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const sb = document.getElementById('sidebar');
+                if (!sb) return;
+                const icon = collapseBtn.querySelector('svg') || collapseBtn.querySelector('i');
+                const isCollapsed = sb.classList.contains('w-20');
+                if (isCollapsed) {
+                    sb.classList.remove('w-20'); sb.classList.add('w-60');
+                    sb.querySelectorAll('.nav-text').forEach(span => span.classList.remove('hidden'));
+                    if (icon) icon.style.transform = 'rotate(0deg)';
+                } else {
+                    sb.classList.remove('w-60'); sb.classList.add('w-20');
+                    sb.querySelectorAll('.nav-text').forEach(span => span.classList.add('hidden'));
+                    if (icon) icon.style.transform = 'rotate(180deg)';
+                }
+            });
+        }
+
         setTimeout(updateThemeIcon, 100);
     };
 
@@ -10243,25 +10266,33 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const exercisesHtml = clientExercises.map((ex, i) => {
-            const hasVideo = !!ex.videoUrl;
-            const safeUrl  = (ex.videoUrl || '').replace(/'/g, "\\'");
-            const safeName = (ex.name || '').replace(/'/g, "\\'");
+            const hasVideo   = !!ex.videoUrl;
+            const safeUrl    = (ex.videoUrl || '').replace(/'/g, "\\'");
+            const safeName   = (ex.name || '').replace(/'/g, "\\'");
             const safeResults = (ex.results || '').replace(/"/g, '&quot;');
-            const exLabel = (window.getExerciseLetter ? window.getExerciseLetter(i, clientExercises) : String.fromCharCode(65 + i % 26));
+            const exLabel    = (window.getExerciseLetter ? window.getExerciseLetter(i, clientExercises) : String.fromCharCode(65 + i % 26));
+            const isDone     = ex.isComplete || false;
             return `
-            <div class="bg-white/5 border border-[#FFDB89]/15 rounded-xl overflow-hidden">
+            <div class="ex-card bg-white/5 border ${isDone ? 'border-green-500/30' : 'border-[#FFDB89]/15'} rounded-xl overflow-hidden transition-colors duration-300" data-ex-card="${i}">
                 <div class="flex gap-3 p-4 ${hasVideo ? 'cursor-pointer hover:bg-[#FFDB89]/5 group/excard' : ''}"
                      ${hasVideo ? `onclick="window.previewExerciseVideo('${safeUrl}','${safeName}',this)"` : ''}>
-                    <div class="w-8 h-8 shrink-0 rounded-lg bg-[#FFDB89]/10 flex items-center justify-center text-[#FFDB89] font-black text-sm">${exLabel}</div>
+                    <div class="w-8 h-8 shrink-0 rounded-lg ${isDone ? 'bg-green-500/20' : 'bg-[#FFDB89]/10'} flex items-center justify-center font-black text-sm transition-colors duration-300" data-ex-badge="${i}">
+                        ${isDone ? '<i class="fas fa-check text-green-400"></i>' : `<span class="text-[#FFDB89]">${exLabel}</span>`}
+                    </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2">
-                            <p class="font-bold text-white flex-1">${ex.name}</p>
+                            <p class="font-bold ${isDone ? 'text-green-400/80' : 'text-white'} flex-1 transition-colors duration-300" data-ex-name="${i}">${ex.name}</p>
                             ${hasVideo ? `<i class="fas fa-play-circle text-green-400/60 group-hover/excard:text-green-400 text-base shrink-0 transition-colors"></i>` : ''}
                         </div>
                         ${ex.instructions ? `<p class="text-sm text-[#FFDB89]/60 mt-0.5">${ex.instructions}</p>` : ''}
                     </div>
+                    <!-- Per-exercise complete toggle -->
+                    <button class="ex-complete-btn shrink-0 w-7 h-7 rounded-full border flex items-center justify-center transition-all duration-200 ${isDone ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'border-white/20 text-white/30 hover:border-green-500/50 hover:text-green-400/60'}"
+                        data-ex-index="${i}" title="Marcar ejercicio como completado">
+                        <i class="fas fa-check text-xs pointer-events-none"></i>
+                    </button>
                 </div>
-                <div class="px-4 pb-3 border-t border-[#FFDB89]/10 pt-2.5">
+                <div class="px-4 pb-3 border-t ${isDone ? 'border-green-500/10' : 'border-[#FFDB89]/10'} pt-2.5 transition-colors duration-300" data-ex-divider="${i}">
                     <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-1.5">Mis resultados</p>
                     <textarea data-ex-index="${i}" rows="2"
                         class="client-result-input w-full bg-[#0D0D0D] border border-[#FFDB89]/10 focus:border-[#FFDB89]/30 rounded-lg px-3 py-2 text-sm text-[#FFDB89]/80 placeholder-[#FFDB89]/20 outline-none resize-none transition"
@@ -10302,16 +10333,25 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<button class="rpe-btn w-9 h-9 rounded-lg border text-sm font-black transition ${color} ${active}" data-rpe="${n}" title="${rpeLabels[n]}">${n}</button>`;
         }).join('');
 
+        // RPE section visible if already complete OR already has an RPE saved
+        const rpeVisible = workout.isComplete || !!savedRpe;
+
         document.body.insertAdjacentHTML('beforeend', `
             <div id="client-workout-detail-modal" class="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                 <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+                    <!-- Header -->
                     <div class="flex items-center justify-between p-5 border-b border-[#FFDB89]/15 shrink-0">
                         <div>
                             <h3 class="text-xl font-bold text-[#FFDB89]">${workout.title || 'Entrenamiento'}</h3>
                             <p class="text-xs text-[#FFDB89]/50 mt-0.5">${workout.date}</p>
                         </div>
-                        <button id="close-client-workout-detail" class="w-11 h-11 flex items-center justify-center rounded-full text-[#FFDB89]/50 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition"><i class="fas fa-times text-lg"></i></button>
+                        <div class="flex items-center gap-2">
+                            <span id="ex-progress-badge" class="text-xs font-bold text-[#FFDB89]/40 hidden">${clientExercises.filter(e=>e.isComplete).length}/${clientExercises.length}</span>
+                            <button id="close-client-workout-detail" class="w-11 h-11 flex items-center justify-center rounded-full text-[#FFDB89]/50 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition"><i class="fas fa-times text-lg"></i></button>
+                        </div>
                     </div>
+
+                    <!-- Scrollable body -->
                     <div class="overflow-y-auto p-5 space-y-3 flex-1">
                         ${(workout.warmup || warmupItemsHtml) ? `
                         <div class="p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl">
@@ -10333,26 +10373,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${!exercisesHtml && !workout.warmup ? '<p class="text-center text-[#FFDB89]/40 py-6">Día de descanso</p>' : ''}
                     </div>
 
-                    <!-- RPE + COMPLETION SECTION -->
-                    <div class="shrink-0 border-t border-[#FFDB89]/15 p-4 bg-[#111113] rounded-b-2xl space-y-4">
-                        <!-- RPE -->
-                        <div>
-                            <div class="flex items-center justify-between mb-3">
+                    <!-- Sticky footer: RPE (only when complete) + Completion button -->
+                    <div class="shrink-0 border-t border-[#FFDB89]/15 bg-[#111113] rounded-b-2xl">
+
+                        <!-- RPE section — hidden until workout is marked complete -->
+                        <div id="rpe-section" class="${rpeVisible ? '' : 'hidden'} p-4 pb-0 space-y-3">
+                            <div class="flex items-center justify-between">
                                 <div>
                                     <p class="text-xs font-bold text-[#FFDB89]/80 uppercase tracking-wider">RPE — Esfuerzo percibido</p>
                                     <p id="rpe-label-text" class="text-xs text-[#FFDB89]/50 mt-0.5">${savedRpe ? rpeLabels[savedRpe] : 'Selecciona cómo te fue hoy'}</p>
                                 </div>
                                 <span id="rpe-selected-badge" class="text-2xl font-black ${savedRpe ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'}">${savedRpe ? savedRpe + '/10' : '—'}</span>
                             </div>
-                            <div class="flex gap-1.5 justify-between mb-3">
+                            <div class="flex gap-1.5 justify-between">
                                 ${rpeButtons}
                             </div>
-                            <button id="save-rpe-btn" class="w-full py-2.5 rounded-xl bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89] text-sm font-bold hover:bg-[#FFDB89]/20 transition ${savedRpe ? '' : 'opacity-50 cursor-not-allowed'}" ${savedRpe ? '' : 'disabled'}>
+                            <button id="save-rpe-btn" class="w-full py-2 rounded-xl bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89] text-sm font-bold hover:bg-[#FFDB89]/20 transition ${savedRpe ? '' : 'opacity-50 cursor-not-allowed'}" ${savedRpe ? '' : 'disabled'}>
                                 <i class="fas fa-check mr-2"></i>${savedRpe ? 'RPE guardado — actualizar' : 'Guardar RPE'}
                             </button>
                         </div>
-                        <!-- COMPLETION -->
-                        <div class="border-t border-[#FFDB89]/10 pt-4">
+
+                        <!-- Completion button — always visible -->
+                        <div class="p-4 ${rpeVisible ? 'pt-3 border-t border-[#FFDB89]/10' : ''}">
                             <button id="client-complete-btn"
                                 class="w-full py-3 rounded-xl border font-bold text-sm transition flex items-center justify-center gap-2 ${workout.isComplete ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-white/5 border-[#FFDB89]/20 text-[#FFDB89]/70 hover:bg-green-500/10 hover:border-green-500/40 hover:text-green-400'}">
                                 <i class="fas ${workout.isComplete ? 'fa-check-circle' : 'fa-dumbbell'} text-sm"></i>
@@ -10382,6 +10424,82 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        // ── Per-exercise completion buttons ──────────────────────────────────
+        // Show progress badge in header if there are exercises
+        const progressBadge = document.getElementById('ex-progress-badge');
+        const updateProgressBadge = () => {
+            if (!progressBadge || clientExercises.length === 0) return;
+            const done = clientExercises.filter(e => e.isComplete).length;
+            progressBadge.textContent = `${done}/${clientExercises.length}`;
+            progressBadge.classList.toggle('hidden', done === 0);
+            if (done === clientExercises.length) {
+                progressBadge.className = 'text-xs font-bold text-green-400';
+            } else {
+                progressBadge.className = 'text-xs font-bold text-[#FFDB89]/40';
+            }
+        };
+        updateProgressBadge();
+
+        const exLabel = (idx) => (window.getExerciseLetter ? window.getExerciseLetter(idx, clientExercises) : String.fromCharCode(65 + idx % 26));
+
+        document.querySelectorAll('.ex-complete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation(); // don't trigger video preview
+                const idx = parseInt(btn.dataset.exIndex);
+                if (isNaN(idx) || !clientExercises[idx]) return;
+
+                // Toggle
+                clientExercises[idx].isComplete = !clientExercises[idx].isComplete;
+                const isDone = clientExercises[idx].isComplete;
+
+                // Update card border
+                const card = document.querySelector(`[data-ex-card="${idx}"]`);
+                if (card) {
+                    card.classList.toggle('border-green-500/30', isDone);
+                    card.classList.toggle('border-[#FFDB89]/15', !isDone);
+                }
+
+                // Update badge (letter → check)
+                const badge = document.querySelector(`[data-ex-badge="${idx}"]`);
+                if (badge) {
+                    badge.className = `w-8 h-8 shrink-0 rounded-lg ${isDone ? 'bg-green-500/20' : 'bg-[#FFDB89]/10'} flex items-center justify-center font-black text-sm transition-colors duration-300`;
+                    badge.innerHTML = isDone
+                        ? '<i class="fas fa-check text-green-400"></i>'
+                        : `<span class="text-[#FFDB89]">${exLabel(idx)}</span>`;
+                }
+
+                // Update name colour
+                const nameEl = document.querySelector(`[data-ex-name="${idx}"]`);
+                if (nameEl) {
+                    nameEl.classList.toggle('text-green-400/80', isDone);
+                    nameEl.classList.toggle('text-white', !isDone);
+                }
+
+                // Update divider colour
+                const divider = document.querySelector(`[data-ex-divider="${idx}"]`);
+                if (divider) {
+                    divider.classList.toggle('border-green-500/10', isDone);
+                    divider.classList.toggle('border-[#FFDB89]/10', !isDone);
+                }
+
+                // Update the button itself
+                btn.className = `ex-complete-btn shrink-0 w-7 h-7 rounded-full border flex items-center justify-center transition-all duration-200 ${isDone ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'border-white/20 text-white/30 hover:border-green-500/50 hover:text-green-400/60'}`;
+
+                updateProgressBadge();
+
+                // Auto-save exercise completion state
+                scheduleResultsSave();
+
+                // Auto-complete workout when all exercises are done
+                if (isDone && clientExercises.length > 0 && clientExercises.every(ex => ex.isComplete)) {
+                    const completeBtn = document.getElementById('client-complete-btn');
+                    if (completeBtn && !workoutIsComplete) {
+                        setTimeout(() => completeBtn.click(), 400); // slight delay for visual feedback
+                    }
+                }
+            });
+        });
+
         // RPE picker interaction
         let selectedRpe = workout.rpe || null;
 
@@ -10404,7 +10522,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        document.getElementById('save-rpe-btn').addEventListener('click', async () => {
+        document.getElementById('save-rpe-btn')?.addEventListener('click', async () => {
             if (!selectedRpe || !workout._id) return;
             const saveBtn = document.getElementById('save-rpe-btn');
             saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Guardando...';
@@ -10432,8 +10550,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Complete button
+        // ── Complete button ──────────────────────────────────────────────────
         let workoutIsComplete = workout.isComplete || false;
+        const showRpeSection = () => {
+            const rpeSection = document.getElementById('rpe-section');
+            const completeDiv = rpeSection?.nextElementSibling; // the completion button wrapper
+            if (!rpeSection) return;
+            rpeSection.classList.remove('hidden');
+            if (completeDiv) {
+                completeDiv.classList.add('pt-3', 'border-t', 'border-[#FFDB89]/10');
+            }
+        };
+        const hideRpeSection = () => {
+            const rpeSection = document.getElementById('rpe-section');
+            const completeDiv = rpeSection?.nextElementSibling;
+            if (!rpeSection || selectedRpe) return; // keep visible if RPE was already saved
+            rpeSection.classList.add('hidden');
+            if (completeDiv) {
+                completeDiv.classList.remove('pt-3', 'border-t', 'border-[#FFDB89]/10');
+            }
+        };
+
         document.getElementById('client-complete-btn').addEventListener('click', async () => {
             const session = loadSession();
             const btn = document.getElementById('client-complete-btn');
@@ -10448,8 +10585,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ isComplete: workoutIsComplete, isMissed: false })
                 });
                 if (res.ok) {
-                    // ── Persist state back into the in-memory workout object so
-                    //    reopening the modal shows the correct status ──────────
+                    // Persist state back into the in-memory workout object
                     workout.isComplete = workoutIsComplete;
                     workout.isMissed   = false;
 
@@ -10457,18 +10593,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     btn.className = `w-full py-3 rounded-xl border font-bold text-sm transition flex items-center justify-center gap-2 ${workoutIsComplete ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-white/5 border-[#FFDB89]/20 text-[#FFDB89]/70 hover:bg-green-500/10 hover:border-green-500/40 hover:text-green-400'}`;
                     btn.innerHTML = `<i class="fas ${workoutIsComplete ? 'fa-check-circle' : 'fa-dumbbell'} text-sm"></i> ${workoutIsComplete ? '¡Entrenamiento completado!' : 'Completar entrenamiento'}`;
 
-                    // ── Update calendar cell colour + status icon ──────────────
+                    // Show / hide RPE section based on completion state
+                    if (workoutIsComplete) showRpeSection();
+                    else hideRpeSection();
+
+                    // Update calendar cell colour + status icon
                     const calCell = document.getElementById(`client-day-${workout.date}`);
                     if (calCell) {
                         const bar = calCell.querySelector('.w-1.h-8');
                         const barColor = workoutIsComplete ? '#4ade80' : '#FFDB89';
                         if (bar) bar.style.background = barColor;
-
-                        // Update the title text colour
                         const titleEl = calCell.querySelector('.text-sm.font-bold');
                         if (titleEl) titleEl.style.color = barColor;
-
-                        // Swap the inline status icon next to the title
                         let dot = calCell.querySelector('.completion-dot');
                         if (workoutIsComplete) {
                             if (!dot) {
@@ -10483,12 +10619,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     showToast(workoutIsComplete ? '💪 ¡Entrenamiento completado!' : 'Marcado como no completado', workoutIsComplete ? 'success' : 'info');
                 } else {
-                    workoutIsComplete = prevState; // revert
+                    workoutIsComplete = prevState;
                     btn.disabled = false;
                     showToast('Error al guardar. Intenta de nuevo.', 'error');
                 }
             } catch(e) {
-                workoutIsComplete = prevState; // revert
+                workoutIsComplete = prevState;
                 btn.disabled = false;
                 showToast('Error de conexión.', 'error');
             }
