@@ -1004,23 +1004,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // ── Sidebar collapse/expand button ────────────────────────────────────
         // Wire up directly on the element so it works regardless of event delegation.
+        // On MOBILE  (<768px): the sidebar slides in/out off-screen — the button
+        //   peeks out at the left edge and acts as the mobile menu toggle.
+        // On DESKTOP (≥768px): the button collapses/expands the sidebar width.
         const collapseBtn = document.getElementById('collapse-btn');
         if (collapseBtn && !collapseBtn.dataset.wired) {
             collapseBtn.dataset.wired = '1';
             collapseBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const sb = document.getElementById('sidebar');
-                if (!sb) return;
-                const icon = collapseBtn.querySelector('svg') || collapseBtn.querySelector('i');
-                const isCollapsed = sb.classList.contains('w-20');
-                if (isCollapsed) {
-                    sb.classList.remove('w-20'); sb.classList.add('w-60');
-                    sb.querySelectorAll('.nav-text').forEach(span => span.classList.remove('hidden'));
-                    if (icon) icon.style.transform = 'rotate(0deg)';
+
+                if (window.innerWidth < 768) {
+                    // ── Mobile: slide the sidebar in/out ──────────────────────
+                    const sp      = document.getElementById('sidebar-placeholder');
+                    const overlay = document.getElementById('mobile-sidebar-overlay');
+                    if (!sp) return;
+                    const icon = collapseBtn.querySelector('svg') || collapseBtn.querySelector('i');
+                    const isOpen = sp.classList.contains('mobile-open');
+                    if (isOpen) {
+                        sp.classList.remove('mobile-open');
+                        overlay?.classList.add('hidden');
+                        document.body.style.overflow = '';
+                        if (icon) icon.style.transform = 'rotate(0deg)';   // arrow points right → "open"
+                    } else {
+                        sp.classList.add('mobile-open');
+                        overlay?.classList.remove('hidden');
+                        document.body.style.overflow = 'hidden'; // prevent body scroll while menu open
+                        if (icon) icon.style.transform = 'rotate(180deg)'; // arrow points left → "close"
+                    }
                 } else {
-                    sb.classList.remove('w-60'); sb.classList.add('w-20');
-                    sb.querySelectorAll('.nav-text').forEach(span => span.classList.add('hidden'));
-                    if (icon) icon.style.transform = 'rotate(180deg)';
+                    // ── Desktop: collapse/expand sidebar width ────────────────
+                    const sb = document.getElementById('sidebar');
+                    if (!sb) return;
+                    const icon = collapseBtn.querySelector('svg') || collapseBtn.querySelector('i');
+                    const isCollapsed = sb.classList.contains('w-20');
+                    if (isCollapsed) {
+                        sb.classList.remove('w-20'); sb.classList.add('w-60');
+                        sb.querySelectorAll('.nav-text').forEach(span => span.classList.remove('hidden'));
+                        if (icon) icon.style.transform = 'rotate(0deg)';
+                    } else {
+                        sb.classList.remove('w-60'); sb.classList.add('w-20');
+                        sb.querySelectorAll('.nav-text').forEach(span => span.classList.add('hidden'));
+                        if (icon) icon.style.transform = 'rotate(180deg)';
+                    }
                 }
             });
         }
