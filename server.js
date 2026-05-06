@@ -1344,14 +1344,22 @@ app.post('/api/nutrition-logs', authenticateToken, async (req, res) => {
         if (notes    !== undefined) updateFields.notes    = notes;
         if (mood     !== undefined) updateFields.mood     = mood;
         if (meals    !== undefined) updateFields.meals    = meals;
+
+        // Only create a new log (upsert) when actual nutrition data is being saved.
+        // Mood-only or notes-only saves should update existing logs but never create phantom 0-calorie entries.
+        const hasNutritionData = calories !== undefined || protein !== undefined ||
+                                 carbs !== undefined || fat !== undefined ||
+                                 water !== undefined || meals !== undefined;
+
         const log = await NutritionLog.findOneAndUpdate(
             { clientId, date },
             { $set: updateFields },
-            { new: true, upsert: true }
+            { new: true, upsert: hasNutritionData }
         );
+        if (!log) { res.json({ ok: true }); return; } // mood/notes update on non-existent log — no-op
 
-        // Notify trainer when client logs nutrition
-        if (req.user.role === 'client') {
+        // Notify trainer when client logs actual nutrition (not just mood/notes)
+        if (req.user.role === 'client' && hasNutritionData) {
             const client = await User.findById(clientId);
             if (client) {
                 await createNotification({
