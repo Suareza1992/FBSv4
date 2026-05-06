@@ -1359,8 +1359,8 @@ app.post('/api/nutrition-logs', authenticateToken, async (req, res) => {
                     clientName: `${client.name} ${client.lastName || ''}`.trim(),
                     type: 'nutrition_logged',
                     title: `registró su nutrición`,
-                    message: `${calories} cal | P:${protein}g C:${carbs}g F:${fat}g - ${date}`,
-                    data: { date, calories, protein, carbs, fat }
+                    message: `${log.calories ?? 0} cal | P:${log.protein ?? 0}g C:${log.carbs ?? 0}g F:${log.fat ?? 0}g - ${date}`,
+                    data: { date, calories: log.calories, protein: log.protein, carbs: log.carbs, fat: log.fat }
                 });
             }
         }
