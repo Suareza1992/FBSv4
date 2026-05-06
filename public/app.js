@@ -7135,7 +7135,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const navLink = target.closest('.nav-link-item');
         if (navLink) {
             e.preventDefault();
-            const linkText = navLink.querySelector('.nav-text').textContent.trim();
+
+            // ── Always close the mobile sidebar on nav-link click ────────────
+            // iOS Safari can fail to bubble touch events through fixed-position
+            // elements, so we close unconditionally here instead of relying
+            // solely on the sp.addEventListener in initMobileMenu.
+            if (window.innerWidth < 768) {
+                const _sp  = document.getElementById('sidebar-placeholder');
+                const _ov  = document.getElementById('mobile-sidebar-overlay');
+                _sp?.classList.remove('mobile-open');
+                _ov?.classList.add('hidden');
+                document.body.style.overflow = '';
+                const _icon = document.getElementById('collapse-btn')?.querySelector('svg, i');
+                if (_icon) _icon.style.transform = 'rotate(0deg)';
+            }
+
+            // null-safe: nav-text may be hidden (w-20 collapsed) but still has textContent
+            const linkText = navLink.querySelector('.nav-text')?.textContent?.trim() ?? '';
             let moduleToLoad = null;
 
             if (linkText.includes('Notificaciones')) moduleToLoad = 'notifications_content';
