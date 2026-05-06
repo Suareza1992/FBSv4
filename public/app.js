@@ -123,8 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let routineCooldownItems = [];   // [{id, name, videoUrl}]
     let currentClientViewId = null;
     let currentNotifFilter = '7days';
-    let copiedWorkoutData = null; // Store copied workout (single day)
-    let copiedMultiDayData = null; // Store copied multi-day workouts with spacing
+    let copiedWorkoutData = JSON.parse(sessionStorage.getItem('fbs_copiedWorkout') || 'null'); // Store copied workout (single day)
+    let copiedMultiDayData = JSON.parse(sessionStorage.getItem('fbs_copiedMultiDay') || 'null'); // Store copied multi-day workouts with spacing
     let selectedCopyDays = new Set(); // Track selected days for multi-day copy
 
     // NEW: Workout Editor State (For the Orange Modal)
@@ -3991,6 +3991,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if(response.ok) {
                 copiedWorkoutData = await response.json();
                 copiedMultiDayData = null; // Clear multi-day when single copy is used
+                sessionStorage.setItem('fbs_copiedWorkout', JSON.stringify(copiedWorkoutData));
+                sessionStorage.removeItem('fbs_copiedMultiDay');
                 showToast('Workout copiado. Usa el botón "Pegar" en cualquier otro día.', 'success');
             } else {
                 showToast('No hay workout en este día para copiar.', 'info');
@@ -4068,6 +4070,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         copiedMultiDayData = workoutsWithOffsets;
         copiedWorkoutData = null; // Clear single-day copy
+        sessionStorage.setItem('fbs_copiedMultiDay', JSON.stringify(copiedMultiDayData));
+        sessionStorage.removeItem('fbs_copiedWorkout');
         window.clearCopySelection();
         showToast(`${workoutsWithOffsets.length} día${workoutsWithOffsets.length > 1 ? 's' : ''} copiado${workoutsWithOffsets.length > 1 ? 's' : ''}. Usa el botón "Pegar" en el día donde quieres que inicie.`, 'success');
     };
@@ -5872,6 +5876,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 showToast(`${successCount} workout${successCount > 1 ? 's' : ''} pegado${successCount > 1 ? 's' : ''} exitosamente.`, 'success');
+                if(successCount > 0) {
+                    copiedMultiDayData = null;
+                    sessionStorage.removeItem('fbs_copiedMultiDay');
+                }
 
             } else if(copiedWorkoutData) {
                 // SINGLE-DAY PASTE (legacy behavior)
@@ -5906,6 +5914,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             if(cb) cb.classList.remove('hidden');
                         }
                         showToast('Workout pegado exitosamente.', 'success');
+                        copiedWorkoutData = null;
+                        sessionStorage.removeItem('fbs_copiedWorkout');
                     }
                 } catch(e) {
                     console.error(e);
