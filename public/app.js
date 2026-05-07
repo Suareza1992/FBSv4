@@ -7923,6 +7923,54 @@ document.addEventListener('DOMContentLoaded', () => {
             const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
             tipEl.textContent = tips[dayOfYear % tips.length];
         }
+
+        // ── Macro rings — fetch today's nutrition log + goals ──────────────────
+        try {
+            const [nutRes, meRes] = await Promise.all([
+                apiFetch(`/api/nutrition-logs/${session.id}`),
+                apiFetch('/api/me')
+            ]);
+            const logs = nutRes.ok ? await nutRes.json() : [];
+            const me   = meRes.ok ? await meRes.json() : {};
+
+            const todayLog = logs.find(l => l.date === todayStr) || {};
+            const ms       = me.macroSettings || {};
+
+            const protein = Math.round(todayLog.protein || 0);
+            const carbs   = Math.round(todayLog.carbs   || 0);
+            const fat     = Math.round(todayLog.fat     || 0);
+            const water   = Math.round(todayLog.water   || 0);
+
+            const goalPro   = ms.goalProtein || 0;
+            const goalCarbs = ms.goalCarbs   || 0;
+            const goalFat   = ms.goalFat     || 0;
+            const goalWater = 64; // oz — default 8 × 8oz glasses
+
+            const C = 251.33; // circumference: 2π × r(40)
+
+            const setRing = (ringId, valId, pctId, subId, current, goal, unit) => {
+                const pct    = goal > 0 ? Math.min(1, current / goal) : 0;
+                const offset = (C * (1 - pct)).toFixed(2);
+                const ring   = document.getElementById(ringId);
+                const valEl  = document.getElementById(valId);
+                const pctEl  = document.getElementById(pctId);
+                const subEl  = document.getElementById(subId);
+                // Double rAF so the CSS transition fires after the element is painted
+                if (ring) requestAnimationFrame(() => requestAnimationFrame(() => {
+                    ring.style.strokeDashoffset = offset;
+                    // Turn red if over goal
+                    if (goal > 0 && current > goal) ring.style.stroke = '#ef4444';
+                }));
+                if (valEl) valEl.textContent = current + unit;
+                if (pctEl) pctEl.textContent = goal > 0 ? Math.round(pct * 100) + '%' : '--';
+                if (subEl) subEl.textContent = goal > 0 ? `${current} / ${goal}${unit}` : `${current}${unit}`;
+            };
+
+            setRing('ring-protein', 'ring-protein-val', 'ring-protein-pct', 'ring-protein-sub', protein, goalPro,   'g');
+            setRing('ring-carbs',   'ring-carbs-val',   'ring-carbs-pct',   'ring-carbs-sub',   carbs,   goalCarbs, 'g');
+            setRing('ring-fat',     'ring-fat-val',     'ring-fat-pct',     'ring-fat-sub',     fat,     goalFat,   'g');
+            setRing('ring-water',   'ring-water-val',   'ring-water-pct',   'ring-water-sub',   water,   goalWater, ' oz');
+        } catch (e) { console.error('Error loading macro rings:', e); }
     };
 
     // ========================================================================
