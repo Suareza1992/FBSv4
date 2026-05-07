@@ -8096,7 +8096,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'El progreso no es lineal. Confiar en el proceso.',
             'La nutricion es el 80% de tus resultados.',
             'Descansar es parte del entrenamiento.',
-            'Establece metas pequenas y alcanzables.',
+            'Establece metas pequeñas y alcanzables.',
             'Celebra cada logro, por pequeno que sea.',
             'Tu unica competencia eres tu mismo de ayer.',
             'La disciplina supera la motivacion.',
