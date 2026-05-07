@@ -4586,8 +4586,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!p || p.contains(e.target)) return;
         const t = e.target;
         if (t.classList.contains('exercise-name-input')) return;
-        // routine item inputs (warmup/cooldown) live inside these lists
+        // routine item inputs (warmup/cooldown) live inside these lists (program builder)
         if (t.closest('#routine-warmup-items-list, #routine-cooldown-items-list')) return;
+        // calendar workout editor lists
+        if (t.closest('#editor-exercises-list, #warmup-items-list, #cooldown-items-list')) return;
         hideExAc();
     });
 
