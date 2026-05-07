@@ -6937,68 +6937,61 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
         }
 
-        // Build the floating card
-        const CARD_W = 340;
+        // ── Backdrop (dims the rest of the screen) ──────────────────────────
+        const backdrop = document.createElement('div');
+        backdrop.id = 'video-preview-backdrop';
+        backdrop.style.cssText = [
+            'position:fixed;inset:0;z-index:9997',
+            'background:rgba(0,0,0,.65)',
+            '-webkit-backdrop-filter:blur(4px)',
+            'backdrop-filter:blur(4px)'
+        ].join(';');
+        document.body.appendChild(backdrop);
+
+        // ── Centered card — responsive width (480 px on desktop, full-bleed on mobile) ──
+        const CARD_W = Math.min(480, window.innerWidth - 32);
         const card   = document.createElement('div');
         card.id      = 'video-preview-overlay';
-        card.style.cssText = `position:fixed;z-index:9998;width:${CARD_W}px;
-            background:#1C1C1E;border:1px solid rgba(255,219,137,.22);
-            border-radius:1rem;box-shadow:0 12px 40px rgba(0,0,0,.7);overflow:hidden;`;
+        card.style.cssText = [
+            'position:fixed;z-index:9998',
+            `width:${CARD_W}px`,
+            'top:50%;left:50%;transform:translate(-50%,-50%)',
+            'background:#1C1C1E',
+            'border:1px solid rgba(255,219,137,.22)',
+            'border-radius:1rem',
+            'box-shadow:0 16px 48px rgba(0,0,0,.85)',
+            'overflow:hidden',
+            'max-height:90vh',
+            'display:flex;flex-direction:column'
+        ].join(';');
         card.innerHTML = `
             <div style="display:flex;align-items:center;justify-content:space-between;
-                        padding:.625rem .875rem;border-bottom:1px solid rgba(255,219,137,.12)">
+                        padding:.625rem .875rem;border-bottom:1px solid rgba(255,219,137,.12);flex-shrink:0">
                 <span style="font-weight:700;color:#FFDB89;font-size:.875rem;
                              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">
                     ${name || 'Video'}</span>
                 <button id="close-video-preview"
                     style="margin-left:.5rem;color:rgba(255,219,137,.4);background:none;border:none;
-                           cursor:pointer;font-size:1rem;line-height:1;padding:0"
-                    onmouseover="this.style.color='#FFDB89'" onmouseout="this.style.color='rgba(255,219,137,.4)'">
+                           cursor:pointer;font-size:1.1rem;line-height:1;padding:.25rem"
+                    onmouseover="this.style.color='#FFDB89'" onmouseout="this.style.color='rgba(255,219,137,.4)'"
+                    aria-label="Cerrar">
                     <i class="fas fa-times"></i></button>
             </div>
-            ${playerHtml}`;
+            <div style="overflow-y:auto">${playerHtml}</div>`;
         document.body.appendChild(card);
 
-        // Smart positioning near the trigger button
-        const vw = window.innerWidth, vh = window.innerHeight;
-        const CARD_H = 240; // approximate (header ~40px + 16:9 video ~190px)
-        let top, left;
-        if (triggerEl) {
-            const r = triggerEl.getBoundingClientRect();
-            // Prefer left side; fall back to right, then below
-            if (r.left - CARD_W - 10 >= 0) {
-                left = r.left - CARD_W - 8;
-                top  = r.top;
-            } else if (r.right + CARD_W + 10 <= vw) {
-                left = r.right + 8;
-                top  = r.top;
-            } else {
-                left = Math.max(8, Math.min(r.left, vw - CARD_W - 8));
-                top  = r.bottom + 8;
-            }
-            // Keep within vertical viewport
-            top = Math.max(8, Math.min(top, vh - CARD_H - 8));
-        } else {
-            // No anchor — centre it
-            top  = vh / 2 - CARD_H / 2;
-            left = vw / 2 - CARD_W / 2;
-        }
-        card.style.top  = top  + 'px';
-        card.style.left = left + 'px';
-
+        // Shared close handler — removes card, backdrop, and Escape listener
+        const onKey = (e) => { if (e.key === 'Escape') closeCard(); };
         const closeCard = () => {
             card.remove();
-            document.removeEventListener('click', onOutside);
+            backdrop.remove();
+            document.removeEventListener('keydown', onKey);
         };
 
-        // Close button
+        // Close on X button, backdrop click, or Escape key
         card.querySelector('#close-video-preview').addEventListener('click', closeCard);
-
-        // Click outside to close (defer one tick so the triggering click doesn't immediately close it)
-        const onOutside = (e) => {
-            if (!card.contains(e.target)) closeCard();
-        };
-        setTimeout(() => document.addEventListener('click', onOutside), 0);
+        backdrop.addEventListener('click', closeCard);
+        document.addEventListener('keydown', onKey);
     };
 
     // MODAL ACTIONS
@@ -9152,19 +9145,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 [calInput, proInput, carbInput, fatInput, qtyInput, unitInput].forEach(el => el?.addEventListener('input', syncPreview));
 
-                nameInput?.addEventListener('input', () => {
-                    syncPreview();
-                    const q = nameInput.value.trim().toLowerCase();
-                    if (!q || !foodHistory.length) { suggestions.classList.add('hidden'); return; }
-                    const matches = foodHistory.filter(f => f.name.toLowerCase().includes(q)).slice(0, 8);
-                    if (!matches.length) { suggestions.classList.add('hidden'); return; }
-                    suggestions.innerHTML = matches.map(f => `
+                // Render the unified suggestion list (local history + shared library)
+                const renderSuggestions = (localMatches, libMatches) => {
+                    const renderRow = (f) => `
                         <button class="food-suggest-item w-full text-left px-4 py-2.5 hover:bg-[#FFDB89]/10 transition border-b border-[#FFDB89]/10 last:border-0"
                             data-name="${f.name.replace(/"/g,'&quot;')}" data-cal="${f.calories}" data-pro="${f.protein}" data-carb="${f.carbs}" data-fat="${f.fat}">
-                            <span class="text-sm text-white font-medium">${f.name}</span>
-                            <span class="text-xs text-[#FFDB89]/50 ml-2">${f.calories} cal &middot; P:${f.protein}g C:${f.carbs}g G:${f.fat}g</span>
-                        </button>`).join('');
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-sm text-white font-medium">${f.name}</span>
+                                ${f.fromLibrary ? '<span class="text-[8px] font-bold text-[#FFDB89]/30 uppercase tracking-wider border border-[#FFDB89]/20 rounded px-1">comunidad</span>' : ''}
+                            </div>
+                            <span class="text-xs text-[#FFDB89]/50">${f.calories} cal &middot; P:${f.protein}g C:${f.carbs}g G:${f.fat}g</span>
+                        </button>`;
+                    const all = [...localMatches, ...libMatches.map(f => ({...f, fromLibrary: true}))];
+                    if (!all.length) { suggestions.classList.add('hidden'); return; }
+                    suggestions.innerHTML = all.map(renderRow).join('');
                     suggestions.classList.remove('hidden');
+                };
+
+                let _libSugTimer = null;
+                nameInput?.addEventListener('input', () => {
+                    syncPreview();
+                    const q = nameInput.value.trim();
+                    if (!q) { suggestions.classList.add('hidden'); return; }
+                    const qLower = q.toLowerCase();
+
+                    // 1. Show local history immediately
+                    const localMatches = foodHistory.filter(f => f.name.toLowerCase().includes(qLower)).slice(0, 6);
+                    renderSuggestions(localMatches, []);
+
+                    // 2. Debounced shared library lookup (300 ms)
+                    clearTimeout(_libSugTimer);
+                    _libSugTimer = setTimeout(async () => {
+                        try {
+                            const res = await apiFetch(`/api/food-library?q=${encodeURIComponent(q)}`);
+                            if (!res.ok || nameInput.value.trim() !== q) return; // stale check
+                            const libData = await res.json();
+                            const localNames = new Set(localMatches.map(f => f.name.toLowerCase().trim()));
+                            const libMatches = libData
+                                .filter(f => !localNames.has(f.name.toLowerCase().trim()))
+                                .slice(0, 4);
+                            renderSuggestions(localMatches, libMatches);
+                        } catch { /* silently ignore — local matches already showing */ }
+                    }, 300);
                 });
 
                 suggestions?.addEventListener('click', e => {
@@ -9609,6 +9631,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!foodHistory.find(f => f.name.toLowerCase().trim() === key)) {
                     foodHistory.push({ name: pending.name, calories: pending.calories || 0, protein: pending.protein || 0, carbs: pending.carbs || 0, fat: pending.fat || 0 });
                 }
+                // Persist to the shared platform food library (fire-and-forget)
+                apiFetch('/api/food-library', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name:     pending.name,
+                        calories: pending.calories || 0,
+                        protein:  pending.protein  || 0,
+                        carbs:    pending.carbs    || 0,
+                        fat:      pending.fat      || 0
+                    })
+                }).catch(() => {}); // non-blocking — never fails the user's log
                 stopScanner();
                 modal.remove();
                 renderMeals();

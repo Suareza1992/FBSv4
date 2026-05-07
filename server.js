@@ -394,6 +394,21 @@ const ProgressPhotoSchema = new mongoose.Schema({
 ProgressPhotoSchema.index({ clientId: 1, date: -1 });
 const ProgressPhoto = mongoose.model('ProgressPhoto', ProgressPhotoSchema);
 
+// --- Shared Food Library Schema ---
+// Stores foods logged manually or from search, shared across all platform users.
+const FoodLibrarySchema = new mongoose.Schema({
+    name:      { type: String, required: true },
+    nameNorm:  { type: String, required: true },   // accent-stripped lowercase, used for dedup + search
+    calories:  { type: Number, default: 0 },        // macros per unit / per serving as logged
+    protein:   { type: Number, default: 0 },
+    carbs:     { type: Number, default: 0 },
+    fat:       { type: Number, default: 0 },
+    timesUsed: { type: Number, default: 1 },       // popularity counter
+    updatedAt: { type: Date, default: Date.now }
+}, { timestamps: true });
+FoodLibrarySchema.index({ nameNorm: 1 }, { unique: true });
+const FoodLibrary = mongoose.model('FoodLibrary', FoodLibrarySchema);
+
 // --- Group Schema ---
 const GroupSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
@@ -1832,6 +1847,51 @@ function searchLocalFoods(q) {
         .sort((a, b) => b.score - a.score);
     return scored.map(s => s.food).slice(0, 8);
 }
+
+// POST /api/food-library — upsert a food into the shared platform library
+app.post('/api/food-library', authenticateToken, async (req, res) => {
+    try {
+        const { name, calories, protein, carbs, fat } = req.body;
+        if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+        const nameNorm = normalizeStr(name.trim());
+        await FoodLibrary.findOneAndUpdate(
+            { nameNorm },
+            {
+                $set: { name: name.trim(), calories: +calories || 0, protein: +protein || 0,
+                        carbs: +carbs || 0, fat: +fat || 0, updatedAt: new Date() },
+                $inc: { timesUsed: 1 }
+            },
+            { upsert: true, new: true }
+        );
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('Food library save error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/food-library?q= — search shared food library; returns [{name,calories,protein,carbs,fat}]
+app.get('/api/food-library', authenticateToken, async (req, res) => {
+    try {
+        const q = (req.query.q || '').trim();
+        let results;
+        if (!q) {
+            results = await FoodLibrary.find().sort({ timesUsed: -1 }).limit(12);
+        } else {
+            const normQ = normalizeStr(q);
+            // Build a regex that requires each search term to appear somewhere in nameNorm
+            const terms = normQ.split(/\s+/).filter(Boolean);
+            const pattern = terms.map(t => `(?=.*${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`).join('');
+            const regex = new RegExp(pattern, 'i');
+            results = await FoodLibrary.find({ nameNorm: regex }).sort({ timesUsed: -1 }).limit(10);
+        }
+        res.json(results.map(f => ({
+            name: f.name, calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat
+        })));
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
 app.get('/api/food-search', authenticateToken, async (req, res) => {
     const q = (req.query.q || '').trim();
