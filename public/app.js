@@ -2750,10 +2750,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${goalCal ? `<p class="text-xs text-[#FFDB89]/50"><span class="font-black text-[#FFDB89]">${tCal}</span> / ${goalCal} kcal</p>` : `<p class="text-xs font-black text-[#FFDB89]">${tCal} kcal</p>`}
                         </div>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                            ${ringCol('rp', '#f87171', 'rgba(248,113,113,0.12)', 'Proteína', tProtein, goalPro,   'g')}
-                            ${ringCol('rc', '#facc15', 'rgba(250,204,21,0.12)',  'Carbos',   tCarbs,   goalCarbs, 'g')}
-                            ${ringCol('rf', '#fb923c', 'rgba(251,146,60,0.12)', 'Grasas',   tFat,     goalFat,   'g')}
-                            ${ringCol('rw', '#38bdf8', 'rgba(56,189,248,0.12)', 'Agua',     tWater,   goalWater, ' oz')}
+                            ${ringCol('rp', '#f87171', 'rgba(248,113,113,0.30)', 'Proteína', tProtein, goalPro,   'g')}
+                            ${ringCol('rc', '#facc15', 'rgba(250,204,21,0.30)',  'Carbos',   tCarbs,   goalCarbs, 'g')}
+                            ${ringCol('rf', '#fb923c', 'rgba(251,146,60,0.30)', 'Grasas',   tFat,     goalFat,   'g')}
+                            ${ringCol('rw', '#38bdf8', 'rgba(56,189,248,0.30)', 'Agua',     tWater,   goalWater, ' oz')}
                         </div>
                     </div>
 

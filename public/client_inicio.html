@@ -17,72 +17,72 @@
             <div class="flex flex-col items-center gap-1.5">
                 <div class="relative w-full aspect-square max-w-[88px]">
                     <svg viewBox="0 0 100 100" class="w-full h-full" style="transform:rotate(-90deg)">
-                        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(248,113,113,0.12)" stroke-width="9"/>
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(248,113,113,0.30)" stroke-width="9"/>
                         <circle id="ring-protein" cx="50" cy="50" r="40" fill="none" stroke="#f87171" stroke-width="9"
                             stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33"
                             style="transition:stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)"/>
                     </svg>
                     <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                        <p class="text-xs font-black text-red-400 leading-none" id="ring-protein-val">--</p>
-                        <p class="text-[8px] text-red-400/50 mt-0.5" id="ring-protein-pct">--%</p>
+                        <p class="text-xs font-black text-red-400 leading-none" id="ring-protein-val">0g</p>
+                        <p class="text-[8px] text-red-400/50 mt-0.5" id="ring-protein-pct">0%</p>
                     </div>
                 </div>
                 <p class="text-[9px] font-bold text-red-400/70 uppercase tracking-wider">Proteína</p>
-                <p class="text-[9px] text-[#FFDB89]/30 leading-none" id="ring-protein-sub">--</p>
+                <p class="text-[9px] text-[#FFDB89]/30 leading-none" id="ring-protein-sub">0 / --g</p>
             </div>
 
             <!-- Carbos -->
             <div class="flex flex-col items-center gap-1.5">
                 <div class="relative w-full aspect-square max-w-[88px]">
                     <svg viewBox="0 0 100 100" class="w-full h-full" style="transform:rotate(-90deg)">
-                        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(250,204,21,0.12)" stroke-width="9"/>
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(250,204,21,0.30)" stroke-width="9"/>
                         <circle id="ring-carbs" cx="50" cy="50" r="40" fill="none" stroke="#facc15" stroke-width="9"
                             stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33"
                             style="transition:stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)"/>
                     </svg>
                     <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                        <p class="text-xs font-black text-yellow-400 leading-none" id="ring-carbs-val">--</p>
-                        <p class="text-[8px] text-yellow-400/50 mt-0.5" id="ring-carbs-pct">--%</p>
+                        <p class="text-xs font-black text-yellow-400 leading-none" id="ring-carbs-val">0g</p>
+                        <p class="text-[8px] text-yellow-400/50 mt-0.5" id="ring-carbs-pct">0%</p>
                     </div>
                 </div>
                 <p class="text-[9px] font-bold text-yellow-400/70 uppercase tracking-wider">Carbos</p>
-                <p class="text-[9px] text-[#FFDB89]/30 leading-none" id="ring-carbs-sub">--</p>
+                <p class="text-[9px] text-[#FFDB89]/30 leading-none" id="ring-carbs-sub">0 / --g</p>
             </div>
 
             <!-- Grasas -->
             <div class="flex flex-col items-center gap-1.5">
                 <div class="relative w-full aspect-square max-w-[88px]">
                     <svg viewBox="0 0 100 100" class="w-full h-full" style="transform:rotate(-90deg)">
-                        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(251,146,60,0.12)" stroke-width="9"/>
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(251,146,60,0.30)" stroke-width="9"/>
                         <circle id="ring-fat" cx="50" cy="50" r="40" fill="none" stroke="#fb923c" stroke-width="9"
                             stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33"
                             style="transition:stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)"/>
                     </svg>
                     <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                        <p class="text-xs font-black text-orange-400 leading-none" id="ring-fat-val">--</p>
-                        <p class="text-[8px] text-orange-400/50 mt-0.5" id="ring-fat-pct">--%</p>
+                        <p class="text-xs font-black text-orange-400 leading-none" id="ring-fat-val">0g</p>
+                        <p class="text-[8px] text-orange-400/50 mt-0.5" id="ring-fat-pct">0%</p>
                     </div>
                 </div>
                 <p class="text-[9px] font-bold text-orange-400/70 uppercase tracking-wider">Grasas</p>
-                <p class="text-[9px] text-[#FFDB89]/30 leading-none" id="ring-fat-sub">--</p>
+                <p class="text-[9px] text-[#FFDB89]/30 leading-none" id="ring-fat-sub">0 / --g</p>
             </div>
 
             <!-- Agua -->
             <div class="flex flex-col items-center gap-1.5">
                 <div class="relative w-full aspect-square max-w-[88px]">
                     <svg viewBox="0 0 100 100" class="w-full h-full" style="transform:rotate(-90deg)">
-                        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(56,189,248,0.12)" stroke-width="9"/>
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(56,189,248,0.30)" stroke-width="9"/>
                         <circle id="ring-water" cx="50" cy="50" r="40" fill="none" stroke="#38bdf8" stroke-width="9"
                             stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33"
                             style="transition:stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)"/>
                     </svg>
                     <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                        <p class="text-xs font-black text-sky-400 leading-none" id="ring-water-val">--</p>
-                        <p class="text-[8px] text-sky-400/50 mt-0.5" id="ring-water-pct">--%</p>
+                        <p class="text-xs font-black text-sky-400 leading-none" id="ring-water-val">0 oz</p>
+                        <p class="text-[8px] text-sky-400/50 mt-0.5" id="ring-water-pct">0%</p>
                     </div>
                 </div>
                 <p class="text-[9px] font-bold text-sky-400/70 uppercase tracking-wider">Agua</p>
-                <p class="text-[9px] text-[#FFDB89]/30 leading-none" id="ring-water-sub">--</p>
+                <p class="text-[9px] text-[#FFDB89]/30 leading-none" id="ring-water-sub">0 / 64 oz</p>
             </div>
 
         </div>
