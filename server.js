@@ -1324,6 +1324,22 @@ app.post('/api/body-measurements', authenticateToken, async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Error saving body measurement' }); }
 });
 
+app.patch('/api/body-measurements/:id', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'trainer' && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Solo el entrenador puede editar medidas.' });
+        }
+        const { date, weight, bodyFat, bmi, pecho, biceps, cintura, cadera, quads, calves, notes } = req.body;
+        const updated = await BodyMeasurement.findByIdAndUpdate(
+            req.params.id,
+            { $set: { date, weight, bodyFat, bmi, pecho, biceps, cintura, cadera, quads, calves, notes } },
+            { new: true }
+        );
+        if (!updated) return res.status(404).json({ message: 'Medida no encontrada.' });
+        res.json(updated);
+    } catch (e) { res.status(500).json({ message: 'Error updating measurement' }); }
+});
+
 app.delete('/api/body-measurements/:id', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'trainer' && req.user.role !== 'admin') {

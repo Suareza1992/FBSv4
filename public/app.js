@@ -2003,13 +2003,25 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${cell(m.quads)}
                         ${cell(m.calves)}
                         <td class="px-3 py-2.5 text-center">
-                            <button onclick="window.deleteMeasurement('${clientId}', '${m._id}')"
-                                class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition text-xs">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            <div class="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition">
+                                <button onclick="window.editMeasurement('${clientId}', '${m._id}', ${totalInches})"
+                                    class="text-[#FFDB89]/60 hover:text-[#FFDB89] transition text-xs font-bold flex items-center gap-1"
+                                    title="Editar">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                                <button onclick="window.deleteMeasurement('${clientId}', '${m._id}')"
+                                    class="text-red-400 hover:text-red-300 transition text-xs"
+                                    title="Eliminar">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>`;
                 }).join('');
+
+            // Cache measurements so editMeasurement() can look up by _id safely
+            window._measurementsCache = window._measurementsCache || {};
+            window._measurementsCache[clientId] = measurements;
 
             container.innerHTML = `
                 <div class="space-y-6">
@@ -2399,6 +2411,111 @@ document.addEventListener('DOMContentLoaded', () => {
             await apiFetch(`/api/body-measurements/${measurementId}`, { method: 'DELETE' });
             loadClientMetrics(clientId);
         } catch (e) { showToast('Error eliminando registro.', 'error'); }
+    };
+
+    window.editMeasurement = (clientId, measurementId, heightInches) => {
+        // Look up the cached measurement object by id (avoids JSON escaping in HTML attributes)
+        const m = (window._measurementsCache?.[clientId] || []).find(x => x._id === measurementId);
+        if (!m) { showToast('No se encontró la medición.', 'error'); return; }
+        document.getElementById('edit-measurement-modal')?.remove();
+        const inputCls = 'w-full p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30';
+        const labelCls = 'block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1';
+        document.body.insertAdjacentHTML('beforeend', `
+            <div id="edit-measurement-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-2xl p-7 overflow-y-auto max-h-[90vh]">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-bold text-[#FFDB89]"><i class="fas fa-pen mr-2 text-[#FFDB89]"></i>Editar medición</h3>
+                        <button onclick="document.getElementById('edit-measurement-modal').remove()" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl">&times;</button>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="md:col-span-1">
+                            <label class="${labelCls}">Fecha</label>
+                            <input type="date" id="em-date" value="${m.date || ''}" class="${inputCls}">
+                        </div>
+                        <div>
+                            <label class="${labelCls}">Peso (lbs)</label>
+                            <input type="number" id="em-weight" step="0.1" value="${m.weight || ''}" placeholder="124.4" class="${inputCls}" oninput="window.calcBMIEdit(${heightInches})">
+                        </div>
+                        <div>
+                            <label class="${labelCls}">% Grasa</label>
+                            <input type="number" id="em-bodyfat" step="0.1" value="${m.bodyFat || ''}" placeholder="18.4" class="${inputCls}">
+                        </div>
+                        <div>
+                            <label class="${labelCls}">BMI (auto)</label>
+                            <input type="text" id="em-bmi" readonly value="${m.bmi || ''}" placeholder="—" class="${inputCls} opacity-60 cursor-default">
+                        </div>
+                    </div>
+
+                    <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-3">Medidas (pulg)</p>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                        <div><label class="${labelCls}">Pecho</label>
+                            <input type="text" id="em-pecho" value="${m.pecho || ''}" placeholder='35 4/8' class="${inputCls}"></div>
+                        <div><label class="${labelCls}">Bíceps</label>
+                            <input type="text" id="em-biceps" value="${m.biceps || ''}" placeholder='10 4/8' class="${inputCls}"></div>
+                        <div><label class="${labelCls}">Cintura</label>
+                            <input type="text" id="em-cintura" value="${m.cintura || ''}" placeholder='27 2/8' class="${inputCls}"></div>
+                        <div><label class="${labelCls}">Cadera</label>
+                            <input type="text" id="em-cadera" value="${m.cadera || ''}" placeholder='36 6/8' class="${inputCls}"></div>
+                        <div><label class="${labelCls}">Quads</label>
+                            <input type="text" id="em-quads" value="${m.quads || ''}" placeholder='18 7/8' class="${inputCls}"></div>
+                        <div><label class="${labelCls}">Pantorrillas</label>
+                            <input type="text" id="em-calves" value="${m.calves || ''}" placeholder='13 5/8' class="${inputCls}"></div>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="${labelCls}">Notas (opcional)</label>
+                        <input type="text" id="em-notes" value="${(m.notes || '').replace(/"/g, '&quot;')}" placeholder="Observaciones..." class="${inputCls}">
+                    </div>
+
+                    <div class="flex justify-end gap-3">
+                        <button onclick="document.getElementById('edit-measurement-modal').remove()"
+                            class="px-5 py-2.5 text-[#FFDB89]/70 hover:text-[#FFDB89] font-medium transition">Cancelar</button>
+                        <button onclick="window.updateMeasurement('${clientId}', '${m._id}', ${heightInches})"
+                            class="px-6 py-2.5 bg-[#FFDB89] hover:bg-[#ffe9a8] text-[#030303] rounded-lg font-bold transition shadow-md flex items-center gap-2">
+                            <i class="fas fa-save"></i> Guardar cambios
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `);
+    };
+
+    window.calcBMIEdit = (heightInches) => {
+        const weight = parseFloat(document.getElementById('em-weight')?.value);
+        const bmiEl  = document.getElementById('em-bmi');
+        if (!bmiEl) return;
+        if (!weight || !heightInches) { bmiEl.value = ''; return; }
+        bmiEl.value = ((weight / (heightInches * heightInches)) * 703).toFixed(1);
+    };
+
+    window.updateMeasurement = async (clientId, measurementId, heightInches) => {
+        const date    = document.getElementById('em-date')?.value;
+        const weight  = parseFloat(document.getElementById('em-weight')?.value)  || null;
+        const bodyFat = parseFloat(document.getElementById('em-bodyfat')?.value) || null;
+        const bmi     = parseFloat(document.getElementById('em-bmi')?.value)     || null;
+        const pecho   = document.getElementById('em-pecho')?.value.trim()   || '';
+        const biceps  = document.getElementById('em-biceps')?.value.trim()  || '';
+        const cintura = document.getElementById('em-cintura')?.value.trim() || '';
+        const cadera  = document.getElementById('em-cadera')?.value.trim()  || '';
+        const quads   = document.getElementById('em-quads')?.value.trim()   || '';
+        const calves  = document.getElementById('em-calves')?.value.trim()  || '';
+        const notes   = document.getElementById('em-notes')?.value.trim()   || '';
+        if (!date) { showToast('La fecha es requerida.', 'error'); return; }
+        try {
+            const res = await apiFetch(`/api/body-measurements/${measurementId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ date, weight, bodyFat, bmi, pecho, biceps, cintura, cadera, quads, calves, notes })
+            });
+            if (res.ok) {
+                document.getElementById('edit-measurement-modal')?.remove();
+                showToast('Medición actualizada.', 'success');
+                loadClientMetrics(clientId);
+            } else {
+                const err = await res.json();
+                showToast(err.message || 'Error actualizando medición.', 'error');
+            }
+        } catch (e) { showToast('Error de conexión.', 'error'); }
     };
 
     // ─── Shared macro calculator ─────────────────────────────────────────────
