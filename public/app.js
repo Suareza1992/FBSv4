@@ -979,7 +979,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // Remove padding for calendar view to allow full edge-to-edge scrolling
         const isCalendar = contentHtml.includes('client-calendar-grid');
-        const paddingClass = isCalendar ? 'p-0' : 'p-4 md:p-14';
+        const paddingClass = isCalendar ? 'p-0' : 'p-3 sm:p-4 md:p-8';
         const titleClass = (isCalendar || !title) ? 'hidden' : 'text-2xl md:text-4xl font-bold text-[#FFDB89] dark:text-[#FFDB89] mb-4 md:mb-6 border-b border-[#FFDB89]/10 pb-3 flex-shrink-0';
         const bgClass = isCalendar
             ? 'glass-card'
@@ -1059,6 +1059,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!overlay || !sp || sp.dataset.mobileInit) return;
         sp.dataset.mobileInit = '1';
 
+        const openMenu = () => {
+            sp.classList.add('mobile-open');
+            overlay.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        };
         const closeMenu = () => {
             sp.classList.remove('mobile-open');
             overlay.classList.add('hidden');
@@ -1066,6 +1071,15 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         overlay.addEventListener('click', closeMenu);
+
+        // Wire the dedicated mobile hamburger button in the top bar
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        if (mobileMenuBtn && !mobileMenuBtn.dataset.wired) {
+            mobileMenuBtn.dataset.wired = '1';
+            mobileMenuBtn.addEventListener('click', () => {
+                sp.classList.contains('mobile-open') ? closeMenu() : openMenu();
+            });
+        }
 
         // Close on nav item click when on mobile
         sp.addEventListener('click', (e) => {
@@ -1707,23 +1721,23 @@ document.addEventListener('DOMContentLoaded', () => {
         // TRUECOACH STYLE CONTINUOUS CALENDAR (with tabs)
         updateContent(`Perfil: ${client.name} ${client.lastName}`, `
             <div id="client-calendar-grid" class="flex flex-col h-full bg-[#2C2C2E] overflow-hidden">
-                <div class="flex items-center justify-between p-4 bg-[#2C2C2E] border-b border-[#FFDB89]/20 shadow-sm z-10">
-                    <div class="flex items-center gap-4">
-                        <button id="back-to-clients-btn" class="text-[#FFDB89]/70 hover:text-[#FFDB89] transition"><i class="fas fa-arrow-left text-xl"></i></button>
-                        <h2 class="text-2xl font-bold text-[#FFDB89]">${client.name} ${client.lastName}</h2>
+                <div class="flex items-center justify-between p-3 sm:p-4 bg-[#2C2C2E] border-b border-[#FFDB89]/20 shadow-sm z-10">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <button id="back-to-clients-btn" class="text-[#FFDB89]/70 hover:text-[#FFDB89] transition shrink-0"><i class="fas fa-arrow-left text-xl"></i></button>
+                        <h2 class="text-lg sm:text-2xl font-bold text-[#FFDB89] truncate">${client.name} ${client.lastName}</h2>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 shrink-0">
                         <button class="px-3 py-1 text-sm font-semibold border border-[#FFDB89]/30 bg-[#FFDB89]/10 text-[#FFDB89] rounded hover:bg-[#FFDB89]/20 transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
                     </div>
                 </div>
 
-                <!-- Tab Bar -->
-                <div class="flex border-b border-[#FFDB89]/20 bg-transparent px-4 shrink-0 z-10">
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold border-b-2 border-[#FFDB89] text-[#FFDB89]" data-tab="calendar">Calendario</button>
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="metrics">Métricas</button>
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="nutrition">Nutrición</button>
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="photos">Fotos</button>
-                    <button class="client-detail-tab px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent" data-tab="restrictions">Restricciones</button>
+                <!-- Tab Bar — horizontally scrollable on mobile -->
+                <div class="flex border-b border-[#FFDB89]/20 bg-transparent px-2 sm:px-4 shrink-0 z-10 overflow-x-auto">
+                    <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold border-b-2 border-[#FFDB89] text-[#FFDB89] shrink-0" data-tab="calendar">Calendario</button>
+                    <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="metrics">Métricas</button>
+                    <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="nutrition">Nutrición</button>
+                    <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="photos">Fotos</button>
+                    <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="restrictions">Restricciones</button>
                 </div>
 
                 <!-- TAB: Calendar (default) -->
@@ -1737,22 +1751,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <!-- TAB: Metrics -->
-                <div id="tab-metrics" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
+                <div id="tab-metrics" class="client-tab-content hidden flex-grow overflow-y-auto p-3 sm:p-6">
                     <p class="text-gray-400 text-sm animate-pulse">Cargando metricas...</p>
                 </div>
 
                 <!-- TAB: Nutrition -->
-                <div id="tab-nutrition" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
+                <div id="tab-nutrition" class="client-tab-content hidden flex-grow overflow-y-auto p-3 sm:p-6">
                     <p class="text-gray-400 text-sm animate-pulse">Cargando nutricion...</p>
                 </div>
 
                 <!-- TAB: Photos -->
-                <div id="tab-photos" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
+                <div id="tab-photos" class="client-tab-content hidden flex-grow overflow-y-auto p-3 sm:p-6">
                     <p class="text-gray-400 text-sm animate-pulse">Cargando fotos...</p>
                 </div>
 
                 <!-- TAB: Restrictions -->
-                <div id="tab-restrictions" class="client-tab-content hidden flex-grow overflow-y-auto p-6">
+                <div id="tab-restrictions" class="client-tab-content hidden flex-grow overflow-y-auto p-3 sm:p-6">
                     <p class="text-gray-400 text-sm animate-pulse">Cargando restricciones...</p>
                 </div>
 
@@ -2668,6 +2682,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('tab-nutrition');
         if (!container) return;
         try {
+            const todayStr = new Date().toISOString().split('T')[0];
             const [logsRes, measRes] = await Promise.all([
                 apiFetch(`/api/nutrition-logs/${clientId}`),
                 apiFetch(`/api/body-measurements/${clientId}`)
@@ -2677,17 +2692,78 @@ document.addEventListener('DOMContentLoaded', () => {
             const clientData   = clientsCache.find(c => c._id === clientId) || {};
             const latest       = measurements.length ? measurements[measurements.length - 1] : null;
 
+            // Today's log + client macro goals for the rings
+            const todayLog  = logs.find(l => l.date === todayStr) || {};
+            const ms        = clientData.macroSettings || {};
+            const tProtein  = Math.round(todayLog.protein || 0);
+            const tCarbs    = Math.round(todayLog.carbs   || 0);
+            const tFat      = Math.round(todayLog.fat     || 0);
+            const tWater    = Math.round(todayLog.water   || 0);
+            const tCal      = Math.round(todayLog.calories || 0);
+            const goalPro   = ms.goalProtein || 0;
+            const goalCarbs = ms.goalCarbs   || 0;
+            const goalFat   = ms.goalFat     || 0;
+            const goalCal   = ms.targetCal   || 0;
+            const goalWater = 64; // oz default
+
+            // Helper: build one SVG ring column
+            const ringCol = (id, color, trackRgba, label, val, goal, unit) => {
+                const C   = 251.33;
+                const pct = goal > 0 ? Math.min(1, val / goal) : 0;
+                const off = (C * (1 - pct)).toFixed(2);
+                const pctTxt = goal > 0 ? Math.round(pct * 100) + '%' : '--';
+                const subTxt = goal > 0 ? `${val} / ${goal}${unit}` : `${val}${unit}`;
+                const overGoal = goal > 0 && val > goal;
+                const strokeColor = overGoal ? '#ef4444' : color;
+                return `
+                <div class="flex flex-col items-center gap-1.5">
+                    <div class="relative w-full aspect-square max-w-[92px]">
+                        <svg viewBox="0 0 100 100" class="w-full h-full" style="transform:rotate(-90deg)">
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="${trackRgba}" stroke-width="9"/>
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="${strokeColor}" stroke-width="9"
+                                stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="${off}"
+                                style="transition:stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)"/>
+                        </svg>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                            <p class="text-xs font-black leading-none" style="color:${strokeColor}">${val}${unit}</p>
+                            <p class="text-[8px] mt-0.5" style="color:${strokeColor};opacity:.55">${pctTxt}</p>
+                        </div>
+                    </div>
+                    <p class="text-[9px] font-bold uppercase tracking-wider" style="color:${color};opacity:.7">${label}</p>
+                    <p class="text-[9px] text-[#FFDB89]/30 leading-none">${subTxt}</p>
+                </div>`;
+            };
+
             // Build macro calc data from latest measurement + client profile
             const macroData = latest
                 ? { weight: parseMeasurement(latest.weight), bodyFat: parseMeasurement(latest.bodyFat),
                     macroSettings: clientData.macroSettings, evalDate: latest.date }
                 : null;
+
             container.innerHTML = `
                 <div class="space-y-6 max-w-4xl mx-auto">
+
+                    <!-- ── Today's macro rings ───────────────────────────────── -->
+                    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-2xl p-4 sm:p-5">
+                        <div class="flex flex-wrap items-center justify-between gap-1 mb-4">
+                            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest">Macros de hoy · ${todayStr}</p>
+                            ${goalCal ? `<p class="text-xs text-[#FFDB89]/50"><span class="font-black text-[#FFDB89]">${tCal}</span> / ${goalCal} kcal</p>` : `<p class="text-xs font-black text-[#FFDB89]">${tCal} kcal</p>`}
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                            ${ringCol('rp', '#f87171', 'rgba(248,113,113,0.12)', 'Proteína', tProtein, goalPro,   'g')}
+                            ${ringCol('rc', '#facc15', 'rgba(250,204,21,0.12)',  'Carbos',   tCarbs,   goalCarbs, 'g')}
+                            ${ringCol('rf', '#fb923c', 'rgba(251,146,60,0.12)', 'Grasas',   tFat,     goalFat,   'g')}
+                            ${ringCol('rw', '#38bdf8', 'rgba(56,189,248,0.12)', 'Agua',     tWater,   goalWater, ' oz')}
+                        </div>
+                    </div>
+
+                    <!-- ── Macro calculator ──────────────────────────────────── -->
                     <div id="macro-calc-wrapper"></div>
-                    <div class="flex justify-between items-center">
+
+                    <!-- ── History ───────────────────────────────────────────── -->
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                         <h3 class="text-xl font-bold text-[#FFDB89]">Historial de nutrición</h3>
-                        <button onclick="window.showAddNutritionModal('${clientId}')" class="px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg text-sm font-bold transition">
+                        <button onclick="window.showAddNutritionModal('${clientId}')" class="self-start sm:self-auto px-4 py-2 bg-[#3a3a3c] hover:bg-[#3a3a3c]/80 text-[#FFDB89] rounded-lg text-sm font-bold transition">
                             <i class="fas fa-plus mr-1"></i> Registrar nutrición
                         </button>
                     </div>
@@ -2706,8 +2782,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-[#FFDB89]/10">
-                                ${logs.length === 0 ? '<tr><td colspan="8" class="p-6 text-center text-[#FFDB89]/40">Sin registros de nutrición. Haz clic en "Registrar nutrición" para comenzar.</td></tr>' :
-                                logs.map(l => `<tr class="group hover:bg-[#FFDB89]/5 transition">
+                                ${logs.length === 0
+                                    ? '<tr><td colspan="8" class="p-6 text-center text-[#FFDB89]/40">Sin registros de nutrición. Haz clic en "Registrar nutrición" para comenzar.</td></tr>'
+                                    : logs.map(l => `
+                                <tr class="group hover:bg-[#FFDB89]/5 transition">
                                     <td class="px-4 py-3 text-[#FFDB89]">${l.date}</td>
                                     <td class="px-4 py-3 font-bold text-[#FFDB89]">${l.calories}</td>
                                     <td class="px-4 py-3 text-[#FFDB89]/70">${l.protein}g</td>
@@ -3622,15 +3700,15 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             const initials = (client.name.charAt(0) + (client.lastName ? client.lastName.charAt(0) : '')).toUpperCase();
             tr.innerHTML = `
-                <td class="px-6 py-4 whitespace-nowrap"><div class="flex items-center"><div class="h-10 w-10 rounded-full bg-[#FFDB89]/30 text-[#FFDB89] flex items-center justify-center font-bold mr-3">${initials}</div><div class="text-sm font-medium text-[#FFDB89]">${client.name} ${client.lastName || ''}</div></div></td>
-                <td class="px-6 py-4 whitespace-nowrap"><span class="bg-[#FFDB89]/10 text-[#FFDB89] px-2 py-1 rounded text-xs font-bold">${client.group || 'General'}</span></td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-[#FFDB89]/80">${(!client.program || client.program === 'Sin asignar' || client.program === 'Sin Asignar') ? 'Sin asignar' : client.program}</td>
-                <td class="px-6 py-4 whitespace-nowrap">
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap"><div class="flex items-center"><div class="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-[#FFDB89]/30 text-[#FFDB89] flex items-center justify-center font-bold mr-2 sm:mr-3 text-sm shrink-0">${initials}</div><div class="text-sm font-medium text-[#FFDB89]">${client.name} ${client.lastName || ''}</div></div></td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap"><span class="bg-[#FFDB89]/10 text-[#FFDB89] px-2 py-1 rounded text-xs font-bold">${client.group || 'General'}</span></td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-[#FFDB89]/80">${(!client.program || client.program === 'Sin asignar' || client.program === 'Sin Asignar') ? 'Sin asignar' : client.program}</td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                     <button data-toggle-status data-client-id="${client._id}" data-active="${client.isActive}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition ${client.isActive ? 'bg-green-900/40 text-green-300 hover:bg-green-900/60' : 'bg-red-900/40 text-red-300 hover:bg-red-900/60'}">
                         ${client.isActive ? 'Activo' : 'Inactivo'}
                     </button>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-sm font-medium">
                     ${!client.isFirstLogin ? '' : `<button id="resend-invite-${client._id}" onclick="window.resendClientInvite('${client._id}'); event.stopPropagation();" class="text-[#92A9E1]/60 hover:text-[#92A9E1] mr-3 transition text-xs" title="Reenviar invitación"><i class="fas fa-paper-plane mr-1"></i>Inv.</button>`}
                     <button onclick="window.openEditClientModal('${client._id}'); event.stopPropagation();" class="text-[#FFDB89]/70 hover:text-[#FFDB89] mr-2 transition"><i class="fas fa-edit"></i></button>
                     <button onclick="window.deleteClient('${client._id}'); event.stopPropagation();" class="text-red-400 hover:text-red-300 transition"><i class="fas fa-trash"></i></button>
