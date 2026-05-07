@@ -6017,6 +6017,52 @@ document.addEventListener('DOMContentLoaded', () => {
         renderWorkoutEditorUI();
     };
 
+    // Attach exercise-name autocomplete to all text inputs inside the workout editor.
+    // Called after every render (both fast-swap and full-panel renders).
+    const wireEditorAutocomplete = () => {
+        const attachAc = (input) => {
+            if (input.dataset.acWired) return; // guard against double-wiring
+            input.dataset.acWired = '1';
+
+            input.addEventListener('input', () => {
+                const val = input.value.trim();
+                const portal = getExAcPortal();
+                portal.innerHTML = '';
+                hideExAc();
+                if (!val) return;
+                const lc = val.toLowerCase();
+                const matches = getAllKnownExercises()
+                    .filter(ex => ex.name.toLowerCase().includes(lc))
+                    .slice(0, 8);
+                if (!matches.length) return;
+                positionExAc(input);
+                portal.classList.remove('hidden');
+                matches.forEach(match => {
+                    const div = document.createElement('div');
+                    div.className = 'autocomplete-item';
+                    const idx    = match.name.toLowerCase().indexOf(lc);
+                    const before = match.name.slice(0, idx);
+                    const hi     = match.name.slice(idx, idx + val.length);
+                    const after  = match.name.slice(idx + val.length);
+                    div.innerHTML = `<span class="flex-1 min-w-0 truncate">${before}<mark>${hi}</mark>${after}</span>${match.videoUrl ? '<i class="fas fa-video text-[9px] text-green-400/60 shrink-0"></i>' : ''}`;
+                    div.addEventListener('mousedown', ev => {
+                        ev.preventDefault();
+                        input.value = match.name;
+                        // Dispatch input event so the oninput handler (updateExName / updateWarmupItem etc.) fires
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        hideExAc();
+                    });
+                    portal.appendChild(div);
+                });
+            });
+            input.addEventListener('keydown', e => { if (e.key === 'Escape') hideExAc(); });
+            input.addEventListener('blur',    () => setTimeout(hideExAc, 150));
+        };
+
+        document.querySelectorAll('#editor-exercises-list input[type="text"]').forEach(attachAc);
+        document.querySelectorAll('#warmup-items-list input[type="text"], #cooldown-items-list input[type="text"]').forEach(attachAc);
+    };
+
     const renderWorkoutEditorUI = () => {
         const modal = document.getElementById('workout-editor-modal');
 
@@ -6102,6 +6148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (wList) wList.innerHTML = warmupItemsHtml;
             const cList = document.getElementById('cooldown-items-list');
             if (cList) cList.innerHTML = cooldownItemsHtml;
+            wireEditorAutocomplete();
             return;
         }
 
@@ -6188,6 +6235,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
+        wireEditorAutocomplete();
     };
 
     const showProgramAssignmentModal = async (startDate) => {
