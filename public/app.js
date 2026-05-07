@@ -5367,8 +5367,9 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.id = 'assign-to-client-modal';
         modal.className = 'fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4 backdrop-blur-sm';
         modal.innerHTML = `
-            <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                <div class="px-6 py-4 border-b border-[#FFDB89]/15 bg-[#FFDB89]/5 flex justify-between items-center">
+            <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden" style="max-height:90vh">
+                <!-- Header -->
+                <div class="px-6 py-4 border-b border-[#FFDB89]/15 bg-[#FFDB89]/5 flex justify-between items-center shrink-0">
                     <div>
                         <h3 class="text-lg font-bold text-[#FFDB89]">Asignar programa</h3>
                         <p class="text-xs text-[#FFDB89]/50 mt-0.5">Asignando <strong class="text-[#FFDB89]/80">${prog.name}</strong> — ${prog.weeks.length} ${prog.weeks.length === 1 ? 'semana' : 'semanas'}</p>
@@ -5376,35 +5377,63 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button id="close-assign-modal" class="text-[#FFDB89]/40 hover:text-[#FFDB89] transition"><i class="fas fa-times"></i></button>
                 </div>
 
-                <div class="px-4 pt-4 pb-2 border-b border-[#FFDB89]/10">
+                <!-- Date + Search -->
+                <div class="px-4 pt-4 pb-2 border-b border-[#FFDB89]/10 shrink-0">
                     <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Fecha de inicio</label>
                     <input type="date" id="assign-start-date" value="${todayStr}"
                         class="w-full px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-sm text-[#FFDB89] outline-none focus:border-[#FFDB89]/50 mb-3">
-                    <input type="text" id="assign-client-search" placeholder="Buscar cliente..." class="w-full px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50">
+                    <input type="text" id="assign-client-search" placeholder="Buscar cliente..."
+                        class="w-full px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50">
                 </div>
 
-                <div id="assign-client-list" class="max-h-64 overflow-y-auto divide-y divide-[#FFDB89]/10">
+                <!-- Client list — click to SELECT, not assign -->
+                <div id="assign-client-list" class="overflow-y-auto divide-y divide-[#FFDB89]/10 flex-1">
                     ${clients.length === 0
                         ? `<p class="text-center text-[#FFDB89]/30 py-8 text-sm">No hay clientes activos.</p>`
                         : clients.map(c => `
-                            <button class="assign-client-row w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FFDB89]/5 transition text-left" data-client-id="${c._id}">
+                            <button class="assign-client-row w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FFDB89]/5 transition text-left" data-client-id="${c._id}" data-client-name="${(c.name + ' ' + (c.lastName||'')).trim().replace(/"/g,'&quot;')}">
                                 <div class="w-8 h-8 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/20 flex items-center justify-center text-[#FFDB89]/60 text-xs font-bold shrink-0">${(c.name||'?')[0].toUpperCase()}</div>
-                                <div class="min-w-0">
+                                <div class="min-w-0 flex-1">
                                     <div class="text-sm font-bold text-[#FFDB89] truncate">${c.name} ${c.lastName || ''}</div>
                                     <div class="text-xs text-[#FFDB89]/40 truncate">${c.program && c.program !== 'Sin asignar' ? `📋 ${c.program}` : 'Sin programa'}</div>
                                 </div>
-                                <i class="fas fa-chevron-right text-[#FFDB89]/20 ml-auto shrink-0 text-xs"></i>
+                                <i class="assign-check fas fa-check text-[#FFDB89] text-xs shrink-0 opacity-0 transition"></i>
                             </button>`).join('')}
                 </div>
 
-                <div id="assign-progress" class="hidden px-6 py-4 text-center">
+                <!-- Progress (shown while saving) -->
+                <div id="assign-progress" class="hidden px-6 py-4 text-center shrink-0">
                     <i class="fas fa-spinner fa-spin text-[#FFDB89] text-xl mb-2 block"></i>
                     <p class="text-sm text-[#FFDB89]/70">Cargando rutinas al calendario...</p>
+                </div>
+
+                <!-- Footer action bar -->
+                <div class="px-4 py-3 border-t border-[#FFDB89]/10 shrink-0 flex items-center justify-between gap-3">
+                    <p id="assign-selected-label" class="text-xs text-[#FFDB89]/40 italic truncate">Selecciona un cliente de la lista</p>
+                    <button id="confirm-assign-btn" disabled
+                        class="shrink-0 px-5 py-2 bg-[#FFDB89] text-[#030303] font-bold rounded-lg text-sm transition opacity-40 cursor-not-allowed">
+                        <i class="fas fa-check mr-1.5"></i>Asignar
+                    </button>
                 </div>
             </div>`;
         document.body.appendChild(modal);
 
-        // Search filter
+        // ── State ──────────────────────────────────────────────────────────────
+        let selectedClientId = null;
+
+        const updateConfirmBtn = () => {
+            const btn = document.getElementById('confirm-assign-btn');
+            if (!btn) return;
+            if (selectedClientId) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-40', 'cursor-not-allowed');
+            } else {
+                btn.disabled = true;
+                btn.classList.add('opacity-40', 'cursor-not-allowed');
+            }
+        };
+
+        // ── Search filter ──────────────────────────────────────────────────────
         document.getElementById('assign-client-search').addEventListener('input', (e) => {
             const q = e.target.value.toLowerCase();
             document.querySelectorAll('.assign-client-row').forEach(row => {
@@ -5413,27 +5442,52 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Close
+        // ── Close ──────────────────────────────────────────────────────────────
         document.getElementById('close-assign-modal').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 
-        // Assign on click
-        document.getElementById('assign-client-list').addEventListener('click', async (e) => {
+        // ── Client row click → SELECT only, do NOT assign yet ─────────────────
+        document.getElementById('assign-client-list').addEventListener('click', (e) => {
             const row = e.target.closest('.assign-client-row');
             if (!row) return;
-            const clientId = row.dataset.clientId;
-            const client = clientsCache.find(c => c._id === clientId);
-            if (!client) return;
-            const startDateStr = document.getElementById('assign-start-date')?.value || todayStr;
 
-            // Show progress state
+            // Deselect all rows
+            document.querySelectorAll('.assign-client-row').forEach(r => {
+                r.classList.remove('bg-[#FFDB89]/10', 'border-l-2', 'border-[#FFDB89]');
+                r.querySelector('.assign-check')?.classList.add('opacity-0');
+            });
+
+            // Select clicked row
+            row.classList.add('bg-[#FFDB89]/10', 'border-l-2', 'border-[#FFDB89]');
+            row.querySelector('.assign-check')?.classList.remove('opacity-0');
+            selectedClientId = row.dataset.clientId;
+
+            // Update label
+            const label = document.getElementById('assign-selected-label');
+            if (label) label.textContent = `Cliente: ${row.dataset.clientName}`;
+
+            updateConfirmBtn();
+        });
+
+        // ── Confirm button → ACTUALLY assign ──────────────────────────────────
+        document.getElementById('confirm-assign-btn').addEventListener('click', async () => {
+            if (!selectedClientId) return;
+            const client = clientsCache.find(c => c._id === selectedClientId);
+            if (!client) return;
+
+            // Read the date at the moment the user clicks Asignar
+            const startDateStr = document.getElementById('assign-start-date')?.value;
+            if (!startDateStr) { showToast('Selecciona una fecha de inicio.', 'error'); return; }
+
+            // Switch to progress state
             document.getElementById('assign-client-list').classList.add('hidden');
             document.getElementById('assign-progress').classList.remove('hidden');
+            document.querySelector('#assign-to-client-modal .shrink-0.flex').classList.add('hidden'); // hide footer
             document.getElementById('close-assign-modal').disabled = true;
 
             try {
                 // 1. Link program name to client record
-                const res = await apiFetch(`/api/clients/${clientId}`, {
+                const res = await apiFetch(`/api/clients/${selectedClientId}`, {
                     method: 'PUT',
                     body: JSON.stringify({ program: prog.name })
                 });
@@ -5441,7 +5495,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 client.program = prog.name;
 
                 // 2. Push every training day to the client calendar
-                const { created, skipped } = await pushProgramToCalendar(prog, clientId, startDateStr);
+                const { created, skipped } = await pushProgramToCalendar(prog, selectedClientId, startDateStr);
 
                 // 3. Update count badge in builder header
                 const assigned = clientsCache.filter(c => c.program === prog.name && !c.isDeleted).length;
