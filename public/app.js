@@ -4648,7 +4648,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     class="px-4 py-2.5 bg-green-500/10 border border-green-500/20 ${item.videoUrl ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video">
                     <i class="fas fa-play text-xs"></i></button>
                 <button onclick="window.openVideoForRoutineWarmupItem(${item.id})"
-                    class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0" title="Asignar video">
+                    class="px-4 py-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0" title="Asignar video">
                     <i class="fas fa-video text-xs"></i></button>
                 <button onclick="window.removeRoutineWarmupItem(${item.id})"
                     class="p-2.5 text-[#FFDB89]/25 hover:text-red-400 transition shrink-0" title="Eliminar">
@@ -4666,7 +4666,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     class="px-4 py-2.5 bg-green-500/10 border border-green-500/20 ${item.videoUrl ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video">
                     <i class="fas fa-play text-xs"></i></button>
                 <button onclick="window.openVideoForRoutineCooldownItem(${item.id})"
-                    class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0" title="Asignar video">
+                    class="px-4 py-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0" title="Asignar video">
                     <i class="fas fa-video text-xs"></i></button>
                 <button onclick="window.removeRoutineCooldownItem(${item.id})"
                     class="p-2.5 text-[#FFDB89]/25 hover:text-red-400 transition shrink-0" title="Eliminar">
@@ -4800,7 +4800,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex gap-2">
                         <input type="text" class="exercise-name-input flex-1 min-w-0 p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off">
                         <button class="play-video-btn px-4 py-2.5 bg-green-500/10 border border-green-500/20 ${data?.video ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video"><i class="fas fa-play text-xs"></i></button>
-                        <button class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0 open-video-modal" data-video="${data?.video || ''}"><i class="fas fa-video text-xs"></i></button>
+                        <button class="px-4 py-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0 open-video-modal" data-video="${data?.video || ''}"><i class="fas fa-video text-xs"></i></button>
                     </div>
                     <textarea class="exercise-stats-input w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89]/80 placeholder:text-[#FFDB89]/25 text-sm resize-none focus:border-[#FFDB89]/40 focus:ring-2 focus:ring-[#FFDB89]/20 outline-none transition" rows="3" placeholder="Sets x Reps — Ej: 4x10 @ 70%, descanso 90s...">${data ? data.stats : ''}</textarea>
                 </div>
