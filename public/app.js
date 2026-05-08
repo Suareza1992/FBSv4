@@ -4644,13 +4644,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     onblur="setTimeout(window._hideExAc, 150)"
                     class="flex-1 min-w-0 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/25 outline-none focus:border-[#FFDB89]/40 transition"
                     placeholder="Ejercicio de calentamiento...">
-                ${item.videoUrl
-                    ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);"
-                        class="p-2.5 bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 rounded-lg transition shrink-0" title="Ver video">
-                        <i class="fas fa-play text-xs"></i></button>`
-                    : ''}
+                <button onclick="${item.videoUrl ? `window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this)` : `window.openVideoForRoutineWarmupItem(${item.id})`};"
+                    class="px-4 py-2.5 bg-green-500/10 border border-green-500/20 ${item.videoUrl ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video">
+                    <i class="fas fa-play text-xs"></i></button>
                 <button onclick="window.openVideoForRoutineWarmupItem(${item.id})"
-                    class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition shrink-0" title="Asignar video">
+                    class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0" title="Asignar video">
                     <i class="fas fa-video text-xs"></i></button>
                 <button onclick="window.removeRoutineWarmupItem(${item.id})"
                     class="p-2.5 text-[#FFDB89]/25 hover:text-red-400 transition shrink-0" title="Eliminar">
@@ -4664,13 +4662,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     onblur="setTimeout(window._hideExAc, 150)"
                     class="flex-1 min-w-0 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/25 outline-none focus:border-[#FFDB89]/40 transition"
                     placeholder="Ejercicio de enfriamiento...">
-                ${item.videoUrl
-                    ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);"
-                        class="p-2.5 bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 rounded-lg transition shrink-0" title="Ver video">
-                        <i class="fas fa-play text-xs"></i></button>`
-                    : ''}
+                <button onclick="${item.videoUrl ? `window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this)` : `window.openVideoForRoutineCooldownItem(${item.id})`};"
+                    class="px-4 py-2.5 bg-green-500/10 border border-green-500/20 ${item.videoUrl ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video">
+                    <i class="fas fa-play text-xs"></i></button>
                 <button onclick="window.openVideoForRoutineCooldownItem(${item.id})"
-                    class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition shrink-0" title="Asignar video">
+                    class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0" title="Asignar video">
                     <i class="fas fa-video text-xs"></i></button>
                 <button onclick="window.removeRoutineCooldownItem(${item.id})"
                     class="p-2.5 text-[#FFDB89]/25 hover:text-red-400 transition shrink-0" title="Eliminar">
@@ -4802,16 +4798,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="pt-2 shrink-0"><span class="text-2xl font-black text-[#FFDB89]/20 exercise-label">${label}</span></div>
                 <div class="flex-grow space-y-3">
                     <div class="flex gap-2">
-                        <input type="text" class="exercise-name-input w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off">
-                        <button class="p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-lg transition open-video-modal" data-video="${data?.video || ''}"><i class="fas fa-video text-sm"></i></button>
+                        <input type="text" class="exercise-name-input flex-1 min-w-0 p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off">
+                        <button class="play-video-btn px-4 py-2.5 bg-green-500/10 border border-green-500/20 ${data?.video ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video"><i class="fas fa-play text-xs"></i></button>
+                        <button class="p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0 open-video-modal" data-video="${data?.video || ''}"><i class="fas fa-video text-xs"></i></button>
                     </div>
                     <textarea class="exercise-stats-input w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89]/80 placeholder:text-[#FFDB89]/25 text-sm resize-none focus:border-[#FFDB89]/40 focus:ring-2 focus:ring-[#FFDB89]/20 outline-none transition" rows="3" placeholder="Sets x Reps — Ej: 4x10 @ 70%, descanso 90s...">${data ? data.stats : ''}</textarea>
                 </div>
             </div>`;
         list.appendChild(item);
 
-        const input   = item.querySelector('.exercise-name-input');
+        const input    = item.querySelector('.exercise-name-input');
         const videoBtn = item.querySelector('.open-video-modal');
+        const playBtn  = item.querySelector('.play-video-btn');
+
+        // Play button: preview if video URL exists, otherwise open the video modal to add one
+        playBtn.addEventListener('click', () => {
+            const url = videoBtn.dataset.video;
+            if (url) {
+                window.previewExerciseVideo(url, input.value.trim() || 'Ejercicio', playBtn);
+            } else {
+                videoBtn.click();
+            }
+        });
 
         input.addEventListener('input', (e) => {
             const val = e.target.value.trim();
@@ -4844,6 +4852,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         videoBtn.dataset.video = match.videoUrl;
                         videoBtn.classList.remove('text-[#FFDB89]/40');
                         videoBtn.classList.add('text-[#FFDB89]');
+                        playBtn.classList.remove('text-green-400/35');
+                        playBtn.classList.add('text-green-400');
                     }
                 });
                 portal.appendChild(div);
@@ -7782,6 +7792,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentVideoExerciseBtn.dataset.video = url;
                 currentVideoExerciseBtn.classList.toggle('text-[#FFDB89]', !!url);
                 currentVideoExerciseBtn.classList.toggle('text-[#FFDB89]/40', !url);
+                // Sync the sibling green play button
+                const siblingPlay = currentVideoExerciseBtn.closest('.flex')?.querySelector('.play-video-btn');
+                if (siblingPlay) {
+                    siblingPlay.classList.toggle('text-green-400', !!url);
+                    siblingPlay.classList.toggle('text-green-400/35', !url);
+                }
             }
 
             showToast(`"${name}" guardado en la librería.`, 'success');
