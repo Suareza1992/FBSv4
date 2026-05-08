@@ -17,31 +17,13 @@
     html:not(.dark) #sidebar.w-20 .logo-mini.logo-light { display: block; }
     html.dark #sidebar.w-20 .logo-mini.logo-dark { display: block; }
 
-    /* ── Collapse button: larger tap area (desktop) ─────────────────────── */
+    /* ── Collapse button: larger tap area ───────────────────────────────── */
     #collapse-btn { position: relative; }
     #collapse-btn::before {
       content: '';
       position: absolute;
       inset: -12px;
       border-radius: 50%;
-    }
-
-    /* ── Collapse button: fixed half-circle tab on mobile ────────────────── *
-     * Detaches from the off-screen sidebar and pins to the left edge so it  *
-     * is always reachable without a hamburger.                               */
-    @media (max-width: 767px) {
-      #collapse-btn {
-        position: fixed !important;
-        left: 8px !important;
-        top: 50% !important;
-        right: auto !important;
-        transform: translateY(-50%) !important;
-        z-index: 60 !important;
-      }
-      #collapse-btn::before {
-        inset: -16px;
-        border-radius: 50%;
-      }
     }
   </style>
 </head>
