@@ -4430,7 +4430,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Original Render Day Cell (For Program Builder)
     const renderDayCell = (dayNum, existingDay = null) => {
-        const dayNames = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+        const dayNames = ['Día 1','Día 2','Día 3','Día 4','Día 5','Día 6','Día 7'];
         let bodyContent;
         if (existingDay?.isRest && existingDay?.isActiveRest) {
             bodyContent = `<div class="text-center text-[#6EE7B7]/70"><i class="fas fa-person-walking text-xl"></i><div class="text-[10px] font-bold mt-1 uppercase tracking-wider">Desc. Activo</div></div>`;
@@ -4480,7 +4480,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
         if (!prog) return;
         const day = prog.weeks?.[weekIndex]?.days?.[String(dayNum)];
-        const dayNames = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+        const dayNames = ['Día 1','Día 2','Día 3','Día 4','Día 5','Día 6','Día 7'];
         const dayLabel = dayNames[(dayNum - 1) % 7];
         const weekNum  = weekIndex + 1;
 
@@ -5040,7 +5040,7 @@ document.addEventListener('DOMContentLoaded', () => {
             targets: existing?.targets || { cal: 2200, p: 160, c: 220, f: 65 },
             meals: existing?.meals?.length ? existing.meals : [{ id: 'meal_' + Date.now(), name: 'Comida 1', foods: [] }]
         };
-        const dayNames = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+        const dayNames = ['Día 1','Día 2','Día 3','Día 4','Día 5','Día 6','Día 7'];
         document.getElementById('nutri-modal-title').textContent = `${dayNames[(dayNum-1) % 7]} — Semana ${weekIndex + 1}`;
         document.getElementById('nutri-target-cal').value = dayNutritionState.targets.cal;
         document.getElementById('nutri-target-p').value   = dayNutritionState.targets.p;
