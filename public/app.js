@@ -4796,7 +4796,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="w-7 h-7 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/50 hover:text-red-400 hover:bg-red-500/20 flex items-center justify-center transition" onclick="this.closest('.exercise-item').remove()" title="Eliminar"><i class="fas fa-trash text-xs"></i></button>
                 </div>
                 <div class="pt-2 shrink-0"><span class="text-2xl font-black text-[#FFDB89]/20 exercise-label">${label}</span></div>
-                <div class="flex-grow space-y-3">
+                <div class="flex-grow min-w-0 space-y-3">
                     <div class="flex gap-2">
                         <input type="text" class="exercise-name-input flex-1 min-w-0 p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off">
                         <button class="play-video-btn inline-flex items-center justify-center w-11 h-11 bg-green-500/10 border border-green-500/20 ${data?.video ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video"><i class="fas fa-play text-xs"></i></button>
