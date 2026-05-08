@@ -5271,6 +5271,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Pushes all program days to a client's calendar starting from startDateStr ---
+    // Helper: format a Date as YYYY-MM-DD using LOCAL time (avoids UTC-offset day-shift bugs)
+    const localDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
     const pushProgramToCalendar = async (prog, clientId, startDateStr) => {
         const startDate = new Date(startDateStr + 'T00:00:00');
         let current = new Date(startDate);
@@ -5281,7 +5284,7 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let dayNum = 1; dayNum <= 7; dayNum++) {
                 // Mongoose Maps serialize with string keys
                 const dayData = week.days?.[String(dayNum)] ?? week.days?.[dayNum];
-                const dateStr = current.toISOString().split('T')[0];
+                const dateStr = localDateStr(current);
 
                 if (dayData) {
                     try {
@@ -5358,7 +5361,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!prog) return;
 
         const clients = clientsCache.filter(c => !c.isDeleted && c.isActive);
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = localDateStr(new Date());
 
         let existing = document.getElementById('assign-to-client-modal');
         if (existing) existing.remove();
