@@ -1024,12 +1024,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         sp.classList.remove('mobile-open');
                         overlay?.classList.add('hidden');
                         document.body.style.overflow = '';
-                        if (icon) icon.style.transform = 'rotate(0deg)';   // arrow points right → "open"
+                        // Button fixed at left edge: arrow points right → "tap to open"
+                        if (icon) icon.style.transform = 'rotate(180deg)';
                     } else {
                         sp.classList.add('mobile-open');
                         overlay?.classList.remove('hidden');
-                        document.body.style.overflow = 'hidden'; // prevent body scroll while menu open
-                        if (icon) icon.style.transform = 'rotate(180deg)'; // arrow points left → "close"
+                        document.body.style.overflow = 'hidden';
+                        // Sidebar is open: arrow points left → "tap to close"
+                        if (icon) icon.style.transform = 'rotate(0deg)';
                     }
                 } else {
                     // ── Desktop: collapse/expand sidebar width ────────────────
