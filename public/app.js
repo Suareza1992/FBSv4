@@ -4445,7 +4445,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const nameLabel = existingDay?.name ? `<div class="text-[10px] text-[#FFDB89]/50 truncate mt-0.5">${existingDay.name}</div>` : '';
         const hasContent = existingDay?.exercises?.length > 0 || existingDay?.isRest || existingDay?.isActiveRest;
-        return `<div class="relative bg-[#1C1C1E] h-40 rounded-xl border border-[#FFDB89]/15 group overflow-hidden hover:border-[#FFDB89]/40 transition-all duration-200">
+        return `<div class="program-day-card relative bg-[#1C1C1E] h-40 rounded-xl border border-[#FFDB89]/15 group overflow-hidden hover:border-[#FFDB89]/40 transition-all duration-200">
             <div class="p-3 h-full flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between">
@@ -4457,7 +4457,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${bodyContent}
                 <div></div>
             </div>
-            <div class="absolute inset-0 bg-[#030303]/96 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col cursor-pointer z-10 rounded-xl overflow-hidden">
+            <div class="card-action-overlay absolute inset-0 bg-[#030303]/96 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col cursor-pointer z-10 rounded-xl overflow-hidden">
                 ${hasContent ? `
                 <div class="action-view flex items-center justify-center gap-2 py-2.5 hover:bg-[#FFDB89]/12 text-[#FFDB89]/60 hover:text-[#FFDB89] transition border-b-2 border-[#FFDB89]/20 shrink-0" data-day="${dayNum}">
                     <i class="fas fa-eye text-sm pointer-events-none"></i>
@@ -7406,6 +7406,24 @@ document.addEventListener('DOMContentLoaded', () => {
             !filterBtn.contains(e.target) &&
             !filterDropdown.contains(e.target)) {
             filterDropdown.classList.add('hidden');
+        }
+
+        // ── Touch-device: tap program-day-card to reveal/hide its overlay ──────
+        const dayCard = e.target.closest('.program-day-card');
+        const isAction = e.target.closest('.action-add, .action-nutri, .action-view, .action-rest, .action-active-rest, .action-copy, .action-paste');
+        if (dayCard && !isAction) {
+            // Close any other open cards first
+            document.querySelectorAll('.program-day-card.touch-active').forEach(c => { if (c !== dayCard) c.classList.remove('touch-active'); });
+            dayCard.classList.toggle('touch-active');
+            return;
+        }
+        if (isAction) {
+            // After any action fires, close the overlay
+            isAction.closest('.program-day-card')?.classList.remove('touch-active');
+        }
+        // Tapping anywhere outside a card closes all open overlays
+        if (!dayCard) {
+            document.querySelectorAll('.program-day-card.touch-active').forEach(c => c.classList.remove('touch-active'));
         }
 
         const target = e.target.closest('a, button, [id], .program-card, .open-video-modal, .client-row, .action-add, .action-nutri, .action-view, .action-rest, .action-active-rest, .action-copy, .action-paste, .pill-option, .toggle-switch, .cal-action-btn');

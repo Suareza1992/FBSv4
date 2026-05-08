@@ -41,6 +41,30 @@
     @media (min-width: 768px) {
       #mobile-sidebar-overlay { display: none !important; }
     }
+
+    /* ── Touch-device hover fix ─────────────────────────────────────────────── *
+     * On devices without a real hover pointer (phones/tablets), CSS :hover      *
+     * fires on touch which causes "ghost clicks" on hidden action buttons.      *
+     * Strategy:                                                                  *
+     *   1. Make simple hover-reveal buttons always visible (opacity-based)      *
+     *   2. Full-card overlays stay hidden; they open only on an intentional tap */
+    @media (hover: none) {
+      /* Simple action buttons: always show on touch */
+      .group-hover\:opacity-100    { opacity: 1 !important; }
+      .group-hover\/foodrow\:opacity-100 { opacity: 1 !important; }
+
+      /* Full-card action overlays: hidden by default, pointer-events off */
+      .card-action-overlay {
+        opacity: 0 !important;
+        pointer-events: none !important;
+        transition: opacity 0.15s ease !important;
+      }
+      /* Shown only after an intentional tap on the card (JS adds .touch-active) */
+      .touch-active > .card-action-overlay {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
+    }
   </style>
 </head>
 <body class="bg-fbs-dark text-white font-sans overflow-hidden">
