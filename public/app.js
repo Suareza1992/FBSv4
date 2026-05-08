@@ -1138,8 +1138,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (user.role === 'client' && user.isFirstLogin) {
             if (!document.getElementById('change-password-modal')) {
                 document.body.insertAdjacentHTML('beforeend', `
-                    <div id="change-password-modal" class="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div class="bg-[#030303] border border-red-500/40 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                    <div id="change-password-modal" class="fixed inset-0 bg-black/90 z-[100] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm">
+                        <div class="bg-[#030303] border border-red-500/40 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style="max-height:90vh;max-height:90dvh">
                             <div class="h-1 w-full bg-gradient-to-r from-red-500 via-red-400 to-red-500"></div>
                             <div class="p-8">
                                 <div class="text-center mb-6">
@@ -1771,8 +1771,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <!-- Modals (shared) -->
-                <div id="history-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                    <div class="bg-[#030303] border border-[#FFDB89]/20 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+                <div id="history-modal" class="hidden fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4">
+                    <div class="bg-[#030303] border border-[#FFDB89]/20 w-full max-w-lg rounded-t-2xl md:rounded-2xl shadow-2xl overflow-hidden" style="max-height:90vh;max-height:90dvh">
                         <div class="bg-[#FFDB89]/5 px-5 py-4 border-b border-[#FFDB89]/15 flex justify-between items-center">
                             <h3 class="font-bold text-lg text-[#FFDB89]">Historial de Ejercicio</h3>
                             <button onclick="document.getElementById('history-modal').classList.add('hidden')" class="text-[#FFDB89]/40 hover:text-red-400 transition"><i class="fas fa-times text-xl"></i></button>
@@ -1804,8 +1804,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
 
-                <div id="video-upload-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                     <div class="bg-[#030303]/95 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full max-w-sm border border-[#FFDB89]/20">
+                <div id="video-upload-modal" class="hidden fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4">
+                     <div class="bg-[#030303]/95 backdrop-blur-2xl p-6 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-sm border border-[#FFDB89]/20" style="max-height:90vh;max-height:90dvh;overflow-y:auto">
                         <div class="flex items-center gap-2 mb-4">
                             <i class="fas fa-video text-[#FFDB89]"></i>
                             <h3 id="video-modal-title" class="text-lg font-bold text-[#FFDB89]">Añadir Video URL</h3>
@@ -2292,8 +2292,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const inputCls = 'w-full p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30';
         const labelCls = 'block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1';
         document.body.insertAdjacentHTML('beforeend', `
-            <div id="add-measurement-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-2xl p-7 overflow-y-auto max-h-[90vh]">
+            <div id="add-measurement-modal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4">
+                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-2xl p-7 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
                     <div class="flex justify-between items-center mb-6">
                         <h3 class="text-xl font-bold text-[#FFDB89]"><i class="fas fa-ruler-combined mr-2 text-[#FFDB89]"></i>Agregar medición</h3>
                         <button onclick="document.getElementById('add-measurement-modal').remove()" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl">&times;</button>
@@ -2421,8 +2421,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const inputCls = 'w-full p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30';
         const labelCls = 'block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1';
         document.body.insertAdjacentHTML('beforeend', `
-            <div id="edit-measurement-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-2xl p-7 overflow-y-auto max-h-[90vh]">
+            <div id="edit-measurement-modal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4">
+                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-2xl p-7 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
                     <div class="flex justify-between items-center mb-6">
                         <h3 class="text-xl font-bold text-[#FFDB89]"><i class="fas fa-pen mr-2 text-[#FFDB89]"></i>Editar medición</h3>
                         <button onclick="document.getElementById('edit-measurement-modal').remove()" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl">&times;</button>
@@ -2948,8 +2948,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (existing) existing.remove();
         const today = new Date().toISOString().split('T')[0];
         document.body.insertAdjacentHTML('beforeend', `
-            <div id="add-nutrition-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div id="add-nutrition-modal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4">
+                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
                     <h3 class="text-lg font-bold text-[#FFDB89] mb-4">Registrar nutrición</h3>
                     <div class="space-y-4">
                         <div>
@@ -3106,9 +3106,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const fmtDate = (d) => { if (!d) return '—'; const [y,mo,dd] = d.split('-'); return `${dd}/${mo}/${y}`; };
         const modal = document.createElement('div');
         modal.id = 'photo-compare-modal';
-        modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-2 md:p-6';
+        modal.className = 'fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/90 backdrop-blur-sm p-0 md:p-6';
         modal.innerHTML = `
-            <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden">
+            <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden" style="max-height:95vh;max-height:95dvh">
                 <div class="flex items-center justify-between px-5 py-4 border-b border-[#FFDB89]/15 shrink-0">
                     <p class="font-bold text-[#FFDB89] flex items-center gap-2"><i class="fas fa-columns text-sm"></i>Comparación de progreso</p>
                     <button id="close-compare-modal" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl"><i class="fas fa-times"></i></button>
@@ -3142,8 +3142,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (existing) existing.remove();
         const today = new Date().toISOString().split('T')[0];
         document.body.insertAdjacentHTML('beforeend', `
-            <div id="add-photo-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div id="add-photo-modal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4">
+                <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
                     <h3 class="text-lg font-bold text-[#FFDB89] mb-4">Subir foto de progreso</h3>
                     <div class="space-y-4">
                         <div>
@@ -3516,9 +3516,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const modal = document.createElement('div');
         modal.id = 'invite-result-modal';
-        modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+        modal.className = 'fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4';
         modal.innerHTML = `
-            <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" style="max-height:90vh;max-height:90dvh;overflow-y:auto">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center ${emailFailed ? 'bg-yellow-500/20' : 'bg-green-500/20'}">
                         <i class="fas ${emailFailed ? 'fa-exclamation-triangle text-yellow-400' : 'fa-check text-green-400'}"></i>
@@ -3576,9 +3576,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('resend-invite-modal')?.remove();
             const modal = document.createElement('div');
             modal.id = 'resend-invite-modal';
-            modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+            modal.className = 'fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4';
             modal.innerHTML = `
-                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" style="max-height:90vh;max-height:90dvh;overflow-y:auto">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-full flex items-center justify-center ${data.emailSent ? 'bg-green-500/20' : 'bg-yellow-500/20'}">
                             <i class="fas ${data.emailSent ? 'fa-envelope-open-text text-green-400' : 'fa-exclamation-triangle text-yellow-400'}"></i>
@@ -3717,9 +3717,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Show a small modal asking for start date
                         const pushModal = document.createElement('div');
                         pushModal.id = 'push-program-modal';
-                        pushModal.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-sm';
+                        pushModal.className = 'fixed inset-0 z-[90] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4';
                         pushModal.innerHTML = `
-                            <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+                            <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-sm p-6" style="max-height:90vh;max-height:90dvh;overflow-y:auto">
                                 <div class="flex items-center gap-3 mb-4">
                                     <i class="fas fa-dumbbell text-[#FFDB89]"></i>
                                     <h3 class="text-lg font-bold text-[#FFDB89]">Cargar programa al calendario</h3>
@@ -4566,7 +4566,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.id = 'program-day-view-modal';
         modal.className = 'fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-6';
         modal.innerHTML = `
-            <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden">
+            <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden" style="max-height:88vh;max-height:88dvh">
                 <!-- Header -->
                 <div class="flex items-center justify-between px-5 py-4 border-b border-[#FFDB89]/15 shrink-0 bg-[#26262c]">
                     <div>
@@ -5378,9 +5378,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const modal = document.createElement('div');
         modal.id = 'assign-to-client-modal';
-        modal.className = 'fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4 backdrop-blur-sm';
+        modal.className = 'fixed inset-0 bg-black/80 z-[70] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm';
         modal.innerHTML = `
-            <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden" style="max-height:90vh">
+            <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden" style="max-height:90vh;max-height:90dvh">
                 <!-- Header -->
                 <div class="px-6 py-4 border-b border-[#FFDB89]/15 bg-[#FFDB89]/5 flex justify-between items-center shrink-0">
                     <div>
@@ -6523,9 +6523,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Create modal
             const modal = document.createElement('div');
             modal.id = 'program-assignment-modal';
-            modal.className = 'fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4';
+            modal.className = 'fixed inset-0 bg-black/80 z-[70] flex items-end md:items-center justify-center p-0 md:p-4';
             modal.innerHTML = `
-                <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style="max-height:90vh;max-height:90dvh">
                     <div class="px-6 py-4 border-b border-[#FFDB89]/15 bg-[#FFDB89]/5">
                         <h3 class="text-xl font-bold text-[#FFDB89]">Asignar Programa</h3>
                         <p class="text-sm text-[#FFDB89]/50 mt-0.5">Selecciona un programa para asignar a partir del ${startDate}</p>
@@ -7145,7 +7145,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'border-radius:1rem',
             'box-shadow:0 16px 48px rgba(0,0,0,.85)',
             'overflow:hidden',
-            'max-height:90vh',
+            'max-height:90vh;max-height:90dvh',
             'display:flex;flex-direction:column'
         ].join(';');
         card.innerHTML = `
@@ -9195,9 +9195,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // ---- Build modal shell ----
             const modal = document.createElement('div');
             modal.id = 'add-food-modal';
-            modal.className = 'fixed inset-0 z-[90] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+            modal.className = 'fixed inset-0 z-[90] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4';
             modal.innerHTML = `
-                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl w-full max-w-lg flex flex-col shadow-2xl" style="max-height:90vh;max-height:90dvh">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-[#FFDB89]/15 shrink-0">
                         <h3 class="text-lg font-bold text-[#FFDB89]">Añadir alimento</h3>
                         <button id="close-food-modal" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl"><i class="fas fa-times"></i></button>
@@ -10237,8 +10237,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('client-upload-photo-modal')?.remove();
             const today = new Date().toISOString().split('T')[0];
             document.body.insertAdjacentHTML('beforeend', `
-                <div id="client-upload-photo-modal" class="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+                <div id="client-upload-photo-modal" class="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4">
+                    <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
                         <div class="flex justify-between items-center">
                             <h3 class="text-lg font-bold text-[#FFDB89]">Subir foto de progreso</h3>
                             <button id="close-upload-photo" class="text-[#FFDB89]/50 hover:text-[#FFDB89] text-xl"><i class="fas fa-times"></i></button>
@@ -10806,8 +10806,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const rpeVisible = workout.isComplete || !!savedRpe;
 
         document.body.insertAdjacentHTML('beforeend', `
-            <div id="client-workout-detail-modal" class="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+            <div id="client-workout-detail-modal" class="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4">
+                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl w-full max-w-lg flex flex-col shadow-2xl" style="max-height:90vh;max-height:90dvh">
                     <!-- Header -->
                     <div class="flex items-center justify-between p-5 border-b border-[#FFDB89]/15 shrink-0">
                         <div>

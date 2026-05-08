@@ -11,6 +11,15 @@
     html.dark #sidebar:not(.w-20) .logo-full.logo-dark { display: block; }
     html:not(.dark) #sidebar.w-20 .logo-mini.logo-light { display: block; }
     html.dark #sidebar.w-20 .logo-mini.logo-dark { display: block; }
+
+    /* ── Collapse button: larger tap area without changing visual size ───── */
+    #collapse-btn { position: relative; }
+    #collapse-btn::before {
+      content: '';
+      position: absolute;
+      inset: -12px;
+      border-radius: 50%;
+    }
   </style>
 </head>
 <body>
