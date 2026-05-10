@@ -409,6 +409,18 @@ const FoodLibrarySchema = new mongoose.Schema({
 FoodLibrarySchema.index({ nameNorm: 1 }, { unique: true });
 const FoodLibrary = mongoose.model('FoodLibrary', FoodLibrarySchema);
 
+// --- Blog Post Schema ---
+const BlogPostSchema = new mongoose.Schema({
+    title:       { type: String, required: true },
+    slug:        { type: String, required: true, unique: true },
+    category:    { type: String, default: 'General' },
+    excerpt:     { type: String, default: '' },
+    content:     { type: String, required: true },
+    published:   { type: Boolean, default: false },
+    publishedAt: { type: Date },
+}, { timestamps: true });
+const BlogPost = mongoose.model('BlogPost', BlogPostSchema);
+
 // --- Group Schema ---
 const GroupSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
@@ -2436,5 +2448,83 @@ app.post('/api/stripe/subscription/cancel', authenticateToken, authorizeRoles('t
 // --- FALLBACK ---
 // ==========================================================================
 app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
+// ── Blog routes ──────────────────────────────────────────────────────────────
+
+// GET /api/blog  — public: all published posts (newest first), no full content
+app.get('/api/blog', async (req, res) => {
+    try {
+        const posts = await BlogPost.find({ published: true })
+            .sort({ publishedAt: -1 })
+            .select('title slug category excerpt content publishedAt');
+        res.json(posts);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// GET /api/blog/all — admin only: all posts including drafts
+app.get('/api/blog/all', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'trainer' && req.user.role !== 'admin')
+        return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const posts = await BlogPost.find().sort({ createdAt: -1 });
+        res.json(posts);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// GET /api/blog/:slug — public: single full post
+app.get('/api/blog/:slug', async (req, res) => {
+    try {
+        const post = await BlogPost.findOne({ slug: req.params.slug, published: true });
+        if (!post) return res.status(404).json({ message: 'Post no encontrado.' });
+        res.json(post);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// POST /api/blog — admin only: create post
+app.post('/api/blog', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'trainer' && req.user.role !== 'admin')
+        return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const { title, category, excerpt, content, published } = req.body;
+        const slug = title.toLowerCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const uniqueSlug = `${slug}-${Date.now()}`;
+        const post = new BlogPost({
+            title, slug: uniqueSlug, category: category || 'General',
+            excerpt: excerpt || content.slice(0, 160).replace(/\n/g, ' '),
+            content, published: !!published,
+            publishedAt: published ? new Date() : null,
+        });
+        await post.save();
+        res.status(201).json(post);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// PATCH /api/blog/:id — admin only: update post
+app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'trainer' && req.user.role !== 'admin')
+        return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const { title, category, excerpt, content, published } = req.body;
+        const update = { title, category, content, published };
+        if (excerpt !== undefined) update.excerpt = excerpt;
+        else if (content) update.excerpt = content.slice(0, 160).replace(/\n/g, ' ');
+        if (published) update.publishedAt = new Date();
+        const post = await BlogPost.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+        if (!post) return res.status(404).json({ message: 'Post no encontrado.' });
+        res.json(post);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// DELETE /api/blog/:id — admin only
+app.delete('/api/blog/:id', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'trainer' && req.user.role !== 'admin')
+        return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        await BlogPost.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Post eliminado.' });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); });

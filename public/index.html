@@ -408,6 +408,144 @@
         </div>
       </section>
 
+      <!-- ═══════════════════════ BLOG / ARTÍCULOS ═══════════════════════ -->
+      <section id="blog-section" class="section-dim py-24 border-t border-fbs-gold/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest text-center mb-3">Recursos gratuitos</p>
+          <h2 class="text-3xl md:text-4xl font-black text-center text-white mb-14">Artículos</h2>
+
+          <!-- Cards grid — injected by JS -->
+          <div id="blog-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- skeleton placeholders shown while loading -->
+            <div class="blog-skeleton section-card rounded-2xl p-8 animate-pulse space-y-4">
+              <div class="h-3 bg-fbs-gold/10 rounded w-1/4"></div>
+              <div class="h-5 bg-fbs-gold/15 rounded w-3/4"></div>
+              <div class="space-y-2">
+                <div class="h-3 bg-fbs-gold/10 rounded"></div>
+                <div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div>
+              </div>
+            </div>
+            <div class="blog-skeleton section-card rounded-2xl p-8 animate-pulse space-y-4">
+              <div class="h-3 bg-fbs-gold/10 rounded w-1/4"></div>
+              <div class="h-5 bg-fbs-gold/15 rounded w-3/4"></div>
+              <div class="space-y-2">
+                <div class="h-3 bg-fbs-gold/10 rounded"></div>
+                <div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div>
+              </div>
+            </div>
+            <div class="blog-skeleton section-card rounded-2xl p-8 animate-pulse space-y-4 hidden sm:block">
+              <div class="h-3 bg-fbs-gold/10 rounded w-1/4"></div>
+              <div class="h-5 bg-fbs-gold/15 rounded w-3/4"></div>
+              <div class="space-y-2">
+                <div class="h-3 bg-fbs-gold/10 rounded"></div>
+                <div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty state -->
+          <p id="blog-empty" class="text-center text-fbs-gold/40 text-sm py-8 hidden">Próximamente — regresa pronto para leer el primer artículo.</p>
+
+        </div>
+      </section>
+
+      <style>
+        /* Blog card expand/collapse */
+        .blog-body {
+          display: -webkit-box;
+          -webkit-line-clamp: 4;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          transition: max-height 0.5s ease, -webkit-line-clamp 0s;
+          max-height: 7em; /* ~4 lines */
+        }
+        .blog-body.expanded {
+          display: block;
+          -webkit-line-clamp: unset;
+          max-height: 2000px;
+        }
+        .blog-read-more {
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-weight: 700;
+          font-size: 0.8rem;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          padding: 0;
+          margin-top: 0.75rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          transition: gap 0.2s;
+        }
+        .blog-read-more:hover { gap: 0.6rem; }
+      </style>
+
+      <script>
+        (async () => {
+          const grid   = document.getElementById('blog-cards-grid');
+          const empty  = document.getElementById('blog-empty');
+          try {
+            const res  = await fetch('/api/blog');
+            if (!res.ok) throw new Error('fetch failed');
+            const posts = await res.json();
+
+            // Remove skeletons
+            grid.querySelectorAll('.blog-skeleton').forEach(el => el.remove());
+
+            if (!posts.length) { empty.classList.remove('hidden'); return; }
+
+            posts.forEach(post => {
+              // Format date
+              const dateStr = post.publishedAt
+                ? new Date(post.publishedAt).toLocaleDateString('es-PR', { year: 'numeric', month: 'long', day: 'numeric' })
+                : '';
+
+              const card = document.createElement('div');
+              card.className = 'section-card rounded-2xl p-8 flex flex-col gap-4';
+              card.innerHTML = `
+                <div class="flex items-center gap-3 flex-wrap">
+                  <span class="bg-fbs-gold/15 border border-fbs-gold/30 text-fbs-gold text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">${escHtmlPublic(post.category || 'General')}</span>
+                  ${dateStr ? `<span class="text-fbs-gold/40 text-xs">${escHtmlPublic(dateStr)}</span>` : ''}
+                </div>
+                <h3 class="text-white font-black text-lg leading-snug">${escHtmlPublic(post.title)}</h3>
+                <div class="blog-body text-fbs-gold/70 text-sm leading-relaxed whitespace-pre-line">${escHtmlPublic(post.content)}</div>
+                <button class="blog-read-more text-fbs-gold/60 hover:text-fbs-gold" aria-expanded="false">
+                  Leer más <i class="fas fa-chevron-down text-[10px] transition-transform duration-300"></i>
+                </button>`;
+
+              const body   = card.querySelector('.blog-body');
+              const btn    = card.querySelector('.blog-read-more');
+              const icon   = btn.querySelector('i');
+
+              btn.addEventListener('click', () => {
+                const isExpanded = body.classList.toggle('expanded');
+                btn.setAttribute('aria-expanded', isExpanded);
+                btn.childNodes[0].textContent = isExpanded ? 'Leer menos ' : 'Leer más ';
+                icon.style.transform = isExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
+              });
+
+              grid.appendChild(card);
+            });
+          } catch(_) {
+            grid.querySelectorAll('.blog-skeleton').forEach(el => el.remove());
+            empty.classList.remove('hidden');
+          }
+        })();
+
+        // Minimal HTML escaper for public page (no app.js escHtml available here)
+        function escHtmlPublic(s) {
+          return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+      </script>
+
       <!-- INTEREST / CONTACT FORM -->
       <section id="contact-section" class="section-dim py-24 border-t border-fbs-gold/10">
         <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">

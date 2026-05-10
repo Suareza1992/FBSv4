@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Blog — Admin</title>
+</head>
+<body>
+
+<div class="min-h-screen px-4 py-8 max-w-4xl mx-auto space-y-10">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div class="flex items-center justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-3xl font-black text-white">Blog</h1>
+      <p class="text-fbs-gold/50 text-sm mt-1">Gestiona los artículos que aparecen en la página de inicio.</p>
+    </div>
+    <button id="blog-new-btn"
+      class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-fbs-gold text-[#2C2C2E] font-bold text-sm hover:brightness-110 transition shadow-md">
+      <i class="fas fa-plus"></i> Nuevo artículo
+    </button>
+  </div>
+
+  <!-- ── Post form (hidden until New / Edit clicked) ────────────────────── -->
+  <section id="blog-form-section" class="hidden bg-[#1a1a1c] border border-fbs-gold/20 rounded-2xl p-6 md:p-8 space-y-5">
+
+    <h2 id="blog-form-title-text" class="text-lg font-black text-white">Nuevo artículo</h2>
+
+    <!-- Title -->
+    <div>
+      <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Título *</label>
+      <input id="blog-input-title" type="text" maxlength="200"
+        class="w-full bg-[#0D0D0D] border border-fbs-gold/20 rounded-xl px-4 py-3 text-white text-sm placeholder-fbs-gold/30 focus:outline-none focus:border-fbs-gold/60 transition"
+        placeholder="Ej. 5 claves para ganar músculo sin perder tiempo">
+    </div>
+
+    <!-- Category -->
+    <div>
+      <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Categoría</label>
+      <input id="blog-input-category" type="text" maxlength="60"
+        class="w-full bg-[#0D0D0D] border border-fbs-gold/20 rounded-xl px-4 py-3 text-white text-sm placeholder-fbs-gold/30 focus:outline-none focus:border-fbs-gold/60 transition"
+        placeholder="Ej. Nutrición, Entrenamiento, Mentalidad…" value="General">
+    </div>
+
+    <!-- Excerpt (optional short teaser) -->
+    <div>
+      <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">
+        Extracto <span class="font-normal normal-case opacity-60">(opcional — resumen corto)</span>
+      </label>
+      <textarea id="blog-input-excerpt" rows="2" maxlength="300"
+        class="w-full bg-[#0D0D0D] border border-fbs-gold/20 rounded-xl px-4 py-3 text-white text-sm placeholder-fbs-gold/30 focus:outline-none focus:border-fbs-gold/60 transition resize-none"
+        placeholder="Una frase que enganche al lector…"></textarea>
+    </div>
+
+    <!-- Content -->
+    <div>
+      <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Contenido *</label>
+      <textarea id="blog-input-content" rows="16"
+        class="w-full bg-[#0D0D0D] border border-fbs-gold/20 rounded-xl px-4 py-3 text-white text-sm placeholder-fbs-gold/30 focus:outline-none focus:border-fbs-gold/60 transition resize-y font-mono leading-relaxed"
+        placeholder="Pega o escribe el artículo completo aquí. Puedes usar saltos de línea para separar párrafos."></textarea>
+      <p class="text-fbs-gold/30 text-xs mt-1.5">Los saltos de línea se respetan al mostrarlo en la web.</p>
+    </div>
+
+    <!-- Publish toggle -->
+    <label class="flex items-center gap-3 cursor-pointer select-none group w-fit">
+      <div class="relative">
+        <input id="blog-input-published" type="checkbox" class="sr-only peer">
+        <div class="w-10 h-6 bg-fbs-gold/10 border border-fbs-gold/20 rounded-full transition peer-checked:bg-fbs-gold peer-checked:border-fbs-gold"></div>
+        <div class="absolute top-1 left-1 w-4 h-4 bg-white/40 rounded-full shadow transition-transform peer-checked:translate-x-4 peer-checked:bg-[#2C2C2E]"></div>
+      </div>
+      <span class="text-sm text-fbs-gold/70 group-hover:text-fbs-gold transition font-semibold">Publicar (visible en la web)</span>
+    </label>
+
+    <!-- Buttons -->
+    <div class="flex gap-3 flex-wrap pt-2">
+      <button id="blog-save-btn"
+        class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-fbs-gold text-[#2C2C2E] font-bold text-sm hover:brightness-110 transition shadow-md">
+        <i class="fas fa-save"></i> Guardar
+      </button>
+      <button id="blog-cancel-btn"
+        class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#0D0D0D] border border-fbs-gold/20 text-fbs-gold/70 hover:text-fbs-gold hover:border-fbs-gold/40 font-bold text-sm transition">
+        Cancelar
+      </button>
+    </div>
+
+  </section>
+
+  <!-- ── Existing posts list ─────────────────────────────────────────────── -->
+  <section class="space-y-3">
+    <h2 class="text-sm font-bold text-fbs-gold/60 uppercase tracking-wider">Artículos publicados / borradores</h2>
+    <div id="blog-admin-list" class="space-y-2">
+      <!-- populated by initBlogAdmin() -->
+      <p class="text-fbs-gold/40 text-sm text-center py-6">Cargando…</p>
+    </div>
+  </section>
+
+</div>
+
+</body>
+</html>

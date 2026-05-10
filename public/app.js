@@ -7496,6 +7496,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (linkText === 'Programas') moduleToLoad = 'programas_content';
             else if (linkText === 'Ajustes') { moduleToLoad = 'ajustes_content'; } 
             else if (linkText === 'Pagos') moduleToLoad = 'pagos_content';
+            else if (linkText === 'Blog') moduleToLoad = 'blog_content';
             else if (linkText.includes('Mis programas')) moduleToLoad = 'client_programas';
             else if (linkText.includes('Métricas')) moduleToLoad = 'client_metricas';
             else if (linkText.includes('Nutrición')) moduleToLoad = 'client_nutricion';
@@ -7508,7 +7509,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const res = await fetch(`${moduleToLoad}.html`);
                     if(res.ok) {
                         const html = await res.text();
-                        const contentTitle = (moduleToLoad === 'trainer_home' || moduleToLoad === 'client_inicio' || moduleToLoad === 'clientes_content' || moduleToLoad === 'pagos_content') ? '' : linkText;
+                        const contentTitle = (moduleToLoad === 'trainer_home' || moduleToLoad === 'client_inicio' || moduleToLoad === 'clientes_content' || moduleToLoad === 'pagos_content' || moduleToLoad === 'blog_content') ? '' : linkText;
                         updateContent(contentTitle, html);
                         if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
                         if (moduleToLoad === 'programas_content') {
@@ -7548,6 +7549,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (moduleToLoad === 'trainer_home') renderTrainerHome(loadSession().name);
                         if (moduleToLoad === 'client_inicio') initClientHome();
                         if (moduleToLoad === 'ajustes_content') initSettings();
+                        if (moduleToLoad === 'blog_content') initBlogAdmin();
                     }
                 } catch(e) { console.error(e); }
             }
@@ -11254,6 +11256,146 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     renderRandomTip('es');
+
+    // ─── BLOG ADMIN ─────────────────────────────────────────────────────────────
+    const initBlogAdmin = async () => {
+        // ── DOM refs (populated after blog_content.html loads) ───────────────
+        const getEl = id => document.getElementById(id);
+
+        // State
+        let editingId = null; // null = new post, string = editing existing
+
+        // ── Render post list ─────────────────────────────────────────────────
+        const renderBlogList = async () => {
+            const listEl = getEl('blog-admin-list');
+            if (!listEl) return;
+            listEl.innerHTML = `<p class="text-fbs-gold/40 text-sm text-center py-6">Cargando…</p>`;
+            try {
+                const res = await apiFetch('/api/blog/all');
+                const posts = await res.json();
+                if (!posts.length) {
+                    listEl.innerHTML = `<p class="text-fbs-gold/40 text-sm text-center py-6">No hay artículos todavía.</p>`;
+                    return;
+                }
+                listEl.innerHTML = '';
+                posts.forEach(p => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center gap-3 p-4 rounded-xl bg-[#030303]/60 border border-fbs-gold/10';
+                    const dateStr = p.publishedAt
+                        ? new Date(p.publishedAt).toLocaleDateString('es-PR', { year: 'numeric', month: 'short', day: 'numeric' })
+                        : '—';
+                    row.innerHTML = `
+                        <div class="flex-1 min-w-0">
+                            <p class="font-bold text-white text-sm truncate">${escHtml(p.title)}</p>
+                            <p class="text-fbs-gold/40 text-xs mt-0.5">${escHtml(p.category || 'General')} · ${dateStr}</p>
+                        </div>
+                        <span class="text-[10px] font-bold px-2 py-1 rounded-full border ${p.published ? 'border-green-500/40 text-green-400 bg-green-500/10' : 'border-fbs-gold/20 text-fbs-gold/50 bg-fbs-gold/5'}">${p.published ? 'Publicado' : 'Borrador'}</span>
+                        <button data-id="${escHtml(p._id)}" data-action="edit" class="text-fbs-gold/60 hover:text-fbs-gold transition text-sm px-2 py-1 rounded-lg hover:bg-fbs-gold/10" title="Editar"><i class="fas fa-pen"></i></button>
+                        <button data-id="${escHtml(p._id)}" data-action="delete" class="text-red-400/60 hover:text-red-400 transition text-sm px-2 py-1 rounded-lg hover:bg-red-400/10" title="Eliminar"><i class="fas fa-trash"></i></button>`;
+                    listEl.appendChild(row);
+                });
+
+                // Edit / delete handlers
+                listEl.querySelectorAll('[data-action="edit"]').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.dataset.id;
+                        const res2 = await apiFetch('/api/blog/all');
+                        const all = await res2.json();
+                        const post = all.find(x => x._id === id);
+                        if (!post) return;
+                        editingId = id;
+                        getEl('blog-form-title-text').textContent = 'Editar artículo';
+                        getEl('blog-input-title').value    = post.title || '';
+                        getEl('blog-input-category').value = post.category || 'General';
+                        getEl('blog-input-excerpt').value  = post.excerpt || '';
+                        getEl('blog-input-content').value  = post.content || '';
+                        getEl('blog-input-published').checked = !!post.published;
+                        getEl('blog-form-section').classList.remove('hidden');
+                        getEl('blog-input-title').focus();
+                        getEl('blog-form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+                });
+
+                listEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const confirmed = await showConfirm('¿Eliminar este artículo permanentemente?', { confirmLabel: 'Eliminar', danger: true });
+                        if (!confirmed) return;
+                        await apiFetch(`/api/blog/${btn.dataset.id}`, { method: 'DELETE' });
+                        showToast('Artículo eliminado.', 'info');
+                        renderBlogList();
+                    });
+                });
+            } catch(e) {
+                listEl.innerHTML = `<p class="text-red-400 text-sm text-center py-6">Error al cargar artículos.</p>`;
+            }
+        };
+
+        // ── New post button ───────────────────────────────────────────────────
+        const newBtn = getEl('blog-new-btn');
+        if (newBtn) {
+            newBtn.addEventListener('click', () => {
+                editingId = null;
+                getEl('blog-form-title-text').textContent = 'Nuevo artículo';
+                getEl('blog-input-title').value    = '';
+                getEl('blog-input-category').value = 'General';
+                getEl('blog-input-excerpt').value  = '';
+                getEl('blog-input-content').value  = '';
+                getEl('blog-input-published').checked = false;
+                getEl('blog-form-section').classList.remove('hidden');
+                getEl('blog-input-title').focus();
+                getEl('blog-form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
+
+        // ── Cancel button ─────────────────────────────────────────────────────
+        const cancelBtn = getEl('blog-cancel-btn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                getEl('blog-form-section').classList.add('hidden');
+                editingId = null;
+            });
+        }
+
+        // ── Save / publish button ─────────────────────────────────────────────
+        const saveBtn = getEl('blog-save-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const title   = getEl('blog-input-title').value.trim();
+                const category= getEl('blog-input-category').value.trim() || 'General';
+                const excerpt = getEl('blog-input-excerpt').value.trim();
+                const content = getEl('blog-input-content').value.trim();
+                const published = getEl('blog-input-published').checked;
+
+                if (!title)   { showToast('El título es obligatorio.', 'error'); return; }
+                if (!content) { showToast('El contenido no puede estar vacío.', 'error'); return; }
+
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Guardando…';
+                try {
+                    const method = editingId ? 'PATCH' : 'POST';
+                    const url    = editingId ? `/api/blog/${editingId}` : '/api/blog';
+                    const res = await apiFetch(url, {
+                        method,
+                        body: JSON.stringify({ title, category, excerpt, content, published }),
+                    });
+                    if (!res.ok) throw new Error('Server error');
+                    showToast(editingId ? 'Artículo actualizado.' : 'Artículo creado.', 'success');
+                    getEl('blog-form-section').classList.add('hidden');
+                    editingId = null;
+                    await renderBlogList();
+                } catch(e) {
+                    showToast('Error al guardar. Intenta de nuevo.', 'error');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar';
+                }
+            });
+        }
+
+        // Initial load
+        await renderBlogList();
+    };
+    // ────────────────────────────────────────────────────────────────────────────
 
     // FIX: initAuthListeners was called OUTSIDE this closure before — moved inside
     initAuthListeners();
