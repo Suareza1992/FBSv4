@@ -2445,12 +2445,10 @@ app.post('/api/stripe/subscription/cancel', authenticateToken, authorizeRoles('t
 });
 
 // ==========================================================================
-// --- FALLBACK ---
+// --- BLOG ROUTES (must be before the catch-all GET * below) ---
 // ==========================================================================
-app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
-// ── Blog routes ──────────────────────────────────────────────────────────────
 
-// GET /api/blog  — public: all published posts (newest first), no full content
+// GET /api/blog — public: all published posts (newest first)
 app.get('/api/blog', async (req, res) => {
     try {
         const posts = await BlogPost.find({ published: true })
@@ -2510,6 +2508,7 @@ app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
         if (excerpt !== undefined) update.excerpt = excerpt;
         else if (content) update.excerpt = content.slice(0, 160).replace(/\n/g, ' ');
         if (published) update.publishedAt = new Date();
+        else update.publishedAt = null; // clear date when unpublishing
         const post = await BlogPost.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
         if (!post) return res.status(404).json({ message: 'Post no encontrado.' });
         res.json(post);
@@ -2525,6 +2524,11 @@ app.delete('/api/blog/:id', authenticateToken, async (req, res) => {
         res.json({ message: 'Post eliminado.' });
     } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
+// ==========================================================================
+// --- FALLBACK (must stay last — serves index.html for all unmatched GETs) ---
+// ==========================================================================
+app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); });
