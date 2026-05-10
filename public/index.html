@@ -413,64 +413,95 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
           <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest text-center mb-3">Recursos gratuitos</p>
-          <h2 class="text-2xl md:text-4xl font-black text-center text-white mb-8 md:mb-14">Artículos</h2>
+          <h2 class="text-2xl md:text-4xl font-black text-center text-white mb-8 md:mb-10">Artículos</h2>
 
-          <!-- Cards grid — injected by JS -->
+          <!-- ── Search bar ───────────────────────────────────────────────── -->
+          <div class="relative mb-4">
+            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-fbs-gold/40 text-sm pointer-events-none"></i>
+            <input id="blog-search" type="search" inputmode="search"
+              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              placeholder="Buscar artículos…"
+              class="blog-search-input w-full pl-10 pr-10 rounded-xl">
+            <!-- inline clear X (appears when there's text) -->
+            <button id="blog-search-clear" type="button" aria-label="Borrar búsqueda"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-fbs-gold/40 hover:text-fbs-gold transition hidden p-1">
+              <i class="fas fa-times text-sm"></i>
+            </button>
+          </div>
+
+          <!-- ── Category pills — horizontal scroll on mobile ────────────── -->
+          <div id="blog-pills" class="blog-pills-row flex gap-2 mb-4">
+            <!-- populated by JS after fetch -->
+          </div>
+
+          <!-- ── Status bar: count + sort + clear filters ─────────────────── -->
+          <div id="blog-controls" class="flex items-center gap-2 mb-6 hidden">
+            <span id="blog-count" class="text-fbs-gold/50 text-xs font-semibold flex-1 min-w-0 truncate"></span>
+            <button id="blog-sort-btn" type="button" class="blog-ctrl-btn flex items-center gap-1">
+              <i class="fas fa-arrow-down-short-wide text-[10px]"></i>
+              <span id="blog-sort-label">Reciente</span>
+              <span class="blog-sort-arrow">↓</span>
+            </button>
+            <button id="blog-clear-btn" type="button" class="blog-ctrl-btn blog-clear-btn hidden">
+              <i class="fas fa-times text-[10px]"></i> Limpiar
+            </button>
+          </div>
+
+          <!-- ── Cards grid ─────────────────────────────────────────────── -->
           <div id="blog-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             <!-- skeleton placeholders shown while loading -->
             <div class="blog-skeleton section-card rounded-2xl p-5 sm:p-8 animate-pulse space-y-4">
               <div class="h-3 bg-fbs-gold/10 rounded w-1/4"></div>
               <div class="h-5 bg-fbs-gold/15 rounded w-3/4"></div>
-              <div class="space-y-2">
-                <div class="h-3 bg-fbs-gold/10 rounded"></div>
-                <div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div>
-              </div>
+              <div class="space-y-2"><div class="h-3 bg-fbs-gold/10 rounded"></div><div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div></div>
             </div>
             <div class="blog-skeleton section-card rounded-2xl p-5 sm:p-8 animate-pulse space-y-4">
               <div class="h-3 bg-fbs-gold/10 rounded w-1/4"></div>
               <div class="h-5 bg-fbs-gold/15 rounded w-3/4"></div>
-              <div class="space-y-2">
-                <div class="h-3 bg-fbs-gold/10 rounded"></div>
-                <div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div>
-              </div>
+              <div class="space-y-2"><div class="h-3 bg-fbs-gold/10 rounded"></div><div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div></div>
             </div>
             <div class="blog-skeleton section-card rounded-2xl p-5 sm:p-8 animate-pulse space-y-4 hidden sm:block">
               <div class="h-3 bg-fbs-gold/10 rounded w-1/4"></div>
               <div class="h-5 bg-fbs-gold/15 rounded w-3/4"></div>
-              <div class="space-y-2">
-                <div class="h-3 bg-fbs-gold/10 rounded"></div>
-                <div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div>
-              </div>
+              <div class="space-y-2"><div class="h-3 bg-fbs-gold/10 rounded"></div><div class="h-3 bg-fbs-gold/10 rounded w-5/6"></div></div>
             </div>
           </div>
 
-          <!-- Empty state -->
-          <p id="blog-empty" class="text-center text-fbs-gold/40 text-sm py-8 hidden">Próximamente — regresa pronto para leer el primer artículo.</p>
+          <!-- ── States ──────────────────────────────────────────────────── -->
+          <!-- No posts at all -->
+          <p id="blog-empty" class="text-center text-fbs-gold/40 text-sm py-10 hidden">
+            Próximamente — regresa pronto para leer el primer artículo.
+          </p>
+          <!-- Posts exist but search/filter returned nothing -->
+          <div id="blog-no-results" class="text-center py-10 hidden">
+            <i class="fas fa-search text-fbs-gold/20 text-3xl mb-3 block"></i>
+            <p class="text-fbs-gold/50 text-sm font-semibold">Ningún artículo coincide.</p>
+            <button id="blog-reset-btn" type="button"
+              class="mt-4 text-xs font-bold text-fbs-gold/60 underline underline-offset-2">
+              Limpiar filtros
+            </button>
+          </div>
 
         </div>
       </section>
 
       <style>
-        /* ── Blog card expand/collapse ─────────────────────────────────────── */
+        /* ── Blog card body expand/collapse ───────────────────────────────── */
         .blog-body {
           display: -webkit-box;
           -webkit-line-clamp: 5;
           -webkit-box-orient: vertical;
           overflow: hidden;
-          /* Animate height via max-height; clamp toggled instantly via class */
-          max-height: 9em; /* ~5 lines at 1.75 line-height */
+          max-height: 9em;
           transition: max-height 0.4s ease;
         }
         .blog-body.expanded {
           display: block;
           -webkit-line-clamp: unset;
-          max-height: 9999px; /* large enough for any post */
+          max-height: 9999px;
         }
 
-        /* ── "Leer más" button ─────────────────────────────────────────────── *
-         * Minimum 44 × 44 px tap target on mobile (WCAG 2.5.5).              *
-         * Negative horizontal margin pulls it flush with card edge so the     *
-         * extra padding doesn't add visual width.                             */
+        /* ── "Leer más" button — 44px tap target ──────────────────────────── */
         .blog-read-more {
           display: inline-flex;
           align-items: center;
@@ -478,12 +509,11 @@
           background: none;
           border: none;
           cursor: pointer;
-          color: #FFDB89;          /* always gold — no hover dependency */
+          color: #FFDB89;
           font-weight: 700;
           font-size: 0.75rem;
           letter-spacing: 0.07em;
           text-transform: uppercase;
-          /* Generous padding for tap target; negative margin keeps layout flush */
           padding: 12px 0;
           margin-top: 4px;
           min-height: 44px;
@@ -491,78 +521,289 @@
           -webkit-tap-highlight-color: transparent;
         }
         .blog-read-more:active { opacity: 0.7; }
+        @media (hover: hover) { .blog-read-more:hover { opacity: 0.75; } }
+        .blog-read-more i { transition: transform 0.3s ease; font-size: 10px; }
+
+        /* ── Search input ─────────────────────────────────────────────────── */
+        .blog-search-input {
+          background: rgba(0,0,0,0.45);
+          border: 1px solid rgba(255,219,137,0.18);
+          color: #fff;
+          font-size: 0.875rem;
+          min-height: 48px;
+          padding-top: 0.75rem;
+          padding-bottom: 0.75rem;
+          outline: none;
+          transition: border-color 0.2s;
+          -webkit-appearance: none;
+          appearance: none;
+        }
+        .blog-search-input:focus { border-color: rgba(255,219,137,0.55); }
+        .blog-search-input::placeholder { color: rgba(255,219,137,0.3); }
+        .blog-search-input::-webkit-search-cancel-button,
+        .blog-search-input::-webkit-search-decoration { display: none; }
+
+        /* ── Category pills row — scroll on mobile, wrap on desktop ──────── */
+        .blog-pills-row {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+          padding-bottom: 2px;
+          flex-wrap: nowrap;
+        }
+        .blog-pills-row::-webkit-scrollbar { display: none; }
+        @media (min-width: 640px) {
+          .blog-pills-row { flex-wrap: wrap; overflow-x: visible; }
+        }
+
+        /* ── Individual pill ──────────────────────────────────────────────── */
+        .blog-pill {
+          flex-shrink: 0;
+          border: 1px solid rgba(255,219,137,0.28);
+          color: rgba(255,219,137,0.6);
+          background: transparent;
+          cursor: pointer;
+          border-radius: 9999px;
+          padding: 6px 14px;
+          min-height: 36px;
+          font-size: 0.7rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          white-space: nowrap;
+          transition: background 0.15s, color 0.15s, border-color 0.15s;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .blog-pill:active { opacity: 0.75; }
+        .blog-pill.pill-active {
+          background: #FFDB89;
+          border-color: #FFDB89;
+          color: #2C2C2E;
+        }
         @media (hover: hover) {
-          .blog-read-more:hover { opacity: 0.75; }
+          .blog-pill:not(.pill-active):hover {
+            border-color: rgba(255,219,137,0.55);
+            color: #FFDB89;
+          }
         }
-        .blog-read-more i {
-          transition: transform 0.3s ease;
-          font-size: 10px;
+
+        /* ── Status bar controls (sort / clear) ──────────────────────────── */
+        .blog-ctrl-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 10px;
+          border-radius: 8px;
+          font-size: 0.7rem;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          min-height: 30px;
+          cursor: pointer;
+          border: 1px solid rgba(255,219,137,0.2);
+          background: rgba(255,219,137,0.07);
+          color: rgba(255,219,137,0.65);
+          transition: background 0.15s, color 0.15s;
+          -webkit-tap-highlight-color: transparent;
+          white-space: nowrap;
         }
+        .blog-ctrl-btn:active { background: rgba(255,219,137,0.15); color: #FFDB89; }
+        @media (hover: hover) { .blog-ctrl-btn:hover { background: rgba(255,219,137,0.12); color: #FFDB89; } }
+
+        .blog-ctrl-btn.blog-clear-btn {
+          border-color: rgba(173,0,19,0.35);
+          background: rgba(173,0,19,0.1);
+          color: rgba(248,113,113,0.8);
+        }
+        .blog-ctrl-btn.blog-clear-btn:active { background: rgba(173,0,19,0.2); }
       </style>
 
       <script>
-        (async () => {
-          const grid  = document.getElementById('blog-cards-grid');
-          const empty = document.getElementById('blog-empty');
-          try {
-            const res   = await fetch('/api/blog');
-            if (!res.ok) throw new Error('fetch failed');
-            const posts = await res.json();
-
-            // Remove skeletons
-            grid.querySelectorAll('.blog-skeleton').forEach(el => el.remove());
-
-            if (!posts.length) { empty.classList.remove('hidden'); return; }
-
-            posts.forEach(post => {
-              const dateStr = post.publishedAt
-                ? new Date(post.publishedAt).toLocaleDateString('es-PR', { year: 'numeric', month: 'long', day: 'numeric' })
-                : '';
-
-              const card = document.createElement('div');
-              // Mobile: tighter padding (p-5); desktop: roomier (sm:p-8)
-              card.className = 'section-card rounded-2xl p-5 sm:p-8 flex flex-col';
-              card.innerHTML = `
-                <div class="flex items-center gap-2 flex-wrap mb-3">
-                  <span class="bg-fbs-gold/15 border border-fbs-gold/30 text-fbs-gold text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">${escHtmlPublic(post.category || 'General')}</span>
-                  ${dateStr ? `<span class="text-fbs-gold/40 text-xs">${escHtmlPublic(dateStr)}</span>` : ''}
-                </div>
-                <h3 class="text-white font-black text-base sm:text-lg leading-snug mb-3">${escHtmlPublic(post.title)}</h3>
-                <div class="blog-body text-fbs-gold/70 text-sm leading-relaxed whitespace-pre-line">${escHtmlPublic(post.content)}</div>
-                <button class="blog-read-more" aria-expanded="false">
-                  <span class="btn-label">Leer más</span>
-                  <i class="fas fa-chevron-down"></i>
-                </button>`;
-
-              const body  = card.querySelector('.blog-body');
-              const btn   = card.querySelector('.blog-read-more');
-              const label = btn.querySelector('.btn-label');
-              const icon  = btn.querySelector('i');
-
-              btn.addEventListener('click', () => {
-                const isExpanded = body.classList.toggle('expanded');
-                btn.setAttribute('aria-expanded', String(isExpanded));
-                label.textContent = isExpanded ? 'Leer menos' : 'Leer más';
-                icon.style.transform = isExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
-              });
-
-              grid.appendChild(card);
-            });
-          } catch(_) {
-            grid.querySelectorAll('.blog-skeleton').forEach(el => el.remove());
-            empty.classList.remove('hidden');
-          }
-        })();
-
-        // Minimal HTML escaper for public page (no app.js escHtml available here)
+        // ── Minimal HTML escaper (no app.js here) ──────────────────────────
         function escHtmlPublic(s) {
           return String(s ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
+
+        (async () => {
+          const grid        = document.getElementById('blog-cards-grid');
+          const emptyEl     = document.getElementById('blog-empty');
+          const noResultsEl = document.getElementById('blog-no-results');
+          const controlsEl  = document.getElementById('blog-controls');
+          const countEl     = document.getElementById('blog-count');
+          const pillsEl     = document.getElementById('blog-pills');
+          const searchInput = document.getElementById('blog-search');
+          const searchClear = document.getElementById('blog-search-clear');
+          const sortBtn     = document.getElementById('blog-sort-btn');
+          const sortLabel   = document.getElementById('blog-sort-label');
+          const sortArrow   = sortBtn.querySelector('.blog-sort-arrow');
+          const clearBtn    = document.getElementById('blog-clear-btn');
+          const resetBtn    = document.getElementById('blog-reset-btn');
+
+          let allPosts       = [];
+          let cardEls        = [];
+          let activeCategory = '';   // '' = Todos
+          let sortDir        = 'desc'; // 'desc' = newest first
+
+          // ── 1. Fetch ─────────────────────────────────────────────────────
+          try {
+            const res = await fetch('/api/blog');
+            if (!res.ok) throw new Error();
+            allPosts = await res.json();
+          } catch (_) {
+            grid.querySelectorAll('.blog-skeleton').forEach(el => el.remove());
+            emptyEl.classList.remove('hidden');
+            return;
+          }
+
+          grid.querySelectorAll('.blog-skeleton').forEach(el => el.remove());
+
+          if (!allPosts.length) { emptyEl.classList.remove('hidden'); return; }
+
+          // ── 2. Category pills ─────────────────────────────────────────────
+          const uniqueCats = [...new Set(allPosts.map(p => p.category || 'General'))];
+          ['Todos', ...uniqueCats].forEach((cat, i) => {
+            const pill = document.createElement('button');
+            pill.type = 'button';
+            pill.className = 'blog-pill' + (i === 0 ? ' pill-active' : '');
+            pill.textContent = cat;
+            pill.dataset.cat = i === 0 ? '' : cat;
+            pillsEl.appendChild(pill);
+          });
+
+          // Hide pills row if only one category (no point showing it)
+          if (uniqueCats.length < 2) pillsEl.style.display = 'none';
+
+          // ── 3. Build all cards ────────────────────────────────────────────
+          allPosts.forEach(post => {
+            const dateStr = post.publishedAt
+              ? new Date(post.publishedAt).toLocaleDateString('es-PR', { year: 'numeric', month: 'long', day: 'numeric' })
+              : '';
+
+            const card = document.createElement('div');
+            card.className = 'section-card rounded-2xl p-5 sm:p-8 flex flex-col';
+            // Store searchable data as lowercase dataset attrs
+            card.dataset.cat     = post.category || 'General';
+            card.dataset.title   = (post.title   || '').toLowerCase();
+            card.dataset.content = (post.content || '').toLowerCase() + ' ' + (post.excerpt || '').toLowerCase();
+            card.dataset.date    = post.publishedAt || '';
+
+            card.innerHTML = `
+              <div class="flex items-center gap-2 flex-wrap mb-3">
+                <span class="bg-fbs-gold/15 border border-fbs-gold/30 text-fbs-gold text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">${escHtmlPublic(post.category || 'General')}</span>
+                ${dateStr ? `<span class="text-fbs-gold/40 text-xs">${escHtmlPublic(dateStr)}</span>` : ''}
+              </div>
+              <h3 class="text-white font-black text-base sm:text-lg leading-snug mb-3">${escHtmlPublic(post.title)}</h3>
+              <div class="blog-body text-fbs-gold/70 text-sm leading-relaxed whitespace-pre-line">${escHtmlPublic(post.content)}</div>
+              <button class="blog-read-more" aria-expanded="false">
+                <span class="btn-label">Leer más</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>`;
+
+            const body  = card.querySelector('.blog-body');
+            const btn   = card.querySelector('.blog-read-more');
+            const lbl   = btn.querySelector('.btn-label');
+            const icon  = btn.querySelector('i');
+
+            btn.addEventListener('click', () => {
+              const expanded = body.classList.toggle('expanded');
+              btn.setAttribute('aria-expanded', String(expanded));
+              lbl.textContent = expanded ? 'Leer menos' : 'Leer más';
+              icon.style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
+            });
+
+            grid.appendChild(card);
+            cardEls.push(card);
+          });
+
+          controlsEl.classList.remove('hidden');
+
+          // ── 4. Filter + sort ──────────────────────────────────────────────
+          const applyFilters = () => {
+            const q          = searchInput.value.trim().toLowerCase();
+            const hasFilters = q || activeCategory;
+
+            // Show/hide inline search clear button
+            searchClear.classList.toggle('hidden', !q);
+            // Show/hide status-bar clear button
+            clearBtn.classList.toggle('hidden', !hasFilters);
+
+            // Re-sort card order in the DOM
+            const sorted = [...cardEls].sort((a, b) => {
+              const da = a.dataset.date ? new Date(a.dataset.date) : new Date(0);
+              const db = b.dataset.date ? new Date(b.dataset.date) : new Date(0);
+              return sortDir === 'desc' ? db - da : da - db;
+            });
+            sorted.forEach(c => grid.appendChild(c));
+
+            // Show/hide each card
+            let visible = 0;
+            cardEls.forEach(card => {
+              const matchesCat    = !activeCategory || card.dataset.cat === activeCategory;
+              const matchesSearch = !q || card.dataset.title.includes(q) || card.dataset.content.includes(q);
+              const show          = matchesCat && matchesSearch;
+              card.style.display  = show ? '' : 'none';
+              if (show) visible++;
+            });
+
+            // Update count text
+            const total = allPosts.length;
+            countEl.textContent = visible === total
+              ? `${total} artículo${total !== 1 ? 's' : ''}`
+              : `${visible} de ${total} artículo${total !== 1 ? 's' : ''}`;
+
+            // No-results state
+            noResultsEl.classList.toggle('hidden', visible > 0);
+          };
+
+          // ── 5. Event listeners ────────────────────────────────────────────
+          // Search input (debounced 150 ms — fast enough, avoids per-keystroke thrash)
+          let searchTimer;
+          searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(applyFilters, 150);
+          });
+
+          // Inline search clear
+          searchClear.addEventListener('click', () => {
+            searchInput.value = '';
+            searchInput.focus();
+            applyFilters();
+          });
+
+          // Category pills (event delegation)
+          pillsEl.addEventListener('click', e => {
+            const pill = e.target.closest('.blog-pill');
+            if (!pill) return;
+            pillsEl.querySelectorAll('.blog-pill').forEach(p => p.classList.remove('pill-active'));
+            pill.classList.add('pill-active');
+            activeCategory = pill.dataset.cat;
+            applyFilters();
+          });
+
+          // Sort toggle
+          sortBtn.addEventListener('click', () => {
+            sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+            sortLabel.textContent = sortDir === 'desc' ? 'Reciente' : 'Antiguo';
+            sortArrow.textContent = sortDir === 'desc' ? '↓' : '↑';
+            applyFilters();
+          });
+
+          // Clear all filters (status bar button)
+          const resetAll = () => {
+            searchInput.value = '';
+            activeCategory    = '';
+            pillsEl.querySelectorAll('.blog-pill').forEach(p => p.classList.remove('pill-active'));
+            pillsEl.querySelector('[data-cat=""]')?.classList.add('pill-active');
+            applyFilters();
+          };
+          clearBtn.addEventListener('click', resetAll);
+          resetBtn.addEventListener('click', resetAll);
+
+          // Initial render
+          applyFilters();
+        })();
       </script>
 
       <!-- INTEREST / CONTACT FORM -->
