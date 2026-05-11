@@ -992,6 +992,85 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>`;
     };
 
+    // ─── MODULE LOADER ──────────────────────────────────────────────────────────
+    // Single source of truth for fetching a content module, rendering it, and
+    // running its init code.  Used by both the nav click handler AND router() so
+    // that a page refresh can restore wherever the user was.
+    const MODULE_TITLES = {
+        trainer_home:           '',
+        client_inicio:          '',
+        clientes_content:       '',
+        pagos_content:          '',
+        blog_content:           '',
+        programas_content:      'Programas',
+        notifications_content:  'Notificaciones',
+        ajustes_content:        'Ajustes',
+        client_programas:       'Mis programas',
+        client_metricas:        'Métricas',
+        client_nutricion:       'Nutrición',
+        client_equipo:          'Equipo',
+        client_progress:        'Fotos',
+        client_clock:           'Cronómetro',
+    };
+    const RESTORABLE_MODULES = new Set(Object.keys(MODULE_TITLES));
+
+    const loadAndInitModule = async (moduleToLoad) => {
+        if (!RESTORABLE_MODULES.has(moduleToLoad)) return false;
+        try {
+            const res = await fetch(`${moduleToLoad}.html`);
+            if (!res.ok) return false;
+            const html = await res.text();
+            updateContent(MODULE_TITLES[moduleToLoad] ?? '', html);
+
+            if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
+            if (moduleToLoad === 'programas_content') {
+                await Promise.all([fetchProgramsFromDB(), clientsCache.length === 0 ? fetchClientsFromDB() : Promise.resolve()]);
+                renderProgramsList();
+                switchLibraryTab('tab-programas');
+                window.renderExerciseLibrary();
+                window.renderVideoLibrary();
+            }
+            if (moduleToLoad === 'notifications_content') {
+                currentNotifFilter = '7days';
+                fetchAndRenderNotifications('7days');
+                fetchNotificationCount();
+                setTimeout(() => {
+                    const markAllBtn = document.getElementById('mark-all-read-btn');
+                    if (markAllBtn) markAllBtn.addEventListener('click', window.markAllNotificationsRead);
+                    const btn7 = document.getElementById('notif-filter-7days');
+                    const btnU = document.getElementById('notif-filter-unread');
+                    const setActive = (active, inactive) => {
+                        active.classList.add('bg-[#FFDB89]', 'text-[#2C2C2E]', 'shadow');
+                        active.classList.remove('bg-[#030303]/60', 'text-[#FFDB89]', 'border', 'border-[#FFDB89]/30');
+                        inactive.classList.remove('bg-[#FFDB89]', 'text-[#2C2C2E]', 'shadow');
+                        inactive.classList.add('bg-[#030303]/60', 'text-[#FFDB89]', 'border', 'border-[#FFDB89]/30');
+                    };
+                    if (btn7) btn7.addEventListener('click', () => { setActive(btn7, btnU); fetchAndRenderNotifications('7days'); });
+                    if (btnU) btnU.addEventListener('click', () => { setActive(btnU, btn7); fetchAndRenderNotifications('unread'); });
+                }, 100);
+            }
+            if (moduleToLoad === 'pagos_content')     renderPaymentsView();
+            if (moduleToLoad === 'client_metricas')   initClientMetrics();
+            if (moduleToLoad === 'client_equipo')     renderEquipmentOptions();
+            if (moduleToLoad === 'client_nutricion')  initClientNutrition();
+            if (moduleToLoad === 'client_progress')   initClientProgress();
+            if (moduleToLoad === 'client_programas')  initClientPrograms();
+            if (moduleToLoad === 'client_clock')      window.initClockModule();
+            if (moduleToLoad === 'trainer_home')      renderTrainerHome(loadSession().name);
+            if (moduleToLoad === 'client_inicio')     initClientHome();
+            if (moduleToLoad === 'ajustes_content')   initSettings();
+            if (moduleToLoad === 'blog_content')      initBlogAdmin();
+
+            // Persist last position so a refresh lands back here
+            sessionStorage.setItem('fbs_last_module', moduleToLoad);
+            return true;
+        } catch (e) {
+            console.error('loadAndInitModule:', e);
+            return false;
+        }
+    };
+    // ────────────────────────────────────────────────────────────────────────────
+
     const updateDashboard = (welcomeTitle, userName) => {
         const trainerNameSpan = document.getElementById('trainer-name');
         if(trainerNameSpan) trainerNameSpan.textContent = userName;
@@ -1132,7 +1211,17 @@ document.addEventListener('DOMContentLoaded', () => {
             initClientHome();
             updateDashboard('', user.name);
         }
-        setTimeout(updateThemeIcon, 100); 
+        setTimeout(updateThemeIcon, 100);
+
+        // ── Refresh restore ──────────────────────────────────────────────────
+        // If the user was on a non-home section before refreshing, take them
+        // straight back there instead of dropping them on the home page.
+        const _lastMod = sessionStorage.getItem('fbs_last_module');
+        const _homeMod = user.role === 'trainer' ? 'trainer_home' : 'client_inicio';
+        if (_lastMod && RESTORABLE_MODULES.has(_lastMod) && _lastMod !== _homeMod) {
+            await loadAndInitModule(_lastMod);
+        }
+        // ────────────────────────────────────────────────────────────────────
 
         // FORCE PASSWORD CHANGE MODAL
         if (user.role === 'client' && user.isFirstLogin) {
@@ -7584,53 +7673,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (linkText.includes('Cronómetro')) moduleToLoad = 'client_clock';
             
             if (moduleToLoad) {
-                try {
-                    const res = await fetch(`${moduleToLoad}.html`);
-                    if(res.ok) {
-                        const html = await res.text();
-                        const contentTitle = (moduleToLoad === 'trainer_home' || moduleToLoad === 'client_inicio' || moduleToLoad === 'clientes_content' || moduleToLoad === 'pagos_content' || moduleToLoad === 'blog_content') ? '' : linkText;
-                        updateContent(contentTitle, html);
-                        if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
-                        if (moduleToLoad === 'programas_content') {
-                            await Promise.all([fetchProgramsFromDB(), clientsCache.length === 0 ? fetchClientsFromDB() : Promise.resolve()]);
-                            renderProgramsList();
-                            // Wire up the tab bar and pre-render exercise/video library
-                            switchLibraryTab('tab-programas');
-                            window.renderExerciseLibrary();
-                            window.renderVideoLibrary();
-                        }
-                        if (moduleToLoad === 'notifications_content') {
-                            currentNotifFilter = '7days';
-                            fetchAndRenderNotifications('7days');
-                            fetchNotificationCount();
-                            setTimeout(() => {
-                                const markAllBtn = document.getElementById('mark-all-read-btn');
-                                if (markAllBtn) markAllBtn.addEventListener('click', window.markAllNotificationsRead);
-                                const btn7 = document.getElementById('notif-filter-7days');
-                                const btnU = document.getElementById('notif-filter-unread');
-                                const setActive = (active, inactive) => {
-                                    active.classList.add('bg-[#FFDB89]', 'text-[#2C2C2E]', 'shadow');
-                                    active.classList.remove('bg-[#030303]/60', 'text-[#FFDB89]', 'border', 'border-[#FFDB89]/30');
-                                    inactive.classList.remove('bg-[#FFDB89]', 'text-[#2C2C2E]', 'shadow');
-                                    inactive.classList.add('bg-[#030303]/60', 'text-[#FFDB89]', 'border', 'border-[#FFDB89]/30');
-                                };
-                                if (btn7) btn7.addEventListener('click', () => { setActive(btn7, btnU); fetchAndRenderNotifications('7days'); });
-                                if (btnU) btnU.addEventListener('click', () => { setActive(btnU, btn7); fetchAndRenderNotifications('unread'); });
-                            }, 100);
-                        }
-                        if (moduleToLoad === 'pagos_content') renderPaymentsView();
-                        if (moduleToLoad === 'client_metricas') initClientMetrics();
-                        if (moduleToLoad === 'client_equipo') renderEquipmentOptions();
-                        if (moduleToLoad === 'client_nutricion') initClientNutrition();
-                        if (moduleToLoad === 'client_progress') initClientProgress();
-                        if (moduleToLoad === 'client_programas') initClientPrograms();
-                        if (moduleToLoad === 'client_clock') window.initClockModule();
-                        if (moduleToLoad === 'trainer_home') renderTrainerHome(loadSession().name);
-                        if (moduleToLoad === 'client_inicio') initClientHome();
-                        if (moduleToLoad === 'ajustes_content') initSettings();
-                        if (moduleToLoad === 'blog_content') initBlogAdmin();
-                    }
-                } catch(e) { console.error(e); }
+                await loadAndInitModule(moduleToLoad);
             }
             return;
         }
