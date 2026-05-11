@@ -4786,14 +4786,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const addExerciseToBuilder = (data = null) => {
         const list = document.getElementById('exercise-list');
-        const label = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[exerciseCount++ % 26];
+
+        // ── Letter: always derived from current DOM count so deletes reset correctly ──
+        const currentCount = list.querySelectorAll('.exercise-item').length;
+        const label = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[currentCount % 26];
+
+        // ── Superset connector row (inserted between every pair of exercises) ──────
+        if (currentCount > 0) {
+            const isActive = !!(data?.isSuperset);
+            const connector = document.createElement('div');
+            connector.className = 'superset-connector-row flex justify-center items-center py-1 z-10 relative';
+            connector.dataset.active = isActive ? 'true' : 'false';
+            connector.innerHTML = `
+                <button type="button" onclick="window.toggleBuilderSuperset(this)"
+                    class="superset-builder-btn text-[10px] px-3 py-1.5 rounded-full shadow-sm transition font-bold flex items-center gap-1
+                        ${isActive
+                            ? 'bg-[#FFDB89]/15 border border-[#FFDB89]/50 text-[#FFDB89] hover:bg-red-500/10 hover:text-red-400 hover:border-red-400/40'
+                            : 'bg-[#3a3a3c] border border-[#FFDB89]/15 text-[#FFDB89]/40 hover:bg-[#FFDB89]/10 hover:text-[#FFDB89] hover:border-[#FFDB89]/30'}">
+                    <i class="${isActive ? 'fas fa-link' : 'fas fa-link'} text-[9px]"></i>
+                    Superset
+                </button>`;
+            list.appendChild(connector);
+        }
+
         const item = document.createElement('div');
         item.className = "exercise-item bg-[#111113] border border-[#FFDB89]/15 hover:border-[#FFDB89]/30 p-4 rounded-xl group transition-colors duration-200";
         item.innerHTML = `
             <div class="flex gap-3 items-stretch">
                 <div class="flex flex-col justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 self-center">
                     <button class="w-7 h-7 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 flex items-center justify-center transition" title="Reordenar"><i class="fas fa-grip-lines text-xs"></i></button>
-                    <button class="w-7 h-7 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/50 hover:text-red-400 hover:bg-red-500/20 flex items-center justify-center transition" onclick="this.closest('.exercise-item').remove()" title="Eliminar"><i class="fas fa-trash text-xs"></i></button>
+                    <button class="w-7 h-7 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/50 hover:text-red-400 hover:bg-red-500/20 flex items-center justify-center transition" onclick="window.deleteBuilderExercise(this)" title="Eliminar"><i class="fas fa-trash text-xs"></i></button>
                 </div>
                 <div class="pt-2 shrink-0"><span class="text-2xl font-black text-[#FFDB89]/20 exercise-label">${label}</span></div>
                 <div class="flex-grow min-w-0 space-y-3">
@@ -4865,6 +4887,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Expose to global scope so inline onclick in HTML can reach it
     window.addExerciseToBuilder = addExerciseToBuilder;
+
+    // ── Reindex A/B/C… labels after any add or delete ────────────────────────
+    window.reindexBuilderLabels = () => {
+        document.querySelectorAll('#exercise-list .exercise-item').forEach((item, i) => {
+            const labelEl = item.querySelector('.exercise-label');
+            if (labelEl) labelEl.textContent = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[i % 26];
+        });
+    };
+
+    // ── Delete an exercise item AND its adjacent connector row ───────────────
+    window.deleteBuilderExercise = (btn) => {
+        const item = btn.closest('.exercise-item');
+        if (!item) return;
+        const prev = item.previousElementSibling;
+        const next = item.nextElementSibling;
+        // Remove the connector that neighbours this item
+        if (prev?.classList.contains('superset-connector-row')) {
+            prev.remove();
+        } else if (next?.classList.contains('superset-connector-row')) {
+            next.remove();
+        }
+        item.remove();
+        window.reindexBuilderLabels();
+    };
+
+    // ── Toggle the Superset connector button on/off ──────────────────────────
+    window.toggleBuilderSuperset = (btn) => {
+        const row = btn.closest('.superset-connector-row');
+        if (!row) return;
+        const isActive = row.dataset.active === 'true';
+        const nowActive = !isActive;
+        row.dataset.active = nowActive ? 'true' : 'false';
+        // Swap visual classes
+        btn.className = btn.className
+            .replace(/bg-\[#FFDB89\]\/15|bg-\[#3a3a3c\]|border-\[#FFDB89\]\/50|border-\[#FFDB89\]\/15|text-\[#FFDB89\](?:\/40)?|hover:bg-red-500\/10|hover:text-red-400|hover:border-red-400\/40|hover:bg-\[#FFDB89\]\/10|hover:text-\[#FFDB89\]|hover:border-\[#FFDB89\]\/30/g, '').trim();
+        if (nowActive) {
+            btn.classList.add('bg-[#FFDB89]/15', 'border-[#FFDB89]/50', 'text-[#FFDB89]',
+                              'hover:bg-red-500/10', 'hover:text-red-400', 'hover:border-red-400/40');
+        } else {
+            btn.classList.add('bg-[#3a3a3c]', 'border-[#FFDB89]/15', 'text-[#FFDB89]/40',
+                              'hover:bg-[#FFDB89]/10', 'hover:text-[#FFDB89]', 'hover:border-[#FFDB89]/30');
+        }
+    };
+
     // Expose hideExAc so inline onblur/onkeydown in renderRoutineItems can call it
     window._hideExAc = hideExAc;
 
@@ -5527,11 +5593,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveRoutine = async () => {
         const name = document.getElementById('routine-name-input').value;
         const exercises = [];
-        document.querySelectorAll('.exercise-item').forEach(item => {
-            const nameInput = item.querySelector('.exercise-name-input');
-            const statsInput = item.querySelector('.exercise-stats-input');
-            const videoBtn = item.querySelector('.open-video-modal');
-            exercises.push({ name: nameInput.value, stats: statsInput.value, video: videoBtn?.dataset?.video || "" });
+        // Walk every child of exercise-list in DOM order.
+        // Connector rows tell us whether the NEXT exercise is a superset continuation.
+        let nextIsSuperset = false;
+        document.querySelectorAll('#exercise-list > *').forEach(el => {
+            if (el.classList.contains('superset-connector-row')) {
+                nextIsSuperset = el.dataset.active === 'true';
+            } else if (el.classList.contains('exercise-item')) {
+                const nameInput  = el.querySelector('.exercise-name-input');
+                const statsInput = el.querySelector('.exercise-stats-input');
+                const videoBtn   = el.querySelector('.open-video-modal');
+                exercises.push({
+                    name:        nameInput?.value  ?? '',
+                    stats:       statsInput?.value ?? '',
+                    video:       videoBtn?.dataset?.video || '',
+                    isSuperset:  nextIsSuperset,
+                });
+                nextIsSuperset = false;
+            }
         });
 
         if(currentProgramId) {
