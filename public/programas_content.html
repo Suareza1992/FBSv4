@@ -235,9 +235,19 @@
 
         </div>
 
-        <div class="p-6 border-t border-[#FFDB89]/20 flex justify-end gap-4 bg-[#FFDB89]/5 rounded-b-2xl">
-            <button id="cancel-routine-btn-footer" class="px-6 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg hover:bg-[#FFDB89]/20 transition">Cancelar</button>
-            <button id="save-routine-btn" class="px-8 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Guardar rutina</button>
+        <!-- ── History panel — slides in above the footer ─────────────────── -->
+        <div id="routine-history-panel" class="hidden border-t border-[#FFDB89]/15 bg-[#080808] overflow-y-auto" style="max-height:260px"></div>
+
+        <div class="p-4 sm:p-6 border-t border-[#FFDB89]/20 flex items-center justify-between gap-3 bg-[#FFDB89]/5 rounded-b-2xl flex-wrap">
+            <button id="routine-history-btn" onclick="window.openRoutineHistory()"
+                class="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#FFDB89]/15 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:border-[#FFDB89]/35 hover:bg-[#FFDB89]/8 transition text-sm font-bold">
+                <i class="fas fa-clock-rotate-left text-xs"></i>
+                <span>Historial</span>
+            </button>
+            <div class="flex gap-3">
+                <button id="cancel-routine-btn-footer" class="px-6 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg hover:bg-[#FFDB89]/20 transition">Cancelar</button>
+                <button id="save-routine-btn" class="px-8 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Guardar rutina</button>
+            </div>
         </div>
     </div>
 </div>

@@ -4796,6 +4796,8 @@ document.addEventListener('DOMContentLoaded', () => {
         routineCooldownItems = routineCooldownItems.filter(i => i.id !== id);
         renderRoutineItems();
     };
+    // Expose so restoreSnapshot can call it
+    window._renderRoutineItems = renderRoutineItems;
     window.updateRoutineCooldownItem = (id, val) => {
         const item = routineCooldownItems.find(i => i.id === id);
         if (item) item.name = val;
@@ -5404,6 +5406,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!prog.weeks[weekIndex]) prog.weeks[weekIndex] = { weekNumber: weekIndex + 1, days: {} };
         if (!prog.weeks[weekIndex].days) prog.weeks[weekIndex].days = {};
         const existing = prog.weeks[weekIndex].days[String(dayNum)] || {};
+        snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
         prog.weeks[weekIndex].days[String(dayNum)] = { ...existing, name: 'Descanso', isRest: true, exercises: [] };
         try {
             const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
@@ -5423,6 +5426,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!prog.weeks[weekIndex]) prog.weeks[weekIndex] = { weekNumber: weekIndex + 1, days: {} };
         if (!prog.weeks[weekIndex].days) prog.weeks[weekIndex].days = {};
         const existing = prog.weeks[weekIndex].days[String(dayNum)] || {};
+        snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
         prog.weeks[weekIndex].days[String(dayNum)] = { ...existing, name: 'Descanso Activo', isRest: true, isActiveRest: true, exercises: [] };
         try {
             const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
@@ -5679,6 +5683,175 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ROUTINE HISTORY — 24-hour localStorage snapshots
+    // ═══════════════════════════════════════════════════════════════════════════
+    const HISTORY_KEY = 'fbs_routine_history';
+    const HISTORY_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
+    const HISTORY_MAX = 30;                   // max entries kept
+
+    // Call this BEFORE any destructive write to a day (save, rest, active-rest).
+    // Only snapshots if the day has actual content worth preserving.
+    const snapshotDayToHistory = (prog, weekIndex, dayNum) => {
+        const existing = prog?.weeks?.[weekIndex]?.days?.[String(dayNum)];
+        if (!existing) return;
+        const hasContent = existing.exercises?.length > 0
+            || existing.warmup?.trim()
+            || existing.cooldown?.trim()
+            || existing.warmupItems?.length > 0
+            || existing.cooldownItems?.length > 0
+            || existing.isRest;
+        if (!hasContent) return;
+
+        const now  = Date.now();
+        const snap = {
+            id:          `snap_${now}_${Math.random().toString(36).slice(2, 7)}`,
+            savedAt:     now,
+            expiresAt:   now + HISTORY_TTL,
+            label:       `Sem. ${weekIndex + 1} · Día ${dayNum}`,
+            dayName:     existing.name || `Día ${dayNum}`,
+            programName: prog.name || 'Programa',
+            programId:   String(prog._id || prog.id || ''),
+            weekIndex,
+            dayNum,
+            dayData:     JSON.parse(JSON.stringify(existing)), // deep clone
+        };
+
+        let history = [];
+        try { history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) {}
+        history = history.filter(s => s.expiresAt > now); // drop expired
+        history.unshift(snap);                             // newest first
+        if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
+        try {
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        } catch (_) {
+            // localStorage full: halve the list and retry
+            try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, Math.floor(HISTORY_MAX / 2)))); } catch (_2) {}
+        }
+    };
+
+    // Open/toggle the history panel inside the builder modal
+    window.openRoutineHistory = () => {
+        const panel = document.getElementById('routine-history-panel');
+        if (!panel) return;
+
+        if (!panel.classList.contains('hidden')) {
+            panel.classList.add('hidden');
+            return;
+        }
+
+        const now = Date.now();
+        let history = [];
+        try { history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) {}
+        history = history.filter(s => s.expiresAt > now);
+
+        // Show only entries for the current program (or all if no program context)
+        const programFilter = String(currentProgramId || '');
+        const entries = programFilter
+            ? history.filter(s => s.programId === programFilter)
+            : history;
+
+        const timeAgo = (ts) => {
+            const m = Math.floor((now - ts) / 60000);
+            if (m < 1)  return 'ahora mismo';
+            if (m < 60) return `hace ${m} min`;
+            const h = Math.floor(m / 60);
+            return h < 24 ? `hace ${h} h` : `hace ${Math.floor(h / 24)} d`;
+        };
+
+        if (!entries.length) {
+            panel.innerHTML = `
+                <p class="text-center text-[#FFDB89]/40 text-xs py-5 px-6">
+                    No hay versiones guardadas en las últimas 24 horas para este programa.
+                </p>`;
+        } else {
+            panel.innerHTML = `
+                <div class="px-5 py-2.5 flex items-center justify-between border-b border-[#FFDB89]/10 sticky top-0 bg-[#080808]">
+                    <span class="text-[10px] font-bold text-[#FFDB89]/50 uppercase tracking-widest">Versiones recientes — 24 h</span>
+                    <button onclick="window.clearRoutineHistory()"
+                        class="text-[10px] text-red-400/50 hover:text-red-400 transition font-bold py-1 px-2 rounded">
+                        Borrar todo
+                    </button>
+                </div>
+                <div class="divide-y divide-[#FFDB89]/8">
+                    ${entries.map(s => `
+                        <div class="flex items-center gap-3 px-5 py-3">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-[#FFDB89] truncate">${escHtml(s.dayName)}</p>
+                                <p class="text-xs text-[#FFDB89]/40">${escHtml(s.label)} · ${timeAgo(s.savedAt)}</p>
+                            </div>
+                            <button onclick="window.restoreSnapshot('${s.id}')"
+                                class="shrink-0 px-3 py-1.5 bg-[#FFDB89]/10 border border-[#FFDB89]/25 text-[#FFDB89] text-xs font-bold rounded-lg hover:bg-[#FFDB89]/20 transition">
+                                Restaurar
+                            </button>
+                        </div>`).join('')}
+                </div>`;
+        }
+
+        panel.classList.remove('hidden');
+    };
+
+    // Restore a specific snapshot into the builder form fields
+    window.restoreSnapshot = async (snapId) => {
+        let history = [];
+        try { history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) {}
+        const snap = history.find(s => s.id === snapId);
+        if (!snap) { showToast('Versión no encontrada.', 'error'); return; }
+
+        const confirmed = await showConfirm(
+            `¿Restaurar "<strong>${escHtml(snap.dayName)}</strong>"?<br><span class="text-xs opacity-60">Los cambios no guardados en el editor se perderán.</span>`,
+            { confirmLabel: 'Restaurar', cancelLabel: 'Cancelar', danger: false }
+        );
+        if (!confirmed) return;
+
+        const d = snap.dayData;
+        // Restore form fields
+        const nameInput = document.getElementById('routine-name-input');
+        if (nameInput) nameInput.value = d.name || '';
+        const warmupEl = document.getElementById('routine-warmup');
+        if (warmupEl) warmupEl.value = d.warmup || '';
+        const cooldownEl = document.getElementById('routine-cooldown');
+        if (cooldownEl) cooldownEl.value = d.cooldown || '';
+
+        // Restore closure-level state
+        routineWarmupVideo   = d.warmupVideo   || '';
+        routineCooldownVideo = d.cooldownVideo || '';
+        routineWarmupItems   = (d.warmupItems  || []).map(i => ({ ...i }));
+        routineCooldownItems = (d.cooldownItems|| []).map(i => ({ ...i }));
+
+        // Rebuild exercise list
+        const list = document.getElementById('exercise-list');
+        if (list) {
+            list.innerHTML = '';
+            (d.exercises || []).forEach(ex => addExerciseToBuilder(ex));
+        }
+
+        // Re-render warmup/cooldown item rows
+        window._renderRoutineItems?.();
+
+        // Update video button tints
+        const wBtn = document.getElementById('warmup-video-btn');
+        const cBtn = document.getElementById('cooldown-video-btn');
+        if (wBtn) { wBtn.classList.toggle('text-[#FFDB89]', !!routineWarmupVideo); wBtn.classList.toggle('text-[#FFDB89]/40', !routineWarmupVideo); }
+        if (cBtn) { cBtn.classList.toggle('text-[#FFDB89]', !!routineCooldownVideo); cBtn.classList.toggle('text-[#FFDB89]/40', !routineCooldownVideo); }
+
+        // Close panel
+        document.getElementById('routine-history-panel')?.classList.add('hidden');
+        showToast('Versión restaurada. Revisa y guarda cuando estés listo.', 'success');
+    };
+
+    window.clearRoutineHistory = async () => {
+        const ok = await showConfirm('¿Borrar todo el historial de versiones guardadas?', { confirmLabel: 'Borrar todo', danger: true });
+        if (!ok) return;
+        localStorage.removeItem(HISTORY_KEY);
+        const panel = document.getElementById('routine-history-panel');
+        if (panel) {
+            panel.innerHTML = `<p class="text-center text-[#FFDB89]/40 text-xs py-5 px-6">Historial borrado.</p>`;
+        }
+        showToast('Historial borrado.', 'info');
+    };
+    // ═══════════════════════════════════════════════════════════════════════════
+
     const saveRoutine = async () => {
         const name = document.getElementById('routine-name-input').value;
         const exercises = [];
@@ -5711,6 +5884,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!prog.weeks[currentEditingWeekIndex].days) {
                     prog.weeks[currentEditingWeekIndex].days = {};
                 }
+
+                // ── Snapshot BEFORE overwriting ───────────────────────────────
+                snapshotDayToHistory(prog, currentEditingWeekIndex, currentEditingDay);
 
                 // Preserve any existing fields (e.g. nutrition) — only overwrite routine fields
                 const existing = prog.weeks[currentEditingWeekIndex].days[currentEditingDay] || {};
