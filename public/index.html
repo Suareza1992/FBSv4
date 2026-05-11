@@ -116,7 +116,7 @@
             <!-- Stats row -->
             <div class="flex flex-wrap gap-6 pt-2">
               <div>
-                <p class="text-3xl font-black text-fbs-gold">500+</p>
+                <p class="text-3xl font-black text-fbs-gold">200+</p>
                 <p class="text-xs text-fbs-gold/60 uppercase tracking-wider" data-key="heroTrusted">Cambios físicos</p>
               </div>
               <div class="w-px bg-fbs-gold/20"></div>
@@ -337,42 +337,28 @@
           <h2 class="text-3xl md:text-4xl font-black text-center text-white mb-14" data-key="testTitle">Historias de éxito</h2>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
-            <div class="testi-card section-card p-8 rounded-2xl">
+            <!-- Stephanie L. — expandable testimonial -->
+            <div class="testi-card section-card p-8 rounded-2xl flex flex-col">
               <div class="flex gap-0.5 mb-5">
                 <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
                 <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
                 <i class="fas fa-star gold-star text-sm"></i>
               </div>
-              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed" data-key="t1Desc">"Esta plataforma cambió completamente mi enfoque. La estructura es exactamente lo que necesitaba."</p>
-              <div class="flex items-center gap-3">
-                <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=12" alt="">
-                <span class="font-bold text-white text-sm">— Carlos R.</span>
-              </div>
-            </div>
+              <!-- Collapsed: first sentence only -->
+              <div id="testi-stephanie-body" class="testi-body text-fbs-gold/70 italic mb-3 text-sm leading-relaxed">
+                "Desde diciembre de 2024, cuando comenzó su proceso con Ángel, mi vida ha cambiado completamente, de cielo a la tierra. No solo he experimentado una transformación física, sino también un crecimiento enorme a nivel mental y emocional.
 
-            <div class="testi-card section-card p-8 rounded-2xl">
-              <div class="flex gap-0.5 mb-5">
-                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
-                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
-                <i class="fas fa-star gold-star text-sm"></i>
-              </div>
-              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed" data-key="t2Desc">"Finalmente, un lugar donde puedo rastrear mi nutrición y mis levantamientos en un solo panel."</p>
-              <div class="flex items-center gap-3">
-                <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=5" alt="">
-                <span class="font-bold text-white text-sm">— Sarah M.</span>
-              </div>
-            </div>
+Durante años intenté seguir rutinas por mi cuenta sin lograr los resultados que realmente deseaba. Sin embargo, comenzar a trabajar con Ángel fue la clave. Su guía, conocimiento y apoyo han sido fundamentales para alcanzar cambios que antes parecían imposibles.
 
-            <div class="testi-card section-card p-8 rounded-2xl">
-              <div class="flex gap-0.5 mb-5">
-                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
-                <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
-                <i class="fas fa-star gold-star text-sm"></i>
+Hoy en día, no solo me siento mejor físicamente, sino también más segura, disciplinada y enfocada. Este proceso ha sido una transformación integral, y estoy profundamente agradecida por todo lo que Ángel me ha ayudado a lograr."
               </div>
-              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed" data-key="t3Desc">"La función de feedback por video es un cambio total para el coaching remoto."</p>
-              <div class="flex items-center gap-3">
-                <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=8" alt="">
-                <span class="font-bold text-white text-sm">— Javier L.</span>
+              <button class="testi-expand-btn" onclick="toggleTestimonial('stephanie')" aria-expanded="false" aria-controls="testi-stephanie-body">
+                <span class="testi-expand-label">Leer más</span>
+                <i class="fas fa-chevron-down testi-expand-icon"></i>
+              </button>
+              <div class="flex items-center gap-3 mt-auto pt-4">
+                <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=47" alt="Stephanie L.">
+                <span class="font-bold text-white text-sm">— Stephanie L.</span>
               </div>
             </div>
 
@@ -405,6 +391,59 @@
             </div>
 
           </div>
+
+          <style>
+            /* ── Expandable testimonial ──────────────────────────────────────── */
+            .testi-body {
+              display: -webkit-box;
+              -webkit-line-clamp: 4;
+              -webkit-box-orient: vertical;
+              overflow: hidden;
+              max-height: 7em;
+              transition: max-height 0.4s ease;
+              white-space: pre-line;
+            }
+            .testi-body.expanded {
+              display: block;
+              -webkit-line-clamp: unset;
+              max-height: 9999px;
+            }
+            .testi-expand-btn {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              background: none;
+              border: none;
+              cursor: pointer;
+              color: #FFDB89;
+              font-size: 0.72rem;
+              font-weight: 700;
+              letter-spacing: 0.07em;
+              text-transform: uppercase;
+              padding: 10px 0;
+              min-height: 44px;
+              transition: opacity 0.15s;
+              -webkit-tap-highlight-color: transparent;
+            }
+            .testi-expand-btn:active { opacity: 0.7; }
+            @media (hover: hover) { .testi-expand-btn:hover { opacity: 0.75; } }
+            .testi-expand-icon {
+              font-size: 9px;
+              transition: transform 0.3s ease;
+            }
+          </style>
+
+          <script>
+            function toggleTestimonial(id) {
+              const body  = document.getElementById('testi-' + id + '-body');
+              const btn   = body?.parentElement?.querySelector('.testi-expand-btn');
+              if (!body || !btn) return;
+              const expanded = body.classList.toggle('expanded');
+              btn.setAttribute('aria-expanded', String(expanded));
+              btn.querySelector('.testi-expand-label').textContent = expanded ? 'Leer menos' : 'Leer más';
+              btn.querySelector('.testi-expand-icon').style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
+          </script>
         </div>
       </section>
 
