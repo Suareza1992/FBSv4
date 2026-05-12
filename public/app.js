@@ -356,8 +356,8 @@ document.addEventListener('DOMContentLoaded', () => {
         front: [
             { id:'shoulders',   name:'Hombros',
               shapes:[
-                { type:'path', d:'M 130 65 C 140 62 150 68 152 80 C 154 92 150 104 144 108 C 139 112 133 110 130 103 C 127 95 126 82 130 65 Z' },
-                { type:'path', d:'M 50 65 C 40 62 30 68 28 80 C 26 92 30 104 36 108 C 41 112 47 110 50 103 C 53 95 54 82 50 65 Z' }
+                { type:'path', d:'M 138 67 C 148 64 159 70 162 84 C 165 98 161 110 155 114 C 150 118 144 116 141 109 C 138 101 137 88 138 67 Z' },
+                { type:'path', d:'M 42 67 C 32 64 21 70 18 84 C 15 98 19 110 25 114 C 30 118 36 116 39 109 C 42 101 43 88 42 67 Z' }
               ]},
             { id:'chest',       name:'Pecho',
               shapes:[
@@ -366,13 +366,13 @@ document.addEventListener('DOMContentLoaded', () => {
               ]},
             { id:'biceps',      name:'Bíceps',
               shapes:[
-                { type:'path', d:'M 138 102 C 147 99 158 107 160 122 C 163 138 161 155 156 165 C 152 171 145 171 141 165 C 137 158 136 140 137 122 Z' },
-                { type:'path', d:'M 42 102 C 33 99 22 107 20 122 C 17 138 19 155 24 165 C 28 171 35 171 39 165 C 43 158 44 140 43 122 Z' }
+                { type:'path', d:'M 142 104 C 151 101 162 109 164 124 C 167 140 165 158 160 168 C 156 174 149 174 145 168 C 141 161 140 143 141 124 Z' },
+                { type:'path', d:'M 38 104 C 29 101 18 109 16 124 C 13 140 15 158 20 168 C 24 174 31 174 35 168 C 39 161 40 143 39 124 Z' }
               ]},
             { id:'forearms',    name:'Antebrazos',
               shapes:[
-                { type:'path', d:'M 137 168 C 146 165 157 170 159 185 C 162 204 161 228 157 248 C 154 262 150 270 146 268 C 142 266 138 256 137 240 C 135 218 135 192 136 174 Z' },
-                { type:'path', d:'M 43 168 C 34 165 23 170 21 185 C 18 204 19 228 23 248 C 26 262 30 270 34 268 C 38 266 42 256 43 240 C 45 218 45 192 44 174 Z' }
+                { type:'path', d:'M 141 170 C 150 167 161 172 163 187 C 166 206 165 230 161 250 C 158 264 154 272 150 270 C 146 268 142 258 141 242 C 139 220 139 194 140 176 Z' },
+                { type:'path', d:'M 39 170 C 30 167 19 172 17 187 C 14 206 15 230 19 250 C 22 264 26 272 30 270 C 34 268 38 258 39 242 C 41 220 41 194 40 176 Z' }
               ]},
             { id:'abs',         name:'Abdomen',
               shapes:[
@@ -380,8 +380,8 @@ document.addEventListener('DOMContentLoaded', () => {
               ]},
             { id:'obliques',    name:'Oblicuos',
               shapes:[
-                { type:'path', d:'M 109 150 C 116 147 122 154 124 168 C 126 182 125 200 122 216 C 120 228 117 240 113 246 C 109 250 107 246 107 236 C 107 218 108 198 109 180 Z' },
-                { type:'path', d:'M 71 150 C 64 147 58 154 56 168 C 54 182 55 200 58 216 C 60 228 63 240 67 246 C 71 250 73 246 73 236 C 73 218 72 198 71 180 Z' }
+                { type:'path', d:'M 109 150 C 116 147 120 155 120 169 C 121 183 120 201 116 217 C 114 229 111 241 108 247 C 105 251 104 247 104 237 C 104 219 106 199 108 181 Z' },
+                { type:'path', d:'M 71 150 C 64 147 60 155 60 169 C 59 183 60 201 64 217 C 66 229 69 241 72 247 C 75 251 76 247 76 237 C 76 219 74 199 72 181 Z' }
               ]},
             { id:'hip_flexors', name:'Flexores de cadera',
               shapes:[
@@ -401,12 +401,12 @@ document.addEventListener('DOMContentLoaded', () => {
         back: [
             { id:'traps',       name:'Trapecio',
               shapes:[
-                { type:'path', d:'M 90 65 C 108 60 122 67 125 82 C 128 96 122 110 112 118 C 105 124 97 126 90 125 C 83 126 75 124 68 118 C 58 110 52 96 55 82 C 58 67 72 60 90 65 Z' }
+                { type:'path', d:'M 90 65 C 110 59 126 67 130 83 C 133 97 127 111 116 119 C 109 125 100 128 90 127 C 80 128 71 125 64 119 C 53 111 47 97 50 83 C 54 67 70 59 90 65 Z' }
               ]},
             { id:'rear_delts',  name:'Deltoides post.',
               shapes:[
-                { type:'path', d:'M 130 65 C 140 62 150 68 152 80 C 154 90 150 101 144 105 C 139 109 133 107 130 100 C 127 92 126 80 130 65 Z' },
-                { type:'path', d:'M 50 65 C 40 62 30 68 28 80 C 26 90 30 101 36 105 C 41 109 47 107 50 100 C 53 92 54 80 50 65 Z' }
+                { type:'path', d:'M 138 67 C 148 64 158 70 160 83 C 162 93 158 104 152 108 C 147 112 141 110 138 103 C 135 95 134 83 138 67 Z' },
+                { type:'path', d:'M 42 67 C 32 64 22 70 20 83 C 18 93 22 104 28 108 C 33 112 39 110 42 103 C 45 95 46 83 42 67 Z' }
               ]},
             { id:'upper_back',  name:'Espalda alta',
               shapes:[
@@ -414,13 +414,13 @@ document.addEventListener('DOMContentLoaded', () => {
               ]},
             { id:'lats',        name:'Dorsales',
               shapes:[
-                { type:'path', d:'M 113 122 C 124 118 132 128 132 144 C 132 162 130 180 126 196 C 122 208 118 215 114 218 C 110 220 107 216 107 206 C 106 190 106 170 107 152 C 108 136 110 126 113 122 Z' },
-                { type:'path', d:'M 67 122 C 56 118 48 128 48 144 C 48 162 50 180 54 196 C 58 208 62 215 66 218 C 70 220 73 216 73 206 C 74 190 74 170 73 152 C 72 136 70 126 67 122 Z' }
+                { type:'path', d:'M 118 124 C 130 120 140 130 141 146 C 141 164 139 182 135 198 C 131 210 127 217 122 220 C 118 222 115 218 114 208 C 113 192 113 172 114 154 C 115 138 116 128 118 124 Z' },
+                { type:'path', d:'M 62 124 C 50 120 40 130 39 146 C 39 164 41 182 45 198 C 49 210 53 217 58 220 C 62 222 65 218 66 208 C 67 192 67 172 66 154 C 65 138 64 128 62 124 Z' }
               ]},
             { id:'triceps',     name:'Tríceps',
               shapes:[
-                { type:'path', d:'M 138 92 C 148 89 159 98 161 115 C 163 132 161 152 157 167 C 153 178 147 180 142 176 C 137 171 136 158 136 140 C 135 120 136 103 138 92 Z' },
-                { type:'path', d:'M 42 92 C 32 89 21 98 19 115 C 17 132 19 152 23 167 C 27 178 33 180 38 176 C 43 171 44 158 44 140 C 45 120 44 103 42 92 Z' }
+                { type:'path', d:'M 142 92 C 153 89 164 98 166 115 C 168 132 166 152 162 167 C 158 178 152 180 147 176 C 142 171 141 158 141 140 C 140 120 141 103 142 92 Z' },
+                { type:'path', d:'M 38 92 C 27 89 16 98 14 115 C 12 132 14 152 18 167 C 22 178 28 180 33 176 C 38 171 39 158 39 140 C 40 120 39 103 38 92 Z' }
               ]},
             { id:'lower_back',  name:'Lumbar',
               shapes:[
@@ -443,8 +443,8 @@ document.addEventListener('DOMContentLoaded', () => {
               ]},
         ]
     };
-    // 4-subpath body: head+neck · torso+legs · right arm · left arm
-    const BODY_PATH = 'M 90 2 C 101 2 112 12 112 24 C 112 38 104 48 97 54 L 97 64 L 83 64 L 83 54 C 76 48 68 38 68 24 C 68 12 79 2 90 2 Z M 50 64 C 87 58 93 58 130 64 C 133 74 134 92 133 114 C 132 140 129 168 126 192 C 123 212 120 230 117 248 C 115 260 116 272 120 283 C 123 293 121 303 119 310 C 117 322 116 346 115 370 C 114 396 113 422 112 446 C 111 466 110 488 110 504 L 115 519 L 115 525 L 97 525 L 96 513 C 96 493 95 474 95 454 C 94 428 93 402 92 376 C 91 350 91 330 91 318 L 91 310 L 89 310 L 89 318 C 89 330 89 350 88 376 C 87 402 86 428 85 454 C 85 474 84 493 84 513 L 83 525 L 65 525 L 65 519 L 70 504 C 70 488 69 466 68 446 C 67 422 66 396 65 370 C 64 346 63 322 61 310 C 59 303 57 293 60 283 C 64 272 65 260 63 248 C 60 230 57 212 54 192 C 51 168 48 140 47 114 C 46 92 47 74 50 64 Z M 138 64 C 152 66 162 84 162 122 C 162 163 160 203 157 243 C 154 268 152 284 150 296 C 148 310 143 320 139 318 C 135 315 133 305 134 295 C 135 279 136 263 136 243 C 136 203 137 163 137 122 C 137 86 138 72 138 64 Z M 42 64 C 28 66 18 84 18 122 C 18 163 20 203 23 243 C 26 268 28 284 30 296 C 32 310 37 320 41 318 C 45 315 47 305 46 295 C 45 279 44 263 44 243 C 44 203 43 163 43 122 C 43 86 42 72 42 64 Z';
+    // 4-subpath body: head+neck · torso+legs · right arm · left arm  (athletic V-taper: shoulder 96px, lats 108px, waist 52px)
+    const BODY_PATH = 'M 90 2 C 104 2 116 12 116 26 C 116 42 106 54 97 59 L 97 67 L 83 67 L 83 59 C 74 54 64 42 64 26 C 64 12 76 2 90 2 Z M 42 67 C 62 58 78 62 90 62 C 102 62 118 58 138 67 C 143 82 143 104 142 124 C 141 144 138 162 134 178 C 128 196 118 206 114 220 C 110 232 110 246 112 260 C 114 274 118 286 118 300 C 118 316 118 340 117 364 C 116 390 114 416 112 440 C 111 458 110 476 109 492 L 114 522 L 114 526 L 96 526 L 95 512 C 94 494 94 474 94 450 C 93 426 92 400 91 374 C 91 348 91 326 91 314 L 91 308 L 89 308 L 89 314 C 89 326 89 348 88 374 C 87 400 86 426 85 450 C 85 474 84 494 83 512 L 84 526 L 66 526 L 66 522 C 65 476 63 458 61 440 C 59 416 57 390 56 364 C 55 340 54 316 58 300 C 60 286 62 274 64 260 C 66 246 66 232 62 220 C 58 206 48 196 42 178 C 38 162 35 144 34 124 C 33 104 33 82 42 67 Z M 140 67 C 156 70 168 90 168 132 C 168 172 166 212 162 252 C 159 274 156 290 153 304 C 150 318 145 326 141 322 C 137 318 136 308 137 298 C 138 282 139 266 140 248 C 140 208 140 168 140 128 C 140 90 140 74 140 67 Z M 40 67 C 24 70 12 90 12 132 C 12 172 14 212 18 252 C 21 274 24 290 27 304 C 30 318 35 326 39 322 C 43 318 44 308 43 298 C 42 282 41 266 40 248 C 40 208 40 168 40 128 C 40 90 40 74 40 67 Z';
 
     const initSettings = async () => {
         try {
@@ -9837,19 +9837,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 let searchTimer   = null;
 
                 // ── Show recent foods (from history) ──
-                const showRecentFoods = () => {
-                    if (!foodHistory.length) {
-                        resultsDiv.innerHTML = `
-                            <p class="text-xs text-[#FFDB89]/35 text-center py-4">Escribe para buscar alimentos en la base de datos.</p>
-                            <div class="text-center pb-2">
-                                <button class="add-manual-cta text-xs font-bold text-[#FFDB89]/60 border border-[#FFDB89]/20 hover:border-[#FFDB89]/50 hover:bg-[#FFDB89]/8 hover:text-[#FFDB89] px-4 py-2 rounded-xl transition">
-                                    <i class="fas fa-plus-circle mr-1.5"></i>Añadir manualmente
-                                </button>
-                            </div>`;
-                        return;
-                    }
+                const showRecentFoods = async () => {
+                    // Build recent section HTML (personal history)
                     const recent = foodHistory.slice(-10).reverse();
-                    resultsDiv.innerHTML = `
+                    const recentHTML = recent.length ? `
                         <p class="text-[10px] text-[#FFDB89]/30 uppercase tracking-wider font-bold px-1 pb-1">Usados recientemente</p>
                         ${recent.map(f => `
                         <button class="history-food-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition"
@@ -9859,13 +9850,20 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="text-sm font-black text-[#FFDB89] shrink-0">${f.calories||0} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
                             </div>
                             <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">P:${f.protein||0}g · C:${f.carbs||0}g · G:${f.fat||0}g</p>
-                        </button>`).join('')}
+                        </button>`).join('')}` : '';
+
+                    // Show skeleton while fetching popular foods
+                    resultsDiv.innerHTML = `
+                        ${recentHTML || '<p class="text-xs text-[#FFDB89]/35 text-center py-3">Escribe para buscar en la base de datos.</p>'}
+                        <p class="text-[10px] text-[#FFDB89]/30 uppercase tracking-wider font-bold px-1 pb-1 pt-3 border-t border-[#FFDB89]/10">Populares en la plataforma</p>
+                        <p class="text-xs text-[#FFDB89]/25 text-center py-2 animate-pulse popular-loading">Cargando...</p>
                         <div class="text-center pt-1 pb-1">
                             <button class="add-manual-cta text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] border border-[#FFDB89]/20 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/8 px-4 py-2 rounded-xl transition">
                                 <i class="fas fa-plus-circle mr-1.5"></i>¿No encuentras tu alimento? Añadir manualmente
                             </button>
                         </div>`;
 
+                    // Wire up history item clicks
                     resultsDiv.querySelectorAll('.history-food-item').forEach(btn => {
                         btn.addEventListener('click', () => {
                             const cal  = parseFloat(btn.dataset.cal)  || 0;
@@ -9882,6 +9880,49 @@ document.addEventListener('DOMContentLoaded', () => {
                             syncServingDisplay();
                         });
                     });
+
+                    // Fetch popular community foods in the background
+                    try {
+                        const r = await apiFetch('/api/food-library?limit=12&sort=timesUsed');
+                        const popular = r.ok ? await r.json() : [];
+                        const loadingEl = resultsDiv.querySelector('.popular-loading');
+                        if (loadingEl) {
+                            if (popular.length) {
+                                loadingEl.outerHTML = popular.map(f => `
+                                <button class="pop-food-item w-full text-left p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/10 rounded-xl transition flex items-center gap-2"
+                                    data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}">
+                                    <i class="fas fa-fire-alt text-[#FFDB89]/30 text-[10px] shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-white/80 leading-tight truncate">${(f.name||'').replace(/</g,'&lt;')}</p>
+                                        <p class="text-[10px] text-[#FFDB89]/35">P:${f.protein||0}g · C:${f.carbs||0}g · G:${f.fat||0}g</p>
+                                    </div>
+                                    <span class="text-xs font-black text-[#FFDB89]/70 shrink-0">${f.calories||0}<span class="text-[9px] font-normal text-[#FFDB89]/30"> cal</span></span>
+                                </button>`).join('');
+                                // Wire up popular food clicks
+                                resultsDiv.querySelectorAll('.pop-food-item').forEach(btn => {
+                                    btn.addEventListener('click', () => {
+                                        const cal  = parseFloat(btn.dataset.cal)  || 0;
+                                        const pro  = parseFloat(btn.dataset.pro)  || 0;
+                                        const carb = parseFloat(btn.dataset.carb) || 0;
+                                        const fat  = parseFloat(btn.dataset.fat)  || 0;
+                                        baseNutrients = {
+                                            name: btn.dataset.name,
+                                            calories_100g: cal, protein_100g: pro,
+                                            carbs_100g: carb, fat_100g: fat
+                                        };
+                                        servingG = 100;
+                                        setPreview({ name: btn.dataset.name, calories: cal, protein: pro, carbs: carb, fat: fat }, true);
+                                        syncServingDisplay();
+                                    });
+                                });
+                            } else {
+                                loadingEl.remove();
+                            }
+                        }
+                    } catch (_) {
+                        const loadingEl = resultsDiv.querySelector('.popular-loading');
+                        if (loadingEl) loadingEl.remove();
+                    }
                 };
 
                 // ── Render the API results list ──
@@ -9898,9 +9939,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     resultsDiv.innerHTML = products.map((p, i) => {
                         const brand = p.brand ? `<span class="text-[#FFDB89]/40">${p.brand} · </span>` : '';
+                        const communityBadge = p.fromLibrary
+                            ? `<span class="text-[8px] font-bold text-green-400/70 uppercase tracking-wider border border-green-400/25 rounded px-1 py-px shrink-0">comunidad</span>`
+                            : '';
                         return `<button class="off-result-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition" data-idx="${i}">
                             <div class="flex justify-between items-center gap-2">
-                                <p class="text-sm font-semibold text-white leading-tight">${p.name}</p>
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <p class="text-sm font-semibold text-white leading-tight truncate">${p.name}</p>
+                                    ${communityBadge}
+                                </div>
                                 <span class="text-sm font-black text-[#FFDB89] shrink-0">${p.cal100} <span class="text-[10px] font-normal text-[#FFDB89]/40">kcal</span></span>
                             </div>
                             <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">${brand}P:${p.p100}g · C:${p.c100}g · G:${p.f100}g</p>

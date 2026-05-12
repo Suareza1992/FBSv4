@@ -1925,48 +1925,90 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
     const q = (req.query.q || '').trim();
     if (!q || q.length < 2) return res.json([]);
 
+    // 1 ── Curated local DB (instant, no network)
     const localMatches = searchLocalFoods(q);
+    const seenNames    = new Set(localMatches.map(f => normalizeStr(f.name)));
 
-    // If local database has good coverage, return immediately — no external API needed
-    if (localMatches.length >= 4) {
-        return res.json(localMatches);
+    // 2 ── Shared community library (foods logged by platform users)
+    let libraryMatches = [];
+    try {
+        const normQ   = normalizeStr(q);
+        const terms   = normQ.split(/\s+/).filter(Boolean);
+        const pattern = terms.map(t => `(?=.*${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`).join('');
+        const libDocs = await FoodLibrary.find({ nameNorm: new RegExp(pattern, 'i') })
+            .sort({ timesUsed: -1 }).limit(8);
+        libraryMatches = libDocs
+            .filter(f => !seenNames.has(normalizeStr(f.name)))
+            .map(f => ({
+                name: f.name, brand: null, serving: 100,
+                cal100: f.calories || 0, p100: f.protein || 0,
+                c100: f.carbs || 0, f100: f.fat || 0,
+                fromLibrary: true
+            }));
+        libraryMatches.forEach(f => seenNames.add(normalizeStr(f.name)));
+    } catch (_) { /* non-blocking */ }
+
+    // If local + library gives solid coverage, skip external APIs
+    if (localMatches.length + libraryMatches.length >= 5) {
+        return res.json([...localMatches, ...libraryMatches].slice(0, 14));
     }
 
-    // Supplement with USDA FoodData Central for English brand/food names
+    // 3 ── Open Food Facts (free, no API key, 3 M+ products, bilingual)
+    try {
+        const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&fields=product_name,nutriments,brands&page_size=14&lc=es&action=process`;
+        const r = await fetch(offUrl, { signal: AbortSignal.timeout(7000) });
+        const data = await r.json();
+        const offResults = (data.products || [])
+            .filter(p => p.product_name?.trim() &&
+                (p.nutriments?.['energy-kcal_100g'] || p.nutriments?.['energy-kcal']))
+            .map(p => ({
+                name:    p.product_name.trim(),
+                brand:   p.brands?.split(',')[0]?.trim() || null,
+                serving: 100,
+                cal100:  Math.round(p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal'] || 0),
+                p100:    parseFloat((p.nutriments.proteins_100g        || 0).toFixed(1)),
+                c100:    parseFloat((p.nutriments.carbohydrates_100g   || 0).toFixed(1)),
+                f100:    parseFloat((p.nutriments.fat_100g             || 0).toFixed(1)),
+            }))
+            .filter(f => f.cal100 > 0 && !seenNames.has(normalizeStr(f.name)));
+        offResults.forEach(f => seenNames.add(normalizeStr(f.name)));
+
+        const merged = [...localMatches, ...libraryMatches, ...offResults.slice(0, 10)].slice(0, 16);
+        if (merged.length) return res.json(merged);
+    } catch (e) {
+        console.error('Open Food Facts error:', e.message);
+    }
+
+    // 4 ── USDA FoodData Central (last resort, needs API key, broader datatypes)
     try {
         const usdaKey = process.env.USDA_API_KEY;
-        if (!usdaKey) throw new Error('USDA_API_KEY is not set in environment variables.');
-        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaKey}&query=${encodeURIComponent(q)}&pageSize=10&dataType=Foundation,SR%20Legacy&nutrients=1008,1003,1005,1004`;
+        if (!usdaKey) throw new Error('No USDA_API_KEY');
+        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaKey}&query=${encodeURIComponent(q)}&pageSize=12&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS),Branded&nutrients=1008,1003,1005,1004`;
         const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
         const data = await r.json();
-        const apiResults = (data.foods || [])
+        const usdaResults = (data.foods || [])
             .filter(f => f.description?.trim())
             .map(f => {
-                const get = (id) => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
+                const get = id => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
                 return {
-                    name:    f.description,
-                    brand:   null,
-                    serving: 100,
-                    cal100:  Math.round(get(1008)),
-                    p100:    parseFloat(get(1003).toFixed(1)),
-                    c100:    parseFloat(get(1005).toFixed(1)),
-                    f100:    parseFloat(get(1004).toFixed(1)),
+                    name: f.description, brand: f.brandOwner || null, serving: 100,
+                    cal100: Math.round(get(1008)),
+                    p100:   parseFloat(get(1003).toFixed(1)),
+                    c100:   parseFloat(get(1005).toFixed(1)),
+                    f100:   parseFloat(get(1004).toFixed(1)),
                 };
             })
-            .filter(f => f.cal100 > 0)
-            .slice(0, 10);
+            .filter(f => f.cal100 > 0 && !seenNames.has(normalizeStr(f.name)));
 
-        const localNames = new Set(localMatches.map(f => normalizeStr(f.name)));
-        const merged = [
-            ...localMatches,
-            ...apiResults.filter(f => !localNames.has(normalizeStr(f.name)))
-        ].slice(0, 12);
-        res.json(merged);
+        return res.json([...localMatches, ...libraryMatches, ...usdaResults.slice(0, 8)].slice(0, 16));
     } catch (e) {
-        console.error('Food search API error:', e.message, '— returning local results only');
-        if (localMatches.length > 0) return res.json(localMatches);
-        res.status(502).json({ error: 'Food search unavailable. Use manual entry.' });
+        console.error('USDA error:', e.message);
     }
+
+    // Final fallback
+    const fallback = [...localMatches, ...libraryMatches];
+    if (fallback.length) return res.json(fallback);
+    res.status(502).json({ error: 'Food search unavailable. Use manual entry.' });
 });
 
 // ==========================================================================
