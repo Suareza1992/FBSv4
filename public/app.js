@@ -5486,7 +5486,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (dayData) {
                     try {
-                        if (dayData.isRest || dayData.isActiveRest) {
+                        // Exercises take priority — a day with exercises is always a training day,
+                        // even if leftover isRest/isActiveRest flags exist from a previous state.
+                        if ((dayData.isRest || dayData.isActiveRest) && !dayData.exercises?.length) {
                             // Push rest / active rest day
                             const restTitle = dayData.isActiveRest ? 'Descanso Activo' : 'Descanso';
                             const restType  = dayData.isActiveRest ? 'active_rest' : 'rest';
@@ -5937,7 +5939,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     cooldownVideo: routineCooldownVideo,
                     warmupItems:   routineWarmupItems.map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
                     cooldownItems: routineCooldownItems.map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
-                    isRest:        false
+                    isRest:        false,
+                    isActiveRest:  false   // clear leftover rest flag when exercises are saved
                 };
 
                 prog.weeks[currentEditingWeekIndex].days[currentEditingDay] = dayData;
