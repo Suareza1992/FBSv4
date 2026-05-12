@@ -351,28 +351,96 @@ document.addEventListener('DOMContentLoaded', () => {
     // =============================================================================
 
     // ── Muscle group definitions for injury map ───────────────────────────────
+    // ── Anatomical SVG-path muscle definitions (viewBox 0 0 180 535) ─────────
     const MUSCLE_DEFS = {
         front: [
-            { id:'shoulders',   name:'Hombros',            shapes:[{type:'ellipse',cx:150,cy:86,rx:12,ry:10},{type:'ellipse',cx:30,cy:86,rx:12,ry:10}] },
-            { id:'chest',       name:'Pecho',              shapes:[{type:'ellipse',cx:90,cy:115,rx:27,ry:21}] },
-            { id:'biceps',      name:'Bíceps',             shapes:[{type:'ellipse',cx:150,cy:140,rx:10,ry:20},{type:'ellipse',cx:30,cy:140,rx:10,ry:20}] },
-            { id:'forearms',    name:'Antebrazos',         shapes:[{type:'ellipse',cx:148,cy:200,rx:9,ry:16},{type:'ellipse',cx:32,cy:200,rx:9,ry:16}] },
-            { id:'abs',         name:'Abdomen',            shapes:[{type:'ellipse',cx:90,cy:175,rx:20,ry:32}] },
-            { id:'obliques',    name:'Oblicuos',           shapes:[{type:'ellipse',cx:68,cy:175,rx:9,ry:28},{type:'ellipse',cx:112,cy:175,rx:9,ry:28}] },
-            { id:'hip_flexors', name:'Flexores de cadera', shapes:[{type:'ellipse',cx:90,cy:286,rx:22,ry:12}] },
-            { id:'quads',       name:'Cuádriceps',         shapes:[{type:'ellipse',cx:76,cy:370,rx:14,ry:50},{type:'ellipse',cx:103,cy:370,rx:14,ry:50}] },
-            { id:'tibialis',    name:'Tibiales',           shapes:[{type:'ellipse',cx:77,cy:460,rx:9,ry:26},{type:'ellipse',cx:103,cy:460,rx:9,ry:26}] },
+            { id:'shoulders',   name:'Hombros',
+              shapes:[
+                { type:'path', d:'M 130 65 C 140 62 150 68 152 80 C 154 92 150 104 144 108 C 139 112 133 110 130 103 C 127 95 126 82 130 65 Z' },
+                { type:'path', d:'M 50 65 C 40 62 30 68 28 80 C 26 92 30 104 36 108 C 41 112 47 110 50 103 C 53 95 54 82 50 65 Z' }
+              ]},
+            { id:'chest',       name:'Pecho',
+              shapes:[
+                { type:'path', d:'M 91 72 C 104 68 118 74 123 88 C 128 103 126 122 118 134 C 113 141 104 145 97 143 C 93 141 91 136 91 128 Z' },
+                { type:'path', d:'M 89 72 C 76 68 62 74 57 88 C 52 103 54 122 62 134 C 67 141 76 145 83 143 C 87 141 89 136 89 128 Z' }
+              ]},
+            { id:'biceps',      name:'Bíceps',
+              shapes:[
+                { type:'path', d:'M 138 102 C 147 99 158 107 160 122 C 163 138 161 155 156 165 C 152 171 145 171 141 165 C 137 158 136 140 137 122 Z' },
+                { type:'path', d:'M 42 102 C 33 99 22 107 20 122 C 17 138 19 155 24 165 C 28 171 35 171 39 165 C 43 158 44 140 43 122 Z' }
+              ]},
+            { id:'forearms',    name:'Antebrazos',
+              shapes:[
+                { type:'path', d:'M 137 168 C 146 165 157 170 159 185 C 162 204 161 228 157 248 C 154 262 150 270 146 268 C 142 266 138 256 137 240 C 135 218 135 192 136 174 Z' },
+                { type:'path', d:'M 43 168 C 34 165 23 170 21 185 C 18 204 19 228 23 248 C 26 262 30 270 34 268 C 38 266 42 256 43 240 C 45 218 45 192 44 174 Z' }
+              ]},
+            { id:'abs',         name:'Abdomen',
+              shapes:[
+                { type:'path', d:'M 78 146 C 84 142 96 142 102 146 C 110 152 110 168 108 185 C 107 198 105 212 102 224 C 100 233 96 242 90 244 C 84 242 80 233 78 224 C 75 212 73 198 72 185 C 70 168 70 152 78 146 Z' }
+              ]},
+            { id:'obliques',    name:'Oblicuos',
+              shapes:[
+                { type:'path', d:'M 109 150 C 116 147 122 154 124 168 C 126 182 125 200 122 216 C 120 228 117 240 113 246 C 109 250 107 246 107 236 C 107 218 108 198 109 180 Z' },
+                { type:'path', d:'M 71 150 C 64 147 58 154 56 168 C 54 182 55 200 58 216 C 60 228 63 240 67 246 C 71 250 73 246 73 236 C 73 218 72 198 71 180 Z' }
+              ]},
+            { id:'hip_flexors', name:'Flexores de cadera',
+              shapes:[
+                { type:'path', d:'M 79 248 C 86 244 94 244 101 248 C 109 254 112 268 114 282 C 116 296 114 310 107 316 C 102 320 94 322 90 320 C 86 318 78 316 72 310 C 66 304 65 290 67 276 C 70 262 73 252 79 248 Z' }
+              ]},
+            { id:'quads',       name:'Cuádriceps',
+              shapes:[
+                { type:'path', d:'M 92 322 C 100 316 114 318 118 326 C 123 335 122 355 120 375 C 118 396 116 416 113 432 C 111 442 108 448 104 450 C 100 451 97 448 95 440 C 93 424 92 400 92 376 C 92 354 92 336 92 322 Z' },
+                { type:'path', d:'M 88 322 C 80 316 66 318 62 326 C 57 335 58 355 60 375 C 62 396 64 416 67 432 C 69 442 72 448 76 450 C 80 451 83 448 85 440 C 87 424 88 400 88 376 C 88 354 88 336 88 322 Z' }
+              ]},
+            { id:'tibialis',    name:'Tibiales',
+              shapes:[
+                { type:'path', d:'M 96 434 C 102 430 110 434 112 445 C 114 458 113 473 111 486 C 109 498 107 506 103 508 C 100 509 97 505 96 495 C 95 480 94 462 95 448 Z' },
+                { type:'path', d:'M 84 434 C 78 430 70 434 68 445 C 66 458 67 473 69 486 C 71 498 73 506 77 508 C 80 509 83 505 84 495 C 85 480 86 462 85 448 Z' }
+              ]},
         ],
         back: [
-            { id:'traps',       name:'Trapecio',           shapes:[{type:'ellipse',cx:90,cy:90,rx:26,ry:17}] },
-            { id:'rear_delts',  name:'Deltoides post.',    shapes:[{type:'ellipse',cx:30,cy:86,rx:12,ry:10},{type:'ellipse',cx:150,cy:86,rx:12,ry:10}] },
-            { id:'upper_back',  name:'Espalda alta',       shapes:[{type:'ellipse',cx:90,cy:126,rx:22,ry:19}] },
-            { id:'lats',        name:'Dorsales',           shapes:[{type:'ellipse',cx:62,cy:162,rx:13,ry:32},{type:'ellipse',cx:118,cy:162,rx:13,ry:32}] },
-            { id:'triceps',     name:'Tríceps',            shapes:[{type:'ellipse',cx:30,cy:148,rx:10,ry:22},{type:'ellipse',cx:150,cy:148,rx:10,ry:22}] },
-            { id:'lower_back',  name:'Lumbar',             shapes:[{type:'ellipse',cx:90,cy:200,rx:22,ry:14}] },
-            { id:'glutes',      name:'Glúteos',            shapes:[{type:'ellipse',cx:74,cy:278,rx:22,ry:22},{type:'ellipse',cx:106,cy:278,rx:22,ry:22}] },
-            { id:'hamstrings',  name:'Isquiotibiales',     shapes:[{type:'ellipse',cx:76,cy:370,rx:14,ry:50},{type:'ellipse',cx:103,cy:370,rx:14,ry:50}] },
-            { id:'calves',      name:'Pantorrillas',       shapes:[{type:'ellipse',cx:77,cy:452,rx:10,ry:28},{type:'ellipse',cx:103,cy:452,rx:10,ry:28}] },
+            { id:'traps',       name:'Trapecio',
+              shapes:[
+                { type:'path', d:'M 90 65 C 108 60 122 67 125 82 C 128 96 122 110 112 118 C 105 124 97 126 90 125 C 83 126 75 124 68 118 C 58 110 52 96 55 82 C 58 67 72 60 90 65 Z' }
+              ]},
+            { id:'rear_delts',  name:'Deltoides post.',
+              shapes:[
+                { type:'path', d:'M 130 65 C 140 62 150 68 152 80 C 154 90 150 101 144 105 C 139 109 133 107 130 100 C 127 92 126 80 130 65 Z' },
+                { type:'path', d:'M 50 65 C 40 62 30 68 28 80 C 26 90 30 101 36 105 C 41 109 47 107 50 100 C 53 92 54 80 50 65 Z' }
+              ]},
+            { id:'upper_back',  name:'Espalda alta',
+              shapes:[
+                { type:'path', d:'M 76 104 C 83 99 97 99 104 104 C 112 110 114 124 112 138 C 110 148 104 154 90 156 C 76 154 70 148 68 138 C 66 124 68 110 76 104 Z' }
+              ]},
+            { id:'lats',        name:'Dorsales',
+              shapes:[
+                { type:'path', d:'M 113 122 C 124 118 132 128 132 144 C 132 162 130 180 126 196 C 122 208 118 215 114 218 C 110 220 107 216 107 206 C 106 190 106 170 107 152 C 108 136 110 126 113 122 Z' },
+                { type:'path', d:'M 67 122 C 56 118 48 128 48 144 C 48 162 50 180 54 196 C 58 208 62 215 66 218 C 70 220 73 216 73 206 C 74 190 74 170 73 152 C 72 136 70 126 67 122 Z' }
+              ]},
+            { id:'triceps',     name:'Tríceps',
+              shapes:[
+                { type:'path', d:'M 138 92 C 148 89 159 98 161 115 C 163 132 161 152 157 167 C 153 178 147 180 142 176 C 137 171 136 158 136 140 C 135 120 136 103 138 92 Z' },
+                { type:'path', d:'M 42 92 C 32 89 21 98 19 115 C 17 132 19 152 23 167 C 27 178 33 180 38 176 C 43 171 44 158 44 140 C 45 120 44 103 42 92 Z' }
+              ]},
+            { id:'lower_back',  name:'Lumbar',
+              shapes:[
+                { type:'path', d:'M 79 178 C 85 174 95 174 101 178 C 109 184 109 200 106 214 C 104 224 99 232 90 234 C 81 232 76 224 74 214 C 71 200 71 184 79 178 Z' }
+              ]},
+            { id:'glutes',      name:'Glúteos',
+              shapes:[
+                { type:'path', d:'M 91 242 C 102 237 116 242 121 255 C 126 268 124 284 120 298 C 117 308 112 315 105 316 C 99 317 94 313 92 304 C 90 290 90 270 91 256 Z' },
+                { type:'path', d:'M 89 242 C 78 237 64 242 59 255 C 54 268 56 284 60 298 C 63 308 68 315 75 316 C 81 317 86 313 88 304 C 90 290 90 270 89 256 Z' }
+              ]},
+            { id:'hamstrings',  name:'Isquiotibiales',
+              shapes:[
+                { type:'path', d:'M 92 318 C 100 313 114 314 118 323 C 123 332 122 352 120 373 C 118 394 116 414 113 430 C 111 441 108 447 104 449 C 100 450 96 448 94 439 C 92 424 92 402 92 380 C 92 356 92 336 92 318 Z' },
+                { type:'path', d:'M 88 318 C 80 313 66 314 62 323 C 57 332 58 352 60 373 C 62 394 64 414 67 430 C 69 441 72 447 76 449 C 80 450 84 448 86 439 C 88 424 88 402 88 380 C 88 356 88 336 88 318 Z' }
+              ]},
+            { id:'calves',      name:'Pantorrillas',
+              shapes:[
+                { type:'path', d:'M 94 434 C 103 429 113 435 115 449 C 117 464 116 480 113 494 C 110 506 107 512 103 514 C 99 515 96 511 95 500 C 93 484 92 466 93 450 Z' },
+                { type:'path', d:'M 86 434 C 77 429 67 435 65 449 C 63 464 64 480 67 494 C 70 506 73 512 77 514 C 81 515 84 511 85 500 C 87 484 88 466 87 450 Z' }
+              ]},
         ]
     };
     // 4-subpath body: head+neck · torso+legs · right arm · left arm
@@ -743,9 +811,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const sw = st ? 2 : 1;
                     return muscle.shapes.map(s => {
                         const attrs = `data-muscle="${muscle.id}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" style="cursor:pointer;transition:fill .15s,stroke .15s"`;
-                        return s.type === 'ellipse'
-                            ? `<ellipse ${attrs} cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"/>`
-                            : `<rect    ${attrs} x="${s.x}"  y="${s.y}"  width="${s.width}" height="${s.height}" rx="${s.rx||0}"/>`;
+                        if (s.type === 'path')    return `<path    ${attrs} d="${s.d}"/>`;
+                        if (s.type === 'ellipse') return `<ellipse ${attrs} cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"/>`;
+                        return `<rect ${attrs} x="${s.x}" y="${s.y}" width="${s.width}" height="${s.height}" rx="${s.rx||0}"/>`;
                     }).join('');
                 }).join('');
                 container.innerHTML = `<svg viewBox="0 0 180 535" xmlns="http://www.w3.org/2000/svg" class="w-40 md:w-48 h-auto select-none" id="muscle-body-svg">
@@ -3345,12 +3413,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const state = muscleState[muscle.id] || null;
                 const stroke = colorFor(state);
                 const fill   = fillFor(state);
-                return muscle.shapes.map(s =>
-                    `<ellipse data-muscle="${muscle.id}" cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"
-                        fill="${fill}" stroke="${stroke}" stroke-width="1.5"
-                        style="cursor:pointer;transition:fill .15s,stroke .15s;"
-                        opacity="0.9"/>`
-                ).join('');
+                return muscle.shapes.map(s => {
+                    const a2 = `data-muscle="${muscle.id}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" style="cursor:pointer;transition:fill .15s,stroke .15s;" opacity="0.9"`;
+                    if (s.type === 'path') return `<path ${a2} d="${s.d}"/>`;
+                    return `<ellipse ${a2} cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"/>`;
+                }).join('');
             }).join('');
 
             svgEl.innerHTML = `

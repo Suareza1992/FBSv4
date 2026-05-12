@@ -103,7 +103,7 @@
           <div class="md:w-1/2 text-white space-y-6">
             <div class="inline-flex items-center gap-2 bg-fbs-gold/15 border border-fbs-gold/30 text-fbs-gold text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-widest">
               <span class="w-1.5 h-1.5 bg-fbs-gold rounded-full animate-pulse"></span>
-              Plataforma de Entrenamiento
+              <span data-key="heroBadge">Plataforma de Entrenamiento</span>
             </div>
             <h1 class="text-5xl md:text-6xl lg:text-7xl font-black leading-tight">
               <span data-key="heroTitle1">Entrena con</span><br>
@@ -122,12 +122,12 @@
               <div class="w-px bg-fbs-gold/20"></div>
               <div>
                 <p class="text-3xl font-black text-fbs-gold">100%</p>
-                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider">Personalizado</p>
+                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider" data-key="heroPersonalized">Personalizado</p>
               </div>
               <div class="w-px bg-fbs-gold/20"></div>
               <div>
                 <p class="text-3xl font-black text-fbs-gold">24/7</p>
-                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider">Acceso</p>
+                <p class="text-xs text-fbs-gold/60 uppercase tracking-wider" data-key="heroAccess">Acceso</p>
               </div>
             </div>
           </div>
@@ -145,11 +145,11 @@
                 <form id="login-form" onsubmit="event.preventDefault();">
                   <div class="mb-4">
                     <input type="email" id="login-email" placeholder="Correo electrónico"
-                      class="fbs-input w-full p-4 rounded-xl text-sm">
+                      class="fbs-input w-full p-4 rounded-xl text-sm" data-key-ph="emailPh">
                   </div>
                   <div class="mb-4 relative">
                     <input type="password" id="login-password" placeholder="Contraseña"
-                      class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                      class="fbs-input w-full p-4 rounded-xl text-sm pr-12" data-key-ph="passwordPh">
                     <button type="button" id="toggle-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
                       <i class="fas fa-eye text-sm"></i>
                     </button>
@@ -157,9 +157,9 @@
                   <div class="flex items-center justify-between mb-6">
                     <label class="flex items-center gap-2 text-sm text-fbs-gold/50 cursor-pointer select-none">
                       <input type="checkbox" id="remember-me" class="rounded border-fbs-gold/40 accent-fbs-gold">
-                      <span>Recordarme</span>
+                      <span data-key="rememberMe">Recordarme</span>
                     </label>
-                    <button type="button" id="forgot-password-link" class="text-sm text-fbs-gold/70 hover:text-fbs-gold font-semibold transition">
+                    <button type="button" id="forgot-password-link" class="text-sm text-fbs-gold/70 hover:text-fbs-gold font-semibold transition" data-key="forgotPassLink">
                       Olvidé mi contraseña
                     </button>
                   </div>
@@ -176,17 +176,17 @@
             <div id="forgot-password-card" class="hidden login-glass border border-fbs-gold/25 rounded-2xl shadow-2xl overflow-hidden">
               <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
               <div class="p-8">
-                <h2 class="text-2xl font-black text-white mb-1">Recuperar Contraseña</h2>
-                <p class="text-sm text-fbs-gold/50 mb-7">Ingresa tu email y te enviaremos un enlace para restablecerla.</p>
+                <h2 class="text-2xl font-black text-white mb-1" data-key="recoverTitle">Recuperar Contraseña</h2>
+                <p class="text-sm text-fbs-gold/50 mb-7" data-key="recoverSub">Ingresa tu email y te enviaremos un enlace para restablecerla.</p>
                 <form id="forgot-password-form" onsubmit="event.preventDefault();">
                   <div class="mb-6">
-                    <input type="email" id="forgot-email" placeholder="Correo electrónico" class="fbs-input w-full p-4 rounded-xl text-sm">
+                    <input type="email" id="forgot-email" placeholder="Correo electrónico" class="fbs-input w-full p-4 rounded-xl text-sm" data-key-ph="emailPh">
                   </div>
-                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base">Enviar Enlace</button>
+                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base" data-key="sendLink">Enviar Enlace</button>
                 </form>
                 <p id="forgot-message" class="text-center mt-4 text-sm font-bold hidden"></p>
                 <div class="mt-5 text-center">
-                  <button id="back-to-login" class="text-sm text-fbs-gold/50 hover:text-fbs-gold transition underline">Volver a iniciar sesión</button>
+                  <button id="back-to-login" class="text-sm text-fbs-gold/50 hover:text-fbs-gold transition underline" data-key="backLogin">Volver a iniciar sesión</button>
                 </div>
               </div>
             </div>
@@ -195,24 +195,24 @@
             <div id="reset-password-card" class="hidden login-glass border border-fbs-gold/25 rounded-2xl shadow-2xl overflow-hidden">
               <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
               <div class="p-8">
-                <h2 class="text-2xl font-black text-white mb-1">Nueva Contraseña</h2>
-                <p class="text-sm text-fbs-gold/50 mb-7">Ingresa tu nueva contraseña. Sigue los requisitos indicados.</p>
+                <h2 class="text-2xl font-black text-white mb-1" data-key="newPassTitle">Nueva Contraseña</h2>
+                <p class="text-sm text-fbs-gold/50 mb-7" data-key="newPassSub">Ingresa tu nueva contraseña. Sigue los requisitos indicados.</p>
                 <form id="reset-password-form" onsubmit="event.preventDefault();">
                   <div class="mb-3 relative">
-                    <input type="password" id="new-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <input type="password" id="new-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12" data-key-ph="newPassPh">
                     <button type="button" id="toggle-new-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
                       <i class="fas fa-eye text-sm"></i>
                     </button>
                   </div>
                   <div id="reset-pw-rules" class="mb-3 text-xs space-y-1"></div>
                   <div class="mb-1 relative">
-                    <input type="password" id="confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <input type="password" id="confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12" data-key-ph="confirmPassPh">
                     <button type="button" id="toggle-confirm-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
                       <i class="fas fa-eye text-sm"></i>
                     </button>
                   </div>
                   <p id="reset-password-match-error" class="text-red-400 text-xs mb-4 hidden"><i class="fas fa-exclamation-circle mr-1"></i>Las contraseñas no coinciden.</p>
-                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base">Guardar Contraseña</button>
+                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base" data-key="savePassBtn">Guardar Contraseña</button>
                 </form>
                 <p id="reset-message" class="text-center mt-4 text-sm font-bold hidden"></p>
               </div>
@@ -226,9 +226,9 @@
                   <div class="w-9 h-9 rounded-full bg-fbs-gold/15 border border-fbs-gold/30 flex items-center justify-center text-fbs-gold">
                     <i class="fas fa-user-check text-sm"></i>
                   </div>
-                  <h2 class="text-2xl font-black text-white">Activa tu cuenta</h2>
+                  <h2 class="text-2xl font-black text-white" data-key="activateTitle">Activa tu cuenta</h2>
                 </div>
-                <p class="text-sm text-fbs-gold/50 mb-6 ml-12">Bienvenido/a. Crea tu contraseña para comenzar.</p>
+                <p class="text-sm text-fbs-gold/50 mb-6 ml-12" data-key="activateSub">Bienvenido/a. Crea tu contraseña para comenzar.</p>
 
                 <div id="invite-greeting" class="hidden mb-5 p-3 bg-fbs-gold/10 border border-fbs-gold/20 rounded-xl flex items-center gap-3">
                   <i class="fas fa-dumbbell text-fbs-gold text-sm"></i>
@@ -240,26 +240,26 @@
                     <input type="email" id="invite-email-display" class="fbs-input w-full p-4 rounded-xl text-sm opacity-50 cursor-not-allowed" readonly placeholder="Correo electrónico">
                   </div>
                   <div class="mb-3 relative">
-                    <input type="password" id="invite-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <input type="password" id="invite-password" placeholder="Nueva contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12" data-key-ph="newPassPh">
                     <button type="button" id="toggle-invite-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
                       <i class="fas fa-eye text-sm"></i>
                     </button>
                   </div>
                   <div id="invite-pw-rules" class="mb-3 text-xs space-y-1"></div>
                   <div class="mb-1 relative">
-                    <input type="password" id="invite-confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12">
+                    <input type="password" id="invite-confirm-password" placeholder="Confirmar contraseña" class="fbs-input w-full p-4 rounded-xl text-sm pr-12" data-key-ph="confirmPassPh">
                     <button type="button" id="toggle-invite-confirm-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
                       <i class="fas fa-eye text-sm"></i>
                     </button>
                   </div>
                   <p id="invite-password-match-error" class="text-red-400 text-xs mb-4 hidden"><i class="fas fa-exclamation-circle mr-1"></i>Las contraseñas no coinciden.</p>
-                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base font-black">
+                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base font-black" data-key="activateBtn">
                     <i class="fas fa-unlock-alt mr-2"></i>Activar mi cuenta
                   </button>
                 </form>
                 <p id="invite-message" class="text-center mt-4 text-sm font-bold hidden"></p>
                 <div id="invite-back-login-wrap" class="hidden mt-2 text-center">
-                  <button id="invite-back-to-login-btn" class="text-sm text-fbs-gold/50 hover:text-fbs-gold transition underline">Volver a iniciar sesión</button>
+                  <button id="invite-back-to-login-btn" class="text-sm text-fbs-gold/50 hover:text-fbs-gold transition underline" data-key="backLogin2">Volver a iniciar sesión</button>
                 </div>
               </div>
             </div>
@@ -293,7 +293,7 @@
       <section class="section-dark py-24">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="text-center max-w-3xl mx-auto mb-16">
-            <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3">Funcionalidades</p>
+            <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3" data-key="featLabel">Funcionalidades</p>
             <h2 class="text-3xl md:text-4xl font-black text-white" data-key="featTitle">Todo lo que necesitas para triunfar.</h2>
             <p class="mt-4 text-fbs-gold/70 text-base" data-key="featSub">Herramientas profesionales construidas para entrenamiento de alto rendimiento.</p>
           </div>
@@ -333,7 +333,7 @@
       <!-- TESTIMONIALS -->
       <section class="section-dim py-24">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest text-center mb-3">Clientes</p>
+          <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest text-center mb-3" data-key="testiLabel">Clientes</p>
           <h2 class="text-3xl md:text-4xl font-black text-center text-white mb-14" data-key="testTitle">Historias de éxito</h2>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
@@ -345,7 +345,7 @@
                 <i class="fas fa-star gold-star text-sm"></i>
               </div>
               <!-- Collapsed: first sentence only -->
-              <div id="testi-stephanie-body" class="testi-body text-fbs-gold/70 italic mb-3 text-sm leading-relaxed">
+              <div id="testi-stephanie-body" class="testi-body text-fbs-gold/70 italic mb-3 text-sm leading-relaxed" data-key="t1Quote">
                 "Desde diciembre de 2024, cuando comenzó el proceso con Ángel, mi vida ha cambiado completamente, del cielo a la tierra. No solo he experimentado una transformación física, sino también un crecimiento enorme a nivel mental y emocional.
 
 Durante años intenté seguir rutinas por mi cuenta sin lograr los resultados que realmente deseaba. Sin embargo, comenzar a trabajar con Ángel fue la clave. Su guía, conocimiento y apoyo han sido fundamentales para alcanzar cambios que antes parecían imposibles.
@@ -353,7 +353,7 @@ Durante años intenté seguir rutinas por mi cuenta sin lograr los resultados qu
 Hoy día, no solo me siento mejor físicamente, sino también más segura, disciplinada y enfocada. Este proceso ha sido una transformación integral, y estoy profundamente agradecida por todo lo que Ángel me ha ayudado a lograr."
               </div>
               <button class="testi-expand-btn" onclick="toggleTestimonial('stephanie')" aria-expanded="false" aria-controls="testi-stephanie-body">
-                <span class="testi-expand-label">Leer más</span>
+                <span class="testi-expand-label" data-key="readMoreTesti">Leer más</span>
                 <i class="fas fa-chevron-down testi-expand-icon"></i>
               </button>
               <div class="flex items-center gap-3 mt-auto pt-4">
@@ -369,7 +369,7 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
                 <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
                 <i class="fas fa-star gold-star text-sm"></i>
               </div>
-              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed">"Se enfoca en tus metas y adapta la rutina a tu estilo de vida, equipo y tiempo disponible; además es exigente con la consistencia y siempre te dice las cosas como son."</p>
+              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed" data-key="t2Quote">"Se enfoca en tus metas y adapta la rutina a tu estilo de vida, equipo y tiempo disponible; además es exigente con la consistencia y siempre te dice las cosas como son."</p>
               <div class="flex items-center gap-3">
                 <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=52" alt="Daniel Escobar">
                 <span class="font-bold text-white text-sm">— Daniel Escobar</span>
@@ -383,7 +383,7 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
                 <i class="fas fa-star gold-star text-sm"></i><i class="fas fa-star gold-star text-sm"></i>
                 <i class="fas fa-star gold-star text-sm"></i>
               </div>
-              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed">"Ángel no solo me ayudó a recuperar la motivación para entrenar, sino que transformó mi manera de ver el ejercicio; con su apoyo constante, disponibilidad y flexibilidad, logré integrar el entrenamiento a mi vida diaria y hoy me siento más fuerte, comprometido y enfocado en cuidar mi bienestar a corto y largo plazo."</p>
+              <p class="text-fbs-gold/70 italic mb-6 text-sm leading-relaxed" data-key="t3Quote">"Ángel no solo me ayudó a recuperar la motivación para entrenar, sino que transformó mi manera de ver el ejercicio; con su apoyo constante, disponibilidad y flexibilidad, logré integrar el entrenamiento a mi vida diaria y hoy me siento más fuerte, comprometido y enfocado en cuidar mi bienestar a corto y largo plazo."</p>
               <div class="flex items-center gap-3">
                 <img class="w-9 h-9 rounded-full border border-fbs-gold/30 object-cover" src="https://i.pravatar.cc/100?img=33" alt="Jonathan Maymí">
                 <span class="font-bold text-white text-sm">— Jonathan Maymí</span>
@@ -433,17 +433,6 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             }
           </style>
 
-          <script>
-            function toggleTestimonial(id) {
-              const body  = document.getElementById('testi-' + id + '-body');
-              const btn   = body?.parentElement?.querySelector('.testi-expand-btn');
-              if (!body || !btn) return;
-              const expanded = body.classList.toggle('expanded');
-              btn.setAttribute('aria-expanded', String(expanded));
-              btn.querySelector('.testi-expand-label').textContent = expanded ? 'Leer menos' : 'Leer más';
-              btn.querySelector('.testi-expand-icon').style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
-            }
-          </script>
         </div>
       </section>
 
@@ -451,8 +440,8 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
       <section id="blog-section" class="section-dim py-16 md:py-24 border-t border-fbs-gold/10">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-          <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest text-center mb-3">Recursos gratuitos</p>
-          <h2 class="text-2xl md:text-4xl font-black text-center text-white mb-8 md:mb-10">Artículos</h2>
+          <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest text-center mb-3" data-key="blogLabel">Recursos gratuitos</p>
+          <h2 class="text-2xl md:text-4xl font-black text-center text-white mb-8 md:mb-10" data-key="blogTitle">Artículos</h2>
 
           <!-- ── Search bar ───────────────────────────────────────────────── -->
           <div class="relative mb-4">
@@ -460,7 +449,7 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             <input id="blog-search" type="search" inputmode="search"
               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
               placeholder="Buscar artículos…"
-              class="blog-search-input w-full pl-10 pr-10 rounded-xl">
+              class="blog-search-input w-full pl-10 pr-10 rounded-xl" data-key-ph="blogSearchPh">
             <!-- inline clear X (appears when there's text) -->
             <button id="blog-search-clear" type="button" aria-label="Borrar búsqueda"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-fbs-gold/40 hover:text-fbs-gold transition hidden p-1">
@@ -508,15 +497,15 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
 
           <!-- ── States ──────────────────────────────────────────────────── -->
           <!-- No posts at all -->
-          <p id="blog-empty" class="text-center text-fbs-gold/40 text-sm py-10 hidden">
+          <p id="blog-empty" class="text-center text-fbs-gold/40 text-sm py-10 hidden" data-key="blogEmpty">
             Próximamente — regresa pronto para leer el primer artículo.
           </p>
           <!-- Posts exist but search/filter returned nothing -->
           <div id="blog-no-results" class="text-center py-10 hidden">
             <i class="fas fa-search text-fbs-gold/20 text-3xl mb-3 block"></i>
-            <p class="text-fbs-gold/50 text-sm font-semibold">Ningún artículo coincide.</p>
+            <p class="text-fbs-gold/50 text-sm font-semibold" data-key="blogNoResults">Ningún artículo coincide.</p>
             <button id="blog-reset-btn" type="button"
-              class="mt-4 text-xs font-bold text-fbs-gold/60 underline underline-offset-2">
+              class="mt-4 text-xs font-bold text-fbs-gold/60 underline underline-offset-2" data-key="blogResetBtn">
               Limpiar filtros
             </button>
           </div>
@@ -702,7 +691,8 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
 
           // ── 2. Category pills ─────────────────────────────────────────────
           const uniqueCats = [...new Set(allPosts.map(p => p.category || 'General'))];
-          ['Todos', ...uniqueCats].forEach((cat, i) => {
+          const _todosLabel = (translations[window.__fbsLang || 'es'] || translations.es).blogAllCat;
+          [_todosLabel, ...uniqueCats].forEach((cat, i) => {
             const pill = document.createElement('button');
             pill.type = 'button';
             pill.className = 'blog-pill' + (i === 0 ? ' pill-active' : '');
@@ -717,7 +707,7 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
           // ── 3. Build all cards ────────────────────────────────────────────
           allPosts.forEach(post => {
             const dateStr = post.publishedAt
-              ? new Date(post.publishedAt).toLocaleDateString('es-PR', { year: 'numeric', month: 'long', day: 'numeric' })
+              ? new Date(post.publishedAt).toLocaleDateString(window.__fbsLang === 'en' ? 'en-US' : 'es-PR', { year: 'numeric', month: 'long', day: 'numeric' })
               : '';
 
             const card = document.createElement('div');
@@ -736,7 +726,7 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
               <h3 class="text-white font-black text-base sm:text-lg leading-snug mb-3">${escHtmlPublic(post.title)}</h3>
               <div class="blog-body text-fbs-gold/70 text-sm leading-relaxed whitespace-pre-line">${escHtmlPublic(post.content)}</div>
               <button class="blog-read-more" aria-expanded="false">
-                <span class="btn-label">Leer más</span>
+                <span class="btn-label">${(translations[window.__fbsLang || 'es'] || translations.es).readMore}</span>
                 <i class="fas fa-chevron-down"></i>
               </button>`;
 
@@ -748,7 +738,8 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             btn.addEventListener('click', () => {
               const expanded = body.classList.toggle('expanded');
               btn.setAttribute('aria-expanded', String(expanded));
-              lbl.textContent = expanded ? 'Leer menos' : 'Leer más';
+              const _t = translations[window.__fbsLang || 'es'];
+              lbl.textContent = expanded ? _t.readLess : _t.readMore;
               icon.style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
             });
 
@@ -788,9 +779,11 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
 
             // Update count text
             const total = allPosts.length;
+            const _ct = translations[window.__fbsLang || 'es'];
+            const _artWord = total !== 1 ? _ct.blogArticles : _ct.blogArticle;
             countEl.textContent = visible === total
-              ? `${total} artículo${total !== 1 ? 's' : ''}`
-              : `${visible} de ${total} artículo${total !== 1 ? 's' : ''}`;
+              ? `${total} ${_artWord}`
+              : `${visible} ${_ct.blogOf} ${total} ${_artWord}`;
 
             // No-results state
             noResultsEl.classList.toggle('hidden', visible > 0);
@@ -824,7 +817,7 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
           // Sort toggle
           sortBtn.addEventListener('click', () => {
             sortDir = sortDir === 'desc' ? 'asc' : 'desc';
-            sortLabel.textContent = sortDir === 'desc' ? 'Reciente' : 'Antiguo';
+            sortLabel.textContent = sortDir === 'desc' ? (translations[window.__fbsLang||'es'].blogSortRecent) : (translations[window.__fbsLang||'es'].blogSortOldest);
             sortArrow.textContent = sortDir === 'desc' ? '↓' : '↑';
             applyFilters();
           });
@@ -842,6 +835,8 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
 
           // Initial render
           applyFilters();
+          window.__blogApplyFilters = applyFilters;
+          Object.defineProperty(window, '__blogSortDir', { get: () => sortDir });
         })();
       </script>
 
@@ -849,8 +844,8 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
       <section id="contact-section" class="section-dim py-24 border-t border-fbs-gold/10">
         <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="text-center mb-12">
-            <h2 class="text-3xl md:text-4xl font-black text-white mb-4">¿Interesado en entrenar?</h2>
-            <p class="text-fbs-gold/70 text-base max-w-xl mx-auto">Cuéntanos sobre ti y tus metas. Te contactaré personalmente.</p>
+            <h2 class="text-3xl md:text-4xl font-black text-white mb-4" data-key="contactTitle">¿Interesado en entrenar?</h2>
+            <p class="text-fbs-gold/70 text-base max-w-xl mx-auto" data-key="contactSub">Cuéntanos sobre ti y tus metas. Te contactaré personalmente.</p>
           </div>
 
           <div class="section-card border border-fbs-gold/15 rounded-2xl p-8">
@@ -860,28 +855,29 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
                 style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" aria-hidden="true">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Nombre completo *</label>
+                  <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2" data-key="contactNameLabel">Nombre completo *</label>
                   <input type="text" id="contact-name" required autocomplete="name"
-                    class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="Ángel Suárez">
+                    class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="Ángel Suárez" data-key-ph="contactNamePh">
                 </div>
                 <div>
-                  <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Email *</label>
+                  <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2" data-key="contactEmailLabel">Email *</label>
                   <input type="email" id="contact-email" required autocomplete="email"
                     class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="tu@email.com">
                 </div>
               </div>
               <div class="mb-4">
-                <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Teléfono <span class="font-normal normal-case opacity-60">(opcional)</span></label>
+                <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2" data-key="contactPhoneLabel">Teléfono <span class="font-normal normal-case opacity-60">(opcional)</span></label>
                 <input type="tel" id="contact-phone" autocomplete="tel"
                   class="fbs-input w-full p-4 rounded-xl text-sm" placeholder="+1 (---) --- ----">
               </div>
               <div class="mb-6">
-                <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">¿Cuál es tu objetivo? *</label>
+                <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2" data-key="contactGoalLabel">¿Cuál es tu objetivo? *</label>
                 <textarea id="contact-message" required rows="4"
                   class="fbs-input w-full p-4 rounded-xl text-sm resize-none"
-                  placeholder="Cuéntame sobre tus metas de entrenamiento, experiencia previa, disponibilidad..."></textarea>
+                  placeholder="Cuéntame sobre tus metas de entrenamiento, experiencia previa, disponibilidad..."
+                  data-key-ph="contactMsgPh"></textarea>
               </div>
-              <button type="submit" id="contact-submit-btn" class="btn-gold w-full p-4 rounded-xl text-base font-black flex items-center justify-center gap-2">
+              <button type="submit" id="contact-submit-btn" class="btn-gold w-full p-4 rounded-xl text-base font-black flex items-center justify-center gap-2" data-key="contactBtn">
                 <i class="fas fa-paper-plane"></i>Enviar mensaje
               </button>
               <p id="contact-status" class="text-center mt-4 text-sm font-bold hidden"></p>
@@ -900,11 +896,11 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
                 <i class="fas fa-dumbbell text-fbs-gold"></i>
                 <span class="font-black text-white">FitbySuárez</span>
               </div>
-              <p class="text-fbs-gold/50 text-sm max-w-xs">La plataforma profesional para fitness serio y entrenamiento de alto rendimiento.</p>
+              <p class="text-fbs-gold/50 text-sm max-w-xs" data-key="footerTagline">La plataforma profesional para fitness serio y entrenamiento de alto rendimiento.</p>
             </div>
 
             <div>
-              <p class="text-xs font-bold text-fbs-gold/70 uppercase tracking-widest mb-4">Sígueme</p>
+              <p class="text-xs font-bold text-fbs-gold/70 uppercase tracking-widest mb-4" data-key="footerFollow">Sígueme</p>
               <div class="flex gap-3">
                 <a href="https://www.facebook.com/profile.php?id=61585882957439" target="_blank" rel="noopener"
                    class="w-10 h-10 bg-white/5 border border-fbs-gold/20 rounded-full flex items-center justify-center text-fbs-gold/60 hover:bg-[#1877F2]/20 hover:border-[#1877F2]/60 hover:text-[#1877F2] transition text-sm" title="Facebook">
@@ -922,7 +918,7 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             </div>
 
           </div>
-          <div class="border-t border-fbs-gold/10 mt-10 pt-8 text-center text-xs text-fbs-gold/30">
+          <div class="border-t border-fbs-gold/10 mt-10 pt-8 text-center text-xs text-fbs-gold/30" data-key="footerCopy">
             © 2026 FitbySuárez. Todos los derechos reservados.
           </div>
         </div>
@@ -957,70 +953,356 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
   <script src="app.js"></script>
 
   <script>
-    const translations = {
-      es: {
-        heroTitle1:   "Entrena con",
-        heroTitle2:   "inteligencia.",
-        heroSub:      "La plataforma profesional para fitness serio. Rastrea entrenamientos, gestiona nutrición y visualiza tu progreso—todo en un solo lugar.",
-        heroTrusted:  "Cambios físicos",
-        signIn:       "Iniciar sesión",
-        accessDash:   "Accede a tu panel",
-        startTraining:"Comenzar",
-        dailyTipLabel:"Tip del Día:",
-        featTitle:    "Todo lo que necesitas para triunfar.",
-        featSub:      "Herramientas profesionales construidas para entrenamiento de alto rendimiento.",
-        f1Title:      "Calendario inteligente",
-        f1Desc:       "Organiza tus semanas de entrenamiento de manera eficiente.",
-        f2Title:      "Análisis de video",
-        f2Desc:       "Sube videos de tu técnica y recibe feedback instantáneo.",
-        f3Title:      "Métricas de progreso",
-        f3Desc:       "Visualiza tus ganancias de fuerza y composición corporal.",
-        testTitle:    "Historias de éxito",
-        t1Desc:       '"Esta plataforma cambió completamente mi enfoque. La estructura es exactamente lo que necesitaba."',
-        t2Desc:       '"Finalmente, un lugar donde puedo rastrear mi nutrición y mis levantamientos en un solo panel."',
-        t3Desc:       '"La función de feedback por video es un cambio total para el coaching remoto."',
-        ctaTitle:     "¿Listo para subir de nivel?",
-        ctaSub:       "Únete a la plataforma usada por atletas de alto rendimiento.",
-        ctaBtn:       "Crea tu Cuenta"
-      },
-      en: {
-        heroTitle1:   "Train with",
-        heroTitle2:   "Intelligence.",
-        heroSub:      "The professional platform for serious fitness. Track workouts, manage nutrition, and visualize your progress—all in one place.",
-        heroTrusted:  "Active athletes",
-        signIn:       "Sign In",
-        accessDash:   "Access your dashboard",
-        startTraining:"Start Training",
-        dailyTipLabel:"Daily Tip:",
-        featTitle:    "Everything you need to succeed.",
-        featSub:      "Professional tools built for high-performance coaching and tracking.",
-        f1Title:      "Smart Scheduling",
-        f1Desc:       "Organize your training weeks efficiently with a powerful calendar.",
-        f2Title:      "Video Analysis",
-        f2Desc:       "Upload form videos and get instant feedback from your coach.",
-        f3Title:      "Progress Metrics",
-        f3Desc:       "Visualize your strength gains, body composition, and volume over time.",
-        testTitle:    "Success Stories",
-        t1Desc:       '"This platform completely changed how I approach my training. The structure is exactly what I needed."',
-        t2Desc:       '"Finally, a place where I can track my nutrition and my lifting in one seamless dashboard."',
-        t3Desc:       '"The video feedback feature is a game changer for remote coaching."',
-        ctaTitle:     "Ready to level up?",
-        ctaSub:       "Join the platform used by high performers.",
-        ctaBtn:       "Create Your Account"
-      }
-    };
-
-    let currentLang = 'es';
-
-    function toggleLanguage() {
-      currentLang = currentLang === 'es' ? 'en' : 'es';
-      document.getElementById('lang-btn-text').textContent = currentLang === 'es' ? 'EN' : 'ES';
-      document.querySelectorAll('[data-key]').forEach(el => {
-        const key = el.getAttribute('data-key');
-        if (translations[currentLang][key]) el.textContent = translations[currentLang][key];
-      });
-      if (window.updateFitnessTipLanguage) window.updateFitnessTipLanguage(currentLang);
+  // ── i18n ─────────────────────────────────────────────────────────────────
+  const translations = {
+    es: {
+      // Hero
+      heroBadge:        "Plataforma de Entrenamiento",
+      heroTitle1:       "Entrena con",
+      heroTitle2:       "inteligencia.",
+      heroSub:          "La plataforma profesional para fitness serio. Rastrea entrenamientos, gestiona nutrición y visualiza tu progreso—todo en un solo lugar.",
+      heroTrusted:      "Cambios físicos",
+      heroPersonalized: "Personalizado",
+      heroAccess:       "Acceso",
+      // Auth
+      signIn:           "Iniciar sesión",
+      accessDash:       "Accede a tu panel",
+      emailPh:          "Correo electrónico",
+      passwordPh:       "Contraseña",
+      rememberMe:       "Recordarme",
+      forgotPassLink:   "Olvidé mi contraseña",
+      startTraining:    "Comenzar",
+      recoverTitle:     "Recuperar Contraseña",
+      recoverSub:       "Ingresa tu email y te enviaremos un enlace para restablecerla.",
+      sendLink:         "Enviar Enlace",
+      backLogin:        "Volver a iniciar sesión",
+      newPassTitle:     "Nueva Contraseña",
+      newPassSub:       "Ingresa tu nueva contraseña. Sigue los requisitos indicados.",
+      newPassPh:        "Nueva contraseña",
+      confirmPassPh:    "Confirmar contraseña",
+      savePassBtn:      "Guardar Contraseña",
+      activateTitle:    "Activa tu cuenta",
+      activateSub:      "Bienvenido/a. Crea tu contraseña para comenzar.",
+      activateBtn:      "Activar mi cuenta",
+      backLogin2:       "Volver a iniciar sesión",
+      // Daily tip
+      dailyTipLabel:    "Tip del Día:",
+      // CTA
+      ctaTitle:         "¿Listo para subir de nivel?",
+      ctaSub:           "Únete a la plataforma usada por atletas de alto rendimiento.",
+      ctaBtn:           "Contáctame",
+      // Features
+      featLabel:        "Funcionalidades",
+      featTitle:        "Todo lo que necesitas para triunfar.",
+      featSub:          "Herramientas profesionales construidas para entrenamiento de alto rendimiento.",
+      f1Title:          "Calendario inteligente",
+      f1Desc:           "Organiza tus semanas de entrenamiento de manera eficiente.",
+      f2Title:          "Análisis de video",
+      f2Desc:           "Sube videos de tu técnica y recibe feedback instantáneo.",
+      f3Title:          "Métricas de progreso",
+      f3Desc:           "Visualiza tus ganancias de fuerza y composición corporal.",
+      // Testimonials
+      testiLabel:       "Clientes",
+      testTitle:        "Historias de éxito",
+      t1Quote:          '"Desde diciembre de 2024, cuando comenzó el proceso con Ángel, mi vida ha cambiado completamente, del cielo a la tierra. No solo he experimentado una transformación física, sino también un crecimiento enorme a nivel mental y emocional.\n\nDurante años intenté seguir rutinas por mi cuenta sin lograr los resultados que realmente deseaba. Sin embargo, comenzar a trabajar con Ángel fue la clave. Su guía, conocimiento y apoyo han sido fundamentales para alcanzar cambios que antes parecían imposibles.\n\nHoy día, no solo me siento mejor físicamente, sino también más segura, disciplinada y enfocada. Este proceso ha sido una transformación integral, y estoy profundamente agradecida por todo lo que Ángel me ha ayudado a lograr."',
+      t2Quote:          '"Se enfoca en tus metas y adapta la rutina a tu estilo de vida, equipo y tiempo disponible; además es exigente con la consistencia y siempre te dice las cosas como son."',
+      t3Quote:          '"Ángel no solo me ayudó a recuperar la motivación para entrenar, sino que transformó mi manera de ver el ejercicio; con su apoyo constante, disponibilidad y flexibilidad, logré integrar el entrenamiento a mi vida diaria y hoy me siento más fuerte, comprometido y enfocado en cuidar mi bienestar a corto y largo plazo."',
+      readMore:         "Leer más",
+      readLess:         "Leer menos",
+      readMoreTesti:    "Leer más",
+      // Blog
+      blogLabel:        "Recursos gratuitos",
+      blogTitle:        "Artículos",
+      blogSearchPh:     "Buscar artículos…",
+      blogSortRecent:   "Reciente",
+      blogSortOldest:   "Antiguo",
+      blogClear:        "Limpiar",
+      blogResetBtn:     "Limpiar filtros",
+      blogNoResults:    "Ningún artículo coincide.",
+      blogEmpty:        "Próximamente — regresa pronto para leer el primer artículo.",
+      blogAllCat:       "Todos",
+      blogArticle:      "artículo",
+      blogArticles:     "artículos",
+      blogOf:           "de",
+      // Contact
+      contactTitle:     "¿Interesado en entrenar?",
+      contactSub:       "Cuéntanos sobre ti y tus metas. Te contactaré personalmente.",
+      contactNameLabel: "Nombre completo *",
+      contactEmailLabel:"Email *",
+      contactPhoneLabel:"Teléfono",
+      contactGoalLabel: "¿Cuál es tu objetivo? *",
+      contactNamePh:    "Ángel Suárez",
+      contactMsgPh:     "Cuéntame sobre tus metas de entrenamiento, experiencia previa, disponibilidad...",
+      contactBtn:       "Enviar mensaje",
+      // Footer
+      footerTagline:    "La plataforma profesional para fitness serio y entrenamiento de alto rendimiento.",
+      footerFollow:     "Sígueme",
+      footerCopy:       "© 2026 FitbySuárez. Todos los derechos reservados.",
+      // Default prompt
+      defaultPromptMsg: "¿Hacer <strong>Español</strong> tu idioma predeterminado?",
+      defaultPromptYes: "Sí",
+      defaultPromptNo:  "Ahora no",
+      defaultSavedMsg:  "✓ Español guardado como idioma predeterminado.",
+    },
+    en: {
+      // Hero
+      heroBadge:        "Training Platform",
+      heroTitle1:       "Train with",
+      heroTitle2:       "Intelligence.",
+      heroSub:          "The professional platform for serious fitness. Track workouts, manage nutrition, and visualize your progress—all in one place.",
+      heroTrusted:      "Physical transformations",
+      heroPersonalized: "Personalized",
+      heroAccess:       "Access",
+      // Auth
+      signIn:           "Sign In",
+      accessDash:       "Access your dashboard",
+      emailPh:          "Email address",
+      passwordPh:       "Password",
+      rememberMe:       "Remember me",
+      forgotPassLink:   "Forgot my password",
+      startTraining:    "Get Started",
+      recoverTitle:     "Recover Password",
+      recoverSub:       "Enter your email and we'll send you a reset link.",
+      sendLink:         "Send Link",
+      backLogin:        "Back to sign in",
+      newPassTitle:     "New Password",
+      newPassSub:       "Enter your new password. Follow the requirements shown.",
+      newPassPh:        "New password",
+      confirmPassPh:    "Confirm password",
+      savePassBtn:      "Save Password",
+      activateTitle:    "Activate Your Account",
+      activateSub:      "Welcome. Create your password to get started.",
+      activateBtn:      "Activate my account",
+      backLogin2:       "Back to sign in",
+      // Daily tip
+      dailyTipLabel:    "Daily Tip:",
+      // CTA
+      ctaTitle:         "Ready to level up?",
+      ctaSub:           "Join the platform used by high-performance athletes.",
+      ctaBtn:           "Contact Me",
+      // Features
+      featLabel:        "Features",
+      featTitle:        "Everything you need to succeed.",
+      featSub:          "Professional tools built for high-performance coaching and tracking.",
+      f1Title:          "Smart Scheduling",
+      f1Desc:           "Organize your training weeks efficiently with a powerful calendar.",
+      f2Title:          "Video Analysis",
+      f2Desc:           "Upload form videos and get instant feedback from your coach.",
+      f3Title:          "Progress Metrics",
+      f3Desc:           "Visualize your strength gains, body composition, and volume over time.",
+      // Testimonials
+      testiLabel:       "Clients",
+      testTitle:        "Success Stories",
+      t1Quote:          '"Since December 2024, when the process with Ángel began, my life has changed completely — from the ground up. I have not only experienced a physical transformation, but also enormous growth mentally and emotionally.\n\nFor years I tried to follow routines on my own without achieving the results I truly wanted. However, starting to work with Ángel was the key. His guidance, knowledge, and support have been fundamental in achieving changes that once seemed impossible.\n\nToday, I not only feel better physically, but also more confident, disciplined, and focused. This journey has been a complete transformation, and I am deeply grateful for everything Ángel has helped me accomplish."',
+      t2Quote:          '"He focuses on your goals and adapts the routine to your lifestyle, equipment, and available time. He demands consistency and always tells it like it is."',
+      t3Quote:          '"Ángel not only helped me regain the motivation to train, but transformed the way I see exercise. With his constant support, availability, and flexibility, I managed to integrate training into my daily life — and today I feel stronger, more committed, and focused on taking care of my wellbeing for the long term."',
+      readMore:         "Read more",
+      readLess:         "Read less",
+      readMoreTesti:    "Read more",
+      // Blog
+      blogLabel:        "Free Resources",
+      blogTitle:        "Articles",
+      blogSearchPh:     "Search articles…",
+      blogSortRecent:   "Newest",
+      blogSortOldest:   "Oldest",
+      blogClear:        "Clear",
+      blogResetBtn:     "Clear filters",
+      blogNoResults:    "No articles match your search.",
+      blogEmpty:        "Coming soon — check back shortly for the first article.",
+      blogAllCat:       "All",
+      blogArticle:      "article",
+      blogArticles:     "articles",
+      blogOf:           "of",
+      // Contact
+      contactTitle:     "Interested in training?",
+      contactSub:       "Tell us about yourself and your goals. I'll reach out personally.",
+      contactNameLabel: "Full name *",
+      contactEmailLabel:"Email *",
+      contactPhoneLabel:"Phone",
+      contactGoalLabel: "What is your goal? *",
+      contactNamePh:    "Your name",
+      contactMsgPh:     "Tell me about your training goals, prior experience, availability...",
+      contactBtn:       "Send message",
+      // Footer
+      footerTagline:    "The professional platform for serious fitness and high-performance training.",
+      footerFollow:     "Follow Me",
+      footerCopy:       "© 2026 FitbySuárez. All rights reserved.",
+      // Default prompt
+      defaultPromptMsg: "Make <strong>English</strong> your default language?",
+      defaultPromptYes: "Yes",
+      defaultPromptNo:  "Not now",
+      defaultSavedMsg:  "✓ English saved as your default language.",
     }
+  };
+
+  let currentLang = localStorage.getItem('fbs_lang') || 'es';
+
+  function applyLanguage(lang, skipPrompt) {
+    currentLang = lang;
+    window.__fbsLang = lang;
+    document.documentElement.lang = lang;
+
+    const t = translations[lang];
+
+    // Update button label (shows the OTHER language you can switch to)
+    const langBtn = document.getElementById('lang-btn-text');
+    if (langBtn) langBtn.textContent = lang === 'es' ? 'EN' : 'ES';
+
+    // Text content via data-key
+    document.querySelectorAll('[data-key]').forEach(el => {
+      const key = el.getAttribute('data-key');
+      if (t[key] !== undefined) {
+        // For elements that contain child elements (icons, spans), only update text nodes
+        const hasChildElements = el.querySelector('i, span, strong, em, b');
+        if (el.tagName === 'A' || el.tagName === 'BUTTON' || hasChildElements) {
+          // Replace text nodes only, preserving child elements
+          el.childNodes.forEach(node => {
+            if (node.nodeType === 3 /* TEXT_NODE */ && node.textContent.trim()) {
+              // Preserve leading/trailing space around icons
+              const leading = node.textContent.match(/^\s+/) ? ' ' : '';
+              node.textContent = leading + t[key];
+            }
+          });
+          // If no text node found (e.g. button with only icon), append text
+          const hasTextNode = Array.from(el.childNodes).some(
+            n => n.nodeType === 3 && n.textContent.trim()
+          );
+          if (!hasTextNode && el.tagName === 'BUTTON') {
+            el.appendChild(document.createTextNode(t[key]));
+          }
+        } else {
+          el.textContent = t[key];
+        }
+      }
+    });
+
+    // Placeholders via data-key-ph
+    document.querySelectorAll('[data-key-ph]').forEach(el => {
+      const key = el.getAttribute('data-key-ph');
+      if (t[key] !== undefined) el.placeholder = t[key];
+    });
+
+    // Activate button icon preservation
+    const activateBtn = document.querySelector('#accept-invite-form button[type="submit"]');
+    if (activateBtn) {
+      const icon = activateBtn.querySelector('i');
+      if (icon) {
+        activateBtn.innerHTML = '';
+        activateBtn.appendChild(icon);
+        activateBtn.appendChild(document.createTextNode(t.activateBtn));
+      }
+    }
+
+    // Daily tip language
+    if (window.updateFitnessTipLanguage) window.updateFitnessTipLanguage(lang);
+
+    // Blog dynamic strings
+    _updateBlogLanguage(lang);
+  }
+
+  function _updateBlogLanguage(lang) {
+    const t = translations[lang];
+
+    // Sort label (reflect current sort direction)
+    const sortLabel = document.getElementById('blog-sort-label');
+    if (sortLabel) {
+      sortLabel.textContent = (window.__blogSortDir === 'asc') ? t.blogSortOldest : t.blogSortRecent;
+    }
+
+    // Clear button (has an icon child)
+    const clearBtn = document.getElementById('blog-clear-btn');
+    if (clearBtn) {
+      const icon = clearBtn.querySelector('i');
+      clearBtn.innerHTML = '';
+      if (icon) clearBtn.appendChild(icon);
+      clearBtn.appendChild(document.createTextNode(' ' + t.blogClear));
+    }
+
+    // Reset / no-results / empty
+    const resetBtn = document.getElementById('blog-reset-btn');
+    if (resetBtn) resetBtn.textContent = t.blogResetBtn;
+
+    const noResultsP = document.querySelector('#blog-no-results p');
+    if (noResultsP) noResultsP.textContent = t.blogNoResults;
+
+    const emptyEl = document.getElementById('blog-empty');
+    if (emptyEl && emptyEl.hasAttribute('data-key')) {
+      emptyEl.textContent = t.blogEmpty;
+    }
+
+    // "Todos" / "All" pill (first pill, data-cat="")
+    const allPill = document.querySelector('#blog-pills .blog-pill[data-cat=""]');
+    if (allPill) allPill.textContent = t.blogAllCat;
+
+    // Search placeholder
+    const searchInput = document.getElementById('blog-search');
+    if (searchInput) searchInput.placeholder = t.blogSearchPh;
+
+    // Blog card "Read more/less" buttons
+    document.querySelectorAll('.blog-read-more').forEach(btn => {
+      const lbl = btn.querySelector('.btn-label');
+      if (!lbl) return;
+      const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+      lbl.textContent = isExpanded ? t.readLess : t.readMore;
+    });
+
+    // Count text — re-trigger blog filter to regenerate the count string
+    if (window.__blogApplyFilters) window.__blogApplyFilters();
+  }
+
+  function toggleLanguage() {
+    const newLang = currentLang === 'es' ? 'en' : 'es';
+    applyLanguage(newLang);
+
+    // Ask about default only if it's not already saved
+    const saved = localStorage.getItem('fbs_lang');
+    if (saved !== newLang) {
+      _showLangDefaultPrompt(newLang);
+    }
+  }
+
+  function _showLangDefaultPrompt(lang) {
+    document.getElementById('lang-default-prompt')?.remove();
+    const t = translations[lang];
+    const banner = document.createElement('div');
+    banner.id = 'lang-default-prompt';
+    banner.style.cssText = 'position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:12px;background:#1a1a1c;border:1px solid rgba(255,219,137,0.35);border-radius:1rem;padding:12px 18px;box-shadow:0 8px 40px rgba(0,0,0,0.7);font-size:0.8rem;font-weight:600;color:#fff;max-width:26rem;width:calc(100% - 2rem);animation:slideUp 0.3s ease';
+    banner.innerHTML = `
+      <style>@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}</style>
+      <i class="fas fa-globe" style="color:#FFDB89;flex-shrink:0"></i>
+      <span style="flex:1;line-height:1.4">${t.defaultPromptMsg}</span>
+      <button onclick="window._saveLangDefault('${lang}')" style="padding:6px 14px;background:#FFDB89;color:#2C2C2E;font-weight:700;border-radius:8px;border:none;cursor:pointer;font-size:0.75rem;white-space:nowrap;flex-shrink:0">${t.defaultPromptYes}</button>
+      <button onclick="document.getElementById('lang-default-prompt')?.remove()" style="color:rgba(255,219,137,0.5);background:none;border:none;cursor:pointer;font-size:0.75rem;white-space:nowrap;flex-shrink:0;font-weight:700;padding:6px 4px">${t.defaultPromptNo}</button>`;
+    document.body.appendChild(banner);
+    setTimeout(() => document.getElementById('lang-default-prompt')?.remove(), 9000);
+  }
+
+  window._saveLangDefault = function(lang) {
+    localStorage.setItem('fbs_lang', lang);
+    document.getElementById('lang-default-prompt')?.remove();
+    const t = translations[lang];
+    // Brief toast confirmation
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);z-index:9999;background:#1a1a1c;border:1px solid rgba(255,219,137,0.3);border-radius:0.75rem;padding:10px 18px;color:#FFDB89;font-size:0.8rem;font-weight:700;box-shadow:0 4px 24px rgba(0,0,0,0.6)';
+    toast.textContent = t.defaultSavedMsg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+  };
+
+  // Testimonial toggle — language-aware
+  function toggleTestimonial(id) {
+    const body = document.getElementById('testi-' + id + '-body');
+    const btn  = body?.parentElement?.querySelector('.testi-expand-btn');
+    if (!body || !btn) return;
+    const expanded = body.classList.toggle('expanded');
+    const t = translations[currentLang];
+    btn.setAttribute('aria-expanded', String(expanded));
+    btn.querySelector('.testi-expand-label').textContent = expanded ? t.readLess : t.readMore;
+    btn.querySelector('.testi-expand-icon').style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
+  }
+
+  // Apply saved/default language on load (without showing the "set default?" prompt)
+  applyLanguage(currentLang, true);
   </script>
 
   <!-- ── Contact / Interest Form ─────────────────────────────────────── -->
