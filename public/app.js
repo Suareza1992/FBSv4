@@ -4878,11 +4878,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const addExerciseToBuilder = (data = null) => {
         const list = document.getElementById('exercise-list');
 
-        // ── Letter: always derived from current DOM count so deletes reset correctly ──
-        const currentCount = list.querySelectorAll('.exercise-item').length;
-        const label = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[currentCount % 26];
+        // ── Letter: placeholder; reindexBuilderLabels() assigns the real label ─────
+        const label = '?';
 
         // ── Superset connector row (inserted between every pair of exercises) ──────
+        const currentCount = list.querySelectorAll('.exercise-item').length;
         if (currentCount > 0) {
             const isActive = !!(data?.isSuperset);
             const connector = document.createElement('div');
@@ -4974,16 +4974,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         input.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideExAc(); });
         input.addEventListener('blur',    ()  => { setTimeout(hideExAc, 150); });
+
+        // Assign the correct superset-aware label now that the item is in the DOM
+        window.reindexBuilderLabels();
     };
 
     // Expose to global scope so inline onclick in HTML can reach it
     window.addExerciseToBuilder = addExerciseToBuilder;
 
-    // ── Reindex A/B/C… labels after any add or delete ────────────────────────
+    // ── Reindex A/B/C… labels after any add, delete, or superset toggle ────────
     window.reindexBuilderLabels = () => {
-        document.querySelectorAll('#exercise-list .exercise-item').forEach((item, i) => {
-            const labelEl = item.querySelector('.exercise-label');
-            if (labelEl) labelEl.textContent = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[i % 26];
+        const list = document.getElementById('exercise-list');
+        if (!list) return;
+        // Walk children and group exercises by active superset connectors
+        const groups = [];
+        let currentGroup = [];
+        let nextLinked = false;
+        Array.from(list.children).forEach(el => {
+            if (el.classList.contains('exercise-item')) {
+                if (nextLinked && currentGroup.length > 0) {
+                    currentGroup.push(el);
+                } else {
+                    if (currentGroup.length > 0) groups.push(currentGroup);
+                    currentGroup = [el];
+                }
+                nextLinked = false;
+            } else if (el.classList.contains('superset-connector-row')) {
+                nextLinked = el.dataset.active === 'true';
+            }
+        });
+        if (currentGroup.length > 0) groups.push(currentGroup);
+        const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        groups.forEach((group, gi) => {
+            const letter = ALPHA[gi % 26];
+            group.forEach((item, ii) => {
+                const labelEl = item.querySelector('.exercise-label');
+                if (labelEl) labelEl.textContent = group.length > 1 ? `${letter}${ii + 1}` : letter;
+            });
         });
     };
 
@@ -5020,6 +5047,8 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('bg-[#3a3a3c]', 'border-[#FFDB89]/15', 'text-[#FFDB89]/40',
                               'hover:bg-[#FFDB89]/10', 'hover:text-[#FFDB89]', 'hover:border-[#FFDB89]/30');
         }
+        // Reletter all exercises since linking/unlinking changes groupings
+        window.reindexBuilderLabels();
     };
 
     // Expose hideExAc so inline onblur/onkeydown in renderRoutineItems can call it
