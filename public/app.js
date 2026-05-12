@@ -6652,10 +6652,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         editorIsDirty = false;
         editorHistory = []; // clear undo stack on fresh open
-        clearInterval(editorAutosaveInterval);
-        editorAutosaveInterval = setInterval(async () => {
-            if (editorIsDirty) await window.performWorkoutSave(true);
-        }, 30000);
 
         const modal = document.getElementById('workout-editor-modal');
         modal.classList.remove('hidden');
