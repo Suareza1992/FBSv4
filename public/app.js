@@ -3802,7 +3802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (program && program !== 'Sin asignar') {
                     const prog = programsCache.find(p => p.name === program);
                     if (prog) {
-                        const today = new Date().toISOString().split('T')[0];
+                        const today = localDateStr(new Date());
                         // Show a small modal asking for start date
                         const pushModal = document.createElement('div');
                         pushModal.id = 'push-program-modal';
@@ -5899,8 +5899,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     stats:       statsInput?.value ?? '',
                     video:       videoBtn?.dataset?.video || '',
                     isSuperset:  nextIsSuperset,
+                    supersetHead: false, // computed below
                 });
                 nextIsSuperset = false;
+            }
+        });
+        // Mark the first exercise of each superset group as supersetHead so
+        // the client-facing getLetter() function produces D1, D2, D3 (not D, D1, D2).
+        exercises.forEach((ex, i) => {
+            if (!ex.isSuperset && exercises[i + 1]?.isSuperset) {
+                ex.supersetHead = true;
             }
         });
 
@@ -6363,7 +6371,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const year = currentDate.getFullYear();
             const isToday = currentDate.toDateString() === new Date().toDateString();
             const isFirstOfMonth = dayNum === 1;
-            const cellId = `day-${currentDate.toISOString().split('T')[0]}`;
+            const cellId = `day-${localDateStr(currentDate)}`;
             const dayName = dayNames[currentDate.getDay()];
 
             // Month divider on the 1st of each month
@@ -6402,7 +6410,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="cal-action-btn text-[#FFDB89]/35 hover:text-[#FFDB89] transition-colors" data-action="program" data-date="${cellId}" title="Asignar programa"><i class="far fa-calendar-plus text-sm"></i></button>
                     </div>
 
-                    <input type="checkbox" class="copy-day-checkbox hidden absolute left-[80px] top-1/2 -translate-y-1/2 w-4 h-4 z-30 accent-[#FFDB89] cursor-pointer pointer-events-auto" data-date="${currentDate.toISOString().split('T')[0]}" onclick="event.stopPropagation(); window.toggleCopyDay(this)" />
+                    <input type="checkbox" class="copy-day-checkbox hidden absolute left-[80px] top-1/2 -translate-y-1/2 w-4 h-4 z-30 accent-[#FFDB89] cursor-pointer pointer-events-auto" data-date="${localDateStr(currentDate)}" onclick="event.stopPropagation(); window.toggleCopyDay(this)" />
                 </div>
             `;
         }
@@ -10683,7 +10691,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!container) return;
 
             const today = new Date();
-            const todayStr = today.toISOString().split('T')[0];
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
             const dayNames = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
             const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -10700,7 +10708,7 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let i = 0; i < totalDays; i++) {
                 const cur = new Date(startDate);
                 cur.setDate(startDate.getDate() + i);
-                const dateStr = cur.toISOString().split('T')[0];
+                const dateStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
                 const dayNum = cur.getDate();
                 const isToday = dateStr === todayStr;
                 const isFirstOfMonth = dayNum === 1;
