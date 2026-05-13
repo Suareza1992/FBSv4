@@ -18,7 +18,7 @@
     <div class="overflow-visible">
         <div class="py-3 px-px border-b border-[#FFDB89]/15 flex flex-wrap gap-3">
             <input type="text" id="client-search-input" placeholder="Buscar por nombre..." class="flex-1 min-w-[180px] md:w-64 h-10 px-3 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50">
-            <select id="client-status-filter" class="min-w-[130px] h-10 pl-3 pr-9 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-sm text-[#FFDB89] focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50 appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 10px center;">
+            <select id="client-status-filter" class="min-w-[130px] h-10 pl-4 pr-10 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-sm text-[#FFDB89] focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50 appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;">
                 <option value="all">Todos</option>
                 <option value="active" selected>Activos</option>
                 <option value="inactive">Inactivos</option>
@@ -97,13 +97,13 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">Programa</label>
-                        <select id="new-client-program" class="w-full pl-3 pr-9 py-3 bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 10px center;">
+                        <select id="new-client-program" class="w-full pl-4 pr-10 py-3 bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;">
                             <option value="Sin Asignar">-- Sin programa --</option>
                         </select>
                     </div>
                     <div>
                         <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">Grupo</label>
-                        <select id="new-client-group" class="w-full pl-3 pr-9 py-3 bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 10px center;">
+                        <select id="new-client-group" class="w-full pl-4 pr-10 py-3 bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;">
                             <option value="General">General</option>
                         </select>
                     </div>
@@ -126,7 +126,7 @@
                             </div>
                             <div>
                                 <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">Zona Horaria</label>
-                                <select id="opt-timezone" class="w-full pl-3 pr-9 py-3 bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 10px center;"></select>
+                                <select id="opt-timezone" class="w-full pl-4 pr-10 py-3 bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/50 transition appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;"></select>
                             </div>
                         </div>
 
