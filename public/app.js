@@ -2680,7 +2680,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // `clientData` = { weight, bodyFat, macroSettings }  (from DB)
     // `clientId`   = MongoDB _id (null for client self-view)
     // `readOnly`   = if true, hides the save button (client self-view)
-    const renderMacroCalculator = (container, clientData, clientId = null, readOnly = false) => {
+    const renderMacroCalculator = (container, clientData, clientId = null, readOnly = false, onApply = null) => {
         const weight   = parseMeasurement(clientData.weight);
         const rawBf    = parseMeasurement(clientData.bodyFat);
         if (!weight || rawBf === null) {
@@ -2840,9 +2840,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="ml-2 text-xl font-black text-[#FFDB89]" id="mc-total-cal">—</span>
                     <span class="text-xs text-[#FFDB89]/40 ml-1">kcal</span>
                 </div>
-                ${!readOnly ? `<button id="mc-save-btn" class="px-5 py-2.5 bg-[#FFDB89] text-[#030303] rounded-xl text-sm font-black hover:bg-[#FFDB89]/80 transition flex items-center gap-2">
-                    <i class="fas fa-save"></i> Guardar configuración
-                </button>` : ''}
+                ${!readOnly
+                    ? `<button id="mc-save-btn" class="px-5 py-2.5 bg-[#FFDB89] text-[#030303] rounded-xl text-sm font-black hover:bg-[#FFDB89]/80 transition flex items-center gap-2">
+                        <i class="fas fa-save"></i> Guardar configuración
+                       </button>`
+                    : onApply
+                        ? `<button id="mc-apply-btn" class="px-5 py-2.5 bg-[#FFDB89]/10 border border-[#FFDB89]/30 text-[#FFDB89] rounded-xl text-sm font-black hover:bg-[#FFDB89]/20 active:scale-95 transition flex items-center gap-2">
+                            <i class="fas fa-check-circle"></i> Aplicar metas
+                           </button>`
+                        : ''}
             </div>
 
             </div><!-- end mc-collapsible-body -->
@@ -2946,6 +2952,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (btn) { btn.innerHTML = '<i class="fas fa-check mr-2"></i>Guardado'; btn.classList.add('bg-green-400'); setTimeout(() => { btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar configuración'; btn.classList.remove('bg-green-400'); }, 2000); }
                     }
                 } catch(e) { console.error('Error saving macro settings', e); }
+            });
+        }
+
+        // Apply button (client applies calculator recommendation to their own macro goals)
+        if (onApply) {
+            document.getElementById('mc-apply-btn')?.addEventListener('click', async () => {
+                const proRatio  = (parseFloat(document.getElementById('mc-ratio-pro')?.value)  || 40) / 100;
+                const fatRatio  = (parseFloat(document.getElementById('mc-ratio-fat')?.value)  || 30) / 100;
+                const carbRatio = (parseFloat(document.getElementById('mc-ratio-carb')?.value) || 30) / 100;
+                const total     = Math.round(proRatio * 100) + Math.round(fatRatio * 100) + Math.round(carbRatio * 100);
+                if (total !== 100) { showToast('Los porcentajes deben sumar 100% antes de aplicar.', 'error'); return; }
+                const delta       = goalCalMap[currentGoal] ?? 0;
+                const targetCal   = Math.round(maintenance + delta);
+                const goalProtein = Math.round(targetCal * proRatio / 4);
+                const goalFat     = Math.round(targetCal * fatRatio  / 9);
+                const goalCarbs   = Math.round(targetCal * carbRatio / 4);
+                const btn         = document.getElementById('mc-apply-btn');
+                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
+                await onApply({ targetCal, goalProtein, goalFat, goalCarbs });
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check-circle"></i> Aplicar metas'; }
             });
         }
 
@@ -3320,7 +3346,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Categoría</label>
-                            <select id="photo-category" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
+                            <select id="photo-category" class="w-full pl-2.5 pr-8 py-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] appearance-none cursor-pointer" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
                                 <option value="general" class="text-black">General</option>
                                 <option value="front" class="text-black">Frente</option>
                                 <option value="back" class="text-black">Espalda</option>
@@ -5423,7 +5449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <input type="number" id="drop-qty-${mealId}" value="1" min="1" step="1"
                                     class="w-16 p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-center font-black text-sm outline-none focus:ring-1 focus:ring-[#FFDB89]">
                                 <select id="drop-unit-${mealId}"
-                                    class="flex-1 p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-xs outline-none focus:ring-1 focus:ring-[#FFDB89] cursor-pointer">
+                                    class="flex-1 pl-1.5 pr-6 py-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-xs outline-none focus:ring-1 focus:ring-[#FFDB89] cursor-pointer appearance-none" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 6px center;">
                                     <option value="${unitG}">porción (${unitG}g c/u)</option>
                                     <option value="1">gramos (g)</option>
                                     <option value="28.35">onzas (oz)</option>
@@ -5502,8 +5528,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!prog.weeks[weekIndex]) prog.weeks[weekIndex] = { weekNumber: weekIndex + 1, days: {} };
         if (!prog.weeks[weekIndex].days) prog.weeks[weekIndex].days = {};
         const existing = prog.weeks[weekIndex].days[String(dayNum)] || {};
+        // Guard: ask before wiping exercises
+        if (existing.exercises?.length > 0) {
+            const ok = confirm(`Este día ya tiene ${existing.exercises.length} ejercicio(s) asignado(s).\n\n¿Deseas convertirlo a Descanso y eliminar los ejercicios?`);
+            if (!ok) return;
+        }
         snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
-        prog.weeks[weekIndex].days[String(dayNum)] = { ...existing, name: 'Descanso', isRest: true, exercises: [] };
+        prog.weeks[weekIndex].days[String(dayNum)] = { ...existing, name: 'Descanso', isRest: true, isActiveRest: false, exercises: [] };
         try {
             const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
             if (res.ok) {
@@ -5522,6 +5553,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!prog.weeks[weekIndex]) prog.weeks[weekIndex] = { weekNumber: weekIndex + 1, days: {} };
         if (!prog.weeks[weekIndex].days) prog.weeks[weekIndex].days = {};
         const existing = prog.weeks[weekIndex].days[String(dayNum)] || {};
+        // Guard: ask before wiping exercises
+        if (existing.exercises?.length > 0) {
+            const ok = confirm(`Este día ya tiene ${existing.exercises.length} ejercicio(s) asignado(s).\n\n¿Deseas convertirlo a Descanso Activo y eliminar los ejercicios?`);
+            if (!ok) return;
+        }
         snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
         prog.weeks[weekIndex].days[String(dayNum)] = { ...existing, name: 'Descanso Activo', isRest: true, isActiveRest: true, exercises: [] };
         try {
@@ -6501,6 +6537,12 @@ document.addEventListener('DOMContentLoaded', () => {
             openWorkoutEditor(dateStr); 
             
         } else if (action === 'rest') {
+            // Guard: confirm if this date already has a workout with exercises
+            const existingW = window._calendarWorkouts?.[dateStr];
+            if (existingW && !existingW.isRest && existingW.exercises?.length > 0) {
+                const ok = confirm(`Este día ya tiene una rutina con ${existingW.exercises.length} ejercicio(s).\n\n¿Deseas reemplazarla con un día de Descanso?`);
+                if (!ok) return;
+            }
             try {
                 const res = await apiFetch('/api/client-workouts', {
                     method: 'POST',
@@ -6514,6 +6556,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                 });
                 if (res.ok) {
+                    window._calendarWorkouts = window._calendarWorkouts || {};
+                    window._calendarWorkouts[dateStr] = { isRest: true, restType: 'rest', title: 'Descanso', exercises: [] };
                     const cell = document.getElementById(dateId);
                     if (cell) {
                         const content = cell.querySelector('.content-area');
@@ -6668,14 +6712,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await apiFetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`);
                 if(response.ok) {
                     const workout = await response.json();
-                    editorWorkoutTitle = workout.title || editorDateStr;
+                    // If this was a rest day, treat it as a fresh workout (clear the rest title, start with blank exercise)
+                    const wasRest = workout.isRest;
+                    editorWorkoutTitle = wasRest ? editorDateStr : (workout.title || editorDateStr);
                     editorWarmup = workout.warmup || '';
                     editorWarmupVideoUrl = workout.warmupVideoUrl || '';
                     editorWarmupItems = workout.warmupItems || [];
                     editorCooldown = workout.cooldown || '';
                     editorCooldownVideoUrl = workout.cooldownVideoUrl || '';
                     editorCooldownItems = workout.cooldownItems || [];
-                    editorExercises = workout.exercises || [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
+                    // Always ensure at least one blank exercise row — [] is truthy so the old `|| [template]` didn't fire
+                    const loadedExercises = workout.exercises?.length > 0 ? workout.exercises : null;
+                    editorExercises = loadedExercises || [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
                     // Backward-compat migration: old data used isSuperset=true on ALL exercises
                     // in a group (including the first). New model uses supersetHead=true on the
                     // first and isSuperset=true only on continuations.
@@ -8892,6 +8940,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (measurements.length === 0) {
                 if (emptyEl) emptyEl.classList.remove('hidden');
                 if (wrapEl)  wrapEl.classList.add('hidden');
+                // No measurements → hide macro calc section entirely
+                const macroSection = document.getElementById('macro-calc-section-metrics');
+                if (macroSection) macroSection.classList.add('hidden');
                 return;
             }
 
@@ -8918,6 +8969,38 @@ document.addEventListener('DOMContentLoaded', () => {
             }).join('');
 
             if (bodyEl) bodyEl.innerHTML = rows;
+
+            // ── Macro Calculator from latest evaluation ────────────────────────
+            const calcWrapMetrics = document.getElementById('macro-calc-wrapper-metrics');
+            if (calcWrapMetrics) {
+                try {
+                    const meRes = await apiFetch('/api/me');
+                    const me    = meRes.ok ? await meRes.json() : {};
+                    const latest = measurements[measurements.length - 1];
+                    if (latest && (latest.weight || latest.bodyFat)) {
+                        const applyMacrosFromMetrics = async ({ targetCal, goalProtein, goalFat, goalCarbs }) => {
+                            try {
+                                const r = await apiFetch('/api/me', {
+                                    method: 'PUT',
+                                    body: JSON.stringify({ macroGoals: { goalProtein, goalCarbs, goalFat } })
+                                });
+                                if (!r.ok) throw new Error();
+                                showToast(`✓ Metas aplicadas: ${goalProtein}g prot · ${goalCarbs}g carbs · ${goalFat}g grasas`, 'success');
+                            } catch { showToast('Error guardando las metas. Intenta de nuevo.', 'error'); }
+                        };
+                        renderMacroCalculator(calcWrapMetrics,
+                            { weight: parseMeasurement(latest.weight), bodyFat: parseMeasurement(latest.bodyFat),
+                              macroSettings: me.macroSettings, evalDate: latest.date },
+                            null, true /* readOnly */, applyMacrosFromMetrics);
+                    } else {
+                        const sec = document.getElementById('macro-calc-section-metrics');
+                        if (sec) sec.classList.add('hidden');
+                    }
+                } catch(e) {
+                    const sec = document.getElementById('macro-calc-section-metrics');
+                    if (sec) sec.classList.add('hidden');
+                }
+            }
 
         } catch (e) { console.error('Error loading client metrics:', e); }
     };
@@ -9150,11 +9233,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 const measurements = measRes.ok ? await measRes.json() : [];
                 const me           = meRes.ok   ? await meRes.json()   : {};
                 const latest       = measurements.length ? measurements[measurements.length - 1] : null;
+                // onApply: client applies recommended macros directly to their nutrition goals
+                const applyMacrosToGoals = async ({ targetCal, goalProtein, goalFat, goalCarbs }) => {
+                    try {
+                        const r = await apiFetch('/api/me', {
+                            method: 'PUT',
+                            body: JSON.stringify({ macroGoals: { goalProtein, goalCarbs, goalFat } })
+                        });
+                        if (!r.ok) throw new Error();
+                        // Sync the Nutrición goal inputs if visible
+                        const gP = document.getElementById('goal-protein');
+                        const gC = document.getElementById('goal-carbs');
+                        const gF = document.getElementById('goal-fat');
+                        if (gP) gP.value = goalProtein;
+                        if (gC) gC.value = goalCarbs;
+                        if (gF) gF.value = goalFat;
+                        // Refresh the calorie goal display
+                        calorieGoal = targetCal;
+                        const goalEl = document.getElementById('calorie-goal-display');
+                        if (goalEl) goalEl.textContent = targetCal;
+                        showToast(`✓ Metas aplicadas: ${goalProtein}g prot · ${goalCarbs}g carbs · ${goalFat}g grasas`, 'success');
+                    } catch { showToast('Error guardando las metas. Intenta de nuevo.', 'error'); }
+                };
+
                 if (latest) {
                     renderMacroCalculator(calcWrapper,
                         { weight: parseMeasurement(latest.weight), bodyFat: parseMeasurement(latest.bodyFat),
                           macroSettings: me.macroSettings, evalDate: latest.date },
-                        null, true /* readOnly */);
+                        null, true /* readOnly */, applyMacrosToGoals);
                 } else {
                     calcWrapper.innerHTML = `<div class="bg-[#1C1C1E] border border-[#FFDB89]/10 rounded-2xl p-6 text-center text-[#FFDB89]/40 text-sm"><i class="fas fa-ruler-combined text-2xl mb-2 block"></i>Sin evaluación registrada todavía.</div>`;
                 }
@@ -9586,13 +9692,19 @@ document.addEventListener('DOMContentLoaded', () => {
             let servingG       = 100;    // always in grams internally
             let modalUnit      = servingUnit; // inherit current global unit
             let zxingReader    = null;
+            let scanStream     = null;   // MediaStream for native BarcodeDetector path
+            let scanActive     = false;  // flag to stop the rAF scan loop
 
             // oz ↔ g helpers
             const ozToG = oz => oz * 28.3495;
             const gToOz = g  => parseFloat((g / 28.3495).toFixed(1));
 
             const stopScanner = () => {
+                scanActive = false;
                 if (zxingReader) { try { zxingReader.reset(); } catch (e) {} zxingReader = null; }
+                if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+                const vid = document.getElementById('barcode-video');
+                if (vid) { try { vid.srcObject = null; } catch (e) {} }
             };
 
             // ---- Build modal shell ----
@@ -10043,7 +10155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="flex-1 flex flex-col gap-1">
                                     <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider">Unidad</label>
                                     <select id="off-unit"
-                                        class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] cursor-pointer">
+                                        class="w-full pl-2.5 pr-8 py-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] cursor-pointer appearance-none" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
                                         <option value="${unitG}">porción (${unitG}g c/u)</option>
                                         <option value="1">gramos (g)</option>
                                         <option value="28.35">onzas (oz)</option>
@@ -10116,58 +10228,223 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             // ==================================================
-            // TAB: SCAN (ZXing barcode via camera)
+            // TAB: SCAN  (native BarcodeDetector → ZXing fallback)
             // ==================================================
             const showScanTab = () => {
-                document.getElementById('food-modal-body').innerHTML = `
-                    <div class="p-5 space-y-3 text-center">
-                        <div class="relative bg-black rounded-xl overflow-hidden w-full" style="aspect-ratio:4/3">
-                            <video id="barcode-video" class="w-full h-full object-cover" autoplay muted playsinline></video>
-                            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div class="w-56 h-28 border-2 border-[#FFDB89] rounded-xl opacity-80 shadow-[0_0_20px_rgba(255,219,137,0.3)]"></div>
-                            </div>
-                            <p id="scan-status" class="absolute bottom-3 left-0 right-0 text-xs text-white/70 text-center px-4">Apunta al código de barras del producto</p>
-                        </div>
-                        <p class="text-xs text-[#FFDB89]/40">Funciona mejor con la cámara trasera. Requiere permisos de cámara.</p>
-                    </div>`;
+                stopScanner();
+                scanActive = true;
+                baseNutrients = null;
+                servingG = 100;
+                setPreview(null);
 
-                const setStatus = (msg, cls = 'text-white/70') => {
-                    const el = document.getElementById('scan-status');
-                    if (el) { el.textContent = msg; el.className = `absolute bottom-3 left-0 right-0 text-xs text-center px-4 ${cls}`; }
-                };
-
-                const applyProductData = (p) => {
-                    const n = p.nutriments || {};
-                    baseNutrients = {
-                        name:          p.product_name || `Producto escaneado`,
-                        calories_100g: parseFloat(n['energy-kcal_100g'] || 0) || Math.round((parseFloat(n['energy_100g'] || 0)) / 4.184),
-                        protein_100g:  parseFloat(n['proteins_100g']        || 0),
-                        carbs_100g:    parseFloat(n['carbohydrates_100g']   || 0),
-                        fat_100g:      parseFloat(n['fat_100g']             || 0)
-                    };
-                    servingG = parseFloat(p.serving_quantity) || 100;
-                    const scale = servingG / 100;
-                    setPreview({
-                        name:     baseNutrients.name,
-                        calories: Math.round(baseNutrients.calories_100g * scale),
-                        protein:  Math.round(baseNutrients.protein_100g  * scale),
-                        carbs:    Math.round(baseNutrients.carbs_100g    * scale),
-                        fat:      Math.round(baseNutrients.fat_100g      * scale)
-                    }, true);
-                    syncServingDisplay();
+                // ── helpers ──────────────────────────────────────────
+                const renderCamera = () => {
                     document.getElementById('food-modal-body').innerHTML = `
-                        <div class="p-6 text-center space-y-3">
-                            <div class="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto">
-                                <i class="fas fa-check text-green-400 text-2xl"></i>
+                        <div class="p-5 space-y-3">
+                            <div class="relative bg-black rounded-xl overflow-hidden w-full" style="aspect-ratio:4/3">
+                                <video id="barcode-video" class="w-full h-full object-cover" autoplay muted playsinline></video>
+                                <!-- targeting reticle -->
+                                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <div class="w-56 h-28 border-2 border-[#FFDB89] rounded-xl opacity-80 shadow-[0_0_20px_rgba(255,219,137,0.3)]"></div>
+                                </div>
+                                <p id="scan-status" class="absolute bottom-3 left-0 right-0 text-xs text-center px-4 text-white/70">Apunta al código de barras del producto</p>
                             </div>
-                            <p class="text-lg font-bold text-white">${baseNutrients.name}</p>
-                            <p class="text-sm text-[#FFDB89]/60">Producto encontrado. Ajusta la porción si es necesario.</p>
+                            <!-- manual barcode fallback -->
+                            <div class="flex items-center gap-2">
+                                <input type="number" id="manual-barcode-input" placeholder="o escribe el código de barras"
+                                    inputmode="numeric"
+                                    class="flex-1 p-2.5 bg-white/10 border border-[#FFDB89]/20 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-white/20">
+                                <button id="manual-barcode-btn"
+                                    class="px-3 py-2.5 bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89] rounded-xl text-sm font-bold hover:bg-[#FFDB89]/20 transition shrink-0">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                            <p class="text-[10px] text-[#FFDB89]/30 text-center">Funciona mejor con la cámara trasera · Requiere permisos de cámara</p>
                         </div>`;
+
+                    const setStatus = (msg, cls = 'text-white/70') => {
+                        const el = document.getElementById('scan-status');
+                        if (el) { el.textContent = msg; el.className = `absolute bottom-3 left-0 right-0 text-xs text-center px-4 ${cls}`; }
+                    };
+
+                    // wire manual entry
+                    const doManual = () => {
+                        const code = (document.getElementById('manual-barcode-input')?.value || '').trim();
+                        if (code) { stopScanner(); fetchProduct(code, setStatus); }
+                    };
+                    document.getElementById('manual-barcode-btn')?.addEventListener('click', doManual);
+                    document.getElementById('manual-barcode-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') doManual(); });
+
+                    startCamera(setStatus);
                 };
 
-                const startScanner = async () => {
+                // ── fetch product from Open Food Facts ───────────────
+                const fetchProduct = async (barcode, setStatus) => {
+                    setStatus?.(`✓ ${barcode} — Buscando...`, 'text-green-400 animate-pulse');
+                    try {
+                        const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+                        const data = await res.json();
+                        if (data.status !== 1 || !data.product?.product_name) {
+                            setStatus?.('Producto no encontrado. Intenta de nuevo o usa la búsqueda.', 'text-red-400');
+                            // inject retry button below the status
+                            const body = document.getElementById('food-modal-body');
+                            if (body && !body.querySelector('#scan-retry-btn')) {
+                                body.insertAdjacentHTML('beforeend', `
+                                    <div class="px-5 pb-4 text-center">
+                                        <button id="scan-retry-btn"
+                                            class="px-4 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89] rounded-xl text-sm font-bold hover:bg-[#FFDB89]/20 transition">
+                                            <i class="fas fa-redo mr-1.5"></i>Intentar de nuevo
+                                        </button>
+                                    </div>`);
+                                document.getElementById('scan-retry-btn')?.addEventListener('click', showScanTab);
+                            }
+                            return;
+                        }
+                        showScanResult(data.product);
+                    } catch {
+                        setStatus?.('Error de conexión. Verifica tu internet e intenta de nuevo.', 'text-red-400');
+                    }
+                };
+
+                // ── qty-picker shown after a successful scan ──────────
+                const showScanResult = (p) => {
+                    const n       = p.nutriments || {};
+                    const cal100  = parseFloat(n['energy-kcal_100g'] || 0) || Math.round(parseFloat(n['energy_100g'] || 0) / 4.184);
+                    const pro100  = parseFloat(n['proteins_100g']      || 0);
+                    const carb100 = parseFloat(n['carbohydrates_100g'] || 0);
+                    const fat100  = parseFloat(n['fat_100g']           || 0);
+                    const serving = parseFloat(p.serving_quantity)     || 100;
+                    const name    = (p.product_name || 'Producto escaneado').trim();
+
+                    baseNutrients = { name, calories_100g: cal100, protein_100g: pro100, carbs_100g: carb100, fat_100g: fat100 };
+
+                    document.getElementById('food-modal-body').innerHTML = `
+                        <div class="p-5 space-y-3">
+                            <!-- back to camera -->
+                            <button id="scan-back-btn" class="flex items-center gap-1.5 text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] transition">
+                                <i class="fas fa-chevron-left text-[10px]"></i> Escanear de nuevo
+                            </button>
+                            <!-- product card -->
+                            <div class="bg-white/5 border border-[#FFDB89]/20 rounded-xl px-4 py-3 flex items-center gap-3">
+                                <i class="fas fa-barcode text-[#FFDB89]/30 text-xl shrink-0"></i>
+                                <div class="min-w-0">
+                                    <p class="text-sm font-bold text-white leading-tight truncate">${name}</p>
+                                    <p class="text-xs text-[#FFDB89]/40 mt-0.5">${cal100} kcal/100g · porción ${serving}g</p>
+                                </div>
+                            </div>
+                            <!-- qty + unit row -->
+                            <div class="flex gap-2 items-end">
+                                <div class="flex flex-col gap-1" style="width:90px">
+                                    <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider">Cantidad</label>
+                                    <input type="number" id="scan-qty" value="1" min="0.1" step="any"
+                                        class="p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-center text-lg font-black outline-none focus:ring-2 focus:ring-[#FFDB89]">
+                                </div>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider">Unidad</label>
+                                    <select id="scan-unit"
+                                        class="w-full pl-2.5 pr-8 py-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] cursor-pointer appearance-none" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
+                                        <option value="${serving}">porción (${serving}g c/u)</option>
+                                        <option value="1">gramos (g)</option>
+                                        <option value="28.35">onzas (oz)</option>
+                                        <option value="15">cucharada / tbsp (~15g)</option>
+                                        <option value="5">cucharadita / tsp (~5g)</option>
+                                        <option value="240">taza / cup (~240g)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <!-- live macro chips -->
+                            <div id="scan-macro-row" class="grid grid-cols-4 gap-2"></div>
+                        </div>`;
+
+                    const qtyInput = document.getElementById('scan-qty');
+                    const unitSel  = document.getElementById('scan-unit');
+                    const macroRow = document.getElementById('scan-macro-row');
+
+                    const recalc = (clamp = false) => {
+                        const raw = parseFloat(qtyInput.value);
+                        const qty = (!isNaN(raw) && raw > 0) ? raw : 1;
+                        if (clamp) qtyInput.value = qty;
+                        const gPerU = parseFloat(unitSel.value) || serving;
+                        servingG = qty * gPerU;
+                        const scale = servingG / 100;
+                        const cal  = Math.round(cal100  * scale);
+                        const pro  = Math.round(pro100  * scale);
+                        const carb = Math.round(carb100 * scale);
+                        const fat  = Math.round(fat100  * scale);
+                        macroRow.innerHTML = `
+                            <div class="bg-[#FFDB89]/8 rounded-xl p-2 text-center">
+                                <p class="text-[10px] text-[#FFDB89]/50 mb-0.5">Cal</p>
+                                <p class="text-base font-black text-[#FFDB89]">${cal}</p>
+                            </div>
+                            <div class="bg-red-400/8 rounded-xl p-2 text-center">
+                                <p class="text-[10px] text-red-400/60 mb-0.5">Prot</p>
+                                <p class="text-base font-black text-red-400">${pro}g</p>
+                            </div>
+                            <div class="bg-yellow-400/8 rounded-xl p-2 text-center">
+                                <p class="text-[10px] text-yellow-400/60 mb-0.5">Carb</p>
+                                <p class="text-base font-black text-yellow-400">${carb}g</p>
+                            </div>
+                            <div class="bg-orange-400/8 rounded-xl p-2 text-center">
+                                <p class="text-[10px] text-orange-400/60 mb-0.5">Grasa</p>
+                                <p class="text-base font-black text-orange-400">${fat}g</p>
+                            </div>`;
+                        setPreview({ name, calories: cal, protein: pro, carbs: carb, fat: fat }, true);
+                        syncServingDisplay();
+                    };
+
+                    qtyInput.addEventListener('input', () => recalc(false));
+                    qtyInput.addEventListener('blur',  () => recalc(true));
+                    unitSel.addEventListener('change', recalc);
+                    recalc(true);
+
+                    document.getElementById('scan-back-btn')?.addEventListener('click', () => {
+                        baseNutrients = null;
+                        servingG = 100;
+                        setPreview(null);
+                        showScanTab();
+                    });
+                };
+
+                // ── camera init: native BarcodeDetector → ZXing ──────
+                const startCamera = async (setStatus) => {
+                    // ── 1. Native BarcodeDetector (Chrome/Edge/Android) ──
+                    if ('BarcodeDetector' in window) {
+                        try {
+                            const detector = new BarcodeDetector({
+                                formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code']
+                            });
+                            const stream = await navigator.mediaDevices.getUserMedia({
+                                video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+                            });
+                            scanStream = stream;
+                            const video = document.getElementById('barcode-video');
+                            if (!video) { stream.getTracks().forEach(t => t.stop()); scanStream = null; return; }
+                            video.srcObject = stream;
+                            await video.play();
+                            setStatus('Buscando código de barras...', 'text-[#FFDB89]/80 animate-pulse');
+
+                            const loop = async () => {
+                                if (!scanActive || !document.getElementById('barcode-video')) return;
+                                try {
+                                    const codes = await detector.detect(video);
+                                    if (codes.length > 0) {
+                                        stopScanner();
+                                        fetchProduct(codes[0].rawValue, setStatus);
+                                        return;
+                                    }
+                                } catch (_) {}
+                                requestAnimationFrame(loop);
+                            };
+                            requestAnimationFrame(loop);
+                            return;          // native path done — don't fall through
+                        } catch (_) {
+                            // camera permission denied or BarcodeDetector failed → fall through to ZXing
+                        }
+                    }
+
+                    // ── 2. ZXing fallback ────────────────────────────────
+                    setStatus('Cargando escáner...', 'text-[#FFDB89]/80 animate-pulse');
                     if (!window.ZXing) {
-                        setStatus('Cargando escáner...', 'text-[#FFDB89]/80 animate-pulse');
                         try {
                             await new Promise((resolve, reject) => {
                                 const s = document.createElement('script');
@@ -10175,7 +10452,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 s.onload = resolve; s.onerror = reject;
                                 document.head.appendChild(s);
                             });
-                        } catch (e) {
+                        } catch {
                             setStatus('No se pudo cargar el escáner. Verifica tu conexión.', 'text-red-400');
                             return;
                         }
@@ -10186,29 +10463,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         await zxingReader.decodeFromConstraints(
                             { video: { facingMode: { ideal: 'environment' } } },
                             'barcode-video',
-                            async (result, err) => {
-                                if (!result) return;
-                                const barcode = result.getText();
-                                setStatus(`✓ Código: ${barcode} — Buscando producto...`, 'text-green-400');
+                            (result, _err) => {
+                                if (!result || !scanActive) return;
                                 stopScanner();
-                                try {
-                                    const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-                                    const data = await res.json();
-                                    if (data.status !== 1 || !data.product?.product_name) {
-                                        setStatus('Producto no encontrado. Prueba la búsqueda manual.', 'text-red-400');
-                                        return;
-                                    }
-                                    applyProductData(data.product);
-                                } catch (fetchErr) {
-                                    setStatus('Error buscando el producto. Intenta de nuevo.', 'text-red-400');
-                                }
+                                fetchProduct(result.getText(), null);
                             }
                         );
-                    } catch (camErr) {
+                    } catch {
                         setStatus('No se pudo acceder a la cámara. Verifica los permisos.', 'text-red-400');
                     }
                 };
-                startScanner();
+
+                renderCamera();
             };
 
             // ---- Tab switching ----
@@ -10699,7 +10965,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase mb-1">Categoría</label>
-                            <select id="photo-category" class="w-full p-2.5 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
+                            <select id="photo-category" class="w-full pl-2.5 pr-8 py-2.5 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] appearance-none cursor-pointer" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
                                 <option>Inicio</option>
                                 <option>Semana 4</option>
                                 <option>Semana 8</option>
