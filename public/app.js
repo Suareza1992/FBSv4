@@ -2857,11 +2857,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // ── JS logic ──────────────────────────────────────────────────────
         let currentGoal = initGoal;
 
+        // Helper: querySelector scoped to this container (avoids conflicts when two calculators exist in DOM)
+        const $ = (id) => container.querySelector(`#${id}`);
+
         const recompute = () => {
-            const proRatio  = (parseFloat(document.getElementById('mc-ratio-pro')?.value)  || 0) / 100;
-            const fatRatio  = (parseFloat(document.getElementById('mc-ratio-fat')?.value)  || 0) / 100;
-            const carbRatio = (parseFloat(document.getElementById('mc-ratio-carb')?.value) || 0) / 100;
-            const sumCheck  = document.getElementById('mc-sum-check');
+            const proRatio  = (parseFloat($('mc-ratio-pro')?.value)  || 0) / 100;
+            const fatRatio  = (parseFloat($('mc-ratio-fat')?.value)  || 0) / 100;
+            const carbRatio = (parseFloat($('mc-ratio-carb')?.value) || 0) / 100;
+            const sumCheck  = $('mc-sum-check');
             const total     = Math.round(proRatio * 100) + Math.round(fatRatio * 100) + Math.round(carbRatio * 100);
 
             if (sumCheck) {
@@ -2881,7 +2884,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const calFat   = targetCal * fatRatio;
             const calCarb  = targetCal * carbRatio;
 
-            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
             set('mc-total-cal', Math.round(targetCal).toLocaleString());
             set('mc-cal-pro',   Math.round(calPro).toLocaleString());
             set('mc-g-pro',     `${Math.round(calPro / 4)} g`);
@@ -2908,16 +2911,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Ratio input changes
         ['mc-ratio-pro','mc-ratio-fat','mc-ratio-carb'].forEach(id => {
-            document.getElementById(id)?.addEventListener('input', recompute);
+            $(id)?.addEventListener('input', recompute);
         });
 
         // Collapse toggle (client view only)
         if (readOnly) {
-            document.getElementById('mc-collapse-btn')?.addEventListener('click', () => {
-                const body  = document.getElementById('mc-collapsible-body');
-                const icon  = document.getElementById('mc-collapse-icon');
-                const label = document.getElementById('mc-collapse-label');
-                const hdr   = document.getElementById('mc-collapse-btn')?.closest('.px-6');
+            $('mc-collapse-btn')?.addEventListener('click', () => {
+                const body  = $('mc-collapsible-body');
+                const icon  = $('mc-collapse-icon');
+                const label = $('mc-collapse-label');
+                const hdr   = $('mc-collapse-btn')?.closest('.px-6');
                 const isNowCollapsed = !body.classList.contains('hidden');
                 body.classList.toggle('hidden', isNowCollapsed);
                 if (icon)  icon.className  = `fas ${isNowCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'} text-[10px]`;
@@ -2928,12 +2931,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Save button
+        // Save button (trainer view)
         if (!readOnly) {
-            document.getElementById('mc-save-btn')?.addEventListener('click', async () => {
-                const proRatio  = (parseFloat(document.getElementById('mc-ratio-pro')?.value)  || 40) / 100;
-                const fatRatio  = (parseFloat(document.getElementById('mc-ratio-fat')?.value)  || 30) / 100;
-                const carbRatio = (parseFloat(document.getElementById('mc-ratio-carb')?.value) || 30) / 100;
+            $('mc-save-btn')?.addEventListener('click', async () => {
+                const proRatio  = (parseFloat($('mc-ratio-pro')?.value)  || 40) / 100;
+                const fatRatio  = (parseFloat($('mc-ratio-fat')?.value)  || 30) / 100;
+                const carbRatio = (parseFloat($('mc-ratio-carb')?.value) || 30) / 100;
 
                 // Compute actual calorie/gram targets to push to client
                 const delta      = goalCalMap[currentGoal] ?? 0;
@@ -2948,7 +2951,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const r = await apiFetch(url, { method: 'PUT', body: JSON.stringify(payload) });
                     if (r.ok) {
-                        const btn = document.getElementById('mc-save-btn');
+                        const btn = $('mc-save-btn');
                         if (btn) { btn.innerHTML = '<i class="fas fa-check mr-2"></i>Guardado'; btn.classList.add('bg-green-400'); setTimeout(() => { btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar configuración'; btn.classList.remove('bg-green-400'); }, 2000); }
                     }
                 } catch(e) { console.error('Error saving macro settings', e); }
@@ -2957,10 +2960,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Apply button (client applies calculator recommendation to their own macro goals)
         if (onApply) {
-            document.getElementById('mc-apply-btn')?.addEventListener('click', async () => {
-                const proRatio  = (parseFloat(document.getElementById('mc-ratio-pro')?.value)  || 40) / 100;
-                const fatRatio  = (parseFloat(document.getElementById('mc-ratio-fat')?.value)  || 30) / 100;
-                const carbRatio = (parseFloat(document.getElementById('mc-ratio-carb')?.value) || 30) / 100;
+            $('mc-apply-btn')?.addEventListener('click', async () => {
+                const proRatio  = (parseFloat($('mc-ratio-pro')?.value)  || 40) / 100;
+                const fatRatio  = (parseFloat($('mc-ratio-fat')?.value)  || 30) / 100;
+                const carbRatio = (parseFloat($('mc-ratio-carb')?.value) || 30) / 100;
                 const total     = Math.round(proRatio * 100) + Math.round(fatRatio * 100) + Math.round(carbRatio * 100);
                 if (total !== 100) { showToast('Los porcentajes deben sumar 100% antes de aplicar.', 'error'); return; }
                 const delta       = goalCalMap[currentGoal] ?? 0;
@@ -2968,7 +2971,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const goalProtein = Math.round(targetCal * proRatio / 4);
                 const goalFat     = Math.round(targetCal * fatRatio  / 9);
                 const goalCarbs   = Math.round(targetCal * carbRatio / 4);
-                const btn         = document.getElementById('mc-apply-btn');
+                const btn         = $('mc-apply-btn');
                 if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
                 await onApply({ targetCal, goalProtein, goalFat, goalCarbs });
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check-circle"></i> Aplicar metas'; }
