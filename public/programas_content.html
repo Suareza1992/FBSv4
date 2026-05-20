@@ -128,7 +128,12 @@
             <button id="back-to-program-list" class="text-[#FFDB89]/50 hover:text-[#FFDB89] mb-2 flex items-center text-sm font-bold transition">
                 <i class="fas fa-arrow-left mr-2"></i> Volver a programas
             </button>
-            <h2 id="builder-program-name" class="text-3xl font-bold text-[#FFDB89]">Nombre del programa</h2>
+            <div class="flex items-center gap-2 group/rename">
+                <h2 id="builder-program-name" class="text-3xl font-bold text-[#FFDB89] cursor-text" title="Haz clic para renombrar">Nombre del programa</h2>
+                <button id="rename-program-btn" class="opacity-0 group-hover/rename:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-[#FFDB89]/10 text-[#FFDB89]/40 hover:text-[#FFDB89]" title="Renombrar programa">
+                    <i class="fas fa-pencil-alt text-sm"></i>
+                </button>
+            </div>
             <p id="builder-client-count" class="text-[#FFDB89]/50 text-sm mt-1">0 Clientes asignados</p>
         </div>
         <div class="flex gap-3 flex-wrap">
@@ -157,7 +162,7 @@
         <div class="space-y-4">
             <div>
                 <label class="block text-sm font-bold text-[#FFDB89]/60 mb-1">Nombre del programa</label>
-                <input type="text" id="program-name-input" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 outline-none" placeholder="Ej: Hipertrofia 12 Semanas">
+                <input type="text" id="program-name-input" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 outline-none" placeholder="Ej: Hipertrofia 12 Semanas" autocorrect="off" autocapitalize="none" spellcheck="false">
             </div>
             <div>
                 <label class="block text-sm font-bold text-[#FFDB89]/60 mb-1">Descripción (opcional)</label>

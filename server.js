@@ -1179,6 +1179,79 @@ app.get('/api/client-workouts/:clientId', authenticateToken, async (req, res) =>
     }
 });
 
+// GET /api/exercise-history/:clientId?names=Squat,Bench+Press&before=2026-05-20
+// Returns the most recent logged result for each exercise name, strictly before `before`.
+app.get('/api/exercise-history/:clientId', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
+    try {
+        const { clientId } = req.params;
+        const { names, before } = req.query;
+        if (!names || !before) return res.json({});
+
+        const nameList = names.split(',').map(n => n.trim()).filter(Boolean);
+        if (!nameList.length) return res.json({});
+
+        // One aggregation query — find the most recent workout before `before`
+        // that has a non-empty result for each requested exercise name.
+        const history = {};
+        await Promise.all(nameList.map(async (name) => {
+            const workout = await ClientWorkout.findOne({
+                clientId,
+                date: { $lt: before },
+                exercises: { $elemMatch: { name: { $regex: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }, results: { $not: /^\s*$/ } } }
+            }).sort({ date: -1 }).lean();
+
+            if (workout) {
+                const ex = workout.exercises.find(e =>
+                    e.name.toLowerCase() === name.toLowerCase() && e.results?.trim()
+                );
+                if (ex) history[name] = { date: workout.date, results: ex.results.trim() };
+            }
+        }));
+
+        res.json(history);
+    } catch (e) {
+        console.error('Exercise history error:', e.message);
+        res.status(500).json({});
+    }
+});
+
+// GET /api/exercise-history/:clientId/all
+// Returns every exercise the client has ever logged with results, grouped by exercise
+// name and sorted newest-first within each group.  Used by the client Historial page.
+app.get('/api/exercise-history/:clientId/all', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
+    try {
+        const { clientId } = req.params;
+
+        // Fetch all workouts that contain at least one exercise with a filled result.
+        // We project only what we need to keep the payload small.
+        const workouts = await ClientWorkout.find(
+            { clientId },
+            { date: 1, exercises: 1 }
+        ).sort({ date: -1 }).lean();
+
+        const byExercise = {};
+        for (const workout of workouts) {
+            for (const ex of (workout.exercises || [])) {
+                if (!ex.name || !ex.results?.trim()) continue;
+                if (!byExercise[ex.name]) byExercise[ex.name] = [];
+                byExercise[ex.name].push({ date: workout.date, results: ex.results.trim() });
+            }
+        }
+
+        // Sort exercise names alphabetically; entries are already newest-first.
+        const exercises = Object.entries(byExercise)
+            .map(([name, entries]) => ({ name, entries }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+
+        res.json({ exercises });
+    } catch (e) {
+        console.error('Exercise history /all error:', e.message);
+        res.status(500).json({ exercises: [] });
+    }
+});
+
 // Save client mood for the day — upserts the workout document so mood is stored
 // even on rest days or days with no trainer-assigned workout.
 app.patch('/api/client-workouts/:clientId/:date/mood', authenticateToken, async (req, res) => {
@@ -1733,6 +1806,111 @@ const LOCAL_FOODS = [
     // Common prepared
     { name: 'Huevos revueltos',      brand: null, serving: 100, cal100: 149, p100: 10.1, c100: 1.6,  f100: 11.0 },
     { name: 'Pechuga a la plancha',  brand: null, serving: 100, cal100: 165, p100: 31.0, c100: 0.0,  f100: 3.6  },
+    // Beverages (serving = typical portion in ml)
+    { name: 'Café negro',            brand: null, serving: 240, cal100: 1,   p100: 0.1,  c100: 0.0,  f100: 0.0  },
+    { name: 'Café americano',        brand: null, serving: 240, cal100: 1,   p100: 0.1,  c100: 0.0,  f100: 0.0  },
+    { name: 'Café espresso',         brand: null, serving: 30,  cal100: 9,   p100: 0.6,  c100: 0.0,  f100: 0.2  },
+    { name: 'Café con leche',        brand: null, serving: 240, cal100: 40,  p100: 2.0,  c100: 3.5,  f100: 1.5  },
+    { name: 'Café latte',            brand: null, serving: 360, cal100: 42,  p100: 2.5,  c100: 4.5,  f100: 1.5  },
+    { name: 'Café capuchino',        brand: null, serving: 180, cal100: 40,  p100: 2.5,  c100: 4.0,  f100: 1.5  },
+    { name: 'Té negro (sin azúcar)', brand: null, serving: 240, cal100: 1,   p100: 0.0,  c100: 0.3,  f100: 0.0  },
+    { name: 'Té verde (sin azúcar)', brand: null, serving: 240, cal100: 1,   p100: 0.0,  c100: 0.3,  f100: 0.0  },
+    { name: 'Agua',                  brand: null, serving: 240, cal100: 0,   p100: 0.0,  c100: 0.0,  f100: 0.0  },
+    { name: 'Jugo de naranja',       brand: null, serving: 240, cal100: 45,  p100: 0.7,  c100: 10.4, f100: 0.2  },
+    { name: 'Jugo de manzana',       brand: null, serving: 240, cal100: 46,  p100: 0.1,  c100: 11.4, f100: 0.1  },
+    { name: 'Refresco / Soda',       brand: null, serving: 355, cal100: 40,  p100: 0.0,  c100: 10.6, f100: 0.0  },
+    { name: 'Refresco light / Diet', brand: null, serving: 355, cal100: 0,   p100: 0.0,  c100: 0.0,  f100: 0.0  },
+    { name: 'Bebida energética',     brand: null, serving: 250, cal100: 45,  p100: 0.0,  c100: 11.3, f100: 0.0  },
+    { name: 'Leche de almendra',     brand: null, serving: 240, cal100: 15,  p100: 0.6,  c100: 0.6,  f100: 1.1  },
+    { name: 'Leche de avena',        brand: null, serving: 240, cal100: 40,  p100: 1.0,  c100: 7.0,  f100: 1.5  },
+    { name: 'Proteína shake (preparado)',brand:null,serving:330,cal100: 52,  p100: 9.0,  c100: 2.5,  f100: 1.0  },
+    // Caribbean / Puerto Rican staples
+    { name: 'Plátano maduro',           brand: null, serving: 100, cal100: 122, p100: 1.3,  c100: 31.9, f100: 0.4  },
+    { name: 'Plátano verde',            brand: null, serving: 100, cal100: 116, p100: 1.3,  c100: 31.2, f100: 0.2  },
+    { name: 'Yuca cocida',              brand: null, serving: 100, cal100: 112, p100: 0.7,  c100: 26.8, f100: 0.3  },
+    { name: 'Yautía cocida',            brand: null, serving: 100, cal100: 98,  p100: 1.4,  c100: 23.0, f100: 0.1  },
+    { name: 'Malanga cocida',           brand: null, serving: 100, cal100: 112, p100: 1.5,  c100: 26.5, f100: 0.2  },
+    { name: 'Calabaza tropical',        brand: null, serving: 116, cal100: 26,  p100: 1.0,  c100: 6.5,  f100: 0.1  },
+    { name: 'Panapén / Pan de fruta',   brand: null, serving: 100, cal100: 103, p100: 1.1,  c100: 27.1, f100: 0.2  },
+    { name: 'Gandules cocidos',         brand: null, serving: 164, cal100: 143, p100: 9.0,  c100: 25.0, f100: 1.9  },
+    { name: 'Habichuelas rosadas',      brand: null, serving: 172, cal100: 130, p100: 8.5,  c100: 23.6, f100: 0.5  },
+    { name: 'Habichuelas negras',       brand: null, serving: 172, cal100: 132, p100: 8.9,  c100: 24.0, f100: 0.5  },
+    { name: 'Guayaba',                  brand: null, serving: 55,  cal100: 68,  p100: 2.6,  c100: 14.3, f100: 1.0  },
+    { name: 'Guanábana / Soursop',      brand: null, serving: 100, cal100: 66,  p100: 1.0,  c100: 16.8, f100: 0.3  },
+    { name: 'Mamey sapote',             brand: null, serving: 175, cal100: 83,  p100: 1.1,  c100: 19.9, f100: 0.5  },
+    { name: 'Acerola',                  brand: null, serving: 75,  cal100: 32,  p100: 0.4,  c100: 7.7,  f100: 0.3  },
+    // Vegetables (missing from list)
+    { name: 'Espárragos',               brand: null, serving: 90,  cal100: 20,  p100: 2.2,  c100: 3.9,  f100: 0.1  },
+    { name: 'Coliflor',                 brand: null, serving: 100, cal100: 25,  p100: 1.9,  c100: 5.0,  f100: 0.3  },
+    { name: 'Repollo / Col',            brand: null, serving: 90,  cal100: 25,  p100: 1.3,  c100: 5.8,  f100: 0.1  },
+    { name: 'Remolacha',                brand: null, serving: 136, cal100: 43,  p100: 1.6,  c100: 9.6,  f100: 0.2  },
+    { name: 'Pimientos / Ají dulce',    brand: null, serving: 119, cal100: 20,  p100: 0.9,  c100: 4.6,  f100: 0.2  },
+    { name: 'Berenjenas',               brand: null, serving: 82,  cal100: 25,  p100: 1.0,  c100: 5.9,  f100: 0.2  },
+    { name: 'Kale / Col rizada',        brand: null, serving: 67,  cal100: 35,  p100: 2.9,  c100: 4.4,  f100: 1.5  },
+    { name: 'Setas / Hongos',           brand: null, serving: 96,  cal100: 22,  p100: 3.1,  c100: 3.3,  f100: 0.3  },
+    { name: 'Apio (celery)',            brand: null, serving: 80,  cal100: 16,  p100: 0.7,  c100: 3.0,  f100: 0.2  },
+    // Fruits (missing from list)
+    { name: 'Melocotón / Durazno',      brand: null, serving: 150, cal100: 39,  p100: 0.9,  c100: 9.5,  f100: 0.3  },
+    { name: 'Cerezas',                  brand: null, serving: 138, cal100: 50,  p100: 1.0,  c100: 12.2, f100: 0.3  },
+    { name: 'Frambuesas',               brand: null, serving: 123, cal100: 52,  p100: 1.2,  c100: 11.9, f100: 0.7  },
+    { name: 'Higos frescos',            brand: null, serving: 64,  cal100: 74,  p100: 0.8,  c100: 19.2, f100: 0.3  },
+    { name: 'Kiwi',                     brand: null, serving: 76,  cal100: 61,  p100: 1.1,  c100: 14.7, f100: 0.5  },
+    // Seeds & specialty
+    { name: 'Semillas de chía',         brand: null, serving: 12,  cal100: 486, p100: 16.5, c100: 42.1, f100: 30.7 },
+    { name: 'Semillas de hemp',         brand: null, serving: 30,  cal100: 553, p100: 31.6, c100: 8.7,  f100: 48.8 },
+    { name: 'Edamame',                  brand: null, serving: 155, cal100: 122, p100: 11.9, c100: 8.9,  f100: 5.2  },
+    // Extra protein sources
+    { name: 'Sardinas (enlatadas)',      brand: null, serving: 48,  cal100: 208, p100: 24.6, c100: 0.0,  f100: 11.5 },
+    { name: 'Ricotta',                  brand: null, serving: 60,  cal100: 174, p100: 11.3, c100: 3.0,  f100: 13.0 },
+    { name: 'Yogurt natural (sin grasa)',brand: null, serving: 240, cal100: 56,  p100: 5.7,  c100: 7.7,  f100: 0.4  },
+    // ── Costco E. Bayamón — Proteins ─────────────────────────────────────────
+    { name: 'Kirkland Chicken Breast (lata)',   brand:'Kirkland Signature', serving: 56,  cal100: 140, p100: 30.0, c100: 0.0,  f100: 2.0  },
+    { name: 'Kirkland Albacore Tuna (agua)',    brand:'Kirkland Signature', serving: 56,  cal100: 107, p100: 23.2, c100: 0.0,  f100: 1.8  },
+    { name: 'Wild Planet Albacore Wild Tuna',   brand:'Wild Planet',        serving: 56,  cal100: 143, p100: 25.0, c100: 0.0,  f100: 4.5  },
+    { name: 'Chicken of the Sea Tuna (agua)',   brand:'Chicken of the Sea', serving: 56,  cal100: 98,  p100: 21.4, c100: 0.0,  f100: 0.9  },
+    { name: "Morey's Salmon Silvestre Sazonado",brand:"Morey's",            serving: 112, cal100: 161, p100: 18.8, c100: 2.7,  f100: 8.0  },
+    { name: 'Kirkland Steak Strips (jerky)',    brand:'Kirkland Signature', serving: 28,  cal100: 286, p100: 35.7, c100: 14.3, f100: 8.9  },
+    { name: 'Kirkland Chicken Tenderloins',     brand:'Kirkland Signature', serving: 112, cal100: 120, p100: 26.0, c100: 0.0,  f100: 1.5  },
+    // ── Costco E. Bayamón — Dairy / Yogurt ───────────────────────────────────
+    { name: 'Kirkland Greek Yogurt Orgánico',   brand:'Kirkland Signature', serving: 170, cal100: 76,  p100: 10.6, c100: 4.7,  f100: 1.8  },
+    { name: 'Oikos Triple Zero Greek Yogurt',   brand:'Oikos',              serving: 150, cal100: 60,  p100: 10.0, c100: 6.0,  f100: 0.0  },
+    { name: 'Chobani Protein Greek Yogurt',     brand:'Chobani',            serving: 190, cal100: 63,  p100: 10.5, c100: 4.2,  f100: 1.3  },
+    // ── Costco E. Bayamón — Protein Bars & Shakes ────────────────────────────
+    { name: 'Kirkland Chewy Protein Bar',       brand:'Kirkland Signature', serving: 40,  cal100: 475, p100: 22.5, c100: 57.5, f100: 20.0 },
+    { name: 'Kirkland Protein Bar',             brand:'Kirkland Signature', serving: 60,  cal100: 317, p100: 35.0, c100: 35.0, f100: 11.7 },
+    { name: 'FITCRUNCH Protein Bar',            brand:'FITCRUNCH',          serving: 46,  cal100: 413, p100: 34.8, c100: 43.5, f100: 15.2 },
+    { name: 'Nature Valley Protein Bar',        brand:'Nature Valley',      serving: 40,  cal100: 475, p100: 25.0, c100: 40.0, f100: 27.5 },
+    { name: 'Pure Protein Bar',                 brand:'Pure Protein',       serving: 50,  cal100: 360, p100: 40.0, c100: 30.0, f100: 10.0 },
+    { name: 'BUILT Puff Protein Bar',           brand:'BUILT',              serving: 40,  cal100: 275, p100: 42.5, c100: 25.0, f100: 3.8  },
+    { name: 'Premier Protein Shake 30g',        brand:'Premier Protein',    serving: 325, cal100: 49,  p100: 9.2,  c100: 1.5,  f100: 0.9  },
+    { name: 'Vital Proteins Collagen Peptides', brand:'Vital Proteins',     serving: 10,  cal100: 350, p100: 90.0, c100: 0.0,  f100: 0.0  },
+    { name: 'Orgain Collagen Péptidos',         brand:'Orgain',             serving: 10,  cal100: 400, p100: 90.0, c100: 0.0,  f100: 0.0  },
+    { name: 'Orgain Proteína Vegetal Powder',   brand:'Orgain',             serving: 46,  cal100: 326, p100: 45.7, c100: 32.6, f100: 8.7  },
+    // ── Costco E. Bayamón — Nuts & Butters ───────────────────────────────────
+    { name: 'Kirkland Peanut Butter Orgánico',  brand:'Kirkland Signature', serving: 32,  cal100: 594, p100: 21.9, c100: 25.0, f100: 50.0 },
+    { name: 'Kirkland Almond Butter',           brand:'Kirkland Signature', serving: 32,  cal100: 625, p100: 21.9, c100: 18.8, f100: 56.3 },
+    { name: 'Kirkland Mixed Nuts',              brand:'Kirkland Signature', serving: 28,  cal100: 607, p100: 17.9, c100: 21.4, f100: 50.0 },
+    { name: 'Kirkland Super Large Peanuts',     brand:'Kirkland Signature', serving: 28,  cal100: 571, p100: 25.0, c100: 17.9, f100: 46.4 },
+    // ── Costco E. Bayamón — Grains & Snacks ──────────────────────────────────
+    { name: 'Seeds of Change Quinoa & Brown Rice',brand:'Seeds of Change',  serving: 160, cal100: 137, p100: 3.1,  c100: 27.5, f100: 1.9  },
+    { name: 'Kirkland Ancient Grain Granola',   brand:'Kirkland Signature', serving: 55,  cal100: 400, p100: 7.3,  c100: 63.6, f100: 16.4 },
+    { name: 'Kirkland Soft Chewy Granola Bar',  brand:'Kirkland Signature', serving: 24,  cal100: 375, p100: 4.2,  c100: 75.0, f100: 8.3  },
+    { name: 'Simple Mills Almond Flour Crackers',brand:'Simple Mills',      serving: 28,  cal100: 464, p100: 7.1,  c100: 53.6, f100: 25.0 },
+    // ── Costco E. Bayamón — Produce & Frozen ─────────────────────────────────
+    { name: 'Kirkland Stir-Fry Vegetable Blend',brand:'Kirkland Signature', serving: 85,  cal100: 35,  p100: 2.4,  c100: 7.1,  f100: 0.1  },
+    { name: 'Kirkland Organic Broccoli (frozen)',brand:'Kirkland Signature', serving: 85,  cal100: 35,  p100: 2.4,  c100: 7.1,  f100: 0.1  },
+    { name: 'Kirkland Three Berry Blend',       brand:'Kirkland Signature', serving: 130, cal100: 50,  p100: 0.8,  c100: 12.3, f100: 0.1  },
+    { name: 'Kirkland Organic Diced Tomatoes',  brand:'Kirkland Signature', serving: 127, cal100: 20,  p100: 0.8,  c100: 3.9,  f100: 0.0  },
+    { name: 'Kirkland Organic Strawberries (frozen)',brand:'Kirkland Signature',serving:100,cal100: 33, p100: 0.7,  c100: 7.7,  f100: 0.3  },
+    { name: 'Kirkland Organic Blueberries (frozen)',brand:'Kirkland Signature',serving:100,cal100: 57,  p100: 0.7,  c100: 14.5, f100: 0.3  },
+    { name: 'Del Monte Green Beans (lata)',     brand:'Del Monte',          serving: 120, cal100: 17,  p100: 0.8,  c100: 3.3,  f100: 0.0  },
+    { name: 'Repollo de Bruselas (orgánico)',   brand: null,                serving: 88,  cal100: 43,  p100: 3.4,  c100: 9.1,  f100: 0.3  },
+    // ── Costco E. Bayamón — Beverages ────────────────────────────────────────
+    { name: 'Kirkland Organic Coconut Water',   brand:'Kirkland Signature', serving: 330, cal100: 18,  p100: 0.0,  c100: 4.5,  f100: 0.0  },
+    { name: 'Vita Coco Coconut Water',          brand:'Vita Coco',          serving: 330, cal100: 18,  p100: 0.0,  c100: 4.5,  f100: 0.0  },
+    { name: 'Alani Nu Energy Drink',            brand:'Alani Nu',           serving: 355, cal100: 3,   p100: 0.0,  c100: 0.6,  f100: 0.0  },
+    { name: 'Kirkland Sparkling Energy Drink',  brand:'Kirkland Signature', serving: 355, cal100: 3,   p100: 0.0,  c100: 0.6,  f100: 0.0  },
+    { name: 'PRIME Hydration Drink',            brand:'PRIME',              serving: 500, cal100: 5,   p100: 0.4,  c100: 1.0,  f100: 0.0  },
     // Condiments & Sauces (serving = 1 tbsp ~15g unless noted)
     { name: 'Mayonesa',              brand: null, serving: 15,  cal100: 680, p100: 0.9,  c100: 0.6,  f100: 75.0 },
     { name: 'Mayonesa light',        brand: null, serving: 15,  cal100: 320, p100: 0.9,  c100: 5.0,  f100: 32.0 },
@@ -1828,6 +2006,87 @@ const FOOD_ALIASES = {
     'Proteina en polvo (whey)':      ['whey protein','protein powder','protein shake','whey'],
     'Proteina en polvo (planta)':    ['plant protein','vegan protein','plant based protein'],
     'Huevos revueltos':              ['scrambled eggs','scrambled'],
+    // Caribbean / Puerto Rican
+    'Platano maduro':                ['platano','platano maduro','ripe plantain','plantain','maduros','tajadas','tostones ripe'],
+    'Platano verde':                 ['platano verde','green plantain','tostones','patacones','verde'],
+    'Yuca cocida':                   ['yuca','cassava','cooked cassava','mandioca','tapioca root'],
+    'Yautia cocida':                 ['yautia','taro','dasheen','taro root','malanga amarilla'],
+    'Malanga cocida':                ['malanga','taro blanco','malanga blanca','cooked malanga'],
+    'Calabaza tropical':             ['calabaza','pumpkin','tropical pumpkin','west indian pumpkin','auyama','zapallo'],
+    'Panapen / Pan de fruta':        ['panapen','panapén','breadfruit','pan de fruta','buen pan'],
+    'Gandules cocidos':              ['gandules','pigeon peas','gandules verdes','cooked pigeon peas','gandur'],
+    'Habichuelas rosadas':           ['habichuelas','habichuelas rosadas','pink beans','red beans','habichuelas guisadas','frijoles rosados'],
+    'Habichuelas negras':            ['black beans','habichuelas negras','frijoles negros'],
+    'Guayaba':                       ['guayaba','guava','guava fruit'],
+    'Guanabana / Soursop':           ['guanabana','guanábana','soursop','graviola','anón'],
+    'Mamey sapote':                  ['mamey','mamey sapote','zapote mamey'],
+    'Acerola':                       ['acerola','west indian cherry','barbados cherry','cereza de puerto rico'],
+    // Vegetables
+    'Esparragos':                    ['esparragos','asparagus','green asparagus'],
+    'Coliflor':                      ['coliflor','cauliflower'],
+    'Repollo / Col':                 ['repollo','col','cabbage','green cabbage','white cabbage'],
+    'Remolacha':                     ['remolacha','beet','beets','betabel','beetroot'],
+    'Pimientos / Aji dulce':         ['pimientos','aji dulce','bell pepper','sweet pepper','pimento','capsicum','ají'],
+    'Berenjenas':                    ['berenjenas','eggplant','aubergine','berenjena'],
+    'Kale / Col rizada':             ['kale','col rizada','rúcula','collard greens','lacinato kale'],
+    'Setas / Hongos':                ['setas','hongos','mushrooms','champiñones','portobello','button mushrooms'],
+    'Apio (celery)':                 ['apio','celery','apio españa','celery stalk'],
+    // Fruits
+    'Melocoton / Durazno':           ['melocoton','durazno','peach','peaches','melocotón'],
+    'Cerezas':                       ['cerezas','cherries','cherry','sweet cherries'],
+    'Frambuesas':                    ['frambuesas','raspberries','raspberry','red berries'],
+    'Higos frescos':                 ['higos','figs','fresh figs','fig'],
+    'Kiwi':                          ['kiwi','kiwifruit','kiwi fruit'],
+    // Seeds
+    'Semillas de chia':              ['chia','chia seeds','semillas chia','chía','chía seeds'],
+    'Semillas de hemp':              ['hemp seeds','hemp','semillas hemp','proteina hemp','hemp hearts'],
+    'Edamame':                       ['edamame','soybeans','soya beans','green soybeans'],
+    // Protein
+    'Sardinas (enlatadas)':          ['sardinas','sardines','canned sardines','sardines in oil'],
+    'Ricotta':                       ['ricotta','requesón','ricotta cheese','queso ricotta'],
+    'Yogurt natural (sin grasa)':    ['yogurt natural','plain yogurt','non fat yogurt','yogurt sin grasa','yogurt sin sabor'],
+    // ── Costco / Warehouse branded aliases ───────────────────────────────────
+    'Kirkland Chicken Breast (lata)':   ['kirkland chicken','kirkland chicken breast','kirkland canned chicken','pollo kirkland','kirkland pollo lata'],
+    'Kirkland Albacore Tuna (agua)':    ['kirkland tuna','kirkland albacore','atun kirkland','kirkland atun','kirkland albacore tuna'],
+    'Wild Planet Albacore Wild Tuna':   ['wild planet tuna','wild planet albacore','wild planet'],
+    'Chicken of the Sea Tuna (agua)':   ['chicken of the sea','chicken sea tuna','chunk light tuna'],
+    "Morey's Salmon Silvestre Sazonado":["moreys salmon","morey's salmon",'moreys wild salmon','wild alaskan salmon seasoned'],
+    'Kirkland Steak Strips (jerky)':    ['kirkland jerky','kirkland steak strips','kirkland beef jerky','beef jerky kirkland'],
+    'Kirkland Chicken Tenderloins':     ['kirkland tenderloins','kirkland chicken tenderloins','pollo tenderloins kirkland'],
+    'Kirkland Greek Yogurt Orgánico':   ['kirkland greek yogurt','kirkland yogurt','yogurt kirkland','kirkland organic greek yogurt'],
+    'Oikos Triple Zero Greek Yogurt':   ['oikos','oikos triple zero','oikos yogurt','triple zero yogurt','oikos greek'],
+    'Chobani Protein Greek Yogurt':     ['chobani','chobani protein','chobani greek yogurt','chobani yogurt'],
+    'Kirkland Chewy Protein Bar':       ['kirkland granola bar','kirkland chewy bar','kirkland protein granola'],
+    'Kirkland Protein Bar':             ['kirkland protein bar','barra proteina kirkland','kirkland bar'],
+    'FITCRUNCH Protein Bar':            ['fitcrunch','fit crunch','fitcrunch bar','fitcrunch protein'],
+    'Nature Valley Protein Bar':        ['nature valley','nature valley protein','nature valley bar','barra nature valley'],
+    'Pure Protein Bar':                 ['pure protein','pure protein bar','barra pure protein'],
+    'BUILT Puff Protein Bar':           ['built bar','built puff','built protein bar'],
+    'Premier Protein Shake 30g':        ['premier protein','premier protein shake','premier shake','batida premier protein'],
+    'Vital Proteins Collagen Peptides': ['vital proteins','collagen peptides','vital proteins collagen','colageno vital proteins','peptidos colageno'],
+    'Orgain Collagen Péptidos':         ['orgain collagen','orgain peptidos','orgain colageno','collagen orgain'],
+    'Orgain Proteína Vegetal Powder':   ['orgain protein','orgain plant protein','orgain powder','polvo proteina orgain','orgain superfoods'],
+    'Kirkland Peanut Butter Orgánico':  ['kirkland peanut butter','kirkland pb','mantequilla mani kirkland','kirkland mantequilla mani'],
+    'Kirkland Almond Butter':           ['kirkland almond butter','mantequilla almendra kirkland','kirkland mantequilla almendra'],
+    'Kirkland Mixed Nuts':              ['kirkland mixed nuts','kirkland nuts','nueces mixtas kirkland','mezcla nueces kirkland'],
+    'Kirkland Super Large Peanuts':     ['kirkland peanuts','mani kirkland','kirkland mani','kirkland cacahuates'],
+    'Seeds of Change Quinoa & Brown Rice':['seeds of change','seeds of change quinoa','quinoa brown rice seeds','seeds change arroz'],
+    'Kirkland Ancient Grain Granola':   ['kirkland granola','kirkland ancient grain','granola kirkland','kirkland organic granola'],
+    'Kirkland Soft Chewy Granola Bar':  ['kirkland granola bar chewy','kirkland soft bar','granola bar kirkland'],
+    'Simple Mills Almond Flour Crackers':['simple mills','simple mills crackers','almond flour crackers','galletas simple mills'],
+    'Kirkland Stir-Fry Vegetable Blend':['kirkland stir fry','kirkland vegetables','kirkland vegetable blend','vegetales kirkland','mezcla vegetales kirkland'],
+    'Kirkland Organic Broccoli (frozen)':['kirkland broccoli','brocoli kirkland','kirkland frozen broccoli','kirkland brocoli organico'],
+    'Kirkland Three Berry Blend':       ['kirkland berries','kirkland three berry','tres bayas kirkland','berry blend kirkland','mezcla bayas kirkland'],
+    'Kirkland Organic Diced Tomatoes':  ['kirkland tomatoes','kirkland diced tomatoes','tomate kirkland','kirkland tomate organico'],
+    'Kirkland Organic Strawberries (frozen)':['kirkland strawberries','fresas kirkland','kirkland fresas organicas','frozen strawberries kirkland'],
+    'Kirkland Organic Blueberries (frozen)':['kirkland blueberries','arandanos kirkland','kirkland arandanos','frozen blueberries kirkland'],
+    'Del Monte Green Beans (lata)':     ['del monte green beans','del monte','habichuelas del monte','green beans del monte','ejotes del monte'],
+    'Repollo de Bruselas (orgánico)':   ['brussels sprouts','repollo bruselas','col bruselas','brussel sprouts organic'],
+    'Kirkland Organic Coconut Water':   ['kirkland coconut water','agua coco kirkland','coconut water kirkland','kirkland agua coco'],
+    'Vita Coco Coconut Water':          ['vita coco','vita coco coconut water','agua coco vita coco','vitacoco'],
+    'Alani Nu Energy Drink':            ['alani nu','alani energy','alani nu energy','alani drink'],
+    'Kirkland Sparkling Energy Drink':  ['kirkland energy drink','kirkland sparkling energy','energy drink kirkland'],
+    'PRIME Hydration Drink':            ['prime hydration','prime drink','prime energy','logan paul prime'],
     'Pechuga a la plancha':          ['grilled chicken breast','grilled chicken'],
     'Mayonesa':                      ['mayo','mayonnaise'],
     'Mayonesa light':                ['light mayo','light mayonnaise','low fat mayo'],
@@ -1852,6 +2111,24 @@ const FOOD_ALIASES = {
     'Syrup / Jarabe de maple':       ['maple syrup','syrup','pancake syrup'],
     'Crema de cacahuate (PB)':       ['peanut butter','pb','nut butter'],
     'Nutella / Hazelnut spread':     ['nutella','hazelnut spread','chocolate spread','hazelnut'],
+    // Beverages
+    'Café negro':                    ['cafe negro','black coffee','coffee','cafe','café','plain coffee','brewed coffee','drip coffee'],
+    'Café americano':                ['americano','cafe americano','coffee americano','long black'],
+    'Café espresso':                 ['espresso','cafe espresso','shot of espresso','espresso shot'],
+    'Café con leche':                ['cafe con leche','coffee with milk','white coffee','cafe au lait','coffee milk'],
+    'Café latte':                    ['latte','cafe latte','coffee latte','cafe latte','flat white'],
+    'Café capuchino':                ['cappuccino','capuchino','cappucino','cafe capuchino'],
+    'Té negro (sin azúcar)':         ['black tea','te negro','te','tea','plain tea'],
+    'Té verde (sin azúcar)':         ['green tea','te verde','matcha tea','matcha'],
+    'Agua':                          ['water','agua','h2o','plain water'],
+    'Jugo de naranja':               ['orange juice','oj','jugo naranja','jugo de naranja','fresh juice'],
+    'Jugo de manzana':               ['apple juice','jugo manzana','jugo de manzana'],
+    'Refresco / Soda':               ['soda','refresco','cola','coke','pepsi','sprite','gaseosa','fizzy drink'],
+    'Refresco light / Diet':         ['diet soda','diet coke','diet pepsi','zero sugar','refresco light','light soda','zero coke'],
+    'Bebida energética':             ['energy drink','bebida energetica','monster','red bull','bang'],
+    'Leche de almendra':             ['almond milk','unsweetened almond milk','leche almendra'],
+    'Leche de avena':                ['oat milk','oat drink','leche de avena','leche avena'],
+    'Proteína shake (preparado)':    ['protein shake','shake','ready to drink protein','rtd protein'],
 };
 
 function searchLocalFoods(q) {
@@ -1861,19 +2138,44 @@ function searchLocalFoods(q) {
         .map(f => {
             const aliasKey = Object.keys(FOOD_ALIASES).find(k => normalizeStr(k) === normalizeStr(f.name));
             const aliases  = aliasKey ? FOOD_ALIASES[aliasKey] : [];
+            const normAliases = aliases.map(a => normalizeStr(a));
             const hay = normalizeStr(f.name + ' ' + (f.brand || '') + ' ' + aliases.join(' '));
             const matches = terms.every(t => hay.includes(t));
             if (!matches) return null;
-            // Score: name starts-with = 3, name includes = 2, alias match = 1
+
             const normName = normalizeStr(f.name);
             let score = 1;
-            if (normName.startsWith(normQ)) score = 3;
-            else if (normName.includes(normQ)) score = 2;
+            // Exact alias match is just as good as an exact name match
+            if (normName === normQ || normAliases.includes(normQ)) score = 10;
+            else if (normName.startsWith(normQ)) score = 7;
+            else if (normAliases.some(a => a.startsWith(normQ))) score = 6;
+            else if (normName.includes(normQ)) score = 4;
+            else if (normAliases.some(a => a.includes(normQ))) score = 2;
             return { food: f, score };
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score);
-    return scored.map(s => s.food).slice(0, 8);
+    return scored.map(s => s.food).slice(0, 10);
+}
+
+// Rerank a list of external food items so that results whose *name* closely
+// matches the user's query float to the top.  This prevents recipes and
+// packaged products that merely *contain* the keyword from burying the
+// plain food item the user actually searched for.
+function rankByNameRelevance(items, q) {
+    const normQ = normalizeStr(q);
+    const firstWord = normQ.split(/\s+/)[0];
+    return items.map(f => {
+        const normName = normalizeStr(f.name);
+        let score = 0;
+        if (normName === normQ)                              score = 10; // exact
+        else if (normName.startsWith(normQ))                score = 8;  // name starts with full query
+        else if (normName.split(/\s+/)[0] === firstWord)    score = 6;  // first word matches
+        else if (normName.startsWith(firstWord))            score = 4;  // name starts with first keyword
+        else if (normName.includes(normQ))                  score = 2;  // query somewhere in name
+        else                                                score = 1;  // keyword buried deep
+        return { ...f, _score: score };
+    }).sort((a, b) => b._score - a._score).map(({ _score, ...f }) => f);
 }
 
 // POST /api/food-library — upsert a food into the shared platform library
@@ -1948,64 +2250,187 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
         libraryMatches.forEach(f => seenNames.add(normalizeStr(f.name)));
     } catch (_) { /* non-blocking */ }
 
-    // If local + library gives solid coverage, skip external APIs
-    if (localMatches.length + libraryMatches.length >= 5) {
-        return res.json([...localMatches, ...libraryMatches].slice(0, 14));
+    // If local + library gives very strong coverage, skip external APIs
+    if (localMatches.length + libraryMatches.length >= 10) {
+        return res.json([...localMatches, ...libraryMatches].slice(0, 16));
     }
 
-    // 3 ── Open Food Facts (free, no API key, 3 M+ products, bilingual)
-    try {
-        const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&fields=product_name,nutriments,brands&page_size=14&lc=es&action=process`;
-        const r = await fetch(offUrl, { signal: AbortSignal.timeout(7000) });
-        const data = await r.json();
-        const offResults = (data.products || [])
-            .filter(p => p.product_name?.trim() &&
-                (p.nutriments?.['energy-kcal_100g'] || p.nutriments?.['energy-kcal']))
-            .map(p => ({
-                name:    p.product_name.trim(),
-                brand:   p.brands?.split(',')[0]?.trim() || null,
-                serving: 100,
-                cal100:  Math.round(p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal'] || 0),
-                p100:    parseFloat((p.nutriments.proteins_100g        || 0).toFixed(1)),
-                c100:    parseFloat((p.nutriments.carbohydrates_100g   || 0).toFixed(1)),
-                f100:    parseFloat((p.nutriments.fat_100g             || 0).toFixed(1)),
-            }))
-            .filter(f => f.cal100 > 0 && !seenNames.has(normalizeStr(f.name)));
-        offResults.forEach(f => seenNames.add(normalizeStr(f.name)));
+    // ─── Dedup helper (shared across all tiers) ───────────────────────────────
+    const addUnique = (arr, src, limit) => {
+        let added = 0;
+        for (const f of src) {
+            if (added >= limit) break;
+            const key = normalizeStr(f.name);
+            if (!seenNames.has(key)) { seenNames.add(key); arr.push(f); added++; }
+        }
+    };
 
-        const merged = [...localMatches, ...libraryMatches, ...offResults.slice(0, 10)].slice(0, 16);
-        if (merged.length) return res.json(merged);
-    } catch (e) {
-        console.error('Open Food Facts error:', e.message);
+    // 3 ── Nutritionix  — industry-standard fitness nutrition database, same source
+    //      used by Lose It!, Under Armour, and dozens of other fitness apps.
+    //      Common foods use USDA-quality data; branded foods use manufacturer data.
+    //      Get your free API keys at https://developer.nutritionix.com/ (500 req/day free).
+    //      Set env vars: NUTRITIONIX_APP_ID  and  NUTRITIONIX_APP_KEY
+    const nixId  = process.env.NUTRITIONIX_APP_ID;
+    const nixKey = process.env.NUTRITIONIX_APP_KEY;
+
+    if (nixId && nixKey) {
+        try {
+            // Step A: instant search — returns branded items with full nutrition +
+            //         common food names (no nutrition data in this response).
+            const instantRes = await fetch(
+                `https://trackapi.nutritionix.com/v2/search/instant?query=${encodeURIComponent(q)}&branded=true&common=true`,
+                { headers: { 'x-app-id': nixId, 'x-app-key': nixKey }, signal: AbortSignal.timeout(6000) }
+            );
+            const instant = await instantRes.json();
+
+            // Branded items — convert per-serving → per-100g
+            const nixBranded = (instant.branded || [])
+                .filter(f => f.nf_calories > 0 && f.serving_weight_grams > 0)
+                .slice(0, 6)
+                .map(f => {
+                    const sw = f.serving_weight_grams;
+                    return {
+                        name:    f.food_name,
+                        brand:   f.brand_name || null,
+                        serving: 100,
+                        cal100:  Math.round((f.nf_calories           / sw) * 100),
+                        p100:    parseFloat(((f.nf_protein            / sw) * 100).toFixed(1)),
+                        c100:    parseFloat(((f.nf_total_carbohydrate / sw) * 100).toFixed(1)),
+                        f100:    parseFloat(((f.nf_total_fat          / sw) * 100).toFixed(1)),
+                    };
+                })
+                .filter(f => f.cal100 > 0);
+
+            // Step B: natural/nutrients for top common foods.
+            //         Each "100g <name>" entry returns exact per-100g nutrition.
+            //         We batch up to 5 names in one request to save quota.
+            const commonNames = (instant.common || []).slice(0, 5).map(f => f.food_name);
+            let nixCommon = [];
+            if (commonNames.length > 0) {
+                const batchQuery = commonNames.map(n => `100g ${n}`).join(', ');
+                const nutriRes = await fetch(
+                    'https://trackapi.nutritionix.com/v2/natural/nutrients',
+                    {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-app-id': nixId, 'x-app-key': nixKey },
+                        body:    JSON.stringify({ query: batchQuery }),
+                        signal:  AbortSignal.timeout(7000),
+                    }
+                );
+                const nutriData = await nutriRes.json();
+                nixCommon = (nutriData.foods || [])
+                    .map(f => ({
+                        name:    f.food_name,
+                        brand:   null,
+                        serving: 100,
+                        cal100:  Math.round(f.nf_calories           || 0),
+                        p100:    parseFloat((f.nf_protein            || 0).toFixed(1)),
+                        c100:    parseFloat((f.nf_total_carbohydrate || 0).toFixed(1)),
+                        f100:    parseFloat((f.nf_total_fat          || 0).toFixed(1)),
+                    }))
+                    .filter(f => f.cal100 > 0);
+            }
+
+            // Common foods first (more accurate / generic), then branded.
+            // Rerank both by name-relevance so "Egg" beats "Egg Salad Sandwich".
+            const nixResults = rankByNameRelevance([...nixCommon, ...nixBranded], q);
+            const combined   = [...localMatches, ...libraryMatches];
+            addUnique(combined, nixResults, 10);
+
+            // If Nutritionix gave us good coverage, return early
+            if (combined.length >= 6) return res.json(combined.slice(0, 18));
+
+            // Otherwise fall through to supplement with OFF
+            const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&fields=product_name,nutriments,brands&page_size=12&action=process`;
+            const offRes = await fetch(offUrl, { signal: AbortSignal.timeout(6000) });
+            const offData = await offRes.json();
+            const offItems = rankByNameRelevance(
+                (offData.products || [])
+                    .filter(p => p.product_name?.trim() && (p.nutriments?.['energy-kcal_100g'] || p.nutriments?.['energy-kcal']))
+                    .map(p => ({
+                        name:    p.product_name.trim(),
+                        brand:   p.brands?.split(',')[0]?.trim() || null,
+                        serving: 100,
+                        cal100:  Math.round(p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal'] || 0),
+                        p100:    parseFloat((p.nutriments.proteins_100g      || 0).toFixed(1)),
+                        c100:    parseFloat((p.nutriments.carbohydrates_100g || 0).toFixed(1)),
+                        f100:    parseFloat((p.nutriments.fat_100g           || 0).toFixed(1)),
+                    }))
+                    .filter(f => f.cal100 > 0),
+                q
+            );
+            addUnique(combined, offItems, 6);
+
+            return res.json(combined.slice(0, 18));
+
+        } catch (e) {
+            console.error('Nutritionix error:', e.message);
+            // Fall through to the Open Food Facts + USDA tier below
+        }
     }
 
-    // 4 ── USDA FoodData Central (last resort, needs API key, broader datatypes)
-    try {
-        const usdaKey = process.env.USDA_API_KEY;
-        if (!usdaKey) throw new Error('No USDA_API_KEY');
-        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaKey}&query=${encodeURIComponent(q)}&pageSize=12&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS),Branded&nutrients=1008,1003,1005,1004`;
-        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        const data = await r.json();
-        const usdaResults = (data.foods || [])
-            .filter(f => f.description?.trim())
-            .map(f => {
-                const get = id => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
-                return {
-                    name: f.description, brand: f.brandOwner || null, serving: 100,
-                    cal100: Math.round(get(1008)),
-                    p100:   parseFloat(get(1003).toFixed(1)),
-                    c100:   parseFloat(get(1005).toFixed(1)),
-                    f100:   parseFloat(get(1004).toFixed(1)),
-                };
-            })
-            .filter(f => f.cal100 > 0 && !seenNames.has(normalizeStr(f.name)));
+    // 4 ── Open Food Facts + USDA FoodData Central — fired in parallel.
+    //      These run if Nutritionix keys are not configured or if it errored.
+    //      USDA Foundation/SR Legacy = government-verified generic food data.
+    //      OFF = 3 M+ branded/packaged products worldwide (no API key needed).
+    const usdaKey = process.env.USDA_API_KEY || 'DEMO_KEY';
 
-        return res.json([...localMatches, ...libraryMatches, ...usdaResults.slice(0, 8)].slice(0, 16));
-    } catch (e) {
-        console.error('USDA error:', e.message);
-    }
+    const [offResult, usdaResult] = await Promise.allSettled([
+        // ── Open Food Facts (always free, no key) ─────────────────────────────
+        (async () => {
+            const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&fields=product_name,nutriments,brands&page_size=18&action=process`;
+            const r = await fetch(offUrl, { signal: AbortSignal.timeout(7000) });
+            const data = await r.json();
+            return (data.products || [])
+                .filter(p => p.product_name?.trim() && (p.nutriments?.['energy-kcal_100g'] || p.nutriments?.['energy-kcal']))
+                .map(p => ({
+                    name:    p.product_name.trim(),
+                    brand:   p.brands?.split(',')[0]?.trim() || null,
+                    serving: 100,
+                    cal100:  Math.round(p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal'] || 0),
+                    p100:    parseFloat((p.nutriments.proteins_100g      || 0).toFixed(1)),
+                    c100:    parseFloat((p.nutriments.carbohydrates_100g || 0).toFixed(1)),
+                    f100:    parseFloat((p.nutriments.fat_100g           || 0).toFixed(1)),
+                }))
+                .filter(f => f.cal100 > 0);
+        })(),
 
-    // Final fallback
+        // ── USDA FoodData Central (Foundation + SR Legacy = gold standard) ────
+        (async () => {
+            const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaKey}&query=${encodeURIComponent(q)}&pageSize=12&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS),Branded&nutrients=1008,1003,1005,1004`;
+            const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+            const data = await r.json();
+            return (data.foods || [])
+                .filter(f => f.description?.trim())
+                .map(f => {
+                    const get = id => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
+                    return {
+                        name:    f.description.trim(),
+                        brand:   f.brandOwner || f.brandName || null,
+                        serving: 100,
+                        cal100:  Math.round(get(1008)),
+                        p100:    parseFloat(get(1003).toFixed(1)),
+                        c100:    parseFloat(get(1005).toFixed(1)),
+                        f100:    parseFloat(get(1004).toFixed(1)),
+                    };
+                })
+                .filter(f => f.cal100 > 0);
+        })(),
+    ]);
+
+    const offItems2  = rankByNameRelevance(offResult.status  === 'fulfilled' ? offResult.value  : [], q);
+    const usdaItems  = rankByNameRelevance(usdaResult.status === 'fulfilled' ? usdaResult.value : [], q);
+
+    const combined2 = [...localMatches, ...libraryMatches];
+    addUnique(combined2, usdaItems,  8);
+    addUnique(combined2, offItems2, 10);
+
+    if (combined2.length) return res.json(combined2.slice(0, 18));
+
+    if (offResult.status  === 'rejected') console.error('OFF error:',  offResult.reason?.message);
+    if (usdaResult.status === 'rejected') console.error('USDA error:', usdaResult.reason?.message);
+
+    // Final fallback — local + library only
     const fallback = [...localMatches, ...libraryMatches];
     if (fallback.length) return res.json(fallback);
     res.status(502).json({ error: 'Food search unavailable. Use manual entry.' });

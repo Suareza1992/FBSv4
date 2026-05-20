@@ -1079,6 +1079,7 @@ document.addEventListener('DOMContentLoaded', () => {
         client_equipo:          'Equipo',
         client_progress:        'Fotos',
         client_clock:           'Cronómetro',
+        client_historial:       'Historial',
     };
     const RESTORABLE_MODULES = new Set(Object.keys(MODULE_TITLES));
 
@@ -1124,6 +1125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (moduleToLoad === 'client_progress')   initClientProgress();
             if (moduleToLoad === 'client_programas')  initClientPrograms();
             if (moduleToLoad === 'client_clock')      window.initClockModule();
+            if (moduleToLoad === 'client_historial')  initClientHistorial();
             if (moduleToLoad === 'trainer_home')      renderTrainerHome(loadSession().name);
             if (moduleToLoad === 'client_inicio')     initClientHome();
             if (moduleToLoad === 'ajustes_content')   initSettings();
@@ -1972,7 +1974,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="border-t border-[#FFDB89]/10 pt-3 mb-4">
                             <p class="text-xs text-[#FFDB89]/40 mb-2">Guardar en librería como (opcional)</p>
                             <div class="relative">
-                                <input type="text" id="video-library-name" autocomplete="off" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="Nombre del ejercicio...">
+                                <input type="text" id="video-library-name" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30" placeholder="Nombre del ejercicio...">
                                 <div id="video-lib-name-suggestions" class="absolute left-0 right-0 top-full mt-1 bg-[#111113] border border-[#FFDB89]/25 rounded-lg z-[90] overflow-hidden shadow-xl hidden max-h-40 overflow-y-auto"></div>
                             </div>
                         </div>
@@ -4571,6 +4573,64 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             addWeekToCalendar();
         }
+
+        // ── Inline rename ─────────────────────────────────────────────────────
+        const startRename = () => {
+            const nameEl = document.getElementById('builder-program-name');
+            if (!nameEl || nameEl.querySelector('input')) return; // already editing
+            const current = nameEl.textContent.trim();
+            nameEl.innerHTML = '';
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.value = current;
+            inp.autocomplete = 'off';
+            inp.setAttribute('autocorrect', 'off');
+            inp.setAttribute('autocapitalize', 'none');
+            inp.setAttribute('spellcheck', 'false');
+            inp.className = 'bg-transparent text-3xl font-bold text-[#FFDB89] border-b-2 border-[#FFDB89]/50 outline-none w-full min-w-0';
+            nameEl.appendChild(inp);
+            inp.focus();
+            inp.select();
+
+            const commit = async () => {
+                const newName = inp.value.trim();
+                if (!newName || newName === current) {
+                    nameEl.textContent = current;
+                    return;
+                }
+                nameEl.textContent = newName; // optimistic
+                try {
+                    const res = await apiFetch(`/api/programs/${currentProgramId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ name: newName })
+                    });
+                    if (res.ok) {
+                        const updated = await res.json();
+                        const idx = programsCache.findIndex(p => (p._id || p.id) == currentProgramId);
+                        if (idx !== -1) programsCache[idx].name = updated.name;
+                        showToast('✓ Nombre actualizado', 'success');
+                    } else {
+                        nameEl.textContent = current; // revert
+                        showToast('Error al renombrar', 'error');
+                    }
+                } catch {
+                    nameEl.textContent = current;
+                    showToast('Error de conexión', 'error');
+                }
+            };
+
+            inp.addEventListener('blur', commit);
+            inp.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+                if (e.key === 'Escape') { inp.value = current; inp.blur(); }
+            });
+        };
+
+        // Use onclick (not addEventListener) to avoid stacking listeners on re-render
+        const renameBtn = document.getElementById('rename-program-btn');
+        const nameEl2   = document.getElementById('builder-program-name');
+        if (renameBtn) renameBtn.onclick = startRename;
+        if (nameEl2)   nameEl2.onclick   = startRename;
     };
 
     const openProgramBuilder = async (id) => {
@@ -5007,7 +5067,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="pt-2 shrink-0"><span class="text-2xl font-black text-[#FFDB89]/20 exercise-label">${label}</span></div>
                 <div class="flex-grow min-w-0 space-y-3">
                     <div class="flex gap-2">
-                        <input type="text" class="exercise-name-input flex-1 min-w-0 p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off">
+                        <input type="text" class="exercise-name-input flex-1 min-w-0 p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
                         <button class="play-video-btn inline-flex items-center justify-center w-11 h-11 bg-green-500/10 border border-green-500/20 ${data?.video ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video"><i class="fas fa-play text-xs"></i></button>
                         <button class="inline-flex items-center justify-center w-11 h-11 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0 open-video-modal" data-video="${data?.video || ''}"><i class="fas fa-video text-xs"></i></button>
                     </div>
@@ -5263,22 +5323,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 return `<div class="grid items-center gap-1 text-xs" style="grid-template-columns:1fr 56px 52px 46px 46px 46px 26px">
                     <input type="text" value="${escNutri(food.name)}" placeholder="Alimento..."
                         class="p-1.5 bg-[#FFDB89]/5 border border-[#FFDB89]/12 rounded text-[#FFDB89]/80 placeholder:text-[#FFDB89]/20 outline-none focus:border-[#FFDB89]/35 transition"
+                        autocorrect="off" autocapitalize="none" spellcheck="false"
                         onchange="window._nFC('${meal.id}',${fi},'name',this.value)">
-                    <input type="number" value="${food.qty}" min="1" title="Cantidad (g)"
+                    <input type="number" value="${food.qty}" title="Cantidad (g)"
                         class="p-1.5 bg-[#FFDB89]/5 border border-[#FFDB89]/12 rounded text-[#FFDB89]/60 text-center outline-none focus:border-[#FFDB89]/35 transition"
-                        onchange="window._nFC('${meal.id}',${fi},'qty',+this.value)">
-                    <input type="number" value="${v.cal}" min="0" title="Calorías"
+                        oninput="window._nFC('${meal.id}',${fi},'qty',+this.value)">
+                    <input type="number" value="${v.cal}" title="Calorías"
                         class="p-1.5 bg-[#FFDB89]/5 border border-[#FFDB89]/12 rounded text-[#FFDB89] font-bold text-center outline-none focus:border-[#FFDB89]/50 transition"
-                        onchange="window._nFC('${meal.id}',${fi},'cal',+this.value)">
-                    <input type="number" value="${v.p}" min="0" title="Proteína (g)"
+                        oninput="window._nFC('${meal.id}',${fi},'cal',+this.value)">
+                    <input type="number" value="${v.p}" title="Proteína (g)"
                         class="p-1.5 bg-red-500/5 border border-red-400/12 rounded text-red-400 font-bold text-center outline-none focus:border-red-400/40 transition"
-                        onchange="window._nFC('${meal.id}',${fi},'p',+this.value)">
-                    <input type="number" value="${v.c}" min="0" title="Carbos (g)"
+                        oninput="window._nFC('${meal.id}',${fi},'p',+this.value)">
+                    <input type="number" value="${v.c}" title="Carbos (g)"
                         class="p-1.5 bg-yellow-500/5 border border-yellow-400/12 rounded text-yellow-400 font-bold text-center outline-none focus:border-yellow-400/40 transition"
-                        onchange="window._nFC('${meal.id}',${fi},'c',+this.value)">
-                    <input type="number" value="${v.f}" min="0" title="Grasa (g)"
+                        oninput="window._nFC('${meal.id}',${fi},'c',+this.value)">
+                    <input type="number" value="${v.f}" title="Grasa (g)"
                         class="p-1.5 bg-blue-500/5 border border-blue-400/12 rounded text-blue-400 font-bold text-center outline-none focus:border-blue-400/40 transition"
-                        onchange="window._nFC('${meal.id}',${fi},'f',+this.value)">
+                        oninput="window._nFC('${meal.id}',${fi},'f',+this.value)">
                     <button class="w-6 h-6 rounded bg-red-500/10 text-red-400/40 hover:text-red-400 hover:bg-red-500/20 flex items-center justify-center transition"
                         onclick="window._nRF('${meal.id}',${fi})"><i class="fas fa-times text-[9px]"></i></button>
                 </div>`;
@@ -5287,6 +5348,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="flex items-center gap-2 px-4 py-2.5 border-b border-[#FFDB89]/10 bg-[#FFDB89]/3">
                     <input type="text" value="${escNutri(meal.name)}"
                         class="flex-grow bg-transparent text-[#FFDB89] font-bold text-sm outline-none"
+                        autocorrect="off" autocapitalize="none" spellcheck="false"
                         onchange="window._nMN('${meal.id}',this.value)">
                     <button class="w-7 h-7 rounded-lg bg-red-500/10 text-red-400/40 hover:text-red-400 hover:bg-red-500/20 flex items-center justify-center transition shrink-0"
                         onclick="window._nRM('${meal.id}')"><i class="fas fa-trash text-[10px]"></i></button>
@@ -5386,7 +5448,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const food = meal.foods[fi];
         if (field === 'name') { food.name = value; }
         else if (field === 'qty') {
-            food.qty = Math.max(1, value);
+            food.qty = Math.max(0, value);
         } else if (field === 'cal') { food.cal100 = food.qty > 0 ? (value / food.qty) * 100 : value; }
         else if (field === 'p') { food.p100 = food.qty > 0 ? (value / food.qty) * 100 : value; }
         else if (field === 'c') { food.c100 = food.qty > 0 ? (value / food.qty) * 100 : value; }
@@ -5449,7 +5511,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <p class="text-xs font-bold text-white truncate">${escNutri(f.name)}</p>
                             </div>
                             <div class="flex gap-2">
-                                <input type="number" id="drop-qty-${mealId}" value="1" min="1" step="1"
+                                <input type="number" id="drop-qty-${mealId}" value="1" step="1"
                                     class="w-16 p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-center font-black text-sm outline-none focus:ring-1 focus:ring-[#FFDB89]">
                                 <select id="drop-unit-${mealId}"
                                     class="flex-1 pl-1.5 pr-6 py-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-xs outline-none focus:ring-1 focus:ring-[#FFDB89] cursor-pointer appearance-none" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 6px center;">
@@ -5471,9 +5533,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const unitEl = document.getElementById(`drop-unit-${mealId}`);
                     const prevEl = document.getElementById(`drop-preview-${mealId}`);
 
-                    const updatePrev = () => {
-                        const qty   = Math.max(1, Math.round(parseFloat(qtyEl.value) || 1));
-                        qtyEl.value = qty;
+                    const updatePrev = (clamp = false) => {
+                        const raw = parseFloat(qtyEl.value);
+                        const qty = (!isNaN(raw) && raw > 0) ? Math.round(raw) : 1;
+                        if (clamp) qtyEl.value = qty;
                         const gPerU = parseFloat(unitEl.value) || unitG;
                         const totalG = qty * gPerU;
                         const s = totalG / 100;
@@ -5489,13 +5552,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         return totalG;
                     };
 
-                    qtyEl.addEventListener('input', updatePrev);
-                    unitEl.addEventListener('change', updatePrev);
-                    updatePrev();
+                    qtyEl.addEventListener('focus', () => qtyEl.select());
+                    qtyEl.addEventListener('input', () => updatePrev(false));
+                    qtyEl.addEventListener('blur',  () => updatePrev(true));
+                    unitEl.addEventListener('change', () => updatePrev(true));
+                    updatePrev(true);
 
                     document.getElementById(`drop-back-${mealId}`)?.addEventListener('click', showDropResults);
                     document.getElementById(`drop-add-${mealId}`)?.addEventListener('click', () => {
-                        const totalG = updatePrev();
+                        const totalG = updatePrev(true);
                         const meal = dayNutritionState.meals.find(m => m.id === mealId);
                         if (!meal) return;
                         const qty = parseFloat(qtyEl.value) || 1;
@@ -5692,7 +5757,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="date" id="assign-start-date" value="${todayStr}"
                         class="w-full px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-sm text-[#FFDB89] outline-none focus:border-[#FFDB89]/50 mb-3">
                     <input type="text" id="assign-client-search" placeholder="Buscar cliente..."
-                        class="w-full px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50">
+                        class="w-full px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50" autocorrect="off" autocapitalize="none" spellcheck="false">
                 </div>
 
                 <!-- Client list — click to SELECT, not assign -->
@@ -6864,7 +6929,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button onclick="window.moveExerciseDown(${index})" class="text-[#FFDB89]/25 hover:text-[#FFDB89] transition leading-none py-0.5 ${index === editorExercises.length - 1 ? 'invisible' : ''}" title="Mover abajo"><i class="fas fa-chevron-down text-[9px]"></i></button>
                     </div>
                     <h3 class="text-[#FFDB89] font-bold text-lg shrink-0">${letter})</h3>
-                    <input type="text" value="${ex.name}" class="bg-transparent text-[#FFDB89] font-bold outline-none min-w-0 flex-1 placeholder-[#FFDB89]/30" placeholder="Título del ejercicio" oninput="window.updateExName(${ex.id}, this.value); window.markEditorDirty();">
+                    <input type="text" value="${ex.name}" class="bg-transparent text-[#FFDB89] font-bold outline-none min-w-0 flex-1 placeholder-[#FFDB89]/30" placeholder="Título del ejercicio" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" oninput="window.updateExName(${ex.id}, this.value); window.markEditorDirty();">
                     <div class="flex items-center gap-1.5 shrink-0">
                         ${ex._selected ? `<button onclick="window.deleteEditorExercise(${ex.id})" class="text-red-400/80 hover:text-red-400 transition" title="Eliminar ejercicio"><i class="fas fa-trash-alt text-sm"></i></button>` : ''}
                         ${ex.videoUrl ? `<button onclick="window.previewExerciseVideo('${ex.videoUrl.replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}',this); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
@@ -6875,8 +6940,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="w-full py-2 bg-[#3a3a3c] text-[#FFDB89] font-bold rounded text-sm hover:bg-[#3a3a3c]/80 transition mb-3 flex items-center justify-center gap-2" onclick="window.openHistoryModal(${ex.id})">
                     <i class="fas fa-history"></i> Ver historial
                 </button>
-                <textarea oninput="window.updateExInstructions(${ex.id}, this.value); window.markEditorDirty();" class="w-full bg-transparent text-[#FFDB89]/60 text-xs resize-none outline-none placeholder-[#FFDB89]/30 mb-2" placeholder="Sets, Reps, Tempo, Rest etc." rows="2">${ex.instructions || ''}</textarea>
-                <textarea oninput="window.updateExResults(${ex.id}, this.value); window.markEditorDirty();" class="w-full bg-black/30 border border-[#FFDB89]/10 rounded-lg text-[#FFDB89]/80 text-xs resize-none outline-none placeholder-[#FFDB89]/25 p-2.5 focus:border-[#FFDB89]/30 transition" placeholder="Agregar resultados..." rows="2">${ex.results || ''}</textarea>
+                <textarea oninput="window.updateExInstructions(${ex.id}, this.value); window.markEditorDirty(); this.style.height='auto'; this.style.height=this.scrollHeight+'px';" class="w-full bg-transparent text-[#FFDB89]/60 text-xs resize-none outline-none placeholder-[#FFDB89]/30 mb-2" placeholder="Sets, Reps, Tempo, Rest etc." rows="2" autocorrect="off" autocapitalize="none" spellcheck="false">${ex.instructions || ''}</textarea>
+                <textarea oninput="window.updateExResults(${ex.id}, this.value); window.markEditorDirty(); this.style.height='auto'; this.style.height=this.scrollHeight+'px';" class="w-full bg-black/30 border border-[#FFDB89]/10 rounded-lg text-[#FFDB89]/80 text-xs resize-none outline-none placeholder-[#FFDB89]/25 p-2.5 focus:border-[#FFDB89]/30 transition" placeholder="Agregar resultados..." rows="2" autocorrect="off" autocapitalize="none" spellcheck="false">${ex.results || ''}</textarea>
             </div>
             ${supersetBtnHtml}
             `;
@@ -6886,7 +6951,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const warmupItemsHtml = editorWarmupItems.map(item => `
             <div class="flex items-center gap-2 pl-1">
                 <i class="fas fa-circle text-orange-400/40 text-[6px] shrink-0"></i>
-                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateWarmupItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de calentamiento...">
+                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateWarmupItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de calentamiento..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
                 ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
                 <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForWarmupItem(${item.id})" title="URL de video"></i>
                 <button onclick="window.removeWarmupItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
@@ -6896,7 +6961,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const cooldownItemsHtml = editorCooldownItems.map(item => `
             <div class="flex items-center gap-2 pl-1">
                 <i class="fas fa-circle text-blue-300/40 text-[6px] shrink-0"></i>
-                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateCooldownItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de enfriamiento...">
+                <input type="text" value="${(item.name||'').replace(/"/g,'&quot;')}" oninput="window.updateCooldownItem(${item.id},'name',this.value); window.markEditorDirty();" class="flex-1 min-w-0 bg-transparent text-sm text-[#FFDB89]/70 placeholder-[#FFDB89]/25 outline-none" placeholder="Ejercicio de enfriamiento..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
                 ${item.videoUrl ? `<button onclick="window.previewExerciseVideo('${item.videoUrl.replace(/'/g,"\\'")}','${(item.name||'').replace(/'/g,"\\'")}',this);" class="text-green-400/70 hover:text-green-400 transition text-sm shrink-0" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
                 <i class="fas fa-video ${item.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/20'} cursor-pointer hover:text-[#FFDB89] text-xs shrink-0" onclick="window.openVideoForCooldownItem(${item.id})" title="URL de video"></i>
                 <button onclick="window.removeCooldownItem(${item.id})" class="text-[#FFDB89]/20 hover:text-red-400 transition text-xs shrink-0" title="Eliminar"><i class="fas fa-times"></i></button>
@@ -6919,7 +6984,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <!-- TITLE always on top -->
                 <div class="px-5 py-4 border-b border-[#FFDB89]/15 bg-[#26262c] shrink-0 flex items-center gap-3">
-                    <input type="text" id="workout-title-input" value="${(editorWorkoutTitle || editorDateStr).replace(/"/g,'&quot;')}" oninput="window.updateWorkoutTitle(this.value); window.markEditorDirty();" class="bg-transparent text-2xl font-bold text-[#FFDB89] placeholder-[#FFDB89]/30 w-full outline-none" placeholder="Nombre del Entrenamiento">
+                    <input type="text" id="workout-title-input" value="${(editorWorkoutTitle || editorDateStr).replace(/"/g,'&quot;')}" oninput="window.updateWorkoutTitle(this.value); window.markEditorDirty();" class="bg-transparent text-2xl font-bold text-[#FFDB89] placeholder-[#FFDB89]/30 w-full outline-none" placeholder="Nombre del Entrenamiento" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
                     <div class="flex gap-3 text-[#FFDB89]/40 shrink-0">
                         <button onclick="window.undoEditorChange()" id="editor-undo-btn" class="hover:text-[#FFDB89] transition opacity-30" title="Deshacer (Ctrl+Z)" disabled><i class="fas fa-undo text-sm"></i></button>
                         <button onclick="document.getElementById('editor-panel').classList.toggle('editor-expanded')" class="hover:text-[#FFDB89] transition"><i class="fas fa-expand-alt text-sm"></i></button>
@@ -6944,7 +7009,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Calentamiento</span>
                         </div>
                         <div class="mb-3">
-                            <textarea oninput="window.updateWarmup(this.value); window.markEditorDirty();" class="bg-transparent text-sm text-[#FFDB89]/60 placeholder-[#FFDB89]/25 w-full outline-none resize-none" rows="2" placeholder="Instrucciones generales...">${editorWarmup}</textarea>
+                            <textarea oninput="window.updateWarmup(this.value); window.markEditorDirty();" class="bg-transparent text-sm text-[#FFDB89]/60 placeholder-[#FFDB89]/25 w-full outline-none resize-none" rows="2" placeholder="Instrucciones generales..." autocorrect="off" autocapitalize="none" spellcheck="false">${editorWarmup}</textarea>
                         </div>
                         <div id="warmup-items-list" class="space-y-1.5">
                             ${warmupItemsHtml}
@@ -6967,7 +7032,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Enfriamiento</span>
                         </div>
                         <div class="mb-3">
-                            <textarea oninput="window.updateCooldown(this.value); window.markEditorDirty();" class="bg-transparent text-sm text-[#FFDB89]/60 placeholder-[#FFDB89]/25 w-full outline-none resize-none" rows="2" placeholder="Instrucciones generales...">${editorCooldown || ''}</textarea>
+                            <textarea oninput="window.updateCooldown(this.value); window.markEditorDirty();" class="bg-transparent text-sm text-[#FFDB89]/60 placeholder-[#FFDB89]/25 w-full outline-none resize-none" rows="2" placeholder="Instrucciones generales..." autocorrect="off" autocapitalize="none" spellcheck="false">${editorCooldown || ''}</textarea>
                         </div>
                         <div id="cooldown-items-list" class="space-y-1.5">
                             ${cooldownItemsHtml}
@@ -6998,6 +7063,14 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         wireEditorAutocomplete();
+
+        // Auto-size every textarea in the editor so pre-filled content isn't clipped
+        requestAnimationFrame(() => {
+            document.querySelectorAll('#workout-editor-modal textarea, #editor-panel textarea').forEach(ta => {
+                ta.style.height = 'auto';
+                ta.style.height = ta.scrollHeight + 'px';
+            });
+        });
     };
 
     const showProgramAssignmentModal = async (startDate) => {
@@ -8001,7 +8074,8 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (linkText.includes('Equipo')) moduleToLoad = 'client_equipo';
             else if (linkText.includes('Fotos')) moduleToLoad = 'client_progress';
             else if (linkText.includes('Cronómetro')) moduleToLoad = 'client_clock';
-            
+            else if (linkText.includes('Historial'))  moduleToLoad = 'client_historial';
+
             if (moduleToLoad) {
                 await loadAndInitModule(moduleToLoad);
             }
@@ -9608,7 +9682,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/10 rounded-xl p-3">
                         <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-2">Ajustar cantidad (multiplica los macros)</label>
                         <div class="flex items-center gap-3">
-                            <input type="number" id="ef-multiplier" value="1" min="0.1" step="0.1"
+                            <input type="number" id="ef-multiplier" value="1" step="0.1"
                                 class="w-24 p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] font-black text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]">
                             <span class="text-xs text-[#FFDB89]/40">× los valores actuales</span>
                         </div>
@@ -9617,16 +9691,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-2">Macros (totales):</p>
                         <div class="grid grid-cols-2 gap-2">
                             <div><label class="text-xs text-[#FFDB89]/60 block mb-1">Calorías</label>
-                            <input type="number" id="ef-cal" value="${parseFloat(food.calories)||0}" min="0"
+                            <input type="number" id="ef-cal" value="${parseFloat(food.calories)||0}"
                                 class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] font-bold text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]"></div>
                             <div><label class="text-xs text-red-400/70 block mb-1">Proteína (g)</label>
-                            <input type="number" id="ef-pro" value="${parseFloat(food.protein)||0}" min="0"
+                            <input type="number" id="ef-pro" value="${parseFloat(food.protein)||0}"
                                 class="w-full p-2.5 bg-white/10 border border-red-400/20 rounded-lg text-red-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-red-400"></div>
                             <div><label class="text-xs text-yellow-400/70 block mb-1">Carbos (g)</label>
-                            <input type="number" id="ef-carb" value="${parseFloat(food.carbs)||0}" min="0"
+                            <input type="number" id="ef-carb" value="${parseFloat(food.carbs)||0}"
                                 class="w-full p-2.5 bg-white/10 border border-yellow-400/20 rounded-lg text-yellow-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-yellow-400"></div>
                             <div><label class="text-xs text-orange-400/70 block mb-1">Grasas (g)</label>
-                            <input type="number" id="ef-fat" value="${parseFloat(food.fat)||0}" min="0"
+                            <input type="number" id="ef-fat" value="${parseFloat(food.fat)||0}"
                                 class="w-full p-2.5 bg-white/10 border border-orange-400/20 rounded-lg text-orange-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-orange-400"></div>
                         </div>
                     </div>
@@ -9737,7 +9811,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                             <div id="serving-row" class="hidden mt-3 flex items-center gap-2">
                                 <label class="text-xs text-[#FFDB89]/60 shrink-0">Porción:</label>
-                                <input type="number" id="serving-input" value="100" min="0.1" step="0.1" class="w-20 p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]">
+                                <input type="number" id="serving-input" value="100" step="0.1" class="w-20 p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]">
                                 <button id="modal-unit-btn" class="px-2 py-1 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-bold hover:bg-[#FFDB89]/10 transition min-w-[2.5rem]">g</button>
                             </div>
                         </div>
@@ -9807,7 +9881,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('food-modal-body').innerHTML = `
                     <div class="p-5 space-y-4">
                         <div class="relative">
-                            <input type="text" id="food-name-input" placeholder="Nombre del alimento..." autocomplete="off"
+                            <input type="text" id="food-name-input" placeholder="Nombre del alimento..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
                                 class="w-full p-3 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30">
                             <div id="food-name-suggestions" class="hidden absolute top-full left-0 right-0 mt-1 bg-[#1a1a1c] border border-[#FFDB89]/30 rounded-xl shadow-2xl z-10 max-h-52 overflow-y-auto"></div>
                         </div>
@@ -9815,13 +9889,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="flex items-center gap-2">
                             <div class="flex flex-col items-center">
                                 <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider mb-1">Cantidad</label>
-                                <input type="number" id="food-qty-input" value="1" min="0.1" step="0.1"
+                                <input type="number" id="food-qty-input" value="1" step="0.1"
                                     class="w-20 p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] font-black text-sm text-center outline-none focus:ring-2 focus:ring-[#FFDB89]">
                             </div>
                             <div class="flex-1 flex flex-col">
                                 <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider mb-1">Unidad <span class="normal-case opacity-60">(opcional)</span></label>
                                 <input type="text" id="food-unit-input" placeholder="ej: huevos, rebanadas, tazas..."
-                                    class="w-full p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89] placeholder-[#FFDB89]/20">
+                                    class="w-full p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89] placeholder-[#FFDB89]/20" autocorrect="off" autocapitalize="none" spellcheck="false">
                             </div>
                         </div>
                         <!-- Macros per unit -->
@@ -9829,13 +9903,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-2">Macros por unidad:</p>
                             <div class="grid grid-cols-2 gap-2">
                                 <div><label class="text-xs text-[#FFDB89]/60 block mb-1">Calorías</label>
-                                <input type="number" id="food-cal-input" placeholder="0" min="0" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] font-bold text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]"></div>
+                                <input type="number" id="food-cal-input" placeholder="0" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] font-bold text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]"></div>
                                 <div><label class="text-xs text-red-400/70 block mb-1">Proteína (g)</label>
-                                <input type="number" id="food-pro-input" placeholder="0" min="0" class="w-full p-2.5 bg-white/10 border border-red-400/20 rounded-lg text-red-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-red-400"></div>
+                                <input type="number" id="food-pro-input" placeholder="0" class="w-full p-2.5 bg-white/10 border border-red-400/20 rounded-lg text-red-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-red-400"></div>
                                 <div><label class="text-xs text-yellow-400/70 block mb-1">Carbos (g)</label>
-                                <input type="number" id="food-carb-input" placeholder="0" min="0" class="w-full p-2.5 bg-white/10 border border-yellow-400/20 rounded-lg text-yellow-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-yellow-400"></div>
+                                <input type="number" id="food-carb-input" placeholder="0" class="w-full p-2.5 bg-white/10 border border-yellow-400/20 rounded-lg text-yellow-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-yellow-400"></div>
                                 <div><label class="text-xs text-orange-400/70 block mb-1">Grasas (g)</label>
-                                <input type="number" id="food-fat-input" placeholder="0" min="0" class="w-full p-2.5 bg-white/10 border border-orange-400/20 rounded-lg text-orange-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-orange-400"></div>
+                                <input type="number" id="food-fat-input" placeholder="0" class="w-full p-2.5 bg-white/10 border border-orange-400/20 rounded-lg text-orange-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-orange-400"></div>
                             </div>
                         </div>
                         ${foodHistory.length > 0 ? `<p class="text-xs text-[#FFDB89]/40 text-center">💡 Escribe el nombre para ver sugerencias de tu historial (${foodHistory.length} alimentos guardados)</p>` : '<p class="text-xs text-[#FFDB89]/40 text-center">Tus alimentos anteriores aparecerán como sugerencias al escribir</p>'}
@@ -9870,6 +9944,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 [calInput, proInput, carbInput, fatInput, qtyInput, unitInput].forEach(el => el?.addEventListener('input', syncPreview));
+                qtyInput?.addEventListener('focus', () => qtyInput.select());
 
                 // Render the unified suggestion list (local history + shared library)
                 const renderSuggestions = (localMatches, libMatches) => {
@@ -9940,7 +10015,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="p-4 space-y-3">
                         <div class="relative">
                             <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-[#FFDB89]/30 text-sm pointer-events-none"></i>
-                            <input type="text" id="off-search-input" placeholder="Buscar alimento (huevo, pechuga, arroz...)" autocomplete="off"
+                            <input type="text" id="off-search-input" placeholder="Buscar alimento (huevo, pechuga, arroz...)" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
                                 class="w-full pl-10 pr-4 py-3 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30">
                         </div>
                         <div id="off-results" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
@@ -10152,7 +10227,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="flex gap-2 items-end">
                                 <div class="flex flex-col gap-1" style="width:90px">
                                     <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider">Cantidad</label>
-                                    <input type="number" id="off-qty" value="1" min="0.1" step="any"
+                                    <input type="number" id="off-qty" value="1" step="any"
                                         class="p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-center text-lg font-black outline-none focus:ring-2 focus:ring-[#FFDB89]">
                                 </div>
                                 <div class="flex-1 flex flex-col gap-1">
@@ -10213,6 +10288,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         syncServingDisplay();
                     };
 
+                    // Select-all on focus so typing replaces existing value (prevents "1→14" append bug)
+                    qtyInput.addEventListener('focus', () => qtyInput.select());
                     // Live preview while typing — never overwrite what the user is typing
                     qtyInput.addEventListener('input', () => recalc(false));
                     // On blur: clamp empty/zero to 1 and refresh
@@ -10339,7 +10416,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="flex gap-2 items-end">
                                 <div class="flex flex-col gap-1" style="width:90px">
                                     <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider">Cantidad</label>
-                                    <input type="number" id="scan-qty" value="1" min="0.1" step="any"
+                                    <input type="number" id="scan-qty" value="1" step="any"
                                         class="p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-center text-lg font-black outline-none focus:ring-2 focus:ring-[#FFDB89]">
                                 </div>
                                 <div class="flex-1 flex flex-col gap-1">
@@ -10395,6 +10472,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         syncServingDisplay();
                     };
 
+                    qtyInput.addEventListener('focus', () => qtyInput.select());
                     qtyInput.addEventListener('input', () => recalc(false));
                     qtyInput.addEventListener('blur',  () => recalc(true));
                     unitSel.addEventListener('change', recalc);
@@ -10499,9 +10577,15 @@ document.addEventListener('DOMContentLoaded', () => {
             showSearchTab();
 
             // ---- Serving size scaling ----
+            // Select-all on focus so typing replaces the existing value
+            modal.addEventListener('focusin', e => {
+                if (e.target.id === 'serving-input') e.target.select();
+            });
             modal.addEventListener('input', e => {
                 if (e.target.id !== 'serving-input' || !baseNutrients) return;
-                const inputVal = parseFloat(e.target.value) || (modalUnit === 'oz' ? 3.5 : 100);
+                const inputVal = parseFloat(e.target.value);
+                // Don't snap to a default while the user is mid-edit (field empty or partial)
+                if (isNaN(inputVal) || inputVal <= 0) return;
                 servingG = modalUnit === 'oz' ? ozToG(inputVal) : inputVal;
                 const scale = servingG / 100;
                 setPreview({
@@ -11046,6 +11130,102 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- CLIENT PROGRAMS: Show workout calendar ---
+    // ─── EXERCISE HISTORY PAGE ───────────────────────────────────────────────────
+    const initClientHistorial = async () => {
+        const loading   = document.getElementById('historial-loading');
+        const empty     = document.getElementById('historial-empty');
+        const noResults = document.getElementById('historial-no-results');
+        const list      = document.getElementById('historial-list');
+        const search    = document.getElementById('historial-search');
+
+        const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        const fmtDate = (dateStr) => {
+            const [y, m, d] = dateStr.split('-');
+            return `${parseInt(d)} ${months[parseInt(m)-1]} ${y}`;
+        };
+
+        let allExercises = [];
+
+        const renderList = (filter) => {
+            const q = (filter || '').trim().toLowerCase();
+            const filtered = q
+                ? allExercises.filter(ex => ex.name.toLowerCase().includes(q))
+                : allExercises;
+
+            noResults?.classList.toggle('hidden', filtered.length > 0);
+
+            if (!filtered.length) { list.innerHTML = ''; return; }
+
+            list.innerHTML = filtered.map((ex, idx) => {
+                const lastEntry = ex.entries[0];
+                const count = ex.entries.length;
+                return `<div class="rounded-xl border border-[#FFDB89]/10 overflow-hidden" style="background:rgba(255,219,137,0.025)">
+                    <button class="history-card-toggle w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-[#FFDB89]/5 active:bg-[#FFDB89]/8 transition" data-idx="${idx}">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-8 h-8 rounded-full bg-[#FFDB89]/10 flex items-center justify-center shrink-0">
+                                <i class="fas fa-dumbbell text-[#FFDB89]/45 text-xs"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="font-semibold text-[#FFDB89]/90 text-sm truncate">${escHtml(ex.name)}</p>
+                                <p class="text-[#FFDB89]/30 text-[11px] mt-0.5">${count} ${count === 1 ? 'entrada' : 'entradas'} &middot; última: ${fmtDate(lastEntry.date)}</p>
+                            </div>
+                        </div>
+                        <i class="fas fa-chevron-down text-[#FFDB89]/25 text-xs shrink-0 transition-transform history-chevron ml-3"></i>
+                    </button>
+                    <div class="history-card-entries hidden px-4 pb-5 pt-1">
+                        <div class="ml-4 pl-4 border-l-2 border-[#FFDB89]/10 space-y-4">
+                            ${ex.entries.map(entry => `
+                                <div class="relative">
+                                    <div class="absolute -left-[21px] top-[5px] w-2.5 h-2.5 rounded-full bg-[#FFDB89]/20 border-2 border-[#FFDB89]/40"></div>
+                                    <p class="text-[10px] font-bold text-[#FFDB89]/30 uppercase tracking-widest mb-1">${fmtDate(entry.date)}</p>
+                                    <p class="text-sm text-[#FFDB89]/65 leading-snug whitespace-pre-wrap">${escHtml(entry.results)}</p>
+                                </div>`).join('')}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            // Wire accordion toggles
+            list.querySelectorAll('.history-card-toggle').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const panel  = btn.nextElementSibling;
+                    const icon   = btn.querySelector('.history-chevron');
+                    const isOpen = !panel.classList.contains('hidden');
+                    panel.classList.toggle('hidden', isOpen);
+                    icon.style.transform = isOpen ? '' : 'rotate(180deg)';
+                });
+            });
+        };
+
+        // ── Fetch ──────────────────────────────────────────────────────────────
+        try {
+            const session = loadSession();
+            if (!session) throw new Error('no session');
+
+            const res = await apiFetch(`/api/exercise-history/${session.id}/all`);
+            loading?.classList.add('hidden');
+
+            if (!res.ok) throw new Error('fetch failed');
+            const data = await res.json();
+            allExercises = data.exercises || [];
+
+            if (!allExercises.length) {
+                empty?.classList.remove('hidden');
+                return;
+            }
+
+            list?.classList.remove('hidden');
+            renderList('');
+
+            search?.addEventListener('input', () => renderList(search.value));
+
+        } catch (e) {
+            loading?.classList.add('hidden');
+            empty?.classList.remove('hidden');
+        }
+    };
+    // ─────────────────────────────────────────────────────────────────────────────
+
     const initClientPrograms = async () => {
         const session = loadSession();
         if (!session) return;
@@ -11481,10 +11661,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     </button>
                 </div>
                 <div class="px-4 pb-3 border-t ${isDone ? 'border-green-500/10' : 'border-[#FFDB89]/10'} pt-2.5 transition-colors duration-300" data-ex-divider="${i}">
+                    <!-- Exercise history chip — populated after modal renders -->
+                    <div class="ex-history-chip mb-2 hidden" data-history-index="${i}"></div>
                     <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-1.5">Mis resultados</p>
                     <textarea data-ex-index="${i}" rows="2"
                         class="client-result-input w-full bg-[#0D0D0D] border border-[#FFDB89]/10 focus:border-[#FFDB89]/30 rounded-lg px-3 py-2 text-sm text-[#FFDB89]/80 placeholder-[#FFDB89]/20 outline-none resize-none transition"
-                        placeholder="Sets, reps, peso... ej: 3×12 @ 60kg">${safeResults}</textarea>
+                        placeholder="Sets, reps, peso... ej: 3×12 @ 60kg" autocorrect="off" autocapitalize="none" spellcheck="false">${safeResults}</textarea>
                 </div>
             </div>`;
         }).join('');
@@ -11601,9 +11783,49 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === e.currentTarget) e.currentTarget.remove();
         });
 
-        // Wire result textareas — auto-save on input with debounce
+        // ── Fetch exercise history and populate chips ────────────────────────
+        (async () => {
+            try {
+                const session = loadSession();
+                const clientId = workout.clientId || session?.id;
+                const names = clientExercises.map(e => e.name).filter(Boolean);
+                if (!names.length) return;
+                const params = new URLSearchParams({ names: names.join(','), before: workout.date });
+                const histRes = await apiFetch(`/api/exercise-history/${clientId}?${params}`);
+                if (!histRes.ok) return;
+                const history = await histRes.json();
+                clientExercises.forEach((ex, i) => {
+                    const chip = document.querySelector(`.ex-history-chip[data-history-index="${i}"]`);
+                    if (!chip) return;
+                    const h = history[ex.name];
+                    if (!h?.results) return;
+                    // Format date nicely: "2026-05-10" → "10 may"
+                    const [y, m, d] = h.date.split('-');
+                    const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+                    const dateLabel = `${parseInt(d)} ${months[parseInt(m)-1]}`;
+                    chip.innerHTML = `
+                        <div class="flex items-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#FFDB89]/5 border border-[#FFDB89]/10">
+                            <i class="fas fa-history text-[#FFDB89]/30 text-[10px] mt-0.5 shrink-0"></i>
+                            <div class="min-w-0">
+                                <span class="text-[10px] font-bold text-[#FFDB89]/35 uppercase tracking-wide">Última vez · ${dateLabel}</span>
+                                <p class="text-xs text-[#FFDB89]/55 leading-snug mt-0.5 break-words">${h.results}</p>
+                            </div>
+                        </div>`;
+                    chip.classList.remove('hidden');
+                });
+            } catch (_) { /* non-blocking — history is optional */ }
+        })();
+
+        // Wire result textareas — auto-save on input with debounce + auto-expand height
+        const autoResizeTextarea = (el) => {
+            el.style.height = 'auto';
+            el.style.height = el.scrollHeight + 'px';
+        };
         document.querySelectorAll('.client-result-input').forEach(textarea => {
+            // Expand to fit existing content once the modal is painted
+            requestAnimationFrame(() => autoResizeTextarea(textarea));
             textarea.addEventListener('input', () => {
+                autoResizeTextarea(textarea);
                 const idx = parseInt(textarea.dataset.exIndex);
                 if (!isNaN(idx) && clientExercises[idx]) {
                     clientExercises[idx].results = textarea.value;

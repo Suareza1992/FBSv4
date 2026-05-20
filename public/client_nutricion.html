@@ -72,17 +72,17 @@
             <div id="goals-edit-row" class="hidden grid grid-cols-3 gap-2 pb-4 border-b border-[#FFDB89]/10">
                 <div>
                     <label class="text-[10px] text-red-400/60 uppercase tracking-wider block mb-1">Proteína meta (g)</label>
-                    <input type="number" id="goal-protein" min="0" step="5" placeholder="120"
+                    <input type="number" id="goal-protein" step="5" placeholder="120"
                         class="w-full h-11 p-3 bg-red-400/5 border border-red-400/20 rounded-xl text-red-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-red-400">
                 </div>
                 <div>
                     <label class="text-[10px] text-yellow-400/60 uppercase tracking-wider block mb-1">Carbos meta (g)</label>
-                    <input type="number" id="goal-carbs" min="0" step="5" placeholder="200"
+                    <input type="number" id="goal-carbs" step="5" placeholder="200"
                         class="w-full h-11 p-3 bg-yellow-400/5 border border-yellow-400/20 rounded-xl text-yellow-400 font-bold text-sm text-center outline-none focus:ring-2 focus:ring-yellow-400">
                 </div>
                 <div>
                     <label class="text-[10px] text-orange-400/60 uppercase tracking-wider block mb-1">Grasas meta (g)</label>
-                    <input type="number" id="goal-fat" min="0" step="5" placeholder="65"
+                    <input type="number" id="goal-fat" step="5" placeholder="65"
                         class="w-full h-11 p-3 bg-orange-400/5 border border-orange-400/20 rounded-xl text-orange-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-orange-400">
                 </div>
             </div>
@@ -157,7 +157,7 @@
         </div>
         <div class="flex flex-wrap gap-2 mb-3" id="water-cups"></div>
         <div class="flex items-center gap-2">
-            <input type="number" id="water-manual-input" min="0" max="512" class="w-24 p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]" placeholder="oz">
+            <input type="number" id="water-manual-input" class="w-24 p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]" placeholder="oz">
             <button id="water-set-btn" class="px-3 py-2 bg-sky-400/10 border border-sky-400/20 text-sky-400 hover:bg-sky-400/20 rounded-lg text-sm font-bold transition">Establecer</button>
         </div>
     </div>
@@ -165,7 +165,7 @@
     <!-- Notes -->
     <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-5 rounded-xl">
         <h3 class="font-bold text-[#FFDB89] mb-3"><i class="fas fa-sticky-note text-[#FFDB89]/50 mr-2"></i>Notas del Día</h3>
-        <textarea id="nutrition-notes" rows="3" class="w-full p-3 bg-white/5 border border-[#FFDB89]/15 rounded-lg text-white/90 text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] resize-none placeholder-[#FFDB89]/20" placeholder="Cómo te sentiste, qué comiste fuera de lo normal, suplementos..."></textarea>
+        <textarea id="nutrition-notes" rows="3" class="w-full p-3 bg-white/5 border border-[#FFDB89]/15 rounded-lg text-white/90 text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] resize-none placeholder-[#FFDB89]/20" placeholder="Cómo te sentiste, qué comiste fuera de lo normal, suplementos..." autocorrect="off" autocapitalize="none" spellcheck="false"></textarea>
     </div>
 
     <!-- History -->
