@@ -7648,29 +7648,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let playerHtml;
         if (isShort) {
-            // YouTube Shorts don't support inline iframe playback — they redirect to YouTube
-            // on click regardless of embed settings. Show a thumbnail + tap-to-watch card instead.
-            const thumb    = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
-            const watchUrl = url.split('?')[0]; // strip tracking params
-            playerHtml = `
-                <a href="${watchUrl}" target="_blank" rel="noopener"
-                   style="display:block;position:relative;aspect-ratio:9/16;max-height:340px;
-                          background:#000;overflow:hidden;text-decoration:none;cursor:pointer">
-                    <img src="${thumb}" alt="${name}"
-                         style="width:100%;height:100%;object-fit:cover;opacity:.85;display:block">
-                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
-                        <div style="width:56px;height:56px;background:rgba(255,0,0,.9);border-radius:50%;
-                                    display:flex;align-items:center;justify-content:center;
-                                    box-shadow:0 4px 20px rgba(0,0,0,.6)">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
-                        </div>
-                    </div>
-                </a>
-                <div style="padding:.4rem .75rem;background:#0a0a0a;text-align:center">
-                    <span style="color:rgba(255,219,137,.4);font-size:.68rem">
-                        YouTube Shorts — toca para ver
-                    </span>
-                </div>`;
+            // YouTube Shorts — embed inline with portrait aspect ratio
+            const embedUrl = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0`;
+            playerHtml = `<div style="aspect-ratio:9/16;position:relative;background:#000;max-height:72vh;max-height:72dvh">
+                <iframe src="${embedUrl}" style="position:absolute;inset:0;width:100%;height:100%;border:0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+            </div>`;
         } else if (isDirectVideo) {
             playerHtml = `<video style="width:100%;display:block;aspect-ratio:16/9;background:#000"
                 src="${directSrc}" controls autoplay playsinline></video>`;
@@ -7703,8 +7687,12 @@ document.addEventListener('DOMContentLoaded', () => {
         ].join(';');
         document.body.appendChild(backdrop);
 
-        // ── Centered card — responsive width (480 px on desktop, full-bleed on mobile) ──
-        const CARD_W = Math.min(480, window.innerWidth - 32);
+        // ── Centered card — portrait (Shorts) gets a narrow card; landscape gets up to 480 px ──
+        // For portrait content, derive card width from 72dvh height × 9/16 ratio
+        const portraitW = Math.round(window.innerHeight * 0.72 * 9 / 16);
+        const CARD_W = isShort
+            ? Math.min(portraitW, window.innerWidth - 32)
+            : Math.min(480, window.innerWidth - 32);
         const card   = document.createElement('div');
         card.id      = 'video-preview-overlay';
         card.style.cssText = [
