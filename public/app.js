@@ -3528,21 +3528,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const notes = document.getElementById('photo-notes')?.value || '';
         if (!date || !fileInput?.files[0]) { showToast('Fecha y foto son requeridas.', 'error'); return; }
         const file = fileInput.files[0];
-        if (file.size > 2 * 1024 * 1024) { showToast('La imagen debe ser menor a 2MB.', 'error'); return; }
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-            try {
-                const res = await apiFetch('/api/progress-photos', {
-                    method: 'POST',
-                    body: JSON.stringify({ clientId, date, imageData: ev.target.result, notes, category })
-                });
-                if (res.ok) {
-                    document.getElementById('add-photo-modal')?.remove();
-                    loadClientPhotos(clientId);
-                } else { showToast('Error subiendo foto.', 'error'); }
-            } catch (e) { showToast('Error de conexión.', 'error'); }
-        };
-        reader.readAsDataURL(file);
+        if (file.size > 10 * 1024 * 1024) { showToast('La imagen debe ser menor a 10MB.', 'error'); return; }
+
+        const formData = new FormData();
+        formData.append('photo', file);
+        formData.append('clientId', clientId);
+        formData.append('date', date);
+        formData.append('category', category);
+        formData.append('notes', notes);
+
+        try {
+            const res = await fetch('/api/progress-photos', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'   // sends the HttpOnly auth cookie
+            });
+            if (res.ok) {
+                document.getElementById('add-photo-modal')?.remove();
+                loadClientPhotos(clientId);
+            } else { showToast('Error subiendo foto.', 'error'); }
+        } catch (e) { showToast('Error de conexión.', 'error'); }
     };
 
     window.deleteProgressPhoto = async (photoId, clientId) => {
@@ -5728,7 +5733,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const existing = prog.weeks[weekIndex].days[String(dayNum)] || {};
         // Guard: ask before wiping exercises
         if (existing.exercises?.length > 0) {
-            const ok = confirm(`Este día ya tiene ${existing.exercises.length} ejercicio(s) asignado(s).\n\n¿Deseas convertirlo a Descanso y eliminar los ejercicios?`);
+            const ok = await showConfirm(`Este día ya tiene ${existing.exercises.length} ejercicio(s) asignado(s). ¿Deseas convertirlo a Descanso y eliminar los ejercicios?`, { confirmLabel: 'Convertir a Descanso', cancelLabel: 'Cancelar', danger: true });
             if (!ok) return;
         }
         snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
@@ -5753,7 +5758,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const existing = prog.weeks[weekIndex].days[String(dayNum)] || {};
         // Guard: ask before wiping exercises
         if (existing.exercises?.length > 0) {
-            const ok = confirm(`Este día ya tiene ${existing.exercises.length} ejercicio(s) asignado(s).\n\n¿Deseas convertirlo a Descanso Activo y eliminar los ejercicios?`);
+            const ok = await showConfirm(`Este día ya tiene ${existing.exercises.length} ejercicio(s) asignado(s). ¿Deseas convertirlo a Descanso Activo y eliminar los ejercicios?`, { confirmLabel: 'Convertir a Descanso Activo', cancelLabel: 'Cancelar', danger: true });
             if (!ok) return;
         }
         snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
@@ -6738,7 +6743,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Guard: confirm if this date already has a workout with exercises
             const existingW = window._calendarWorkouts?.[dateStr];
             if (existingW && !existingW.isRest && existingW.exercises?.length > 0) {
-                const ok = confirm(`Este día ya tiene una rutina con ${existingW.exercises.length} ejercicio(s).\n\n¿Deseas reemplazarla con un día de Descanso?`);
+                const ok = await showConfirm(`Este día ya tiene una rutina con ${existingW.exercises.length} ejercicio(s). ¿Deseas reemplazarla con un día de Descanso?`, { confirmLabel: 'Reemplazar con Descanso', cancelLabel: 'Cancelar', danger: true });
                 if (!ok) return;
             }
             try {
@@ -11202,34 +11207,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.getElementById('close-upload-photo')?.addEventListener('click', () => document.getElementById('client-upload-photo-modal')?.remove());
 
-            let imageDataUrl = null;
+            let selectedFile = null;
             document.getElementById('photo-file-input')?.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
+                selectedFile = file;
                 document.getElementById('photo-file-label').textContent = file.name;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    imageDataUrl = ev.target.result;
-                    document.getElementById('save-progress-photo-btn').disabled = false;
-                };
-                reader.readAsDataURL(file);
+                document.getElementById('save-progress-photo-btn').disabled = false;
             });
 
             document.getElementById('save-progress-photo-btn')?.addEventListener('click', async () => {
-                if (!imageDataUrl) return;
+                if (!selectedFile) return;
                 const btn = document.getElementById('save-progress-photo-btn');
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Subiendo...';
+
+                const formData = new FormData();
+                formData.append('photo', selectedFile);
+                formData.append('clientId',  session.id);
+                formData.append('date',      document.getElementById('photo-date').value);
+                formData.append('category',  document.getElementById('photo-category').value);
+                formData.append('notes',     document.getElementById('photo-notes').value);
+
                 try {
-                    const res = await apiFetch('/api/progress-photos', {
+                    const res = await fetch('/api/progress-photos', {
                         method: 'POST',
-                        body: JSON.stringify({
-                            clientId:  session.id,
-                            date:      document.getElementById('photo-date').value,
-                            category:  document.getElementById('photo-category').value,
-                            notes:     document.getElementById('photo-notes').value,
-                            imageData: imageDataUrl
-                        })
+                        body: formData,
+                        credentials: 'include'   // sends the HttpOnly auth cookie
                     });
                     if (res.ok) {
                         document.getElementById('client-upload-photo-modal')?.remove();

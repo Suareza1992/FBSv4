@@ -14,6 +14,8 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { authenticateToken, authorizeRoles } from './middleware/auth.js';
 import Stripe from 'stripe';
+import { v2 as cloudinary } from 'cloudinary';
+import multer from 'multer';
 
 // ==========================================================================
 // --- CONFIGURATION ---
@@ -33,6 +35,31 @@ const stripeReady = (res) => {
     if (!stripe) { res.status(503).json({ message: 'Stripe no está configurado. Agrega STRIPE_SECRET_KEY en .env.' }); return false; }
     return true;
 };
+
+// --- CLOUDINARY ---
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key:    process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Multer: store file in memory so we can stream the buffer straight to Cloudinary
+const photoUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) return cb(new Error('Solo se permiten imágenes.'));
+        cb(null, true);
+    }
+});
+
+// Helper: upload a buffer to Cloudinary and return the result
+const uploadToCloudinary = (buffer, options) => new Promise((resolve, reject) => {
+    cloudinary.uploader.upload_stream(options, (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+    }).end(buffer);
+});
 
 // Stripe webhook needs raw body for signature verification — exclude it from json parsing
 app.use((req, res, next) => {
@@ -384,12 +411,13 @@ const BodyMeasurement = mongoose.model('BodyMeasurement', BodyMeasurementSchema)
 
 // --- Progress Photo Schema ---
 const ProgressPhotoSchema = new mongoose.Schema({
-    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    date: { type: String, required: true },
-    imageData: { type: String, required: true },
-    notes: { type: String, default: '' },
-    category: { type: String, default: 'general' },
-    createdAt: { type: Date, default: Date.now }
+    clientId:           { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    date:               { type: String, required: true },
+    imageData:          { type: String, required: true }, // Cloudinary secure_url (legacy docs may hold base64)
+    cloudinaryPublicId: { type: String, default: null },  // used to delete from Cloudinary on photo delete
+    notes:              { type: String, default: '' },
+    category:           { type: String, default: 'general' },
+    createdAt:          { type: Date, default: Date.now }
 });
 ProgressPhotoSchema.index({ clientId: 1, date: -1 });
 const ProgressPhoto = mongoose.model('ProgressPhoto', ProgressPhotoSchema);
@@ -1691,15 +1719,26 @@ app.get('/api/progress-photos/:clientId', authenticateToken, async (req, res) =>
     } catch (e) { res.status(500).json({ message: 'Error fetching progress photos' }); }
 });
 
-app.post('/api/progress-photos', authenticateToken, async (req, res) => {
+app.post('/api/progress-photos', authenticateToken, photoUpload.single('photo'), async (req, res) => {
     if (!assertOwnership(req, res, req.body.clientId)) return;
     try {
-        const { clientId, date, imageData, notes, category } = req.body;
-        // H-7: Validate image MIME type and size server-side
-        if (!isValidImageData(imageData) || imageData.length > MAX_IMAGE_B64_LEN) {
-            return res.status(400).json({ message: 'Formato de imagen no válido.' });
-        }
-        const photo = new ProgressPhoto({ clientId, date, imageData, notes, category });
+        const { clientId, date, notes, category } = req.body;
+        if (!req.file) return res.status(400).json({ message: 'No se recibió ninguna imagen.' });
+
+        // Upload buffer to Cloudinary with auto quality + format optimization
+        const result = await uploadToCloudinary(req.file.buffer, {
+            folder: 'fitbysuarez/progress-photos',
+            transformation: [{ quality: 'auto', fetch_format: 'auto', width: 1200, crop: 'limit' }]
+        });
+
+        const photo = new ProgressPhoto({
+            clientId,
+            date,
+            notes,
+            category,
+            imageData:          result.secure_url,
+            cloudinaryPublicId: result.public_id
+        });
         await photo.save();
 
         // Notify trainer when client uploads progress photo
@@ -1718,11 +1757,22 @@ app.post('/api/progress-photos', authenticateToken, async (req, res) => {
         }
 
         res.json(photo);
-    } catch (e) { res.status(500).json({ message: 'Error saving progress photo' }); }
+    } catch (e) {
+        console.error('Error saving progress photo:', e.message);
+        res.status(500).json({ message: 'Error saving progress photo' });
+    }
 });
 
 app.delete('/api/progress-photos/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
     try {
+        const photo = await ProgressPhoto.findById(req.params.id);
+        if (!photo) return res.status(404).json({ message: 'Photo not found' });
+
+        // Remove from Cloudinary if we have a public_id (new photos always will; legacy base64 photos won't)
+        if (photo.cloudinaryPublicId) {
+            await cloudinary.uploader.destroy(photo.cloudinaryPublicId);
+        }
+
         await ProgressPhoto.findByIdAndDelete(req.params.id);
         res.json({ message: 'Photo deleted' });
     } catch (e) { res.status(500).json({ message: 'Error deleting photo' }); }
