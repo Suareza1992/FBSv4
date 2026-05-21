@@ -444,137 +444,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ]
     };
 
-    // ── Detailed anatomical body SVG — viewBox 0 0 200 560 ───────────────────
-    // Silhouette: head + neck + torso/legs + arms as separate closed paths
-    // Detail layer: muscle-definition lines (non-interactive decorative strokes)
-    const SVG_BODY_FRONT = `
-      <g fill="rgba(255,219,137,0.07)" stroke="rgba(255,219,137,0.42)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round">
-        <ellipse cx="100" cy="24" rx="18" ry="21"/>
-        <path d="M 92 45 L 90 64 L 110 64 L 108 45 Z"/>
-        <path d="M 109 45 C 124 47 142 54 154 64 C 164 73 167 84 165 96
-                 C 163 108 157 118 152 126 C 148 134 146 146 143 162
-                 C 141 178 139 194 138 210 C 137 222 136 232 135 244
-                 C 135 254 135 264 134 272 C 133 280 131 290 129 298
-                 L 125 432 C 124 440 123 450 123 460 L 121 524
-                 C 121 532 123 540 127 548 L 143 548 L 146 540
-                 C 146 534 144 528 140 522 L 138 460
-                 C 138 450 139 442 140 432 L 140 298
-                 C 136 290 130 286 124 284 C 118 282 110 280 100 280
-                 C 90 280 82 282 76 284 C 70 286 64 290 60 298
-                 L 60 432 C 61 442 62 450 62 460 L 60 522
-                 C 56 528 54 534 54 540 L 56 548 L 72 548
-                 C 76 540 78 532 79 524 L 77 460
-                 C 77 450 76 440 75 432 L 71 298
-                 C 69 290 67 280 65 272 C 65 264 65 254 64 244
-                 C 63 232 62 222 61 210 C 60 194 59 178 57 162
-                 C 54 146 52 134 48 126 C 43 118 37 108 35 96
-                 C 33 84 36 73 46 64 C 58 54 76 47 91 45 Z"/>
-        <path d="M 165 96 C 169 104 172 116 172 130 C 172 146 170 162 166 178
-                 C 163 190 162 202 163 214 C 164 228 165 242 164 256
-                 C 163 266 161 276 158 284 L 155 312 L 151 316 L 149 312
-                 C 150 302 151 292 152 280 C 152 268 152 256 151 242
-                 C 151 228 150 214 151 202 C 152 192 153 182 152 168
-                 C 151 152 151 136 152 120 C 153 110 159 102 163 96 Z"/>
-        <path d="M 35 96 C 31 104 28 116 28 130 C 28 146 30 162 34 178
-                 C 37 190 38 202 37 214 C 36 228 35 242 36 256
-                 C 37 266 39 276 42 284 L 45 312 L 49 316 L 51 312
-                 C 50 302 49 292 48 280 C 48 268 48 256 49 242
-                 C 49 228 50 214 49 202 C 48 192 47 182 48 168
-                 C 49 152 49 136 48 120 C 47 110 41 102 37 96 Z"/>
-      </g>
-      <g fill="none" stroke="rgba(255,219,137,0.22)" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M 100 70 C 88 70 74 73 62 80 C 54 85 46 91 40 98"/>
-        <path d="M 100 70 C 112 70 126 73 138 80 C 146 85 154 91 160 98"/>
-        <path d="M 100 72 L 100 152"/>
-        <path d="M 100 74 C 90 78 78 90 72 106 C 67 120 69 138 76 148 C 81 156 91 158 98 154"/>
-        <path d="M 100 74 C 110 78 122 90 128 106 C 133 120 131 138 124 148 C 119 156 109 158 102 154"/>
-        <path d="M 100 154 L 100 252"/>
-        <path d="M 86 170 C 90 165 96 163 100 163 C 104 163 110 165 114 170"/>
-        <path d="M 85 192 C 90 187 96 185 100 185 C 104 185 110 187 115 192"/>
-        <path d="M 85 214 C 90 209 96 207 100 207 C 104 207 110 209 115 214"/>
-        <path d="M 86 236 C 90 231 96 229 100 229 C 104 229 110 231 114 236"/>
-        <path d="M 85 154 C 79 168 76 184 75 200"/>
-        <path d="M 115 154 C 121 168 124 184 125 200"/>
-        <path d="M 54 150 C 59 155 63 161 66 168"/>
-        <path d="M 53 165 C 58 170 62 176 65 182"/>
-        <path d="M 146 150 C 141 155 137 161 134 168"/>
-        <path d="M 147 165 C 142 170 138 176 135 182"/>
-        <path d="M 42 106 C 41 118 40 130 41 140"/>
-        <path d="M 158 106 C 159 118 160 130 159 140"/>
-        <path d="M 33 138 C 33 152 34 166 36 178"/>
-        <path d="M 167 138 C 167 152 166 166 164 178"/>
-        <path d="M 88 316 C 87 356 86 396 88 436"/>
-        <path d="M 112 316 C 113 356 114 396 112 436"/>
-        <ellipse cx="80" cy="440" rx="9" ry="8"/>
-        <ellipse cx="120" cy="440" rx="9" ry="8"/>
-        <path d="M 78 464 C 79 482 80 502 79 518"/>
-        <path d="M 122 464 C 121 482 120 502 121 518"/>
-      </g>`;
-
-    const SVG_BODY_BACK = `
-      <g fill="rgba(255,219,137,0.07)" stroke="rgba(255,219,137,0.42)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round">
-        <ellipse cx="100" cy="24" rx="18" ry="21"/>
-        <path d="M 92 45 L 90 64 L 110 64 L 108 45 Z"/>
-        <path d="M 109 45 C 126 47 146 55 158 67 C 168 77 172 90 170 104
-                 C 168 118 162 130 156 140 C 151 150 148 163 145 180
-                 C 143 196 141 212 139 228 C 137 240 136 252 135 260
-                 C 134 270 133 280 132 290 C 131 300 129 310 127 320
-                 L 125 432 C 125 442 124 452 124 462 L 122 526
-                 C 122 534 124 542 128 548 L 142 548 L 146 540
-                 C 146 532 144 526 140 522 L 138 462
-                 C 138 452 139 442 140 432 L 138 320
-                 C 134 308 128 300 120 294 C 114 289 108 286 100 284
-                 C 92 286 86 289 80 294 C 72 300 66 308 62 320
-                 L 60 432 C 60 442 60 452 60 462 L 58 522
-                 C 54 526 52 532 54 540 L 58 548 L 72 548
-                 C 76 542 78 534 78 526 L 75 462
-                 C 75 452 74 442 74 432 L 73 320
-                 C 71 310 69 300 68 290 C 67 280 65 270 65 260
-                 C 64 252 63 240 61 228 C 59 212 57 196 54 180
-                 C 52 163 49 150 44 140 C 38 130 32 118 30 104
-                 C 28 90 32 77 42 67 C 54 55 74 47 91 45 Z"/>
-        <path d="M 170 104 C 174 112 177 124 177 140 C 177 156 175 174 170 190
-                 C 167 202 165 214 165 226 C 165 240 165 254 164 268
-                 C 163 278 161 288 158 296 L 154 318 L 150 322 L 148 318
-                 C 150 308 151 298 151 286 C 151 274 151 260 150 246
-                 C 150 232 150 218 151 206 C 152 196 153 184 152 172
-                 C 151 156 151 138 153 122 C 154 112 159 104 163 100 Z"/>
-        <path d="M 30 104 C 26 112 23 124 23 140 C 23 156 25 174 30 190
-                 C 33 202 35 214 35 226 C 35 240 35 254 36 268
-                 C 37 278 39 288 42 296 L 46 318 L 50 322 L 52 318
-                 C 50 308 49 298 49 286 C 49 274 49 260 50 246
-                 C 50 232 50 218 49 206 C 48 196 47 184 48 172
-                 C 49 156 49 138 47 122 C 46 112 41 104 37 100 Z"/>
-      </g>
-      <g fill="none" stroke="rgba(255,219,137,0.22)" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M 100 64 L 100 254"/>
-        <path d="M 100 70 C 114 66 130 68 144 76 C 153 82 160 90 162 100"/>
-        <path d="M 100 70 C 86 66 70 68 56 76 C 47 82 40 90 38 100"/>
-        <path d="M 100 72 C 106 80 113 94 116 108 C 118 120 118 134 114 144 C 109 154 104 158 100 160"/>
-        <path d="M 100 72 C 94 80 87 94 84 108 C 82 120 82 134 86 144 C 91 154 96 158 100 160"/>
-        <path d="M 72 104 C 82 100 91 98 100 98 C 109 98 118 100 128 104"/>
-        <path d="M 70 122 C 80 118 91 116 100 116 C 109 116 120 118 130 122"/>
-        <path d="M 54 140 C 52 156 50 172 50 188"/>
-        <path d="M 146 140 C 148 156 150 172 150 188"/>
-        <path d="M 46 118 C 46 130 45 142 46 152"/>
-        <path d="M 154 118 C 154 130 155 142 154 152"/>
-        <path d="M 72 130 C 75 136 78 142 80 148"/>
-        <path d="M 128 130 C 125 136 122 142 120 148"/>
-        <path d="M 96 160 L 96 254"/>
-        <path d="M 104 160 L 104 254"/>
-        <path d="M 88 256 C 91 252 96 250 100 250 C 104 250 109 252 112 256"/>
-        <path d="M 100 264 L 100 320"/>
-        <path d="M 100 270 C 95 276 86 284 80 292"/>
-        <path d="M 100 270 C 105 276 114 284 120 292"/>
-        <path d="M 87 322 C 86 358 85 394 86 428"/>
-        <path d="M 113 322 C 114 358 115 394 114 428"/>
-        <ellipse cx="80" cy="436" rx="8" ry="7"/>
-        <ellipse cx="120" cy="436" rx="8" ry="7"/>
-        <path d="M 80 466 C 78 484 76 504 78 520"/>
-        <path d="M 84 466 C 84 484 85 504 84 520"/>
-        <path d="M 120 466 C 122 484 124 504 122 520"/>
-        <path d="M 116 466 C 116 484 115 504 116 520"/>
-      </g>`;
+    // ── Anatomical body images — replaces SVG wireframe body ──────────────────
+    const SVG_BODY_FRONT = `<image href="/anatomy-front.png" x="0" y="0" width="200" height="560" preserveAspectRatio="xMidYMid meet" opacity="0.92"/>`;
+    const SVG_BODY_BACK  = `<image href="/anatomy-back.png"  x="0" y="0" width="200" height="560" preserveAspectRatio="xMidYMid meet" opacity="0.92"/>`;
 
     const initSettings = async () => {
         try {
@@ -870,34 +742,61 @@ document.addEventListener('DOMContentLoaded', () => {
                         unitSystem: isMetricNow ? 'metric' : 'imperial'
                     };
 
-                    // Include profile picture if changed
-                    if (window._pendingProfilePicture) {
-                        updates.profilePicture = window._pendingProfilePicture;
-                    }
-
                     if (!updates.name) {
                         showToast('El nombre es requerido.', 'error');
                         return;
                     }
 
                     try {
+                        // 1. Upload profile picture to Cloudinary first (if one is pending)
+                        let newProfilePictureUrl = null;
+                        if (window._pendingProfilePicture) {
+                            // Convert canvas base64 export → Blob → FormData
+                            const dataUrl = window._pendingProfilePicture;
+                            const [header, b64] = dataUrl.split(',');
+                            const mime = header.match(/:(.*?);/)[1];
+                            const bytes = atob(b64);
+                            const arr = new Uint8Array(bytes.length);
+                            for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+                            const blob = new Blob([arr], { type: mime });
+
+                            const formData = new FormData();
+                            formData.append('photo', blob, 'profile.jpg');
+
+                            const picRes = await fetch('/api/me/profile-picture', {
+                                method: 'POST',
+                                body: formData,
+                                credentials: 'include'
+                            });
+                            if (picRes.ok) {
+                                const picData = await picRes.json();
+                                newProfilePictureUrl = picData.profilePicture;
+                                window._pendingProfilePicture = null;
+                            } else {
+                                showToast('Error subiendo foto de perfil.', 'error');
+                                return;
+                            }
+                        }
+
+                        // 2. Save text settings (name, lastName, unitSystem)
                         const saveRes = await apiFetch('/api/me', {
                             method: 'PUT',
                             body: JSON.stringify(updates)
                         });
                         if (saveRes.ok) {
                             const updatedUser = await saveRes.json();
+                            // Merge Cloudinary URL if we just uploaded one
+                            if (newProfilePictureUrl) updatedUser.profilePicture = newProfilePictureUrl;
+
                             // Update localStorage session with ALL changed fields
                             const session = loadSession();
                             if (session) {
-                                session.name = updatedUser.name;
-                                session.lastName = updatedUser.lastName;
-                                session.unitSystem = updatedUser.unitSystem;
+                                session.name           = updatedUser.name;
+                                session.lastName       = updatedUser.lastName;
+                                session.unitSystem     = updatedUser.unitSystem;
                                 session.profilePicture = updatedUser.profilePicture || '';
                                 localStorage.setItem('auth_user', JSON.stringify(session));
                             }
-                            // Clear pending picture
-                            window._pendingProfilePicture = null;
 
                             // Update sidebar trainer name
                             const trainerName = document.getElementById('trainer-name');

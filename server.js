@@ -61,6 +61,14 @@ const uploadToCloudinary = (buffer, options) => new Promise((resolve, reject) =>
     }).end(buffer);
 });
 
+// Generate a 1-hour signed URL for a private (authenticated-type) Cloudinary asset
+const getSignedPhotoUrl = (publicId) => cloudinary.url(publicId, {
+    type:       'authenticated',
+    sign_url:   true,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    secure:     true,
+});
+
 // Stripe webhook needs raw body for signature verification — exclude it from json parsing
 app.use((req, res, next) => {
     if (req.path === '/api/stripe/webhook') return next();
@@ -830,22 +838,11 @@ app.get('/api/me', authenticateToken, async (req, res) => {
     }
 });
 
-// H-7: Whitelist of allowed image data URI prefixes (no SVG — it can contain scripts)
-const ALLOWED_IMAGE_PREFIXES = ['data:image/jpeg;base64,', 'data:image/jpg;base64,', 'data:image/png;base64,', 'data:image/gif;base64,', 'data:image/webp;base64,'];
-const isValidImageData = (data) => typeof data === 'string' && ALLOWED_IMAGE_PREFIXES.some(p => data.startsWith(p));
-// 5 MB max for Base64 images (5 * 1024 * 1024 * (4/3) ≈ 6.9 MB in Base64)
-const MAX_IMAGE_B64_LEN = 7_000_000;
-
 app.put('/api/me', authenticateToken, async (req, res) => {
     try {
-        // H-7: Validate profile picture MIME type before saving
-        if (req.body.profilePicture) {
-            if (!isValidImageData(req.body.profilePicture) || req.body.profilePicture.length > MAX_IMAGE_B64_LEN) {
-                return res.status(400).json({ message: 'Formato de imagen no válido.' });
-            }
-        }
         // Safe profile fields any authenticated user can update
-        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'profilePicture', 'servingUnit', 'injuredMuscles'];
+        // profilePicture is no longer accepted here — use POST /api/me/profile-picture instead
+        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'servingUnit', 'injuredMuscles'];
         const updates = {};
         for (const key of allowedFields) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -872,6 +869,28 @@ app.put('/api/me', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error updating profile:', error);
         res.status(500).json({ message: 'Error updating profile' });
+    }
+});
+
+// Profile picture upload — dedicated Cloudinary endpoint
+// Keeps binary upload separate from the JSON settings route
+app.post('/api/me/profile-picture', authenticateToken, photoUpload.single('photo'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No se recibió ninguna imagen.' });
+
+        // Deterministic public_id per user — re-uploading replaces the old photo, never accumulates
+        const result = await uploadToCloudinary(req.file.buffer, {
+            folder:      'fitbysuarez/profile-pictures',
+            public_id:   `user_${req.user.id}`,
+            overwrite:   true,
+            transformation: [{ quality: 'auto', fetch_format: 'auto' }]
+        });
+
+        await User.findByIdAndUpdate(req.user.id, { profilePicture: result.secure_url });
+        res.json({ profilePicture: result.secure_url });
+    } catch (e) {
+        console.error('Error uploading profile picture:', e.message);
+        res.status(500).json({ message: 'Error subiendo foto de perfil.' });
     }
 });
 
@@ -1715,7 +1734,17 @@ app.get('/api/progress-photos/:clientId', authenticateToken, async (req, res) =>
     if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const photos = await ProgressPhoto.find({ clientId: req.params.clientId }).sort({ date: -1 }).limit(50);
-        res.json(photos);
+
+        // Replace stored URL with a fresh 1-hour signed URL for authenticated (private) photos
+        const signed = photos.map(p => {
+            const obj = p.toObject();
+            if (obj.cloudinaryPublicId) {
+                obj.imageData = getSignedPhotoUrl(obj.cloudinaryPublicId);
+            }
+            return obj;
+        });
+
+        res.json(signed);
     } catch (e) { res.status(500).json({ message: 'Error fetching progress photos' }); }
 });
 
@@ -1725,9 +1754,10 @@ app.post('/api/progress-photos', authenticateToken, photoUpload.single('photo'),
         const { clientId, date, notes, category } = req.body;
         if (!req.file) return res.status(400).json({ message: 'No se recibió ninguna imagen.' });
 
-        // Upload buffer to Cloudinary with auto quality + format optimization
+        // Upload buffer to Cloudinary as a private (authenticated) asset
         const result = await uploadToCloudinary(req.file.buffer, {
             folder: 'fitbysuarez/progress-photos',
+            type:   'authenticated',
             transformation: [{ quality: 'auto', fetch_format: 'auto', width: 1200, crop: 'limit' }]
         });
 
@@ -1770,7 +1800,10 @@ app.delete('/api/progress-photos/:id', authenticateToken, authorizeRoles('traine
 
         // Remove from Cloudinary if we have a public_id (new photos always will; legacy base64 photos won't)
         if (photo.cloudinaryPublicId) {
-            await cloudinary.uploader.destroy(photo.cloudinaryPublicId);
+            await cloudinary.uploader.destroy(photo.cloudinaryPublicId, {
+                type:       'authenticated',
+                invalidate: true,
+            });
         }
 
         await ProgressPhoto.findByIdAndDelete(req.params.id);
