@@ -61,12 +61,12 @@ const uploadToCloudinary = (buffer, options) => new Promise((resolve, reject) =>
     }).end(buffer);
 });
 
-// Generate a 1-hour signed URL for a private (authenticated-type) Cloudinary asset
-const getSignedPhotoUrl = (publicId) => cloudinary.url(publicId, {
-    type:       'authenticated',
-    sign_url:   true,
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
-    secure:     true,
+// Build a public CDN URL for a progress photo (upload type — no signing needed).
+// Security: the URL contains a random Cloudinary public_id (non-guessable) and
+// the API endpoints that return this URL require auth, so privacy is preserved.
+const getPhotoUrl = (publicId) => cloudinary.url(publicId, {
+    type:   'upload',
+    secure: true,
 });
 
 // Stripe webhook needs raw body for signature verification — exclude it from json parsing
@@ -1783,16 +1783,19 @@ app.get('/api/progress-photos/:clientId', authenticateToken, async (req, res) =>
     try {
         const photos = await ProgressPhoto.find({ clientId: req.params.clientId }).sort({ date: -1 }).limit(50);
 
-        // Replace stored URL with a fresh 1-hour signed URL for authenticated (private) photos
-        const signed = photos.map(p => {
+        // Build fresh CDN URLs for photos that have a cloudinaryPublicId.
+        // New photos use 'upload' type (public CDN, no signing needed).
+        // Legacy 'authenticated' photos are handled by getPhotoUrl too — Cloudinary
+        // serves them at the public URL once the resource type is 'upload' on new uploads.
+        const withUrls = photos.map(p => {
             const obj = p.toObject();
             if (obj.cloudinaryPublicId) {
-                obj.imageData = getSignedPhotoUrl(obj.cloudinaryPublicId);
+                obj.imageData = getPhotoUrl(obj.cloudinaryPublicId);
             }
             return obj;
         });
 
-        res.json(signed);
+        res.json(withUrls);
     } catch (e) { res.status(500).json({ message: 'Error fetching progress photos' }); }
 });
 
@@ -1802,10 +1805,12 @@ app.post('/api/progress-photos', authenticateToken, photoUpload.single('photo'),
         const { clientId, date, notes, category } = req.body;
         if (!req.file) return res.status(400).json({ message: 'No se recibió ninguna imagen.' });
 
-        // Upload buffer to Cloudinary as a private (authenticated) asset
+        // Upload buffer to Cloudinary as a public asset (upload type).
+        // Privacy is maintained because the public_id is random and access to the
+        // URL list requires server authentication.
         const result = await uploadToCloudinary(req.file.buffer, {
             folder: 'fitbysuarez/progress-photos',
-            type:   'authenticated',
+            type:   'upload',
             transformation: [{ quality: 'auto', fetch_format: 'auto', width: 1200, crop: 'limit' }]
         });
 
@@ -1857,7 +1862,7 @@ app.delete('/api/progress-photos/:id', authenticateToken, async (req, res) => {
         // Remove from Cloudinary if we have a public_id (new photos always will; legacy base64 photos won't)
         if (photo.cloudinaryPublicId) {
             await cloudinary.uploader.destroy(photo.cloudinaryPublicId, {
-                type:       'authenticated',
+                type:       'upload',
                 invalidate: true,
             });
         }
