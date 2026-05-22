@@ -10236,9 +10236,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                     class="w-full p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89] placeholder-[#FFDB89]/20" autocorrect="off" autocapitalize="none" spellcheck="false">
                             </div>
                         </div>
-                        <!-- Macros per unit -->
+                        <!-- Macros totales -->
                         <div>
-                            <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-2">Macros por unidad:</p>
+                            <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-2">Macros totales:</p>
                             <div class="grid grid-cols-2 gap-2">
                                 <div><label class="text-xs text-[#FFDB89]/60 block mb-1">Calorías</label>
                                 <input type="number" id="food-cal-input" placeholder="0" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] font-bold text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]"></div>
@@ -10269,12 +10269,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const displayName = baseName
                         ? (qty !== 1 ? `${qty}${unit ? ' ' + unit : 'x'} ${baseName}` : baseName)
                         : '';
+                    // Macros are stored exactly as entered — qty only affects the display name.
                     const f = {
                         name:     displayName,
-                        calories: Math.round((parseFloat(calInput.value)  || 0) * qty),
-                        protein:  Math.round((parseFloat(proInput.value)  || 0) * qty),
-                        carbs:    Math.round((parseFloat(carbInput.value) || 0) * qty),
-                        fat:      Math.round((parseFloat(fatInput.value)  || 0) * qty)
+                        calories: Math.round(parseFloat(calInput.value)  || 0),
+                        protein:  Math.round(parseFloat(proInput.value)  || 0),
+                        carbs:    Math.round(parseFloat(carbInput.value) || 0),
+                        fat:      Math.round(parseFloat(fatInput.value)  || 0)
                     };
                     if (baseName) setPreview(f, false);
                     const btn = document.getElementById('confirm-add-food');
