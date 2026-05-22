@@ -46,18 +46,80 @@
 
     <div class="border-b border-[#FFDB89]/20 mb-6 pb-6">
         <div class="pb-4 mb-4 border-b border-[#FFDB89]/20">
-            <h3 class="text-lg font-semibold text-[#FFDB89]">Datos de salud</h3>
-            <p class="text-sm text-[#FFDB89]/60">Valores establecidos por tu entrenador.</p>
+            <h3 class="text-lg font-semibold text-[#FFDB89]">Frecuencia Cardíaca</h3>
+            <p class="text-sm text-[#FFDB89]/60">Calcula tus zonas de entrenamiento a partir de tu frecuencia en reposo.</p>
         </div>
-        <div class="grid grid-cols-2 gap-6">
-            <div>
-                <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">THR — Frecuencia Cardíaca Objetivo (bpm)</label>
-                <p id="settings-thr" class="text-2xl font-black text-[#FFDB89]">—</p>
+
+        <!-- Step 1: RHR input -->
+        <div class="mb-6">
+            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase tracking-wider mb-2">RHR — Frecuencia cardíaca en reposo</label>
+            <div class="flex items-start gap-3 mb-3">
+                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-[#FFDB89]/10 flex items-center justify-center mt-0.5">
+                    <i class="fas fa-hand-pointer text-[#FFDB89]/50 text-xs"></i>
+                </div>
+                <p class="text-xs text-[#FFDB89]/45 leading-relaxed">
+                    <span class="font-bold text-[#FFDB89]/60">Medición manual:</span> Coloca tus dedos índice y medio en el cuello (arteria carótida) o en la muñeca. Cuenta los latidos durante <span class="font-bold text-[#FFDB89]/70">60 segundos</span> y multiplica el resultado por 4.
+                </p>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Max HR — Frecuencia Cardíaca Máxima (bpm)</label>
-                <p id="settings-mahr" class="text-2xl font-black text-[#FFDB89]">—</p>
+            <div class="flex items-center gap-3">
+                <input type="number" id="settings-rhr" min="30" max="120" placeholder="65"
+                    class="w-24 p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-[#FFDB89] focus:border-[#FFDB89] outline-none text-center text-2xl font-black">
+                <span class="text-sm text-[#FFDB89]/50 font-medium">bpm</span>
             </div>
+        </div>
+
+        <!-- Step 2: Training intensity selector -->
+        <div class="mb-6">
+            <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase tracking-wider mb-2">Intensidad de entrenamiento</label>
+            <div class="grid grid-cols-3 gap-2" id="hr-intensity-btns">
+                <button data-intensity="0.60" class="hr-intensity-btn flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border border-[#FFDB89]/15 bg-[#FFDB89]/5 text-[#FFDB89]/50 hover:border-[#FFDB89]/35 hover:text-[#FFDB89]/80 transition text-center">
+                    <span class="text-xl font-black">60%</span>
+                    <span class="text-[10px] leading-tight">Aeróbico<br>moderado</span>
+                </button>
+                <button data-intensity="0.70" class="hr-intensity-btn flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border border-[#FFDB89]/40 bg-[#FFDB89]/15 text-[#FFDB89] transition text-center">
+                    <span class="text-xl font-black">70%</span>
+                    <span class="text-[10px] leading-tight">Aeróbico<br>alto</span>
+                </button>
+                <button data-intensity="0.85" class="hr-intensity-btn flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border border-[#FFDB89]/15 bg-[#FFDB89]/5 text-[#FFDB89]/50 hover:border-[#FFDB89]/35 hover:text-[#FFDB89]/80 transition text-center">
+                    <span class="text-xl font-black">85%</span>
+                    <span class="text-[10px] leading-tight">Zona<br>anaeróbica</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Calculated values -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/10 rounded-xl p-3 text-center">
+                <p class="text-[9px] font-extrabold text-[#FFDB89]/35 uppercase tracking-widest mb-1">RHR</p>
+                <p id="calc-rhr" class="text-2xl font-black text-[#FFDB89]">—</p>
+                <p class="text-[9px] text-[#FFDB89]/30 mt-0.5">bpm</p>
+            </div>
+            <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/10 rounded-xl p-3 text-center">
+                <p class="text-[9px] font-extrabold text-[#FFDB89]/35 uppercase tracking-widest mb-1">Max HR</p>
+                <p id="calc-maxhr" class="text-2xl font-black text-[#FFDB89]">—</p>
+                <p class="text-[9px] text-[#FFDB89]/30 mt-0.5">bpm</p>
+            </div>
+            <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/10 rounded-xl p-3 text-center">
+                <p class="text-[9px] font-extrabold text-[#FFDB89]/35 uppercase tracking-widest mb-1">HRR</p>
+                <p id="calc-hrr" class="text-2xl font-black text-[#FFDB89]">—</p>
+                <p class="text-[9px] text-[#FFDB89]/30 mt-0.5">bpm</p>
+            </div>
+            <div class="bg-sky-950/40 border border-sky-400/25 rounded-xl p-3 text-center ring-1 ring-sky-400/15">
+                <p class="text-[9px] font-extrabold text-sky-400/60 uppercase tracking-widest mb-1">THR</p>
+                <p id="calc-thr" class="text-2xl font-black text-sky-300">—</p>
+                <p class="text-[9px] text-sky-400/35 mt-0.5">bpm</p>
+            </div>
+        </div>
+
+        <!-- Formula footnote -->
+        <p id="hr-formula-note" class="hidden text-[10px] text-[#FFDB89]/30 italic mb-4">
+            THR = (HRR × intensidad) + RHR &nbsp;·&nbsp; HRR = Max HR − RHR
+        </p>
+
+        <div class="flex justify-end">
+            <button id="save-hr-btn" class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-medium rounded-lg text-sm transition shadow-md">
+                Guardar frecuencia cardíaca
+            </button>
         </div>
     </div>
 

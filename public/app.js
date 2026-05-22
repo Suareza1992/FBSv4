@@ -626,10 +626,90 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lastNameInput) lastNameInput.value = profile.lastName || '';
             if (emailInput) emailInput.value = profile.email || '';
 
-            const thrEl  = document.getElementById('settings-thr');
-            const mahrEl = document.getElementById('settings-mahr');
-            if (thrEl)  thrEl.textContent  = profile.thr  ? `${profile.thr} bpm`  : '—';
-            if (mahrEl) mahrEl.textContent = profile.mahr ? `${profile.mahr} bpm` : '—';
+            // ── Heart Rate Calculator ─────────────────────────────────────────
+            const rhrInput = document.getElementById('settings-rhr');
+            if (rhrInput && profile.restingHr) rhrInput.value = profile.restingHr;
+
+            // Calculate age from birthday string (YYYY-MM-DD or similar)
+            const calcHrAge = () => {
+                if (!profile.birthday) return null;
+                const dob = new Date(profile.birthday);
+                if (isNaN(dob)) return null;
+                const now = new Date();
+                let age = now.getFullYear() - dob.getFullYear();
+                const m = now.getMonth() - dob.getMonth();
+                if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--;
+                return age > 0 ? age : null;
+            };
+
+            const calcMaxHr = (age) => {
+                if (age === null) return null;
+                return profile.gender === 'Female' ? 226 - age : 220 - age;
+            };
+
+            let hrIntensity = 0.70;
+
+            const updateHrCalc = () => {
+                const rhr   = parseInt(rhrInput?.value, 10);
+                const age   = calcHrAge();
+                const maxHr = calcMaxHr(age);
+                const calcRhrEl  = document.getElementById('calc-rhr');
+                const calcMaxEl  = document.getElementById('calc-maxhr');
+                const calcHrrEl  = document.getElementById('calc-hrr');
+                const calcThrEl  = document.getElementById('calc-thr');
+                const noteEl     = document.getElementById('hr-formula-note');
+
+                const clear = () => {
+                    [calcRhrEl, calcMaxEl, calcHrrEl, calcThrEl].forEach(el => { if (el) el.textContent = '—'; });
+                    if (noteEl) noteEl.classList.add('hidden');
+                };
+
+                if (isNaN(rhr) || rhr < 30 || rhr > 120) { clear(); return; }
+                if (calcRhrEl) calcRhrEl.textContent = rhr;
+
+                if (maxHr === null) {
+                    [calcMaxEl, calcHrrEl, calcThrEl].forEach(el => { if (el) el.textContent = '—'; });
+                    if (noteEl) noteEl.classList.add('hidden');
+                    return;
+                }
+
+                const hrr = maxHr - rhr;
+                const thr = Math.round(hrr * hrIntensity + rhr);
+                if (calcMaxEl) calcMaxEl.textContent = maxHr;
+                if (calcHrrEl) calcHrrEl.textContent = hrr > 0 ? hrr : '—';
+                if (calcThrEl) calcThrEl.textContent = thr > 0 ? thr : '—';
+                if (noteEl) noteEl.classList.remove('hidden');
+            };
+
+            if (rhrInput) rhrInput.addEventListener('input', updateHrCalc);
+            updateHrCalc(); // run immediately on load with saved value
+
+            // Intensity button wiring
+            document.querySelectorAll('.hr-intensity-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    hrIntensity = parseFloat(btn.dataset.intensity);
+                    document.querySelectorAll('.hr-intensity-btn').forEach(b => {
+                        b.classList.remove('border-[#FFDB89]/40', 'bg-[#FFDB89]/15', 'text-[#FFDB89]');
+                        b.classList.add('border-[#FFDB89]/15', 'bg-[#FFDB89]/5', 'text-[#FFDB89]/50');
+                    });
+                    btn.classList.remove('border-[#FFDB89]/15', 'bg-[#FFDB89]/5', 'text-[#FFDB89]/50');
+                    btn.classList.add('border-[#FFDB89]/40', 'bg-[#FFDB89]/15', 'text-[#FFDB89]');
+                    updateHrCalc();
+                });
+            });
+
+            // Save RHR
+            document.getElementById('save-hr-btn')?.addEventListener('click', async () => {
+                const rhr = parseInt(rhrInput?.value, 10);
+                if (isNaN(rhr) || rhr < 30 || rhr > 120) {
+                    showToast('Ingresa una frecuencia válida entre 30 y 120 bpm.', 'error');
+                    return;
+                }
+                try {
+                    const r = await apiFetch('/api/me', { method: 'PUT', body: JSON.stringify({ restingHr: rhr }) });
+                    showToast(r.ok ? 'Frecuencia cardíaca guardada.' : 'Error al guardar.', r.ok ? 'success' : 'error');
+                } catch { showToast('Error de conexión.', 'error'); }
+            });
 
             // Payment handles — trainers only
             const session = loadSession();

@@ -846,7 +846,7 @@ app.put('/api/me', authenticateToken, async (req, res) => {
     try {
         // Safe profile fields any authenticated user can update
         // profilePicture is no longer accepted here — use POST /api/me/profile-picture instead
-        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'servingUnit', 'injuredMuscles'];
+        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'servingUnit', 'injuredMuscles', 'restingHr'];
         const updates = {};
         for (const key of allowedFields) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
