@@ -2032,9 +2032,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button id="back-to-clients-btn" class="text-[#FFDB89]/70 hover:text-[#FFDB89] transition shrink-0"><i class="fas fa-arrow-left text-xl"></i></button>
                         <h2 class="text-lg sm:text-2xl font-bold text-[#FFDB89] truncate">${client.name} ${client.lastName}</h2>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                        <button class="px-3 py-1 text-sm font-semibold border border-[#FFDB89]/30 bg-[#FFDB89]/10 text-[#FFDB89] rounded hover:bg-[#FFDB89]/20 transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
-                    </div>
+                    <button id="next-client-btn" title="Siguiente cliente" class="w-9 h-9 flex items-center justify-center rounded-full border border-[#FFDB89]/25 bg-[#FFDB89]/8 text-[#FFDB89]/60 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 hover:border-[#FFDB89]/50 transition shrink-0">
+                        <i class="fas fa-chevron-right text-sm"></i>
+                    </button>
                 </div>
 
                 <!-- Tab Bar — horizontally scrollable on mobile -->
@@ -2044,6 +2044,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="nutrition">Nutrición</button>
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="photos">Fotos</button>
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="restrictions">Restricciones</button>
+                    <div class="ml-auto flex items-center shrink-0 pl-2 pr-1" id="hoy-btn-wrap">
+                        <button class="px-3 py-1 text-sm font-semibold border border-[#FFDB89]/30 bg-[#FFDB89]/10 text-[#FFDB89] rounded hover:bg-[#FFDB89]/20 transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
+                    </div>
                 </div>
 
                 <!-- TAB: Calendar (default) -->
@@ -2136,6 +2139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `);
 
         // Tab switching logic
+        const hoyWrap = document.getElementById('hoy-btn-wrap');
         document.querySelectorAll('.client-detail-tab').forEach(tab => {
             tab.onclick = () => {
                 document.querySelectorAll('.client-detail-tab').forEach(t => {
@@ -2152,12 +2156,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (tab.dataset.tab === 'calendar') targetTab.classList.add('flex');
                 }
 
+                // Show "Hoy" only on the calendar tab
+                if (hoyWrap) hoyWrap.classList.toggle('hidden', tab.dataset.tab !== 'calendar');
+
                 // Load data on tab switch
                 if (tab.dataset.tab === 'metrics') loadClientMetrics(clientId);
                 if (tab.dataset.tab === 'nutrition') loadClientNutrition(clientId);
                 if (tab.dataset.tab === 'photos') loadClientPhotos(clientId);
                 if (tab.dataset.tab === 'restrictions') loadClientRestrictions(clientId);
             };
+        });
+
+        // ── Next-client navigation ────────────────────────────────────────────
+        document.getElementById('next-client-btn')?.addEventListener('click', () => {
+            const activeClients = clientsCache.filter(c => c.isActive !== false);
+            const idx = activeClients.findIndex(c => c._id === currentClientViewId || c.id === currentClientViewId);
+            if (activeClients.length < 2) return;
+            const nextClient = activeClients[(idx + 1) % activeClients.length];
+            window.openClientProfile(nextClient._id || nextClient.id);
         });
 
         // Mood metadata used in trainer calendar cells and expand panels
