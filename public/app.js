@@ -879,15 +879,60 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Cancel
                 if (cancelBtn) cancelBtn.onclick = () => modal.classList.add('hidden');
 
-                // Apply — export to canvas → base64 → pending
-                if (applyBtn) applyBtn.onclick = () => {
+                // Apply — export to canvas → show preview → upload immediately
+                if (applyBtn) applyBtn.onclick = async () => {
                     const base64 = exportCroppedPhoto();
                     if (!base64) return;
-                    window._pendingProfilePicture = base64;
+
+                    // Show the cropped preview right away so the user sees instant feedback
                     if (avatar) {
-                        avatar.innerHTML = `<img src="${base64}" class="w-full h-full object-cover" alt="Profile">`;
+                        avatar.innerHTML = `<img src="${base64}" class="w-full h-full object-cover opacity-60" alt="Profile">`;
                     }
                     modal.classList.add('hidden');
+
+                    // Upload to server immediately — don't wait for "Guardar cambios"
+                    try {
+                        const [header, b64Data] = base64.split(',');
+                        const mime = header.match(/:(.*?);/)[1];
+                        const bytes = atob(b64Data);
+                        const arr = new Uint8Array(bytes.length);
+                        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+                        const blob = new Blob([arr], { type: mime });
+                        const fd = new FormData();
+                        fd.append('photo', blob, 'profile.jpg');
+
+                        const picRes = await fetch('/api/me/profile-picture', {
+                            method: 'POST', body: fd, credentials: 'include'
+                        });
+                        if (picRes.ok) {
+                            const picData = await picRes.json();
+                            window._pendingProfilePicture = null; // already saved — clear flag
+                            // Update avatar with live Cloudinary URL
+                            if (avatar) {
+                                avatar.innerHTML = `<img src="${picData.profilePicture}" class="w-full h-full object-cover" alt="Profile">`;
+                            }
+                            // Persist to localStorage so sidebar/header refresh correctly
+                            const sess = loadSession();
+                            if (sess) {
+                                sess.profilePicture = picData.profilePicture;
+                                localStorage.setItem('auth_user', JSON.stringify(sess));
+                            }
+                            showToast('Foto de perfil actualizada.', 'success');
+                        } else {
+                            // Upload failed — keep base64 pending so "Guardar cambios" can retry
+                            window._pendingProfilePicture = base64;
+                            if (avatar) {
+                                avatar.innerHTML = `<img src="${base64}" class="w-full h-full object-cover" alt="Profile">`;
+                            }
+                            showToast('Error subiendo la foto. Intenta guardar de nuevo.', 'error');
+                        }
+                    } catch (e) {
+                        window._pendingProfilePicture = base64; // keep for retry
+                        if (avatar) {
+                            avatar.innerHTML = `<img src="${base64}" class="w-full h-full object-cover" alt="Profile">`;
+                        }
+                        showToast('Error de conexión al subir la foto.', 'error');
+                    }
                 };
 
                 // Close on backdrop click

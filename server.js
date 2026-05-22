@@ -910,7 +910,8 @@ app.post('/api/me/profile-picture', authenticateToken, photoUpload.single('photo
             folder:      'fitbysuarez/profile-pictures',
             public_id:   `user_${req.user.id}`,
             overwrite:   true,
-            transformation: [{ quality: 'auto', fetch_format: 'auto' }]
+            invalidate:  true,   // bust CDN cache so the new photo appears immediately
+            transformation: [{ quality: 'auto', fetch_format: 'auto', width: 400, height: 400, crop: 'fill', gravity: 'face' }]
         });
 
         await User.findByIdAndUpdate(req.user.id, { profilePicture: result.secure_url });
