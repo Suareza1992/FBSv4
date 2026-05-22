@@ -3190,14 +3190,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 const goalFat_g   = Math.round(targetCal * fatRatio  / 9);
                 const goalCarbs_g = Math.round(targetCal * carbRatio / 4);
 
-                const payload = { macroSettings: { goal: currentGoal, proteinRatio: proRatio, fatRatio, carbRatio,
-                    targetCal, goalProtein, goalFat: goalFat_g, goalCarbs: goalCarbs_g } };
+                const newMacroSettings = { goal: currentGoal, proteinRatio: proRatio, fatRatio, carbRatio,
+                    targetCal, goalProtein, goalFat: goalFat_g, goalCarbs: goalCarbs_g };
+                const payload = { macroSettings: newMacroSettings };
                 const url    = clientId ? `/api/clients/${clientId}` : '/api/me';
                 try {
                     const r = await apiFetch(url, { method: 'PUT', body: JSON.stringify(payload) });
                     if (r.ok) {
+                        // Keep clientsCache in sync so re-opening the tab restores the correct
+                        // highlighted objective pill and correct gram numbers immediately.
+                        if (clientId) {
+                            const cIdx = clientsCache.findIndex(c => c._id === clientId || c.id === clientId);
+                            if (cIdx !== -1) clientsCache[cIdx].macroSettings = { ...newMacroSettings };
+                        }
                         const btn = $('mc-save-btn');
-                        if (btn) { btn.innerHTML = '<i class="fas fa-check mr-2"></i>Guardado'; btn.classList.add('bg-green-400'); setTimeout(() => { btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar configuración'; btn.classList.remove('bg-green-400'); }, 2000); }
+                        if (btn) { btn.innerHTML = '<i class="fas fa-check mr-2"></i>Guardado'; btn.classList.add('bg-green-400'); setTimeout(() => { btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar configuración'; btn.classList.remove('bg-green-400'); }, 2500); }
+                        const goalLabel = goalLabels[currentGoal] || currentGoal;
+                        const proP  = Math.round(proRatio  * 100);
+                        const fatP  = Math.round(fatRatio  * 100);
+                        const carbP = Math.round(carbRatio * 100);
+                        showToast(`✓ ${goalLabel} · ${proP}% prot · ${fatP}% grasas · ${carbP}% carbos · ${targetCal} kcal`, 'success');
                     }
                 } catch(e) { console.error('Error saving macro settings', e); }
             });
@@ -3252,17 +3264,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const goalCarbs = ms.goalCarbs   || 0;
             const goalFat   = ms.goalFat     || 0;
             const goalCal   = ms.targetCal   || 0;
-            const goalWater = 64; // oz default
+            const goalWater = clientData.waterGoal || 64; // trainer-set or default 8×8oz
 
             // Helper: build one SVG ring column
             const ringCol = (id, color, trackRgba, label, val, goal, unit) => {
                 const C   = 251.33;
-                const pct = goal > 0 ? Math.min(1, val / goal) : 0;
+                const rawPct = goal > 0 ? val / goal : 0;
+                const pct    = Math.min(1, rawPct);
                 const off = (C * (1 - pct)).toFixed(2);
-                const pctTxt = goal > 0 ? Math.round(pct * 100) + '%' : '--';
+                const pctTxt = goal > 0 ? Math.round(rawPct * 100) + '%' : '--';
                 const subTxt = goal > 0 ? `${val} / ${goal}${unit}` : `${val}${unit}`;
                 const overGoal = goal > 0 && val > goal;
-                const strokeColor = overGoal ? '#ef4444' : color;
+                const strokeColor = overGoal ? '#22c55e' : color; // green when goal met/exceeded
                 return `
                 <div class="flex flex-col items-center gap-1.5">
                     <div class="relative w-full aspect-square max-w-[92px]">
@@ -9089,13 +9102,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const goalPro   = ms.goalProtein || 0;
             const goalCarbs = ms.goalCarbs   || 0;
             const goalFat   = ms.goalFat     || 0;
-            const goalWater = 64; // oz — default 8 × 8oz glasses
+            const goalWater = me.waterGoal   || 64; // oz — trainer-set or default 8 × 8oz
 
             const C = 251.33; // circumference: 2π × r(40)
 
             const setRing = (ringId, valId, pctId, subId, current, goal, unit) => {
-                const pct    = goal > 0 ? Math.min(1, current / goal) : 0;
-                const offset = (C * (1 - pct)).toFixed(2);
+                const pct    = goal > 0 ? current / goal : 0;
+                const filled = pct >= 1;                              // at or over goal
+                const clampedPct = Math.min(1, pct);
+                const offset = (C * (1 - clampedPct)).toFixed(2);
                 const ring   = document.getElementById(ringId);
                 const valEl  = document.getElementById(valId);
                 const pctEl  = document.getElementById(pctId);
@@ -9103,8 +9118,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Double rAF so the CSS transition fires after the element is painted
                 if (ring) requestAnimationFrame(() => requestAnimationFrame(() => {
                     ring.style.strokeDashoffset = offset;
-                    // Turn red if over goal
-                    if (goal > 0 && current > goal) ring.style.stroke = '#ef4444';
+                    // Keep solid color at 100%; turn green when over goal
+                    if (filled && goal > 0) {
+                        ring.style.stroke = current > goal ? '#22c55e' : ring.getAttribute('stroke');
+                    }
                 }));
                 if (valEl) valEl.textContent = current + unit;
                 if (pctEl) pctEl.textContent = goal > 0 ? Math.round(pct * 100) + '%' : '--';
@@ -11307,7 +11324,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="bg-white/5 border ${sel ? 'border-[#FFDB89] ring-2 ring-[#FFDB89]' : 'border-[#FFDB89]/20'} p-2 rounded-xl group relative cursor-pointer transition-all"
                              data-pid="${photo._id}">
                             <div class="aspect-[3/4] bg-[#FFDB89]/5 rounded-lg mb-2 overflow-hidden relative">
-                                <img src="${photo.imageData}" alt="Foto de progreso" class="w-full h-full object-cover">
+                                <img src="${photo.imageData}" alt="Foto de progreso" class="w-full h-full object-cover"
+                                     onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'w-full h-full flex flex-col items-center justify-center text-[#FFDB89]/20\'><i class=\'fas fa-image text-4xl\'></i><span class=\'text-xs mt-2\'>No disponible</span></div>'">
                                 ${sel ? `<div class="absolute inset-0 bg-[#FFDB89]/20 flex items-start justify-end p-2"><div class="w-6 h-6 bg-[#FFDB89] rounded-full flex items-center justify-center text-[#030303] text-xs font-bold">${clientSelectedIds.indexOf(photo._id)+1}</div></div>` : ''}
                             </div>
                             <div class="flex justify-between items-center px-1">
@@ -11455,7 +11473,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         document.getElementById('client-upload-photo-modal')?.remove();
                         loadPhotos();
                     } else {
-                        showToast('Error subiendo foto. Intenta de nuevo.', 'error');
+                        let errMsg = 'Error subiendo foto. Intenta de nuevo.';
+                        try { const d = await res.json(); if (d?.message) errMsg = d.message; } catch (_) {}
+                        showToast(errMsg, 'error');
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-upload mr-2"></i>Subir foto';
                     }

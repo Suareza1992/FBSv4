@@ -244,8 +244,13 @@ const UserSchema = new mongoose.Schema({
         goal:         { type: String, default: 'maintain' }, // maintain | cut250 | cut500 | bulk250 | bulk500
         proteinRatio: { type: Number, default: 0.4 },
         fatRatio:     { type: Number, default: 0.3 },
-        carbRatio:    { type: Number, default: 0.3 }
+        carbRatio:    { type: Number, default: 0.3 },
+        targetCal:    { type: Number, default: 0 },
+        goalProtein:  { type: Number, default: 0 },
+        goalCarbs:    { type: Number, default: 0 },
+        goalFat:      { type: Number, default: 0 },
     },
+    waterGoal: { type: Number, default: 64 }, // oz per day
     paymentHandles: {
         athMovil: { type: String, default: '' }, // ATH Móvil Business name / @handle
         venmo:    { type: String, default: '' }, // Venmo @handle (without @)
@@ -1831,15 +1836,23 @@ app.post('/api/progress-photos', authenticateToken, photoUpload.single('photo'),
 
         res.json(photo);
     } catch (e) {
-        console.error('Error saving progress photo:', e.message);
-        res.status(500).json({ message: 'Error saving progress photo' });
+        console.error('Error saving progress photo:', e.message, e.http_code || '');
+        const msg = e.http_code === 401
+            ? 'Error de autenticación con el servicio de imágenes. Contacta al administrador.'
+            : (e.message || 'Error saving progress photo');
+        res.status(500).json({ message: msg });
     }
 });
 
-app.delete('/api/progress-photos/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.delete('/api/progress-photos/:id', authenticateToken, async (req, res) => {
     try {
         const photo = await ProgressPhoto.findById(req.params.id);
         if (!photo) return res.status(404).json({ message: 'Photo not found' });
+
+        // Clients may only delete their own photos; trainers/admins may delete any
+        if (req.user.role === 'client' && String(req.user.id) !== String(photo.clientId)) {
+            return res.status(403).json({ message: 'Forbidden' });
+        }
 
         // Remove from Cloudinary if we have a public_id (new photos always will; legacy base64 photos won't)
         if (photo.cloudinaryPublicId) {
