@@ -265,6 +265,10 @@ const ExerciseSchema = new mongoose.Schema({
     videoUrl: { type: String, default: "" },
     category: { type: [String], default: ["General"] },
     instructions: { type: String, default: "" },
+    muscleGroupId: { type: String, default: "" },
+    origin: { type: String, default: "" },
+    insertion: { type: String, default: "" },
+    pushPull: { type: String, enum: ['push', 'pull', 'both', ''], default: "" },
     lastUpdated: { type: Date, default: Date.now }
 });
 const Exercise = mongoose.model('Exercise', ExerciseSchema);
@@ -865,6 +869,24 @@ app.put('/api/me', authenticateToken, async (req, res) => {
         }
         const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true })
             .select('-password -resetPasswordToken -resetPasswordExpires');
+
+        // Notify trainer when a client updates their muscle restrictions
+        if (req.body.injuredMuscles !== undefined && req.user.role === 'client') {
+            const flagged = Object.entries(req.body.injuredMuscles || {}).filter(([, v]) => v);
+            const flagCount = flagged.length;
+            const clientName = `${user.name || ''}${user.lastName ? ' ' + user.lastName : ''}`.trim() || user.email;
+            await createNotification({
+                clientId: user._id,
+                clientName,
+                type: 'muscle_restriction',
+                title: `${clientName} actualizó sus restricciones`,
+                message: flagCount > 0
+                    ? `${flagCount} grupo${flagCount > 1 ? 's' : ''} muscular${flagCount > 1 ? 'es' : ''} con restricción.`
+                    : 'Restricciones eliminadas.',
+                data: { injuredMuscles: req.body.injuredMuscles }
+            });
+        }
+
         res.json(user);
     } catch (error) {
         console.error('Error updating profile:', error);
@@ -1102,16 +1124,37 @@ app.get('/api/library', authenticateToken, async (req, res) => {
 
 app.post('/api/library', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
     try {
-        const { name, videoUrl, category } = req.body;
+        const { name, videoUrl, category, muscleGroupId, origin, insertion, pushPull } = req.body;
         // H-3: Escape regex metacharacters to prevent ReDoS
         const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const exercise = await Exercise.findOneAndUpdate(
             { name: { $regex: new RegExp(`^${safeName}$`, 'i') } },
-            { name, videoUrl, category, lastUpdated: Date.now() },
+            { name, videoUrl, category, muscleGroupId: muscleGroupId || '', origin: origin || '', insertion: insertion || '', pushPull: pushPull || '', lastUpdated: Date.now() },
             { new: true, upsert: true }
         );
         res.json(exercise);
     } catch (error) { res.status(500).json({ message: 'Error saving exercise' }); }
+});
+
+app.put('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        const { name, videoUrl, category, muscleGroupId, origin, insertion, pushPull } = req.body;
+        const exercise = await Exercise.findByIdAndUpdate(
+            req.params.id,
+            { name, videoUrl, category, muscleGroupId: muscleGroupId || '', origin: origin || '', insertion: insertion || '', pushPull: pushPull || '', lastUpdated: Date.now() },
+            { new: true }
+        );
+        if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+        res.json(exercise);
+    } catch (error) { res.status(500).json({ message: 'Error updating exercise' }); }
+});
+
+app.delete('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        const exercise = await Exercise.findByIdAndDelete(req.params.id);
+        if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+        res.json({ message: 'Exercise deleted' });
+    } catch (error) { res.status(500).json({ message: 'Error deleting exercise' }); }
 });
 
 // ==========================================================================

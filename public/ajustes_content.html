@@ -61,40 +61,32 @@
         </div>
     </div>
 
-    <!-- ── Muscle Injury Map ─────────────────────────────────────────────── -->
+    <!-- ── Grupos Musculares ─────────────────────────────────────────────── -->
     <div class="border-b border-[#FFDB89]/20 mb-6 pb-6">
         <div class="pb-4 mb-4 border-b border-[#FFDB89]/20">
             <h3 class="text-lg font-semibold text-[#FFDB89]">Grupos musculares</h3>
-            <p class="text-sm text-[#FFDB89]/60">Marca los grupos que requieren atención especial. Tu entrenador lo verá al armar tu rutina.</p>
+            <p class="text-sm text-[#FFDB89]/60">Toca un músculo o articulación para marcar su estado. Tu entrenador lo verá al armar tu rutina.</p>
         </div>
 
-        <!-- Legend -->
-        <div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
-            <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-green-400/60 border border-green-400/40"></div><span class="text-[#FFDB89]/60">Sin restricción</span></div>
-            <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-yellow-400/80 border border-yellow-400/60"></div><span class="text-[#FFDB89]/60">Precaución (amarillo)</span></div>
-            <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-red-400/80 border border-red-400/60"></div><span class="text-[#FFDB89]/60">Evitar (rojo)</span></div>
-            <span class="text-[#FFDB89]/25 italic">· Clic para cambiar estado</span>
-        </div>
-
-        <!-- Front / Back toggle -->
-        <div class="flex items-center gap-2 mb-5">
-            <button id="muscle-view-front" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition">Frente</button>
-            <button id="muscle-view-back"  class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition">Espalda</button>
-            <button id="muscle-clear-all"  class="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold text-[#FFDB89]/40 hover:text-[#FFDB89] border border-[#FFDB89]/10 hover:border-[#FFDB89]/30 transition">Limpiar todo</button>
-        </div>
-
-        <div class="flex flex-col md:flex-row gap-6 items-start">
-            <!-- SVG container (populated by JS) -->
-            <div id="muscle-svg-container" class="flex-shrink-0 flex justify-center w-full md:w-auto">
-                <div class="w-40 md:w-48 h-64 flex items-center justify-center text-[#FFDB89]/20 text-xs">Cargando...</div>
+        <!-- Legend + clear -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div class="flex flex-wrap items-center gap-4 text-xs">
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full border-2 border-[#FFDB89]/25"></div><span class="text-[#FFDB89]/50">Sin restricción</span></div>
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-yellow-400"></div><span class="text-[#FFDB89]/50">Precaución</span></div>
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-red-400"></div><span class="text-[#FFDB89]/50">Evitar</span></div>
+                <span class="text-[#FFDB89]/20 italic hidden sm:inline">· Toca para cambiar estado</span>
             </div>
+            <button id="muscle-clear-all" class="px-3 py-1.5 rounded-lg text-xs font-bold text-[#FFDB89]/40 hover:text-[#FFDB89] border border-[#FFDB89]/10 hover:border-[#FFDB89]/30 transition">Limpiar todo</button>
+        </div>
 
-            <!-- Flags list -->
-            <div class="flex-grow min-w-0">
-                <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-3">Estado actual</p>
-                <div id="injury-flags-list" class="space-y-2">
-                    <p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas.</p>
-                </div>
+        <!-- Card grid (populated by JS) -->
+        <div id="muscle-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+
+        <!-- Flagged summary -->
+        <div class="mt-5">
+            <p class="text-xs font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-2">Estado actual</p>
+            <div id="injury-flags-list" class="space-y-2">
+                <p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas. Toca un músculo o articulación para cambiar su estado.</p>
             </div>
         </div>
 

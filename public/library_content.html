@@ -63,6 +63,33 @@
                     <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Video URL (YouTube / Vimeo)</label>
                     <input type="text" id="new-ex-url" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 outline-none transition" placeholder="https://...">
                 </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Grupo muscular</label>
+                        <select id="new-ex-muscle" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition appearance-none">
+                            <option value="">— Ninguno —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Movimiento</label>
+                        <select id="new-ex-pushpull" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition appearance-none">
+                            <option value="">— —</option>
+                            <option value="push">Push (Empuje)</option>
+                            <option value="pull">Pull (Jalón)</option>
+                            <option value="both">Ambos</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Origen</label>
+                        <input type="text" id="new-ex-origin" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 outline-none transition text-sm" placeholder="Auto-llenado del músculo">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Inserción</label>
+                        <input type="text" id="new-ex-insertion" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 outline-none transition text-sm" placeholder="Auto-llenado del músculo">
+                    </div>
+                </div>
                 <div>
                     <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-2">Categorías / Músculos</label>
                     <div id="category-selection-container" class="flex flex-wrap"></div>
@@ -72,6 +99,68 @@
             <div class="px-6 py-4 border-t border-[#FFDB89]/15 flex justify-end gap-3 bg-[#FFDB89]/5 rounded-b-2xl">
                 <button id="cancel-exercise-btn" class="px-5 py-2 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 border border-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Cancelar</button>
                 <button id="save-exercise-db-btn" class="px-5 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Guardar en la librería</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT EXERCISE MODAL -->
+    <div id="edit-exercise-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm">
+        <div class="bg-[#030303] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" style="max-height:90vh;max-height:90dvh">
+
+            <div class="px-6 py-4 border-b border-[#FFDB89]/15 flex justify-between items-center bg-[#FFDB89]/5 rounded-t-2xl">
+                <h3 class="text-xl font-bold text-[#FFDB89]">Editar Ejercicio</h3>
+                <button id="close-edit-exercise-modal-x" class="text-[#FFDB89]/40 hover:text-red-400 transition"><i class="fas fa-times text-xl"></i></button>
+            </div>
+
+            <div class="p-6 space-y-4 overflow-y-auto">
+                <input type="hidden" id="edit-ex-id">
+                <div>
+                    <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Nombre</label>
+                    <input type="text" id="edit-ex-name" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Ej: Barbell Squat">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Video URL (YouTube / Vimeo)</label>
+                    <input type="text" id="edit-ex-url" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 outline-none transition" placeholder="https://...">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Grupo muscular</label>
+                        <select id="edit-ex-muscle" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition appearance-none">
+                            <option value="">— Ninguno —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Movimiento</label>
+                        <select id="edit-ex-pushpull" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition appearance-none">
+                            <option value="">— —</option>
+                            <option value="push">Push (Empuje)</option>
+                            <option value="pull">Pull (Jalón)</option>
+                            <option value="both">Ambos</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Origen</label>
+                        <input type="text" id="edit-ex-origin" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 outline-none transition text-sm" placeholder="Punto de origen muscular">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Inserción</label>
+                        <input type="text" id="edit-ex-insertion" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 focus:ring-2 focus:ring-[#FFDB89]/30 outline-none transition text-sm" placeholder="Punto de inserción">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-2">Categorías / Músculos</label>
+                    <div id="edit-category-selection-container" class="flex flex-wrap"></div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-[#FFDB89]/15 flex justify-between gap-3 bg-[#FFDB89]/5 rounded-b-2xl">
+                <button id="delete-exercise-btn" class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold rounded-lg transition text-sm"><i class="fas fa-trash mr-1.5"></i>Eliminar</button>
+                <div class="flex gap-3">
+                    <button id="cancel-edit-exercise-btn" class="px-5 py-2 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 border border-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Cancelar</button>
+                    <button id="save-edit-exercise-btn" class="px-5 py-2 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-lg transition">Guardar cambios</button>
+                </div>
             </div>
         </div>
     </div>

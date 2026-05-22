@@ -350,103 +350,264 @@ document.addEventListener('DOMContentLoaded', () => {
     // SETTINGS FUNCTIONS
     // =============================================================================
 
-    // ── Muscle group definitions for injury map ───────────────────────────────
-    // ── Anatomical SVG muscle definitions — viewBox 0 0 200 560 ──────────────
-    const MUSCLE_DEFS = {
-        front: [
-            { id:'shoulders',   name:'Hombros',
-              shapes:[
-                { type:'path', d:'M 155 78 C 163 72 172 78 174 92 C 176 108 173 126 166 134 C 162 140 155 138 152 130 C 148 120 148 102 155 78 Z' },
-                { type:'path', d:'M 45 78 C 37 72 28 78 26 92 C 24 108 27 126 34 134 C 38 140 45 138 48 130 C 52 120 52 102 45 78 Z' }
-              ]},
-            { id:'chest',       name:'Pecho',
-              shapes:[
-                { type:'path', d:'M 100 76 C 107 73 120 80 128 96 C 135 112 133 132 126 144 C 121 152 112 154 106 150 C 101 146 100 138 100 126 Z' },
-                { type:'path', d:'M 100 76 C 93 73 80 80 72 96 C 65 112 67 132 74 144 C 79 152 88 154 94 150 C 99 146 100 138 100 126 Z' }
-              ]},
-            { id:'biceps',      name:'Bíceps',
-              shapes:[
-                { type:'path', d:'M 163 96 C 171 90 178 102 178 120 C 179 140 175 160 170 172 C 165 182 158 182 154 174 C 150 164 150 142 151 122 Z' },
-                { type:'path', d:'M 37 96 C 29 90 22 102 22 120 C 21 140 25 160 30 172 C 35 182 42 182 46 174 C 50 164 50 142 49 122 Z' }
-              ]},
-            { id:'forearms',    name:'Antebrazos',
-              shapes:[
-                { type:'path', d:'M 163 178 C 171 174 177 184 177 200 C 178 218 175 240 171 258 C 168 270 164 278 160 275 C 156 272 153 262 153 244 C 152 222 154 200 158 182 Z' },
-                { type:'path', d:'M 37 178 C 29 174 23 184 23 200 C 22 218 25 240 29 258 C 32 270 36 278 40 275 C 44 272 47 262 47 244 C 48 222 46 200 42 182 Z' }
-              ]},
-            { id:'abs',         name:'Abdomen',
-              shapes:[
-                { type:'path', d:'M 84 152 C 91 147 109 147 116 152 C 122 158 122 176 119 194 C 116 208 113 222 110 234 C 107 244 104 252 100 254 C 96 252 93 244 90 234 C 87 222 84 208 81 194 C 78 176 78 158 84 152 Z' }
-              ]},
-            { id:'obliques',    name:'Oblicuos',
-              shapes:[
-                { type:'path', d:'M 117 156 C 125 151 132 162 131 178 C 132 194 128 214 123 230 C 120 242 116 254 113 260 C 110 264 109 260 110 248 C 112 228 116 206 118 184 Z' },
-                { type:'path', d:'M 83 156 C 75 151 68 162 69 178 C 68 194 72 214 77 230 C 80 242 84 254 87 260 C 90 264 91 260 90 248 C 88 228 84 206 82 184 Z' }
-              ]},
-            { id:'hip_flexors', name:'Flexores de cadera',
-              shapes:[
-                { type:'path', d:'M 84 256 C 91 250 109 250 116 256 C 124 264 126 280 125 295 C 124 306 118 314 112 318 C 106 322 94 322 88 318 C 82 314 75 306 75 295 C 74 280 76 264 84 256 Z' }
-              ]},
-            { id:'quads',       name:'Cuádriceps',
-              shapes:[
-                { type:'path', d:'M 114 320 C 123 314 136 316 140 328 C 145 340 143 364 140 386 C 137 408 134 428 131 444 C 128 454 124 462 120 462 C 116 462 113 456 112 444 C 110 424 110 398 111 374 C 112 350 112 330 114 320 Z' },
-                { type:'path', d:'M 86 320 C 77 314 64 316 60 328 C 55 340 57 364 60 386 C 63 408 66 428 69 444 C 72 454 76 462 80 462 C 84 462 87 456 88 444 C 90 424 90 398 89 374 C 88 350 88 330 86 320 Z' }
-              ]},
-            { id:'tibialis',    name:'Tibiales',
-              shapes:[
-                { type:'path', d:'M 120 444 C 127 440 134 446 135 458 C 136 474 134 492 131 506 C 128 518 125 526 121 528 C 117 528 114 522 113 510 C 112 492 112 472 114 458 Z' },
-                { type:'path', d:'M 80 444 C 73 440 66 446 65 458 C 64 474 66 492 69 506 C 72 518 75 526 79 528 C 83 528 86 522 87 510 C 88 492 88 472 86 458 Z' }
-              ]},
-        ],
-        back: [
-            { id:'traps',       name:'Trapecio',
-              shapes:[
-                { type:'path', d:'M 100 66 C 118 60 136 66 145 82 C 152 96 148 114 137 124 C 128 132 114 136 100 135 C 86 136 72 132 63 124 C 52 114 48 96 55 82 C 64 66 82 60 100 66 Z' }
-              ]},
-            { id:'rear_delts',  name:'Deltoides post.',
-              shapes:[
-                { type:'path', d:'M 153 70 C 164 66 175 74 176 90 C 177 104 172 120 164 126 C 158 132 151 128 148 119 C 145 108 145 90 153 70 Z' },
-                { type:'path', d:'M 47 70 C 36 66 25 74 24 90 C 23 104 28 120 36 126 C 42 132 49 128 52 119 C 55 108 55 90 47 70 Z' }
-              ]},
-            { id:'upper_back',  name:'Espalda alta',
-              shapes:[
-                { type:'path', d:'M 75 112 C 83 107 92 105 100 105 C 108 105 117 107 125 112 C 133 118 136 134 132 150 C 128 162 117 170 100 172 C 83 170 72 162 68 150 C 64 134 67 118 75 112 Z' }
-              ]},
-            { id:'lats',        name:'Dorsales',
-              shapes:[
-                { type:'path', d:'M 141 134 C 153 128 164 140 164 158 C 164 178 161 200 156 218 C 152 230 147 238 141 240 C 136 242 133 236 133 224 C 132 204 133 182 134 162 C 135 146 137 136 141 134 Z' },
-                { type:'path', d:'M 59 134 C 47 128 36 140 36 158 C 36 178 39 200 44 218 C 48 230 53 238 59 240 C 64 242 67 236 67 224 C 68 204 67 182 66 162 C 65 146 63 136 59 134 Z' }
-              ]},
-            { id:'triceps',     name:'Tríceps',
-              shapes:[
-                { type:'path', d:'M 164 106 C 175 102 184 114 184 132 C 185 152 182 174 177 190 C 173 202 166 206 161 200 C 155 193 154 178 154 158 C 153 136 156 116 160 108 Z' },
-                { type:'path', d:'M 36 106 C 25 102 16 114 16 132 C 15 152 18 174 23 190 C 27 202 34 206 39 200 C 45 193 46 178 46 158 C 47 136 44 116 40 108 Z' }
-              ]},
-            { id:'lower_back',  name:'Lumbar',
-              shapes:[
-                { type:'path', d:'M 80 206 C 88 200 96 198 100 198 C 104 198 112 200 120 206 C 130 214 130 234 126 248 C 122 260 112 268 100 270 C 88 268 78 260 74 248 C 70 234 70 214 80 206 Z' }
-              ]},
-            { id:'glutes',      name:'Glúteos',
-              shapes:[
-                { type:'path', d:'M 101 272 C 113 266 128 272 134 288 C 140 304 137 322 132 336 C 128 346 120 352 111 348 C 103 344 100 334 100 316 C 100 296 100 278 101 272 Z' },
-                { type:'path', d:'M 99 272 C 87 266 72 272 66 288 C 60 304 63 322 68 336 C 72 346 80 352 89 348 C 97 344 100 334 100 316 C 100 296 100 278 99 272 Z' }
-              ]},
-            { id:'hamstrings',  name:'Isquiotibiales',
-              shapes:[
-                { type:'path', d:'M 112 342 C 122 336 137 338 141 350 C 146 364 144 386 141 408 C 138 428 135 446 131 460 C 128 470 124 476 120 476 C 116 476 113 470 112 458 C 110 438 110 412 111 388 C 112 362 112 348 112 342 Z' },
-                { type:'path', d:'M 88 342 C 78 336 63 338 59 350 C 54 364 56 386 59 408 C 62 428 65 446 69 460 C 72 470 76 476 80 476 C 84 476 87 470 88 458 C 90 438 90 412 89 388 C 88 362 88 348 88 342 Z' }
-              ]},
-            { id:'calves',      name:'Pantorrillas',
-              shapes:[
-                { type:'path', d:'M 118 468 C 128 464 138 470 139 486 C 140 504 138 522 134 536 C 131 546 127 552 122 554 C 117 554 114 548 113 536 C 112 518 112 498 113 484 Z' },
-                { type:'path', d:'M 82 468 C 72 464 62 470 61 486 C 60 504 62 522 66 536 C 69 546 73 552 78 554 C 83 554 86 548 87 536 C 88 518 88 498 87 484 Z' }
-              ]},
-        ]
+    // ── Muscle definitions with full anatomical detail ────────────────────────
+    const MUSCLES = [
+        // Torso
+        { id:'chest',      name:'Pecho',               scientific:'Pectoralis Major',                              group:'Torso',   type:'push',
+          origin:'Clavícula, esternón y cartílagos costales (1ª–6ª costilla)',
+          insertion:'Cresta del tubérculo mayor del húmero',
+          neighbors:['Hombros','Bíceps','Serrato anterior','Tríceps'],
+          fn:'Lleva el brazo hacia adelante y lo cruza hacia el centro del cuerpo. Rota el húmero internamente. Activo en press de banca, flexiones y fondos.' },
+        { id:'shoulders',  name:'Hombros',              scientific:'Deltoides (ant. / med. / post.)',               group:'Torso',   type:'both',
+          origin:'Clavícula (porción ant.), acromion (porción med.) y espina escapular (porción post.)',
+          insertion:'Tuberosidad deltoidea del húmero',
+          neighbors:['Pecho','Trapecio','Bíceps','Tríceps','Manguito rotador'],
+          fn:'Levanta el brazo en todas las direcciones. La porción anterior empuja; la posterior jala. Esencial en cualquier press sobre la cabeza y en remos.' },
+        { id:'rear_delts', name:'Deltoides posterior',  scientific:'Posterior Deltoid',                             group:'Torso',   type:'pull',
+          origin:'Tercio posterior de la espina escapular',
+          insertion:'Tuberosidad deltoidea del húmero',
+          neighbors:['Trapecio','Romboides','Manguito rotador','Dorsales'],
+          fn:'Extiende el brazo hacia atrás y lo rota externamente. Contrarresta el deltoides anterior; clave para la salud del hombro y la postura.' },
+        // Brazos
+        { id:'biceps',     name:'Bíceps',               scientific:'Biceps Brachii',                                group:'Brazos',  type:'pull',
+          origin:'Escápula: tubérculo supraglenoideo (cabeza larga) y apófisis coracoides (cabeza corta)',
+          insertion:'Tuberosidad bicipital del radio',
+          neighbors:['Hombros','Braquial','Antebrazos'],
+          fn:'Flexiona el codo y supina el antebrazo (gira la palma hacia arriba). Activo en curls, dominadas y remos.' },
+        { id:'triceps',    name:'Tríceps',              scientific:'Triceps Brachii',                               group:'Brazos',  type:'push',
+          origin:'Escápula (cabeza larga) y húmero posterior (cabezas lateral y medial)',
+          insertion:'Olécranon del cúbito (punta del codo)',
+          neighbors:['Hombros','Antebrazos','Dorsales'],
+          fn:'Extiende el codo (estira el brazo). Comprende ~2/3 de la masa del brazo. Activo en todo movimiento de empuje: press, fondos y extensiones.' },
+        { id:'forearms',   name:'Antebrazos',           scientific:'Flexores y extensores del carpo',               group:'Brazos',  type:'both',
+          origin:'Epicóndilo medial del húmero (flexores) y lateral (extensores)',
+          insertion:'Metacarpianos y falanges de la mano',
+          neighbors:['Bíceps','Tríceps'],
+          fn:'Flexionan y extienden la muñeca, rotan el antebrazo y controlan el agarre. Activos en casi todo ejercicio con carga en la mano.' },
+        // Core
+        { id:'abs',        name:'Abdomen',              scientific:'Rectus Abdominis',                              group:'Core',    type:'both',
+          origin:'Pubis y sínfisis púbica',
+          insertion:'Cartílagos costales (5ª–7ª costilla) y apéndice xifoides',
+          neighbors:['Oblicuos','Flexores de cadera','Lumbar'],
+          fn:'Flexiona la columna lumbar y comprime el abdomen. Los "six-pack" son sus segmentos divididos por la línea alba y las intersecciones tendinosas.' },
+        { id:'obliques',   name:'Oblicuos',             scientific:'Obliquus Externus / Internus',                  group:'Core',    type:'both',
+          origin:'Costillas 5ª–12ª (externo) / Fascia toracolumbar y cresta ilíaca (interno)',
+          insertion:'Cresta ilíaca y línea alba',
+          neighbors:['Abdomen','Lumbar','Flexores de cadera'],
+          fn:'Rotan y flexionan lateralmente el tronco. Clave para la estabilidad rotacional en levantamientos y todo movimiento unilateral o asimétrico.' },
+        { id:'hip_flexors',name:'Flexores de cadera',   scientific:'Iliopsoas (Ilíaco + Psoas mayor)',              group:'Core',    type:'pull',
+          origin:'Vértebras lumbares L1–L5 y fosa ilíaca del coxal',
+          insertion:'Trocánter menor del fémur',
+          neighbors:['Cuádriceps','Abdomen','Lumbar','Recto femoral'],
+          fn:'Llevan el muslo hacia el torso. Activos al correr y en sentadillas profundas. Tienden a acortarse con el sedentarismo prolongado.' },
+        // Espalda
+        { id:'traps',      name:'Trapecio',             scientific:'Trapezius',                                     group:'Espalda', type:'pull',
+          origin:'Protuberancia occipital, ligamento nucal y vértebras C7–T12',
+          insertion:'Clavícula, acromion y espina escapular',
+          neighbors:['Hombros','Romboides','Espalda alta'],
+          fn:'La porción superior encoge los hombros; la media los junta; la inferior los baja. Estabiliza la postura y el cuello en todo movimiento escapular.' },
+        { id:'upper_back', name:'Espalda alta',         scientific:'Romboides mayor y menor',                       group:'Espalda', type:'pull',
+          origin:'Vértebras C7–T5 (apófisis espinosas)',
+          insertion:'Borde medial de la escápula',
+          neighbors:['Trapecio','Deltoides posterior','Dorsales'],
+          fn:'Retrae y rota hacia abajo la escápula (junta los omóplatos). Su debilidad provoca postura encorvada. Activo en remos y jalones.' },
+        { id:'lats',       name:'Dorsales',             scientific:'Latissimus Dorsi',                              group:'Espalda', type:'pull',
+          origin:'Vértebras T6–L5, sacro, cresta ilíaca y costillas inferiores',
+          insertion:'Surco intertubercular del húmero',
+          neighbors:['Tríceps','Romboides','Glúteos','Lumbar'],
+          fn:'El músculo de jalar más grande. Lleva el brazo hacia abajo y al cuerpo. Activo en dominadas, remos y jalones al pecho.' },
+        { id:'lower_back', name:'Lumbar',               scientific:'Erector Spinae',                                group:'Espalda', type:'both',
+          origin:'Sacro, cresta ilíaca y vértebras lumbares y torácicas bajas',
+          insertion:'Costillas y vértebras torácicas y cervicales superiores',
+          neighbors:['Glúteos','Isquiotibiales','Abdomen','Oblicuos'],
+          fn:'Extiende y estabiliza la columna vertebral. Fundamental en sentadillas y peso muerto. Su debilidad es la causa más común de dolor de espalda baja.' },
+        // Piernas
+        { id:'glutes',     name:'Glúteos',              scientific:'Gluteus Maximus / Medius / Minimus',            group:'Piernas', type:'push',
+          origin:'Ilion, sacro y cóccix (Glúteo Mayor) / Cara externa del ilion (Medio y Menor)',
+          insertion:'Trocánter mayor del fémur y tracto iliotibial',
+          neighbors:['Isquiotibiales','Lumbar','Flexores de cadera','Cuádriceps'],
+          fn:'El músculo más grande del cuerpo. Extiende y rota externamente la cadera. El glúteo medio estabiliza la pelvis al caminar y en ejercicios unilaterales.' },
+        { id:'quads',      name:'Cuádriceps',           scientific:'Quadriceps Femoris (4 cabezas)',                group:'Piernas', type:'push',
+          origin:'Espina ilíaca anteroinferior (recto femoral) y cara anterior del fémur (3 vastos)',
+          insertion:'Tuberosidad tibial vía tendón rotuliano',
+          neighbors:['Flexores de cadera','Isquiotibiales','Glúteos'],
+          fn:'Extienden la rodilla en sentadillas, prensa y lunges. El recto femoral también flexiona la cadera. Forman el grupo muscular más grande del muslo.' },
+        { id:'hamstrings', name:'Isquiotibiales',       scientific:'Bíceps Femoral / Semitendinoso / Semimembranoso', group:'Piernas', type:'pull',
+          origin:'Tuberosidad isquiática del isquion',
+          insertion:'Cabeza del peroné y cóndilo tibial (bíceps femoral); cóndilo medial (semi-)',
+          neighbors:['Glúteos','Cuádriceps','Pantorrillas','Lumbar'],
+          fn:'Flexionan la rodilla y extienden la cadera. Esenciales en peso muerto y la propulsión al correr. Los más lesionados en deportes de velocidad.' },
+        { id:'calves',     name:'Pantorrillas',         scientific:'Gastrocnemius / Soleus',                        group:'Piernas', type:'push',
+          origin:'Cóndilo medial y lateral del fémur (gastrocnemio) / Cara posterior de la tibia (sóleo)',
+          insertion:'Calcáneo vía tendón de Aquiles',
+          neighbors:['Isquiotibiales','Tibiales','Flexores plantares'],
+          fn:'Plantiflexionan el pie (ponerse de puntillas). El gastrocnemio también flexiona la rodilla. Activos en saltos, sprints y extensiones de talón.' },
+        { id:'tibialis',   name:'Tibiales',             scientific:'Tibialis Anterior',                             group:'Piernas', type:'pull',
+          origin:'Cóndilo lateral y cara lateral de la tibia',
+          insertion:'Cuña medial y base del 1er metatarsiano del pie',
+          neighbors:['Cuádriceps','Pantorrillas'],
+          fn:'Dorsiflexiona el pie (lo jala hacia arriba) e invierte el pie. Crucial en la amortiguación al correr y para estabilizar el tobillo.' },
+        // Articulaciones
+        { id:'shoulder_joint', name:'Hombro',             scientific:'Articulación glenohumeral',           group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'Cabeza del húmero encajada en la cavidad glenoidea de la escápula',
+          insertion:'Flexión 180° · Abducción 180° · Rot. interna/externa ~90°',
+          neighbors:['Manguito rotador','Deltoides','Bíceps','Bursa subacromial','Labrum glenoideo'],
+          fn:'La articulación más móvil del cuerpo. Su amplio rango la hace propensa a luxaciones, bursitis, tendinitis del manguito rotador e impingement. Toda presión sobre la cabeza y jalones la demandan.' },
+        { id:'elbow_joint',    name:'Codo',               scientific:'Articulación húmero-cúbito-radial',  group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'Tróclea y cóndilo del húmero · Olécranon del cúbito · Cabeza del radio',
+          insertion:'Flexión ~145° · Extensión 0° · Pronación/supinación ~90° cada una',
+          neighbors:['Bíceps','Tríceps','Antebrazos','Lig. colateral medial','Lig. colateral lateral'],
+          fn:'Flexiona y extiende el brazo; permite pronación/supinación. Susceptible a epicondilitis lateral (codo de tenista) y medial (codo de golfista) por sobrecarga en jalones y presiones.' },
+        { id:'wrist_joint',    name:'Muñeca',             scientific:'Articulación radiocarpiana',         group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'Extremo distal del radio · Huesos del carpo (escafoides, semilunar, piramidal)',
+          insertion:'Flexión ~80° · Extensión ~70° · Desviación radial/cubital ~20–30°',
+          neighbors:['Antebrazos','Túnel carpiano','Tendones flexores y extensores','Lig. colaterales'],
+          fn:'Soporta cargas axiales y movimientos finos de la mano. Vulnerable en push-ups, press con barra y cualquier agarre pesado. El túnel carpiano puede inflamarse por uso repetitivo.' },
+        { id:'neck_joint',     name:'Columna cervical',   scientific:'Vértebras C1–C7',                   group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'Atlas (C1) y axis (C2) articulan el cráneo · C3–C7 forman el resto del cuello',
+          insertion:'Flexión ~45° · Extensión ~45° · Rotación ~70° · Flexión lateral ~45°',
+          neighbors:['Trapecio','Músculos suboccipitales','Esternocleidomastoideo','Escalenos'],
+          fn:'Soporta el cráneo (~5 kg) y permite el movimiento de la cabeza. Muy sensible a la postura en pantalla y a cargas en press sobre la cabeza y encogimientos pesados.' },
+        { id:'thoracic_joint', name:'Columna torácica',   scientific:'Vértebras T1–T12',                  group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'12 vértebras torácicas articuladas entre sí y con las costillas',
+          insertion:'Flexión ~35° · Extensión ~25° · Rotación ~35° (mayor rotación de la columna)',
+          neighbors:['Trapecio','Romboides','Erector espinal','Serrato anterior','Costillas'],
+          fn:'El segmento más rígido de la columna. Su rigidez es causa frecuente de dolor de hombro y lumbar compensatorio. Movilizarla protege los extremos de la columna.' },
+        { id:'lumbar_joint',   name:'Columna lumbar',     scientific:'Vértebras L1–L5',                   group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'5 vértebras lumbares con discos intervertebrales entre ellas',
+          insertion:'Flexión ~60° · Extensión ~35° · Flexión lateral ~20° · Rotación mínima',
+          neighbors:['Erector espinal','Multífidos','Cuadrado lumbar','Psoas','Articulación sacroilíaca'],
+          fn:'Soporta la mayor carga axial del cuerpo. Altamente demandada en sentadillas, peso muerto y cualquier levantamiento del suelo. Las hernias discales y el dolor lumbar son las lesiones más comunes en fitness.' },
+        { id:'hip_joint',      name:'Cadera',             scientific:'Articulación coxofemoral',           group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'Cabeza del fémur encajada en el acetábulo del coxal',
+          insertion:'Flexión ~120° · Extensión ~20° · Abducción ~45° · Rot. interna/externa ~45°',
+          neighbors:['Glúteos','Flexores de cadera','Isquiotibiales','Labrum acetabular','Lig. redondo'],
+          fn:'Soporta 3–5× el peso corporal al caminar. Sensible a tendinitis del psoas, síndrome del piriforme, bursitis trocantérea y pinzamiento femoroacetabular (FAI). Clave en toda sentadilla y peso muerto.' },
+        { id:'knee_joint',     name:'Rodilla',            scientific:'Articulación femorotibial / femoropatelar', group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'Fémur distal · Tibia proximal · Rótula · LCA · LCP · LCM · LCL · Meniscos',
+          insertion:'Flexión ~135° · Extensión 0° (hiperextensión leve posible)',
+          neighbors:['Cuádriceps','Isquiotibiales','Pantorrillas','Banda iliotibial','Meniscos'],
+          fn:'La articulación más lesionada en el deporte. Altamente demandada en sentadillas, lunges y prensa. Susceptible a roturas de LCA, lesiones de menisco, tendinitis rotuliana y síndrome de la banda iliotibial.' },
+        { id:'ankle_joint',    name:'Tobillo',            scientific:'Articulación talocrural',            group:'Articulaciones', kind:'joint', type:'joint',
+          origin:'Tibia y peroné distales formando la mortaja con el astrágalo',
+          insertion:'Dorsiflexión ~20° · Plantiflexión ~50° · Inversión/eversión ~30–35°',
+          neighbors:['Pantorrillas','Tibiales','Tendón de Aquiles','Lig. lateral externo','Lig. deltoideo'],
+          fn:'Transmite toda la carga corporal al suelo. Esencial en sentadillas profundas, saltos y carreras. Los esguinces de tobillo son la lesión más frecuente en el deporte. La dorsiflexión limitada compromete la mecánica de la sentadilla.' },
+    ];
+
+    const MUSCLE_GROUPS = [
+        { label:'Torso',          ids:['chest','shoulders','rear_delts'] },
+        { label:'Brazos',         ids:['biceps','triceps','forearms'] },
+        { label:'Core',           ids:['abs','obliques','hip_flexors'] },
+        { label:'Espalda',        ids:['traps','upper_back','lats','lower_back'] },
+        { label:'Piernas',        ids:['glutes','quads','hamstrings','calves','tibialis'] },
+        { label:'Articulaciones', ids:['shoulder_joint','elbow_joint','wrist_joint','neck_joint','thoracic_joint','lumbar_joint','hip_joint','knee_joint','ankle_joint'] },
+    ];
+
+    // Shared card-based muscle picker — used by client settings and trainer modal
+    const initMuscleCards = (gridId, state, flagsListId) => {
+        const grid = document.getElementById(gridId);
+        if (!grid) return;
+
+        const typeBadge = { push:'bg-sky-500/15 text-sky-300/70', pull:'bg-violet-500/15 text-violet-300/70', both:'bg-[#FFDB89]/10 text-[#FFDB89]/40', joint:'bg-rose-500/15 text-rose-300/80' };
+        const typeLabel = { push:'Push', pull:'Pull', both:'Push / Pull', joint:'Articulación' };
+
+        const cardBg  = st => st === 'red' ? 'bg-red-500/[0.07] border-red-400/30' : st === 'yellow' ? 'bg-yellow-400/[0.07] border-yellow-400/30' : 'bg-white/[0.03] border-[#FFDB89]/10';
+        const dotCls  = st => st === 'red' ? 'bg-red-400 border-red-400' : st === 'yellow' ? 'bg-yellow-400 border-yellow-400' : 'bg-transparent border-[#FFDB89]/25';
+        const stLabel = st => st === 'red' ? '<span class="text-[9px] font-bold text-red-400">🔴 Evitar</span>' : st === 'yellow' ? '<span class="text-[9px] font-bold text-yellow-400">🟡 Precaución</span>' : '';
+
+        let html = '';
+        for (const group of MUSCLE_GROUPS) {
+            html += `<div class="col-span-full pt-4 pb-0.5"><p class="text-[9px] font-extrabold text-[#FFDB89]/25 uppercase tracking-widest">${group.label}</p></div>`;
+            for (const id of group.ids) {
+                const m  = MUSCLES.find(x => x.id === id);
+                if (!m) continue;
+                const st = state[id] || null;
+                html += `<div class="rounded-xl border overflow-hidden transition-colors duration-150 ${cardBg(st)}" data-card-id="${id}">
+                    <div class="flex items-center gap-3 p-3.5 cursor-pointer select-none" data-status-click>
+                        <div class="w-3.5 h-3.5 rounded-full border-2 shrink-0 transition-colors ${dotCls(st)}" data-status-dot></div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex flex-wrap items-center gap-1.5 leading-none">
+                                <span class="text-sm font-bold text-[#FFDB89]">${m.name}</span>
+                                <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${typeBadge[m.type]}">${typeLabel[m.type]}</span>
+                                <span data-status-label>${stLabel(st)}</span>
+                            </div>
+                            <p class="text-[10px] text-[#FFDB89]/25 italic mt-0.5">${m.scientific}</p>
+                        </div>
+                    </div>
+                    <button class="flex items-center gap-1.5 w-full px-3.5 pb-2.5 -mt-1.5 text-[#FFDB89]/20 hover:text-[#FFDB89]/50 transition text-left" data-info-btn>
+                        <i class="fas fa-info-circle text-[10px]"></i>
+                        <span class="text-[9px]">Detalles anatómicos</span>
+                        <i class="fas fa-chevron-down text-[8px] ml-auto" data-info-chevron></i>
+                    </button>
+                    <div class="hidden border-t border-[#FFDB89]/8 px-3.5 py-3 space-y-2.5" data-info-panel>
+                        <div><p class="text-[9px] font-bold text-[#FFDB89]/30 uppercase tracking-wider mb-0.5">${m.kind === 'joint' ? '🦴 Huesos articulados' : '📍 Origen'}</p><p class="text-[10px] text-[#FFDB89]/55 leading-relaxed">${m.origin}</p></div>
+                        <div><p class="text-[9px] font-bold text-[#FFDB89]/30 uppercase tracking-wider mb-0.5">${m.kind === 'joint' ? '🔄 Rango de movimiento' : '📌 Inserción'}</p><p class="text-[10px] text-[#FFDB89]/55 leading-relaxed">${m.insertion}</p></div>
+                        <div><p class="text-[9px] font-bold text-[#FFDB89]/30 uppercase tracking-wider mb-0.5">${m.kind === 'joint' ? '🔗 Estructuras vecinas' : '🔗 Músculos vecinos'}</p><p class="text-[10px] text-[#FFDB89]/55">${m.neighbors.join(', ')}</p></div>
+                        <div><p class="text-[9px] font-bold text-[#FFDB89]/30 uppercase tracking-wider mb-0.5">⚡ Función</p><p class="text-[10px] text-[#FFDB89]/55 leading-relaxed">${m.fn}</p></div>
+                    </div>
+                </div>`;
+            }
+        }
+        grid.innerHTML = html;
+
+        const updateCardVisual = (card, st) => {
+            card.className = `rounded-xl border overflow-hidden transition-colors duration-150 ${cardBg(st)}`;
+            const dot = card.querySelector('[data-status-dot]');
+            if (dot) dot.className = `w-3.5 h-3.5 rounded-full border-2 shrink-0 transition-colors ${dotCls(st)}`;
+            const lbl = card.querySelector('[data-status-label]');
+            if (lbl) lbl.innerHTML = stLabel(st);
+        };
+
+        const updateFlagsList = () => {
+            const list = document.getElementById(flagsListId);
+            if (!list) return;
+            const flagged = Object.entries(state).filter(([, st]) => st);
+            list.innerHTML = flagged.length === 0
+                ? '<p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas. Toca un músculo o articulación para cambiar su estado.</p>'
+                : flagged.map(([id, st]) => {
+                    const m = MUSCLES.find(x => x.id === id);
+                    const nm = m ? m.name : id;
+                    const r = st === 'red';
+                    return `<div class="flex items-center justify-between px-3 py-1.5 rounded-lg border ${r ? 'bg-red-500/10 border-red-400/25' : 'bg-yellow-400/10 border-yellow-400/25'}">
+                        <span class="text-xs font-medium ${r ? 'text-red-400' : 'text-yellow-400'}">${nm}</span>
+                        <span class="text-xs font-bold ${r ? 'text-red-400' : 'text-yellow-400'}">${r ? '🔴 Evitar' : '🟡 Precaución'}</span>
+                    </div>`;
+                }).join('');
+        };
+
+        updateFlagsList();
+
+        // Remove previous listener if grid was already initialized
+        if (grid._muscleHandler) grid.removeEventListener('click', grid._muscleHandler);
+        grid._muscleHandler = (e) => {
+            const infoBtn = e.target.closest('[data-info-btn]');
+            if (infoBtn) {
+                const card   = infoBtn.closest('[data-card-id]');
+                if (!card) return;
+                const panel  = card.querySelector('[data-info-panel]');
+                const chev   = infoBtn.querySelector('[data-info-chevron]');
+                if (panel) panel.classList.toggle('hidden');
+                if (chev)  { chev.classList.toggle('fa-chevron-down'); chev.classList.toggle('fa-chevron-up'); }
+                return;
+            }
+            const row = e.target.closest('[data-status-click]');
+            if (row) {
+                const card = row.closest('[data-card-id]');
+                if (!card) return;
+                const id  = card.dataset.cardId;
+                const cur = state[id] || null;
+                if      (cur === null)     state[id] = 'yellow';
+                else if (cur === 'yellow') state[id] = 'red';
+                else                       delete state[id];
+                updateCardVisual(card, state[id] || null);
+                updateFlagsList();
+            }
+        };
+        grid.addEventListener('click', grid._muscleHandler);
     };
 
-    // ── Anatomical body images — replaces SVG wireframe body ──────────────────
-    const SVG_BODY_FRONT = `<image href="/anatomy-front.png" x="0" y="0" width="200" height="560" preserveAspectRatio="xMidYMid meet" opacity="0.92"/>`;
-    const SVG_BODY_BACK  = `<image href="/anatomy-back.png"  x="0" y="0" width="200" height="560" preserveAspectRatio="xMidYMid meet" opacity="0.92"/>`;
+
 
     const initSettings = async () => {
         try {
@@ -513,10 +674,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Set avatar: show profile picture or initials
             if (avatar) {
+                const initials = `${(profile.name || '')[0] || ''}${(profile.lastName || '')[0] || ''}`.toUpperCase() || '?';
                 if (profile.profilePicture) {
-                    avatar.innerHTML = `<img src="${profile.profilePicture}" class="w-full h-full object-cover" alt="Profile">`;
+                    const img = document.createElement('img');
+                    img.src = profile.profilePicture;
+                    img.className = 'w-full h-full object-cover';
+                    img.alt = 'Profile';
+                    img.onerror = () => {
+                        console.error('Profile picture failed to load:', profile.profilePicture);
+                        avatar.innerHTML = '';
+                        avatar.textContent = initials;
+                    };
+                    avatar.innerHTML = '';
+                    avatar.appendChild(img);
                 } else {
-                    const initials = `${(profile.name || '')[0] || ''}${(profile.lastName || '')[0] || ''}`.toUpperCase() || '?';
                     avatar.textContent = initials;
                 }
             }
@@ -805,11 +976,21 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Update avatar in settings
                             const av = document.getElementById('settings-avatar');
                             if (av) {
+                                const avInitials = `${(updatedUser.name || '')[0] || ''}${(updatedUser.lastName || '')[0] || ''}`.toUpperCase() || '?';
                                 if (updatedUser.profilePicture) {
-                                    av.innerHTML = `<img src="${updatedUser.profilePicture}" class="w-full h-full object-cover" alt="Profile">`;
+                                    const img = document.createElement('img');
+                                    img.src = updatedUser.profilePicture;
+                                    img.className = 'w-full h-full object-cover';
+                                    img.alt = 'Profile';
+                                    img.onerror = () => {
+                                        console.error('Profile picture failed to load after save:', updatedUser.profilePicture);
+                                        av.innerHTML = '';
+                                        av.textContent = avInitials;
+                                    };
+                                    av.innerHTML = '';
+                                    av.appendChild(img);
                                 } else {
-                                    const initials = `${(updatedUser.name || '')[0] || ''}${(updatedUser.lastName || '')[0] || ''}`.toUpperCase();
-                                    av.textContent = initials;
+                                    av.textContent = avInitials;
                                 }
                             }
 
@@ -826,73 +1007,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // ── Muscle Injury Map ─────────────────────────────────────────────
-            let muscleState   = { ...(profile.injuredMuscles || {}) };
-            let muscleView    = 'front';
-            const allMuscles  = [...MUSCLE_DEFS.front, ...MUSCLE_DEFS.back];
+            let muscleState = { ...(profile.injuredMuscles || {}) };
+            initMuscleCards('muscle-cards-grid', muscleState, 'injury-flags-list');
 
-            const renderMuscleMap = () => {
-                const container = document.getElementById('muscle-svg-container');
-                if (!container) return;
-                const shapeHtml = MUSCLE_DEFS[muscleView].map(muscle => {
-                    const st  = muscleState[muscle.id] || null;
-                    const fill   = st === 'red'    ? 'rgba(239,68,68,0.5)'    : st === 'yellow' ? 'rgba(251,191,36,0.5)'  : 'rgba(34,197,94,0.07)';
-                    const stroke = st === 'red'    ? 'rgba(239,68,68,0.85)'   : st === 'yellow' ? 'rgba(251,191,36,0.85)' : 'rgba(34,197,94,0.18)';
-                    const sw = st ? 2 : 1;
-                    return muscle.shapes.map(s => {
-                        const attrs = `data-muscle="${muscle.id}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" style="cursor:pointer;transition:fill .15s,stroke .15s"`;
-                        if (s.type === 'path')    return `<path    ${attrs} d="${s.d}"/>`;
-                        if (s.type === 'ellipse') return `<ellipse ${attrs} cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"/>`;
-                        return `<rect ${attrs} x="${s.x}" y="${s.y}" width="${s.width}" height="${s.height}" rx="${s.rx||0}"/>`;
-                    }).join('');
-                }).join('');
-                container.innerHTML = `<svg viewBox="0 0 200 560" xmlns="http://www.w3.org/2000/svg" class="w-44 md:w-52 h-auto select-none" id="muscle-body-svg">
-                    ${muscleView === 'front' ? SVG_BODY_FRONT : SVG_BODY_BACK}
-                    ${shapeHtml}
-                </svg>`;
-                document.getElementById('muscle-body-svg')?.addEventListener('click', e => {
-                    const el = e.target.closest('[data-muscle]');
-                    if (!el) return;
-                    const id  = el.dataset.muscle;
-                    const cur = muscleState[id] || null;
-                    const nxt = cur === null ? 'yellow' : cur === 'yellow' ? 'red' : null;
-                    if (nxt === null) delete muscleState[id]; else muscleState[id] = nxt;
-                    renderMuscleMap();
-                    updateMuscleFlags();
-                });
-            };
-
-            const updateMuscleFlags = () => {
-                const list = document.getElementById('injury-flags-list');
-                if (!list) return;
-                const flagged = Object.entries(muscleState).filter(([, st]) => st);
-                if (!flagged.length) {
-                    list.innerHTML = '<p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas. Toca un músculo para cambiar su estado.</p>';
-                    return;
-                }
-                list.innerHTML = flagged.map(([id, st]) => {
-                    const name  = allMuscles.find(m => m.id === id)?.name || id;
-                    const isRed = st === 'red';
-                    return `<div class="flex items-center justify-between px-3 py-1.5 rounded-lg border ${isRed ? 'bg-red-500/10 border-red-400/25' : 'bg-yellow-400/10 border-yellow-400/25'}">
-                        <span class="text-xs font-medium ${isRed ? 'text-red-400' : 'text-yellow-400'}">${name}</span>
-                        <span class="text-xs font-bold ml-4 ${isRed ? 'text-red-400' : 'text-yellow-400'}">${isRed ? '🔴 Evitar' : '🟡 Precaución'}</span>
-                    </div>`;
-                }).join('');
-            };
-
-            const setMuscleView = (view) => {
-                muscleView = view;
-                const activeClass   = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition';
-                const inactiveClass = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition';
-                const fb = document.getElementById('muscle-view-front');
-                const bb = document.getElementById('muscle-view-back');
-                if (fb) fb.className = view === 'front' ? activeClass : inactiveClass;
-                if (bb) bb.className = view === 'back'  ? activeClass : inactiveClass;
-                renderMuscleMap();
-            };
-
-            document.getElementById('muscle-view-front')?.addEventListener('click', () => setMuscleView('front'));
-            document.getElementById('muscle-view-back')?.addEventListener('click',  () => setMuscleView('back'));
-            document.getElementById('muscle-clear-all')?.addEventListener('click',  () => { muscleState = {}; renderMuscleMap(); updateMuscleFlags(); });
+            document.getElementById('muscle-clear-all')?.addEventListener('click', () => {
+                Object.keys(muscleState).forEach(k => delete muscleState[k]);
+                initMuscleCards('muscle-cards-grid', muscleState, 'injury-flags-list');
+            });
 
             document.getElementById('save-muscle-btn')?.addEventListener('click', async () => {
                 try {
@@ -900,9 +1021,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     showToast(r.ok ? 'Grupos musculares guardados.' : 'Error al guardar.', r.ok ? 'success' : 'error');
                 } catch { showToast('Error de conexión.', 'error'); }
             });
-
-            renderMuscleMap();
-            updateMuscleFlags();
 
         } catch (e) { console.error('Error loading settings:', e); }
     };
@@ -3464,85 +3582,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const client = clientsCache.find(c => (c._id == clientId) || (c.id == clientId));
         let muscleState = (client && client.injuredMuscles) ? { ...client.injuredMuscles } : {};
-        let muscleView  = 'front';
-        const allMuscles = [...MUSCLE_DEFS.front, ...MUSCLE_DEFS.back];
-
-        const colorFor = (state) => state === 'red' ? '#ef4444' : state === 'yellow' ? '#facc15' : '#4ade80';
-        const fillFor  = (state) => state === 'red' ? 'rgba(239,68,68,0.35)' : state === 'yellow' ? 'rgba(250,204,21,0.35)' : 'rgba(74,222,128,0.25)';
-
-        const renderMap = () => {
-            const svgEl = document.getElementById('tr-muscle-svg-container');
-            if (!svgEl) return;
-            const defs = MUSCLE_DEFS[muscleView];
-            const shapesHtml = defs.map(muscle => {
-                const state = muscleState[muscle.id] || null;
-                const stroke = colorFor(state);
-                const fill   = fillFor(state);
-                return muscle.shapes.map(s => {
-                    const a2 = `data-muscle="${muscle.id}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" style="cursor:pointer;transition:fill .15s,stroke .15s;" opacity="0.9"`;
-                    if (s.type === 'path') return `<path ${a2} d="${s.d}"/>`;
-                    return `<ellipse ${a2} cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"/>`;
-                }).join('');
-            }).join('');
-
-            svgEl.innerHTML = `
-                <svg viewBox="0 0 180 540" width="160" height="480" xmlns="http://www.w3.org/2000/svg" style="display:block">
-                    <path d="${BODY_PATH}" fill="rgba(255,219,137,0.07)" stroke="rgba(255,219,137,0.25)" stroke-width="1.5"/>
-                    ${shapesHtml}
-                </svg>`;
-
-            svgEl.querySelector('svg').addEventListener('click', (e) => {
-                const el = e.target.closest('[data-muscle]');
-                if (!el) return;
-                const id = el.dataset.muscle;
-                const cur = muscleState[id] || null;
-                if      (cur === null)     muscleState[id] = 'yellow';
-                else if (cur === 'yellow') muscleState[id] = 'red';
-                else                       delete muscleState[id];
-                renderMap();
-                renderFlags();
-            });
-        };
-
-        const renderFlags = () => {
-            const list = document.getElementById('tr-injury-flags-list');
-            if (!list) return;
-            const flagged = Object.entries(muscleState);
-            if (flagged.length === 0) {
-                list.innerHTML = '<p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas.</p>';
-                return;
-            }
-            list.innerHTML = flagged.map(([id, state]) => {
-                const def = allMuscles.find(m => m.id === id);
-                const name = def ? def.name : id;
-                const dotClass = state === 'red'
-                    ? 'bg-red-400/80 border-red-400/60'
-                    : 'bg-yellow-400/80 border-yellow-400/60';
-                const label = state === 'red' ? 'Evitar' : 'Precaución';
-                return `<div class="flex items-center justify-between p-2.5 rounded-lg bg-[#FFDB89]/5 border border-[#FFDB89]/10">
-                    <div class="flex items-center gap-2.5">
-                        <div class="w-3 h-3 rounded-full border ${dotClass} shrink-0"></div>
-                        <span class="text-sm font-medium text-[#FFDB89]/80">${name}</span>
-                    </div>
-                    <span class="text-xs font-bold text-[#FFDB89]/40">${label}</span>
-                </div>`;
-            }).join('');
-        };
-
-        const setView = (view) => {
-            muscleView = view;
-            const frontBtn = document.getElementById('tr-muscle-view-front');
-            const backBtn  = document.getElementById('tr-muscle-view-back');
-            if (!frontBtn || !backBtn) return;
-            if (view === 'front') {
-                frontBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition';
-                backBtn.className  = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition';
-            } else {
-                backBtn.className  = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition';
-                frontBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition';
-            }
-            renderMap();
-        };
 
         container.innerHTML = `
             <div class="max-w-2xl mx-auto space-y-6">
@@ -3551,29 +3590,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p class="text-sm text-[#FFDB89]/60 mt-1">Marca los grupos que requieren atención especial al armar la rutina de ${client ? client.name : 'este cliente'}.</p>
                 </div>
 
-                <!-- Legend -->
-                <div class="flex flex-wrap items-center gap-4 text-xs">
-                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-green-400/60 border border-green-400/40"></div><span class="text-[#FFDB89]/60">Sin restricción</span></div>
-                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-yellow-400/80 border border-yellow-400/60"></div><span class="text-[#FFDB89]/60">Precaución</span></div>
-                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-red-400/80 border border-red-400/60"></div><span class="text-[#FFDB89]/60">Evitar</span></div>
-                    <span class="text-[#FFDB89]/25 italic">· Clic para cambiar estado</span>
-                </div>
-
-                <!-- Toggle -->
-                <div class="flex items-center gap-2">
-                    <button id="tr-muscle-view-front" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89] text-[#030303] transition">Frente</button>
-                    <button id="tr-muscle-view-back"  class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#FFDB89]/10 text-[#FFDB89] border border-[#FFDB89]/20 transition">Espalda</button>
-                    <button id="tr-muscle-clear-all"  class="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold text-[#FFDB89]/40 hover:text-[#FFDB89] border border-[#FFDB89]/10 hover:border-[#FFDB89]/30 transition">Limpiar todo</button>
-                </div>
-
-                <div class="flex flex-col md:flex-row gap-6 items-start">
-                    <div id="tr-muscle-svg-container" class="flex-shrink-0 flex justify-center w-full md:w-auto"></div>
-                    <div class="flex-grow min-w-0">
-                        <p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-3">Estado actual</p>
-                        <div id="tr-injury-flags-list" class="space-y-2">
-                            <p class="text-xs text-[#FFDB89]/30 italic">Sin restricciones marcadas.</p>
-                        </div>
+                <!-- Legend + clear -->
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-4 text-xs">
+                        <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full border-2 border-[#FFDB89]/25"></div><span class="text-[#FFDB89]/50">Sin restricción</span></div>
+                        <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-yellow-400"></div><span class="text-[#FFDB89]/50">Precaución</span></div>
+                        <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-red-400"></div><span class="text-[#FFDB89]/50">Evitar</span></div>
                     </div>
+                    <button id="tr-muscle-clear-all" class="px-3 py-1.5 rounded-lg text-xs font-bold text-[#FFDB89]/40 hover:text-[#FFDB89] border border-[#FFDB89]/10 hover:border-[#FFDB89]/30 transition">Limpiar todo</button>
+                </div>
+
+                <!-- Card grid -->
+                <div id="tr-muscle-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+
+                <!-- Flagged summary -->
+                <div>
+                    <p class="text-xs font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-2">Estado actual</p>
+                    <div id="tr-injury-flags-list" class="space-y-2"></div>
                 </div>
 
                 <div class="flex justify-end">
@@ -3583,16 +3616,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>`;
 
-        renderMap();
-        renderFlags();
+        initMuscleCards('tr-muscle-cards-grid', muscleState, 'tr-injury-flags-list');
 
-        document.getElementById('tr-muscle-view-front').addEventListener('click', () => setView('front'));
-        document.getElementById('tr-muscle-view-back').addEventListener('click',  () => setView('back'));
-        document.getElementById('tr-muscle-clear-all').addEventListener('click',  () => {
-            muscleState = {};
-            renderMap();
-            renderFlags();
+        document.getElementById('tr-muscle-clear-all').addEventListener('click', () => {
+            Object.keys(muscleState).forEach(k => delete muscleState[k]);
+            initMuscleCards('tr-muscle-cards-grid', muscleState, 'tr-injury-flags-list');
         });
+
         document.getElementById('tr-save-muscle-btn').addEventListener('click', async () => {
             try {
                 const res = await apiFetch(`/api/clients/${clientId}`, {
@@ -3601,7 +3631,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ injuredMuscles: muscleState })
                 });
                 if (res.ok) {
-                    // Update local cache
                     const idx = clientsCache.findIndex(c => (c._id == clientId) || (c.id == clientId));
                     if (idx !== -1) clientsCache[idx].injuredMuscles = { ...muscleState };
                     showToast('Restricciones guardadas.', 'success');
@@ -3612,7 +3641,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    window.openEditClientModal = (clientId) => {
+        window.openEditClientModal = (clientId) => {
         const client = clientsCache.find(c => c._id === clientId);
         if (!client) return;
 
@@ -4329,12 +4358,86 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // ── Populate muscle dropdowns in exercise modals ──────────────────────────
+    const populateExerciseMuscleDropdowns = () => {
+        ['new-ex-muscle', 'edit-ex-muscle'].forEach(selectId => {
+            const sel = document.getElementById(selectId);
+            if (!sel || sel.dataset.populated) return;
+            MUSCLES.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = `${m.name} (${m.scientific})`;
+                sel.appendChild(opt);
+            });
+            sel.dataset.populated = '1';
+
+            // Auto-fill origin/insertion when muscle is selected
+            const prefix = selectId === 'new-ex-muscle' ? 'new' : 'edit';
+            sel.addEventListener('change', () => {
+                const muscle = MUSCLES.find(m => m.id === sel.value);
+                const originEl    = document.getElementById(`${prefix}-ex-origin`);
+                const insertionEl = document.getElementById(`${prefix}-ex-insertion`);
+                if (muscle) {
+                    if (originEl && !originEl.dataset.userEdited)    originEl.value = muscle.origin;
+                    if (insertionEl && !insertionEl.dataset.userEdited) insertionEl.value = muscle.insertion;
+                    const ppSel = document.getElementById(`${prefix}-ex-pushpull`);
+                    if (ppSel && !ppSel.dataset.userEdited) ppSel.value = muscle.type === 'both' ? 'both' : muscle.type || '';
+                }
+            });
+
+            // Track manual edits so auto-fill doesn't overwrite them
+            [`${prefix}-ex-origin`, `${prefix}-ex-insertion`].forEach(fid => {
+                const el = document.getElementById(fid);
+                if (el) el.addEventListener('input', () => { el.dataset.userEdited = '1'; });
+            });
+            const ppSel = document.getElementById(`${prefix}-ex-pushpull`);
+            if (ppSel) ppSel.addEventListener('change', () => { ppSel.dataset.userEdited = '1'; });
+        });
+    };
+
+    // ── Populate edit modal category pills ───────────────────────────────────
+    const populateEditCategoryPills = (selectedCategories = []) => {
+        const container = document.getElementById('edit-category-selection-container');
+        if (!container) return;
+        container.innerHTML = '';
+        muscleGroups.forEach(muscle => {
+            const btn = document.createElement('button');
+            btn.className = "category-pill px-3 py-1 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-full text-xs text-[#FFDB89]/60 hover:text-[#FFDB89] hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/10 transition m-1";
+            btn.textContent = muscle;
+            btn.onclick = () => btn.classList.toggle('selected');
+            if (selectedCategories.includes(muscle)) {
+                btn.classList.add('selected');
+                btn.classList.replace('text-[#FFDB89]/60', 'text-[#FFDB89]');
+            }
+            container.appendChild(btn);
+        });
+    };
+
+    // ── Open edit modal ───────────────────────────────────────────────────────
+    const openEditExerciseModal = (ex) => {
+        document.getElementById('edit-ex-id').value = ex._id || '';
+        document.getElementById('edit-ex-name').value = ex.name || '';
+        document.getElementById('edit-ex-url').value = ex.videoUrl || '';
+        const muscleSel = document.getElementById('edit-ex-muscle');
+        if (muscleSel) { muscleSel.value = ex.muscleGroupId || ''; delete muscleSel.dataset.userEdited; }
+        const ppSel = document.getElementById('edit-ex-pushpull');
+        if (ppSel) { ppSel.value = ex.pushPull || ''; delete ppSel.dataset.userEdited; }
+        const originEl = document.getElementById('edit-ex-origin');
+        if (originEl) { originEl.value = ex.origin || ''; delete originEl.dataset.userEdited; }
+        const insertionEl = document.getElementById('edit-ex-insertion');
+        if (insertionEl) { insertionEl.value = ex.insertion || ''; delete insertionEl.dataset.userEdited; }
+        populateEditCategoryPills(Array.isArray(ex.category) ? ex.category : [ex.category || 'General']);
+        document.getElementById('edit-exercise-modal').classList.remove('hidden');
+    };
+
     window.renderExerciseLibrary = () => {
         const listContainer = document.getElementById('exercise-library-list');
         const searchInput = document.getElementById('library-search-input');
         if (!listContainer) return;
 
-        // Render Pills
+        populateExerciseMuscleDropdowns();
+
+        // Render Pills for Add modal
         const catContainer = document.getElementById('category-selection-container');
         if (catContainer && catContainer.innerHTML.trim() === '') {
             catContainer.innerHTML = '';
@@ -4347,6 +4450,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        const pushPullLabel = { push: 'Push', pull: 'Pull', both: 'Push/Pull' };
+
         const renderList = (filterText = '') => {
             listContainer.innerHTML = '';
             const filtered = globalExerciseLibrary.filter(ex => ex.name.toLowerCase().includes(filterText.toLowerCase()));
@@ -4354,6 +4459,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             filtered.forEach(ex => {
                 const catDisplay = Array.isArray(ex.category) ? ex.category.join(", ") : ex.category;
+                const muscleName = ex.muscleGroupId ? (MUSCLES.find(m => m.id === ex.muscleGroupId)?.name || '') : '';
+                const ppBadge = ex.pushPull ? `<span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15 text-[#FFDB89]/50">${pushPullLabel[ex.pushPull] || ex.pushPull}</span>` : '';
+                const muscleBadge = muscleName ? `<span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15 text-[#FFDB89]/50"><i class="fas fa-dumbbell text-[9px] mr-1"></i>${muscleName}</span>` : '';
                 const item = document.createElement('div');
                 item.className = "p-4 hover:bg-[#FFDB89]/5 flex justify-between items-center transition group border-b border-[#FFDB89]/10 last:border-none";
                 item.innerHTML = `
@@ -4361,23 +4469,49 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="w-10 h-10 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/20 flex items-center justify-center text-[#FFDB89] font-bold text-sm">${ex.name.charAt(0).toUpperCase()}</div>
                         <div>
                             <h4 class="font-bold text-[#FFDB89]">${ex.name}</h4>
-                            <div class="flex gap-2 text-xs text-[#FFDB89]/40 mt-0.5">
+                            <div class="flex flex-wrap gap-2 text-xs text-[#FFDB89]/40 mt-0.5">
                                 <span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15">${catDisplay}</span>
+                                ${muscleBadge}${ppBadge}
                                 ${ex.videoUrl ? `<span class="text-[#FFDB89]/60 flex items-center gap-1"><i class="fas fa-video text-[10px]"></i> Video</span>` : ''}
                             </div>
                         </div>
                     </div>
-                    <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition"><button class="p-2 text-[#FFDB89]/40 hover:text-[#FFDB89] transition" title="Edit"><i class="fas fa-edit"></i></button></div>`;
+                    <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                        <button class="edit-exercise-btn p-2 text-[#FFDB89]/40 hover:text-[#FFDB89] transition" data-ex-id="${ex._id}" title="Editar"><i class="fas fa-edit"></i></button>
+                    </div>`;
+                item.querySelector('.edit-exercise-btn').addEventListener('click', () => openEditExerciseModal(ex));
                 listContainer.appendChild(item);
             });
         };
-        renderList(); 
-        if(searchInput) { searchInput.addEventListener('input', (e) => { renderList(e.target.value); }); }
+        renderList();
+        if(searchInput) {
+            // Remove old listeners by cloning
+            const newInput = searchInput.cloneNode(true);
+            searchInput.parentNode.replaceChild(newInput, searchInput);
+            newInput.addEventListener('input', (e) => { renderList(e.target.value); });
+        }
+
+        // Wire edit modal buttons (once)
+        const closeEditX = document.getElementById('close-edit-exercise-modal-x');
+        const cancelEdit = document.getElementById('cancel-edit-exercise-btn');
+        const saveEdit   = document.getElementById('save-edit-exercise-btn');
+        const deleteBtn  = document.getElementById('delete-exercise-btn');
+        if (closeEditX && !closeEditX.dataset.wired) {
+            closeEditX.dataset.wired = '1';
+            closeEditX.addEventListener('click', () => document.getElementById('edit-exercise-modal').classList.add('hidden'));
+            cancelEdit.addEventListener('click', () => document.getElementById('edit-exercise-modal').classList.add('hidden'));
+            saveEdit.addEventListener('click', window.handleSaveEditExercise);
+            deleteBtn.addEventListener('click', window.handleDeleteExercise);
+        }
     };
 
     window.handleSaveNewExercise = async () => {
-        const name = document.getElementById('new-ex-name').value;
-        const url = document.getElementById('new-ex-url').value;
+        const name        = document.getElementById('new-ex-name').value.trim();
+        const url         = document.getElementById('new-ex-url').value.trim();
+        const muscleGroupId = document.getElementById('new-ex-muscle')?.value || '';
+        const pushPull    = document.getElementById('new-ex-pushpull')?.value || '';
+        const origin      = document.getElementById('new-ex-origin')?.value.trim() || '';
+        const insertion   = document.getElementById('new-ex-insertion')?.value.trim() || '';
         const selectedCats = [];
         document.querySelectorAll('#category-selection-container .category-pill.selected').forEach(pill => { selectedCats.push(pill.textContent); });
         const categories = selectedCats.length > 0 ? selectedCats : ["General"];
@@ -4385,7 +4519,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(!name) { showToast("Nombre requerido", 'error'); return; }
 
         try {
-            const res = await apiFetch('/api/library', { method: 'POST', body: JSON.stringify({ name, videoUrl: url, category: categories }) });
+            const res = await apiFetch('/api/library', { method: 'POST', body: JSON.stringify({ name, videoUrl: url, category: categories, muscleGroupId, pushPull, origin, insertion }) });
             if(res.ok) {
                 const savedExercise = await res.json();
                 const existingIdx = globalExerciseLibrary.findIndex(e => e.name === savedExercise.name);
@@ -4394,11 +4528,60 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('add-exercise-modal').classList.add('hidden');
                 document.getElementById('new-ex-name').value = '';
                 document.getElementById('new-ex-url').value = '';
-                document.querySelectorAll('.category-pill').forEach(p => p.classList.remove('selected'));
+                if (document.getElementById('new-ex-muscle'))    document.getElementById('new-ex-muscle').value = '';
+                if (document.getElementById('new-ex-pushpull'))  document.getElementById('new-ex-pushpull').value = '';
+                if (document.getElementById('new-ex-origin'))    { document.getElementById('new-ex-origin').value = ''; delete document.getElementById('new-ex-origin').dataset.userEdited; }
+                if (document.getElementById('new-ex-insertion')) { document.getElementById('new-ex-insertion').value = ''; delete document.getElementById('new-ex-insertion').dataset.userEdited; }
+                document.querySelectorAll('#category-selection-container .category-pill').forEach(p => p.classList.remove('selected'));
                 renderExerciseLibrary();
                 showToast("¡Ejercicio guardado!", 'success');
             } else { showToast('Error guardando ejercicio.', 'error'); }
         } catch(e) { console.error(e); }
+    };
+
+    window.handleSaveEditExercise = async () => {
+        const id          = document.getElementById('edit-ex-id').value;
+        const name        = document.getElementById('edit-ex-name').value.trim();
+        const url         = document.getElementById('edit-ex-url').value.trim();
+        const muscleGroupId = document.getElementById('edit-ex-muscle')?.value || '';
+        const pushPull    = document.getElementById('edit-ex-pushpull')?.value || '';
+        const origin      = document.getElementById('edit-ex-origin')?.value.trim() || '';
+        const insertion   = document.getElementById('edit-ex-insertion')?.value.trim() || '';
+        const selectedCats = [];
+        document.querySelectorAll('#edit-category-selection-container .category-pill.selected').forEach(pill => { selectedCats.push(pill.textContent); });
+        const categories = selectedCats.length > 0 ? selectedCats : ["General"];
+
+        if(!name) { showToast("Nombre requerido", 'error'); return; }
+        if(!id)   { showToast("Error: ejercicio sin ID.", 'error'); return; }
+
+        try {
+            const res = await apiFetch(`/api/library/${id}`, { method: 'PUT', body: JSON.stringify({ name, videoUrl: url, category: categories, muscleGroupId, pushPull, origin, insertion }) });
+            if(res.ok) {
+                const savedExercise = await res.json();
+                const idx = globalExerciseLibrary.findIndex(e => e._id === id);
+                if(idx > -1) globalExerciseLibrary[idx] = savedExercise;
+                document.getElementById('edit-exercise-modal').classList.add('hidden');
+                renderExerciseLibrary();
+                showToast("¡Ejercicio actualizado!", 'success');
+            } else { showToast('Error actualizando ejercicio.', 'error'); }
+        } catch(e) { console.error(e); showToast('Error de conexión.', 'error'); }
+    };
+
+    window.handleDeleteExercise = async () => {
+        const id   = document.getElementById('edit-ex-id').value;
+        const name = document.getElementById('edit-ex-name').value;
+        if (!id) return;
+        const confirmed = await showConfirm(`¿Eliminar el ejercicio "${name}" de la librería? Esta acción no se puede deshacer.`);
+        if (!confirmed) return;
+        try {
+            const res = await apiFetch(`/api/library/${id}`, { method: 'DELETE' });
+            if(res.ok) {
+                globalExerciseLibrary = globalExerciseLibrary.filter(e => e._id !== id);
+                document.getElementById('edit-exercise-modal').classList.add('hidden');
+                renderExerciseLibrary();
+                showToast("Ejercicio eliminado.", 'success');
+            } else { showToast('Error eliminando ejercicio.', 'error'); }
+        } catch(e) { console.error(e); showToast('Error de conexión.', 'error'); }
     };
 
     window.copyWorkout = async (dateStr, clientId) => {
@@ -5065,6 +5248,35 @@ document.addEventListener('DOMContentLoaded', () => {
         hideExAc();
     });
 
+    // ── Restriction flag check ────────────────────────────────────────────────
+    // Looks up the current client's injuredMuscles and shows a flag badge
+    // on the exercise item if the exercise targets a flagged muscle group.
+    const checkExerciseRestriction = (exercise, exerciseItem) => {
+        // Remove any existing restriction badge
+        exerciseItem.querySelectorAll('.restriction-badge').forEach(el => el.remove());
+
+        if (!exercise || !exercise.muscleGroupId) return;
+        if (!currentClientViewId) return;
+
+        const client = clientsCache.find(c => c._id === currentClientViewId || c.id === currentClientViewId);
+        const injuredMuscles = client?.injuredMuscles || {};
+        const status = injuredMuscles[exercise.muscleGroupId];
+        if (!status) return; // No restriction for this muscle
+
+        const muscle = MUSCLES.find(m => m.id === exercise.muscleGroupId);
+        const muscleName = muscle?.name || exercise.muscleGroupId;
+        const isRed = status === 'red';
+
+        const badge = document.createElement('div');
+        badge.className = `restriction-badge flex items-center gap-2 mt-2 px-3 py-2 rounded-lg text-xs font-bold border ${isRed ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`;
+        badge.innerHTML = `<i class="fas fa-exclamation-triangle text-[11px]"></i><span>${isRed ? 'Evitar' : 'Precaución'}: ${muscleName} — este músculo tiene una restricción activa.</span>`;
+
+        // Insert badge inside the exercise item, after the flex row
+        const flexRow = exerciseItem.querySelector('.flex.gap-3');
+        if (flexRow) flexRow.after(badge);
+        else exerciseItem.appendChild(badge);
+    };
+
     const addExerciseToBuilder = (data = null) => {
         const list = document.getElementById('exercise-list');
 
@@ -5158,6 +5370,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         playBtn.classList.remove('text-green-400/35');
                         playBtn.classList.add('text-green-400');
                     }
+                    // ── Restriction check ─────────────────────────────────
+                    checkExerciseRestriction(match, item);
                 });
                 portal.appendChild(div);
             });
@@ -5167,6 +5381,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Assign the correct superset-aware label now that the item is in the DOM
         window.reindexBuilderLabels();
+
+        // ── Auto-check restriction for exercises loaded from existing workout ──
+        if (data?.name) {
+            const libEx = globalExerciseLibrary.find(e => e.name.toLowerCase() === data.name.toLowerCase());
+            if (libEx) checkExerciseRestriction(libEx, item);
+        }
     };
 
     // Expose to global scope so inline onclick in HTML can reach it
