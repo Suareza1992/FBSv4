@@ -8,103 +8,59 @@
 
         <div class="flex flex-col md:flex-row gap-6 items-center md:items-start">
 
-            <!-- SVG body diagram -->
+            <!-- Body diagram with anatomy image -->
             <div class="flex-shrink-0 flex justify-center">
-                <svg viewBox="0 0 300 540" xmlns="http://www.w3.org/2000/svg" class="w-56 md:w-64 h-auto">
+                <!--
+                    viewBox: 0 0 560 917
+                    Left 395px = anatomy-front.png at native resolution
+                    Right 165px = space for measurement labels
+                    Vertical measurement positions (% of 917):
+                      Chest   ~31%  → y=284    Biceps  ~36%  → y=330
+                      Waist   ~47%  → y=431    Hips    ~54%  → y=495
+                      Quads   ~70%  → y=642    Calves  ~84%  → y=770
+                -->
+                <svg viewBox="0 0 560 917" xmlns="http://www.w3.org/2000/svg" class="w-48 md:w-56 h-auto">
 
-                    <!-- Head: proportional oval -->
-                    <ellipse cx="95" cy="36" rx="29" ry="33"
-                        fill="rgba(255,219,137,0.12)" stroke="rgba(255,219,137,0.45)" stroke-width="1.5"/>
-
-                    <!-- Torso + legs (wider, properly proportioned) -->
-                    <path d="
-                        M 84 67 L 84 80
-                        C 62 83 34 91 28 106
-                        C 24 118 28 138 34 154
-                        C 38 166 48 176 54 184
-                        C 56 200 56 220 54 238
-                        C 52 254 48 266 46 278
-                        L 46 382 C 46 394 48 404 50 412
-                        L 50 474 C 50 486 54 496 58 502
-                        L 46 514 L 92 514 L 92 502
-                        C 96 496 98 486 98 474
-                        L 98 412 C 100 404 102 394 102 382
-                        L 102 278
-                        L 108 278
-                        L 108 382 C 108 394 110 404 112 412
-                        L 112 474 C 112 486 116 496 120 502
-                        L 108 514 L 154 514 L 154 502
-                        C 158 496 160 486 160 474
-                        L 160 412 C 162 404 164 394 164 382
-                        L 164 278
-                        C 162 266 158 254 156 238
-                        C 154 220 154 200 156 184
-                        C 162 176 172 166 176 154
-                        C 182 138 186 118 182 106
-                        C 176 91 138 83 116 80
-                        L 116 67
-                        Z
-                    " fill="rgba(255,219,137,0.12)" stroke="rgba(255,219,137,0.45)" stroke-width="1.5" stroke-linejoin="round"/>
-
-                    <!-- Left arm -->
-                    <path d="
-                        M 34 106
-                        C 18 116 10 146 12 180
-                        C 14 206 20 230 26 250
-                        C 30 264 36 270 42 268
-                        C 48 266 50 254 48 242
-                        C 44 220 38 194 36 168
-                        C 34 142 34 120 36 108 Z
-                    " fill="rgba(255,219,137,0.12)" stroke="rgba(255,219,137,0.45)" stroke-width="1.5" stroke-linejoin="round"/>
-
-                    <!-- Right arm -->
-                    <path d="
-                        M 176 106
-                        C 192 116 200 146 198 180
-                        C 196 206 190 230 184 250
-                        C 180 264 174 270 168 268
-                        C 162 266 160 254 162 242
-                        C 166 220 172 194 174 168
-                        C 176 142 176 120 174 108 Z
-                    " fill="rgba(255,219,137,0.12)" stroke="rgba(255,219,137,0.45)" stroke-width="1.5" stroke-linejoin="round"/>
+                    <!-- Anatomy front image -->
+                    <image href="anatomy-front.png" x="0" y="0" width="395" height="917" preserveAspectRatio="xMidYMid meet"/>
 
                     <!-- ── Measurement lines ───────────────────────── -->
 
-                    <!-- Pecho (orange) y=120 -->
-                    <line x1="28"  y1="120" x2="158" y2="120" stroke="#F97316" stroke-width="2"   stroke-linecap="round"/>
-                    <line x1="160" y1="120" x2="176" y2="120" stroke="#F97316" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
-                    <circle cx="179" cy="120" r="3.5" fill="#F97316"/>
-                    <text x="187" y="124" fill="#F97316" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Pecho</text>
+                    <!-- Pecho (orange) -->
+                    <line x1="60"  y1="284" x2="335" y2="284" stroke="#F97316" stroke-width="3"   stroke-linecap="round"/>
+                    <line x1="337" y1="284" x2="360" y2="284" stroke="#F97316" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>
+                    <circle cx="364" cy="284" r="5" fill="#F97316"/>
+                    <text x="375" y="289" fill="#F97316" font-size="18" font-weight="700" font-family="system-ui,sans-serif">Pecho</text>
 
-                    <!-- Bíceps (sky blue) y=152 -->
-                    <line x1="12"  y1="152" x2="158" y2="152" stroke="#38BDF8" stroke-width="2"   stroke-linecap="round"/>
-                    <line x1="160" y1="152" x2="176" y2="152" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
-                    <circle cx="179" cy="152" r="3.5" fill="#38BDF8"/>
-                    <text x="187" y="156" fill="#38BDF8" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Bíceps</text>
+                    <!-- Bíceps (sky blue) -->
+                    <line x1="20"  y1="330" x2="335" y2="330" stroke="#38BDF8" stroke-width="3"   stroke-linecap="round"/>
+                    <line x1="337" y1="330" x2="360" y2="330" stroke="#38BDF8" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>
+                    <circle cx="364" cy="330" r="5" fill="#38BDF8"/>
+                    <text x="375" y="335" fill="#38BDF8" font-size="18" font-weight="700" font-family="system-ui,sans-serif">Bíceps</text>
 
-                    <!-- Cintura (teal) y=220 -->
-                    <line x1="54"  y1="220" x2="158" y2="220" stroke="#2DD4BF" stroke-width="2"   stroke-linecap="round"/>
-                    <line x1="160" y1="220" x2="176" y2="220" stroke="#2DD4BF" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
-                    <circle cx="179" cy="220" r="3.5" fill="#2DD4BF"/>
-                    <text x="187" y="224" fill="#2DD4BF" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Cintura</text>
+                    <!-- Cintura (teal) -->
+                    <line x1="90"  y1="431" x2="335" y2="431" stroke="#2DD4BF" stroke-width="3"   stroke-linecap="round"/>
+                    <line x1="337" y1="431" x2="360" y2="431" stroke="#2DD4BF" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>
+                    <circle cx="364" cy="431" r="5" fill="#2DD4BF"/>
+                    <text x="375" y="436" fill="#2DD4BF" font-size="18" font-weight="700" font-family="system-ui,sans-serif">Cintura</text>
 
-                    <!-- Cadera (amber) y=264 -->
-                    <line x1="46"  y1="264" x2="158" y2="264" stroke="#FBBF24" stroke-width="2"   stroke-linecap="round"/>
-                    <line x1="160" y1="264" x2="176" y2="264" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
-                    <circle cx="179" cy="264" r="3.5" fill="#FBBF24"/>
-                    <text x="187" y="268" fill="#FBBF24" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Cadera</text>
+                    <!-- Cadera (amber) -->
+                    <line x1="70"  y1="495" x2="335" y2="495" stroke="#FBBF24" stroke-width="3"   stroke-linecap="round"/>
+                    <line x1="337" y1="495" x2="360" y2="495" stroke="#FBBF24" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>
+                    <circle cx="364" cy="495" r="5" fill="#FBBF24"/>
+                    <text x="375" y="500" fill="#FBBF24" font-size="18" font-weight="700" font-family="system-ui,sans-serif">Cadera</text>
 
-                    <!-- Quads (pink) y=378 -->
-                    <line x1="46"  y1="378" x2="158" y2="378" stroke="#EC4899" stroke-width="2"   stroke-linecap="round"/>
-                    <line x1="160" y1="378" x2="176" y2="378" stroke="#EC4899" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
-                    <circle cx="179" cy="378" r="3.5" fill="#EC4899"/>
-                    <text x="187" y="382" fill="#EC4899" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Quads</text>
+                    <!-- Quads (pink) -->
+                    <line x1="75"  y1="642" x2="335" y2="642" stroke="#EC4899" stroke-width="3"   stroke-linecap="round"/>
+                    <line x1="337" y1="642" x2="360" y2="642" stroke="#EC4899" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>
+                    <circle cx="364" cy="642" r="5" fill="#EC4899"/>
+                    <text x="375" y="647" fill="#EC4899" font-size="18" font-weight="700" font-family="system-ui,sans-serif">Quads</text>
 
-                    <!-- Pantorrillas (red) y=452 -->
-                    <line x1="50"  y1="452" x2="158" y2="452" stroke="#EF4444" stroke-width="2"   stroke-linecap="round"/>
-                    <line x1="160" y1="452" x2="176" y2="452" stroke="#EF4444" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
-                    <circle cx="179" cy="452" r="3.5" fill="#EF4444"/>
-                    <text x="187" y="456" fill="#EF4444" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">Pantorrillas</text>
+                    <!-- Pantorrillas (red) -->
+                    <line x1="80"  y1="770" x2="335" y2="770" stroke="#EF4444" stroke-width="3"   stroke-linecap="round"/>
+                    <line x1="337" y1="770" x2="360" y2="770" stroke="#EF4444" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>
+                    <circle cx="364" cy="770" r="5" fill="#EF4444"/>
+                    <text x="375" y="775" fill="#EF4444" font-size="18" font-weight="700" font-family="system-ui,sans-serif">Pantorrillas</text>
 
                 </svg>
             </div>
