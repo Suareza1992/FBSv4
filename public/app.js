@@ -1158,6 +1158,51 @@ document.addEventListener('DOMContentLoaded', () => {
             const csvToArr = (s) => (s || '').split(',').map(x => x.trim()).filter(Boolean);
             const arrToCsv = (a) => (Array.isArray(a) ? a : []).join(', ');
 
+            // ── Bilingual / accent-insensitive food recognition ───────────────
+            // Clients write freely in EN/ES, with or without accents ("almidón"
+            // vs "almidon" vs "starch"). We canonicalize ONLY for comparison so
+            // equivalents dedup; we always keep the client's original wording.
+            const FOOD_ALIASES = {
+                // Allergens
+                'mariscos':'shellfish','marisco':'shellfish','crustaceos':'shellfish','crustaceo':'shellfish','shellfish':'shellfish','seafood':'shellfish',
+                'mani':'peanut','cacahuate':'peanut','cacahuates':'peanut','cacahuete':'peanut','peanut':'peanut','peanuts':'peanut',
+                'frutos secos':'tree_nuts','nueces':'tree_nuts','nuez':'tree_nuts','almendras':'tree_nuts','almendra':'tree_nuts','tree nuts':'tree_nuts','tree nut':'tree_nuts','nuts':'tree_nuts',
+                'lacteos':'dairy','lacteo':'dairy','leche':'dairy','lactosa':'dairy','dairy':'dairy','milk':'dairy','lactose':'dairy',
+                'huevo':'egg','huevos':'egg','egg':'egg','eggs':'egg',
+                'gluten':'gluten','trigo':'gluten','wheat':'gluten',
+                'soya':'soy','soja':'soy','soy':'soy',
+                'pescado':'fish','pescados':'fish','fish':'fish',
+                // Common dislikes / foods
+                'cilantro':'cilantro','culantro':'cilantro','coriander':'cilantro',
+                'brocoli':'broccoli','broccoli':'broccoli',
+                'atun':'tuna','tuna':'tuna',
+                'almidon':'starch','almidones':'starch','starch':'starch',
+                'champinones':'mushroom','champinon':'mushroom','hongos':'mushroom','setas':'mushroom','mushroom':'mushroom','mushrooms':'mushroom',
+                'cebolla':'onion','cebollas':'onion','onion':'onion','onions':'onion',
+                'ajo':'garlic','garlic':'garlic',
+                'tomate':'tomato','tomates':'tomato','tomato':'tomato','tomatoes':'tomato',
+                'aguacate':'avocado','palta':'avocado','avocado':'avocado',
+                'pimiento':'pepper','pimientos':'pepper','pimenton':'pepper','aji':'pepper','pepper':'pepper','bell pepper':'pepper',
+            };
+            // lowercase + strip accents + collapse whitespace, then map to canonical.
+            // Combining-mark range U+0300–U+036F via RegExp string to avoid literal
+            // diacritics in source (editor/tooling safe).
+            const DIACRITICS = new RegExp('[\\u0300-\\u036f]', 'g');
+            const canonicalFood = (s) => {
+                const base = (s || '').toLowerCase().normalize('NFD').replace(DIACRITICS, '').replace(/\s+/g, ' ').trim();
+                return FOOD_ALIASES[base] || base;
+            };
+            // Remove entries that canonicalize to something already seen — keeps
+            // the FIRST original spelling the client used.
+            const dedupFoods = (arr) => {
+                const seen = new Set(); const out = [];
+                for (const item of arr) {
+                    const c = canonicalFood(item);
+                    if (c && !seen.has(c)) { seen.add(c); out.push(item); }
+                }
+                return out;
+            };
+
             // Populate from saved profile
             const prefs = profile.dietaryPreferences || {};
             if (dietTypeSel)    dietTypeSel.value    = prefs.dietType || '';
@@ -1165,7 +1210,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (dislikesInput)  dislikesInput.value  = arrToCsv(prefs.dislikes);
             if (dietNotesInput) dietNotesInput.value = prefs.notes || '';
 
-            // Common-allergen quick-add chips — clicking appends to the allergies field
+            // Common-allergen quick-add chips — clicking appends to the allergies
+            // field, but only if no EN/ES/accent equivalent is already present.
             if (quickChipsWrap && allergiesInput) {
                 const COMMON_ALLERGENS = ['Mariscos', 'Maní', 'Frutos secos', 'Lácteos', 'Huevo', 'Gluten', 'Soya', 'Pescado'];
                 quickChipsWrap.innerHTML = COMMON_ALLERGENS.map(a =>
@@ -1175,7 +1221,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     chip.addEventListener('click', () => {
                         const allergen = chip.dataset.allergen;
                         const current = csvToArr(allergiesInput.value);
-                        if (!current.some(x => x.toLowerCase() === allergen.toLowerCase())) {
+                        const canon = canonicalFood(allergen);
+                        if (!current.some(x => canonicalFood(x) === canon)) {
                             current.push(allergen);
                             allergiesInput.value = current.join(', ');
                         }
@@ -1184,10 +1231,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             document.getElementById('save-dietary-prefs-btn')?.addEventListener('click', async () => {
+                // Collapse EN/ES/accent duplicates before saving, and reflect the
+                // cleaned-up list back into the inputs so the client sees it.
+                const allergies = dedupFoods(csvToArr(allergiesInput?.value));
+                const dislikes  = dedupFoods(csvToArr(dislikesInput?.value));
+                if (allergiesInput) allergiesInput.value = arrToCsv(allergies);
+                if (dislikesInput)  dislikesInput.value  = arrToCsv(dislikes);
+
                 const dietaryPreferences = {
                     dietType:  dietTypeSel?.value || '',
-                    allergies: csvToArr(allergiesInput?.value),
-                    dislikes:  csvToArr(dislikesInput?.value),
+                    allergies,
+                    dislikes,
                     notes:     (dietNotesInput?.value || '').trim(),
                 };
                 try {
