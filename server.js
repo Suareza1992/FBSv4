@@ -241,6 +241,12 @@ const UserSchema = new mongoose.Schema({
     profilePicture: { type: String, default: "" },
     equipment: { type: mongoose.Schema.Types.Mixed, default: {} },
     injuredMuscles: { type: mongoose.Schema.Types.Mixed, default: {} },
+    dietaryPreferences: {
+        dietType:  { type: String,   default: '' },  // '' | omnivoro | vegetariano | vegano | pescetariano | keto | paleo | otro
+        allergies: { type: [String], default: [] },  // e.g. ['Mariscos','Maní'] — never recommend these
+        dislikes:  { type: [String], default: [] },  // foods to avoid recommending (preference, not safety)
+        notes:     { type: String,   default: '' },  // free-text catch-all for the meal recommender
+    },
     macroSettings: {
         goal:         { type: String, default: 'maintain' }, // maintain | cut250 | cut500 | bulk250 | bulk500
         proteinRatio: { type: Number, default: 0.4 },
@@ -852,7 +858,7 @@ app.put('/api/me', authenticateToken, async (req, res) => {
     try {
         // Safe profile fields any authenticated user can update
         // profilePicture is no longer accepted here — use POST /api/me/profile-picture instead
-        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'servingUnit', 'injuredMuscles', 'restingHr'];
+        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'servingUnit', 'injuredMuscles', 'dietaryPreferences', 'restingHr'];
         const updates = {};
         for (const key of allowedFields) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -1031,7 +1037,7 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
         const ALLOWED = ['name','lastName','email','program','group','type','dueDate','isActive',
                          'location','timezone','unitSystem','phone','height','weight','birthday',
                          'gender','thr','mahr','restingHr','emailPreferences','hideFromDashboard',
-                         'profilePicture','equipment','macroSettings','waterGoal','injuredMuscles'];
+                         'profilePicture','equipment','macroSettings','waterGoal','injuredMuscles','dietaryPreferences'];
         const updates = {};
         for (const key of ALLOWED) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];

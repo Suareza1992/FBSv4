@@ -159,6 +159,65 @@
         </div>
     </div>
 
+    <!-- ── Preferencias Alimenticias ─────────────────────────────────────── -->
+    <div id="dietary-prefs-section" class="border-b border-[#FFDB89]/20 mb-6 pb-6">
+        <div class="pb-4 mb-4 border-b border-[#FFDB89]/20">
+            <h3 class="text-lg font-semibold text-[#FFDB89]">Preferencias alimenticias</h3>
+            <p class="text-sm text-[#FFDB89]/60">Usamos esto para recomendarte comidas que cierren tus macros. Las alergias nunca se recomendarán.</p>
+        </div>
+
+        <div class="space-y-5">
+            <!-- Tipo de dieta -->
+            <div>
+                <label class="block text-sm font-medium text-[#FFDB89]/70 mb-1.5">Tipo de dieta</label>
+                <select id="diet-type-select" class="w-full p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] focus:ring-[#FFDB89] focus:border-[#FFDB89] outline-none text-sm appearance-none">
+                    <option value="">Sin preferencia (omnívoro)</option>
+                    <option value="vegetariano">Vegetariano</option>
+                    <option value="vegano">Vegano</option>
+                    <option value="pescetariano">Pescetariano</option>
+                    <option value="keto">Keto</option>
+                    <option value="paleo">Paleo</option>
+                    <option value="otro">Otro (ver notas)</option>
+                </select>
+            </div>
+
+            <!-- Alergias -->
+            <div>
+                <label class="block text-sm font-medium text-[#FFDB89]/70 mb-1.5">
+                    <i class="fas fa-triangle-exclamation mr-1.5 text-red-400/70"></i>Alergias
+                    <span class="text-[#FFDB89]/40 font-normal">— nunca te recomendaremos esto</span>
+                </label>
+                <div id="allergy-quick-chips" class="flex flex-wrap gap-1.5 mb-2"></div>
+                <input type="text" id="diet-allergies-input" placeholder="Ej: Mariscos, Maní, Lácteos"
+                    class="w-full p-2.5 bg-[#FFDB89]/5 border border-red-400/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-red-400/50 focus:border-red-400/50 outline-none text-sm">
+                <p class="text-xs text-[#FFDB89]/30 mt-1">Separa cada alergia con una coma.</p>
+            </div>
+
+            <!-- Disgustos -->
+            <div>
+                <label class="block text-sm font-medium text-[#FFDB89]/70 mb-1.5">
+                    <i class="fas fa-thumbs-down mr-1.5 text-[#FFDB89]/40"></i>Alimentos que no te gustan
+                </label>
+                <input type="text" id="diet-dislikes-input" placeholder="Ej: Brócoli, Atún, Cilantro"
+                    class="w-full p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-[#FFDB89] focus:border-[#FFDB89] outline-none text-sm">
+                <p class="text-xs text-[#FFDB89]/30 mt-1">Separa cada alimento con una coma.</p>
+            </div>
+
+            <!-- Notas -->
+            <div>
+                <label class="block text-sm font-medium text-[#FFDB89]/70 mb-1.5">Notas adicionales</label>
+                <textarea id="diet-notes-input" rows="2" placeholder="Ej: Prefiero comidas rápidas de preparar, sin lácteos por la noche..."
+                    class="w-full p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-[#FFDB89] focus:border-[#FFDB89] outline-none text-sm resize-none"></textarea>
+            </div>
+        </div>
+
+        <div class="pt-4 mt-4 flex justify-end">
+            <button id="save-dietary-prefs-btn" class="px-5 py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-medium rounded-lg text-sm transition shadow-md">
+                Guardar preferencias
+            </button>
+        </div>
+    </div>
+
     <!-- Payment Handles (trainer only) -->
     <div id="payment-handles-section" class="border-b border-[#FFDB89]/20 mb-6 pb-6 hidden">
         <div class="pb-4 mb-4 border-b border-[#FFDB89]/20">

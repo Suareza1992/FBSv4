@@ -1147,6 +1147,55 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch { showToast('Error de conexión.', 'error'); }
             });
 
+            // ── Dietary Preferences (feeds the meal recommender) ──────────────
+            const dietTypeSel    = document.getElementById('diet-type-select');
+            const allergiesInput = document.getElementById('diet-allergies-input');
+            const dislikesInput  = document.getElementById('diet-dislikes-input');
+            const dietNotesInput = document.getElementById('diet-notes-input');
+            const quickChipsWrap = document.getElementById('allergy-quick-chips');
+
+            // Comma-separated string <-> array helpers
+            const csvToArr = (s) => (s || '').split(',').map(x => x.trim()).filter(Boolean);
+            const arrToCsv = (a) => (Array.isArray(a) ? a : []).join(', ');
+
+            // Populate from saved profile
+            const prefs = profile.dietaryPreferences || {};
+            if (dietTypeSel)    dietTypeSel.value    = prefs.dietType || '';
+            if (allergiesInput) allergiesInput.value = arrToCsv(prefs.allergies);
+            if (dislikesInput)  dislikesInput.value  = arrToCsv(prefs.dislikes);
+            if (dietNotesInput) dietNotesInput.value = prefs.notes || '';
+
+            // Common-allergen quick-add chips — clicking appends to the allergies field
+            if (quickChipsWrap && allergiesInput) {
+                const COMMON_ALLERGENS = ['Mariscos', 'Maní', 'Frutos secos', 'Lácteos', 'Huevo', 'Gluten', 'Soya', 'Pescado'];
+                quickChipsWrap.innerHTML = COMMON_ALLERGENS.map(a =>
+                    `<button type="button" data-allergen="${a}" class="allergen-chip px-2.5 py-1 rounded-full text-xs font-medium border border-[#FFDB89]/20 text-[#FFDB89]/60 hover:bg-red-400/10 hover:border-red-400/40 hover:text-red-300 transition">+ ${a}</button>`
+                ).join('');
+                quickChipsWrap.querySelectorAll('.allergen-chip').forEach(chip => {
+                    chip.addEventListener('click', () => {
+                        const allergen = chip.dataset.allergen;
+                        const current = csvToArr(allergiesInput.value);
+                        if (!current.some(x => x.toLowerCase() === allergen.toLowerCase())) {
+                            current.push(allergen);
+                            allergiesInput.value = current.join(', ');
+                        }
+                    });
+                });
+            }
+
+            document.getElementById('save-dietary-prefs-btn')?.addEventListener('click', async () => {
+                const dietaryPreferences = {
+                    dietType:  dietTypeSel?.value || '',
+                    allergies: csvToArr(allergiesInput?.value),
+                    dislikes:  csvToArr(dislikesInput?.value),
+                    notes:     (dietNotesInput?.value || '').trim(),
+                };
+                try {
+                    const r = await apiFetch('/api/me', { method: 'PUT', body: JSON.stringify({ dietaryPreferences }) });
+                    showToast(r.ok ? 'Preferencias alimenticias guardadas.' : 'Error al guardar.', r.ok ? 'success' : 'error');
+                } catch { showToast('Error de conexión.', 'error'); }
+            });
+
         } catch (e) { console.error('Error loading settings:', e); }
     };
 
