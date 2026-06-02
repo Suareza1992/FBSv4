@@ -57,6 +57,9 @@
                 <p class="text-xs text-[#FFDB89]/50">Meta: <span class="font-bold text-[#FFDB89]" id="calorie-goal-display">--</span></p>
                 <p class="text-xs">Restante: <span class="font-bold" id="calories-remaining-display" style="color:rgba(255,219,137,0.6)">--</span></p>
             </div>
+            <button id="meal-suggest-btn" class="mt-4 w-full px-4 py-2.5 rounded-xl bg-[#FFDB89]/15 border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold hover:bg-[#FFDB89]/25 transition flex items-center justify-center gap-2">
+                <i class="fas fa-wand-magic-sparkles"></i> ¿Qué como?
+            </button>
         </div>
 
         <!-- Macro Bars -->
@@ -140,6 +143,23 @@
         </div>
     </div>
 
+    <!-- Extra Exercise / Calories Burned -->
+    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 p-5 rounded-xl">
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="font-bold text-[#FFDB89]"><i class="fas fa-person-running text-green-400 mr-2"></i>Ejercicio extra</h3>
+            <span class="text-sm font-black text-green-400" id="exercise-total-display">0 cal</span>
+        </div>
+        <p class="text-[11px] text-[#FFDB89]/40 mb-3">Registra entrenamientos extra (ej: una corrida larga). Las calorías quemadas se suman a tu presupuesto del día.</p>
+        <div id="exercise-list" class="space-y-2 mb-3"></div>
+        <div class="flex items-center gap-2">
+            <input type="text" id="exercise-name-input" placeholder="Actividad (ej: Correr 10 millas)" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+                class="flex-1 min-w-0 p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89] placeholder-[#FFDB89]/25">
+            <input type="number" id="exercise-cal-input" placeholder="cal" min="0"
+                class="w-20 p-2 bg-white/10 border border-green-400/20 rounded-lg text-green-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-green-400">
+            <button id="exercise-add-btn" class="px-3 py-2 bg-green-400/10 border border-green-400/20 text-green-400 hover:bg-green-400/20 rounded-lg text-sm font-bold transition shrink-0"><i class="fas fa-plus"></i></button>
+        </div>
+    </div>
+
     <!-- Meals -->
     <div class="space-y-4">
         <h3 class="text-sm font-bold text-[#FFDB89] uppercase tracking-wider">Comidas del Día</h3>
@@ -176,6 +196,22 @@
         </div>
         <div id="nutrition-history" class="space-y-2">
             <p class="text-[#FFDB89]/30 text-sm text-center py-4">Cargando historial...</p>
+        </div>
+    </div>
+
+    <!-- Meal Suggestion Modal ("¿Qué como?") -->
+    <div id="meal-suggest-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm">
+        <div class="bg-[#0D0D0D] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" style="max-height:90vh;max-height:90dvh">
+            <div class="px-5 py-4 border-b border-[#FFDB89]/15 flex justify-between items-center bg-[#FFDB89]/5 rounded-t-2xl">
+                <div>
+                    <h3 class="text-lg font-bold text-[#FFDB89]"><i class="fas fa-wand-magic-sparkles mr-2"></i>¿Qué como?</h3>
+                    <p id="meal-suggest-sub" class="text-xs text-[#FFDB89]/50 mt-0.5">Sugerencias para cerrar tus macros</p>
+                </div>
+                <button id="meal-suggest-close" class="text-[#FFDB89]/40 hover:text-red-400 transition"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div id="meal-suggest-body" class="p-5 overflow-y-auto space-y-4">
+                <!-- rendered by JS -->
+            </div>
         </div>
     </div>
 

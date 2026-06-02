@@ -16,6 +16,7 @@ import { authenticateToken, authorizeRoles } from './middleware/auth.js';
 import Stripe from 'stripe';
 import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
+import Anthropic from '@anthropic-ai/sdk';
 
 // ==========================================================================
 // --- CONFIGURATION ---
@@ -42,6 +43,12 @@ cloudinary.config({
     api_key:    process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// --- ANTHROPIC (meal recommender) ---
+// Reads ANTHROPIC_API_KEY from env. Null when unset so the route can 503 gracefully.
+const anthropic = process.env.ANTHROPIC_API_KEY
+    ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    : null;
 
 // Multer: store file in memory so we can stream the buffer straight to Cloudinary
 const photoUpload = multer({
@@ -409,6 +416,11 @@ const NutritionLogSchema = new mongoose.Schema({
     notes: { type: String, default: '' },
     mood: { type: String, default: '' },
     meals: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Extra exercise the client logged beyond their plan (e.g. a long run).
+    // `exercise` holds the detail [{name, calories}]; `exerciseCalories` is the
+    // total burned, used to widen the day's calorie budget.
+    exercise: { type: mongoose.Schema.Types.Mixed, default: [] },
+    exerciseCalories: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now }
 });
 NutritionLogSchema.index({ clientId: 1, date: -1 });
@@ -1552,7 +1564,7 @@ app.get('/api/nutrition-logs/:clientId', authenticateToken, async (req, res) => 
 
 app.post('/api/nutrition-logs', authenticateToken, async (req, res) => {
     try {
-        const { clientId, date, calories, protein, carbs, fat, water, notes, mood, meals } = req.body;
+        const { clientId, date, calories, protein, carbs, fat, water, notes, mood, meals, exercise, exerciseCalories } = req.body;
         // Only update fields that were explicitly provided
         const updateFields = {};
         if (calories !== undefined) updateFields.calories = calories;
@@ -1563,12 +1575,15 @@ app.post('/api/nutrition-logs', authenticateToken, async (req, res) => {
         if (notes    !== undefined) updateFields.notes    = notes;
         if (mood     !== undefined) updateFields.mood     = mood;
         if (meals    !== undefined) updateFields.meals    = meals;
+        if (exercise !== undefined) updateFields.exercise = exercise;
+        if (exerciseCalories !== undefined) updateFields.exerciseCalories = exerciseCalories;
 
-        // Only create a new log (upsert) when actual nutrition data is being saved.
+        // Only create a new log (upsert) when actual nutrition/activity data is being saved.
         // Mood-only or notes-only saves should update existing logs but never create phantom 0-calorie entries.
         const hasNutritionData = calories !== undefined || protein !== undefined ||
                                  carbs !== undefined || fat !== undefined ||
-                                 water !== undefined || meals !== undefined;
+                                 water !== undefined || meals !== undefined ||
+                                 exercise !== undefined || exerciseCalories !== undefined;
 
         const log = await NutritionLog.findOneAndUpdate(
             { clientId, date },
@@ -2330,6 +2345,57 @@ function rankByNameRelevance(items, q) {
     }).sort((a, b) => b._score - a._score).map(({ _score, ...f }) => f);
 }
 
+// Resolve a single ingredient name to verified per-100g macros, used by the
+// meal recommender to ground the LLM's suggestions in real database numbers.
+// Tries the curated local DB and shared library first (instant), then USDA.
+// Returns { name, per100:{cal,protein,carbs,fat} } or null if no confident match.
+async function resolveIngredientMacros(query) {
+    const q = (query || '').trim();
+    if (!q || q.length < 2) return null;
+
+    // 1 ── Curated local DB (instant, Spanish-friendly, USDA-quality)
+    const local = searchLocalFoods(q);
+    if (local.length) {
+        const f = local[0];
+        return { name: f.name, per100: { cal: f.cal100, protein: f.p100, carbs: f.c100, fat: f.f100 } };
+    }
+
+    // 2 ── Shared community food library (Mongo, stored per-100g)
+    try {
+        const normQ   = normalizeStr(q);
+        const terms   = normQ.split(/\s+/).filter(Boolean);
+        const pattern = terms.map(t => `(?=.*${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`).join('');
+        const doc = await FoodLibrary.findOne({ nameNorm: new RegExp(pattern, 'i') }).sort({ timesUsed: -1 });
+        if (doc) {
+            return { name: doc.name, per100: { cal: doc.calories || 0, protein: doc.protein || 0, carbs: doc.carbs || 0, fat: doc.fat || 0 } };
+        }
+    } catch (_) { /* non-blocking */ }
+
+    // 3 ── USDA FoodData Central (gold-standard generic foods)
+    try {
+        const usdaKey = process.env.USDA_API_KEY || 'DEMO_KEY';
+        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaKey}&query=${encodeURIComponent(q)}&pageSize=5&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS)&nutrients=1008,1003,1005,1004`;
+        const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
+        const data = await r.json();
+        const ranked = rankByNameRelevance(
+            (data.foods || [])
+                .filter(f => f.description?.trim())
+                .map(f => {
+                    const get = id => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
+                    return { name: f.description.trim(), cal100: Math.round(get(1008)), p100: get(1003), c100: get(1005), f100: get(1004) };
+                })
+                .filter(f => f.cal100 > 0),
+            q
+        );
+        if (ranked.length) {
+            const f = ranked[0];
+            return { name: f.name, per100: { cal: f.cal100, protein: f.p100, carbs: f.c100, fat: f.f100 } };
+        }
+    } catch (_) { /* non-blocking */ }
+
+    return null;
+}
+
 // POST /api/food-library — upsert a food into the shared platform library
 app.post('/api/food-library', authenticateToken, async (req, res) => {
     try {
@@ -2586,6 +2652,173 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
     const fallback = [...localMatches, ...libraryMatches];
     if (fallback.length) return res.json(fallback);
     res.status(502).json({ error: 'Food search unavailable. Use manual entry.' });
+});
+
+// ==========================================================================
+// --- PROTECTED: AI Meal Recommender ---
+// LLM proposes meal ideas (ingredient + grams); the server recomputes the
+// real macros from the food database so displayed numbers are trustworthy.
+// ==========================================================================
+const MEAL_SUGGESTION_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        suggestions: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    title:     { type: 'string', description: 'Nombre corto de la comida o snack, en español' },
+                    rationale: { type: 'string', description: 'Una frase breve explicando por qué ayuda a cerrar los macros' },
+                    items: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            additionalProperties: false,
+                            properties: {
+                                food:  { type: 'string', description: 'Nombre genérico y simple del ingrediente (ej: "Pechuga de pollo", "Arroz blanco", "Aceite de oliva"), no un platillo compuesto' },
+                                grams: { type: 'number', description: 'Cantidad en gramos' },
+                            },
+                            required: ['food', 'grams'],
+                        },
+                    },
+                },
+                required: ['title', 'rationale', 'items'],
+            },
+        },
+    },
+    required: ['suggestions'],
+};
+
+app.post('/api/meal-suggestion', authenticateToken, async (req, res) => {
+    if (!anthropic) {
+        return res.status(503).json({ message: 'El recomendador de comidas no está configurado. Agrega ANTHROPIC_API_KEY en .env.' });
+    }
+    try {
+        // Resolve whose preferences to use: a trainer may request for a client; a
+        // client only for themselves. Preferences are always read from the DB,
+        // never trusted from the request body.
+        let targetId = req.user.id;
+        if (req.body.clientId && (req.user.role === 'trainer' || req.user.role === 'admin')) {
+            targetId = req.body.clientId;
+        } else if (req.body.clientId && String(req.body.clientId) !== String(req.user.id)) {
+            return res.status(403).json({ message: 'Forbidden' });
+        }
+
+        const user = await User.findById(targetId).select('dietaryPreferences macroSettings');
+        if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+
+        // Remaining macros for the day come from the client (it knows unsaved
+        // foods on screen). Clamp to non-negative integers.
+        const r = req.body.remaining || {};
+        const remaining = {
+            calories: Math.max(0, Math.round(Number(r.calories) || 0)),
+            protein:  Math.max(0, Math.round(Number(r.protein)  || 0)),
+            carbs:    Math.max(0, Math.round(Number(r.carbs)    || 0)),
+            fat:      Math.max(0, Math.round(Number(r.fat)      || 0)),
+        };
+        if (remaining.calories <= 0 && remaining.protein <= 0 && remaining.carbs <= 0 && remaining.fat <= 0) {
+            return res.status(400).json({ message: 'Ya alcanzaste tus macros — no hay nada que recomendar.' });
+        }
+
+        // Foods already eaten today (names only) so suggestions add variety.
+        const eaten = Array.isArray(req.body.eaten)
+            ? req.body.eaten.filter(x => typeof x === 'string').slice(0, 40)
+            : [];
+
+        const prefs = user.dietaryPreferences || {};
+        const allergies = (prefs.allergies || []).join(', ') || 'ninguna';
+        const dislikes  = (prefs.dislikes  || []).join(', ') || 'ninguno';
+        const dietType  = prefs.dietType || 'sin preferencia (omnívoro)';
+        const notes     = (prefs.notes || '').trim() || 'ninguna';
+
+        const systemPrompt =
+`Eres un asistente de nutrición para una app de coaching fitness. El cliente ya comió saludable hoy pero le faltan macros para llegar a su meta. Sugiere comidas o snacks COMPLETOS y realistas que ayuden a cerrar la diferencia.
+
+REGLAS ESTRICTAS:
+- NUNCA incluyas estos alérgenos ni nada derivado de ellos: ${allergies}.
+- Respeta el tipo de dieta: ${dietType}.
+- Evita estos alimentos que no le gustan (a menos que sea imprescindible): ${dislikes}.
+- Considera estas notas del cliente: ${notes}.
+- Da exactamente 3 sugerencias distintas.
+- Cada sugerencia debe priorizar cerrar el macro que más falta (normalmente proteína).
+- Usa nombres de ingredientes GENÉRICOS y SIMPLES que existan en una base de datos nutricional (ej: "Pechuga de pollo", "Arroz blanco", "Yogur griego", "Almendras"), NO platillos compuestos ni marcas.
+- Especifica gramos realistas por ingrediente.
+- No calcules tú las calorías ni macros; solo propón ingredientes y gramos. El sistema calculará los macros reales.
+- Responde en español.`;
+
+        const userPrompt =
+`Macros que faltan para hoy:
+- Calorías: ${remaining.calories} kcal
+- Proteína: ${remaining.protein} g
+- Carbohidratos: ${remaining.carbs} g
+- Grasas: ${remaining.fat} g
+
+Ya comió hoy: ${eaten.length ? eaten.join(', ') : '(sin registro detallado)'}
+
+Sugiere 3 comidas/snacks para acercarlo a su meta.`;
+
+        const aiResp = await anthropic.messages.create({
+            model: 'claude-haiku-4-5',
+            max_tokens: 2000,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+            output_config: { format: { type: 'json_schema', schema: MEAL_SUGGESTION_SCHEMA } },
+        });
+
+        const textBlock = aiResp.content.find(b => b.type === 'text');
+        let parsed;
+        try { parsed = JSON.parse(textBlock?.text || '{}'); }
+        catch { return res.status(502).json({ message: 'No se pudo interpretar la sugerencia. Intenta de nuevo.' }); }
+
+        const rawSuggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 3) : [];
+
+        // Verify every ingredient against the food DB, in parallel, and recompute
+        // the real macros. The LLM's numbers are never used.
+        const verified = await Promise.all(rawSuggestions.map(async (s) => {
+            const items = Array.isArray(s.items) ? s.items.slice(0, 8) : [];
+            const resolved = await Promise.all(items.map(async (it) => {
+                const grams = Math.max(0, Number(it.grams) || 0);
+                const macro = await resolveIngredientMacros(it.food);
+                if (!macro || grams <= 0) {
+                    return { food: it.food, grams, verified: false, calories: 0, protein: 0, carbs: 0, fat: 0 };
+                }
+                const factor = grams / 100;
+                return {
+                    food: it.food,
+                    matchedName: macro.name,
+                    grams,
+                    verified: true,
+                    calories: Math.round(macro.per100.cal     * factor),
+                    protein:  Math.round(macro.per100.protein * factor),
+                    carbs:    Math.round(macro.per100.carbs   * factor),
+                    fat:      Math.round(macro.per100.fat     * factor),
+                };
+            }));
+            const totals = resolved.reduce((acc, it) => ({
+                calories: acc.calories + it.calories,
+                protein:  acc.protein  + it.protein,
+                carbs:    acc.carbs    + it.carbs,
+                fat:      acc.fat      + it.fat,
+            }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+            return {
+                title: String(s.title || 'Sugerencia'),
+                rationale: String(s.rationale || ''),
+                items: resolved,
+                totals,
+                hasUnverified: resolved.some(it => !it.verified),
+            };
+        }));
+
+        res.json({ remaining, suggestions: verified });
+    } catch (e) {
+        console.error('Meal suggestion error:', e.message);
+        const msg = e.status === 401
+            ? 'Error de autenticación con el servicio de IA. Contacta al administrador.'
+            : 'Error generando sugerencias. Intenta de nuevo.';
+        res.status(500).json({ message: msg });
+    }
 });
 
 // ==========================================================================

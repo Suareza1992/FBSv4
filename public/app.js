@@ -19,6 +19,16 @@ document.addEventListener('DOMContentLoaded', () => {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
+    // Format a Date as YYYY-MM-DD in the user's LOCAL timezone (never UTC).
+    // Using toISOString() shifted the calendar day for west-of-UTC users — e.g. at
+    // 8pm in Puerto Rico (UTC-4) the UTC date is already tomorrow, so "today" rolled
+    // over early. getFullYear/getMonth/getDate read local time and fix that.
+    const localDateStr = (d = new Date()) => {
+        const x = (d instanceof Date) ? d : new Date(d);
+        return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    };
+    const getTodayStr = () => localDateStr(new Date());
+
     // H-2: apiFetch — token is now an HttpOnly cookie, sent automatically by the browser.
     // We no longer read or set auth_token in localStorage.
     const apiFetch = async (url, options = {}) => {
@@ -2838,7 +2848,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.showAddMeasurementModal = (clientId, heightInches) => {
         const existing = document.getElementById('add-measurement-modal');
         if (existing) existing.remove();
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayStr();
         const inputCls = 'w-full p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30';
         const labelCls = 'block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1';
         document.body.insertAdjacentHTML('beforeend', `
@@ -3390,7 +3400,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('tab-nutrition');
         if (!container) return;
         try {
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getTodayStr();
             const [logsRes, measRes] = await Promise.all([
                 apiFetch(`/api/nutrition-logs/${clientId}`),
                 apiFetch(`/api/body-measurements/${clientId}`)
@@ -3538,7 +3548,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.showAddNutritionModal = (clientId) => {
         const existing = document.getElementById('add-nutrition-modal');
         if (existing) existing.remove();
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayStr();
         document.body.insertAdjacentHTML('beforeend', `
             <div id="add-nutrition-modal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4">
                 <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
@@ -3732,7 +3742,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.showAddPhotoModal = (clientId) => {
         const existing = document.getElementById('add-photo-modal');
         if (existing) existing.remove();
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayStr();
         document.body.insertAdjacentHTML('beforeend', `
             <div id="add-photo-modal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4">
                 <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
@@ -4175,7 +4185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             restingHr, thr, mahr,
             hideFromDashboard: hideDash,
             emailPreferences: { dailyRoutine: sendDaily, incompleteRoutine: sendIncomplete },
-            dueDate: document.getElementById('opt-due-date')?.value || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            dueDate: document.getElementById('opt-due-date')?.value || localDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
         };
 
         try {
@@ -6151,9 +6161,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Pushes all program days to a client's calendar starting from startDateStr ---
-    // Helper: format a Date as YYYY-MM-DD using LOCAL time (avoids UTC-offset day-shift bugs)
-    const localDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-
+    // (localDateStr is now defined once at the top of this module.)
     const pushProgramToCalendar = async (prog, clientId, startDateStr) => {
         const startDate = new Date(startDateStr + 'T00:00:00');
         let current = new Date(startDate);
@@ -6669,7 +6677,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const searchVal    = (document.getElementById('pagos-search')?.value || '').toLowerCase();
         const statusFilter = document.getElementById('pagos-status-filter')?.value || 'all';
-        const today        = new Date().toISOString().split('T')[0];
+        const today        = getTodayStr();
 
         // Auto-elevate pending → overdue based on today
         const enriched = paymentsDb.map(p => ({
@@ -6846,7 +6854,7 @@ document.addEventListener('DOMContentLoaded', () => {
             clientsCache.map(c => `<option value="${c._id}">${c.name} ${c.lastName || ''}</option>`).join('');
         // Default due date to end of current month
         const now = new Date();
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+        const lastDay = localDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
         document.getElementById('inv-due').value = lastDay;
         // Default period label
         const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -7171,7 +7179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 for(const item of copiedMultiDayData) {
                     const targetDate = new Date(pasteStartDate);
                     targetDate.setDate(targetDate.getDate() + item.dayOffset);
-                    const targetDateStr = targetDate.toISOString().split('T')[0];
+                    const targetDateStr = localDateStr(targetDate);
 
                     const pastedWorkout = {
                         ...item.workout,
@@ -9066,7 +9074,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Load today's workout
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getTodayStr();
         const content = document.getElementById('today-workout-content');
         try {
             const res = await apiFetch(`/api/client-workouts/${session.id}/${todayStr}`);
@@ -9091,7 +9099,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>`;
                     } else {
                         content.innerHTML = `
-                            <h4 class="text-lg font-bold text-[#FFDB89] mb-3">${workout.title || 'Entrenamiento'}</h4>
+                            <div class="flex items-center justify-between gap-2 mb-3">
+                                <h4 class="text-lg font-bold text-[#FFDB89]">${workout.title || 'Entrenamiento'}</h4>
+                                ${workout.isComplete
+                                    ? '<span class="text-[10px] font-bold text-green-400 flex items-center gap-1 shrink-0"><i class="fas fa-check-circle"></i> Completado</span>'
+                                    : ''}
+                            </div>
                             ${workout.warmup ? `<p class="text-sm text-orange-400 mb-2"><i class="fas fa-fire mr-1"></i> Calentamiento: ${workout.warmup}</p>` : ''}
                             <div class="space-y-2">
                                 ${(workout.exercises || []).map((ex, i) => `
@@ -9102,7 +9115,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 `).join('')}
                             </div>
                             ${workout.cooldown ? `<p class="text-sm text-[#FFDB89]/50 mt-2"><i class="fas fa-snowflake mr-1"></i> Vuelta a la calma: ${workout.cooldown}</p>` : ''}
+                            <p class="text-xs text-[#FFDB89]/40 mt-3 flex items-center gap-1.5"><i class="fas fa-hand-pointer"></i> Toca para ${workout.isComplete ? 'revisar o editar lo que hiciste' : 'registrar tus resultados'}</p>
                         `;
+                        // Whole card opens the editable detail — even after it's completed.
+                        content.classList.add('cursor-pointer');
+                        content.onclick = () => showClientWorkoutDetail(workout);
                     }
                 }
             } else {
@@ -9135,7 +9152,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dayOfWeek = now.getDay();
                 const weekStart = new Date(now);
                 weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-                const weekStartStr = weekStart.toISOString().split('T')[0];
+                const weekStartStr = localDateStr(weekStart);
                 const thisWeek = trainingDays.filter(w => w.date >= weekStartStr && w.date <= todayStr).length;
                 const weekEl = document.getElementById('stat-workouts-week');
                 if (weekEl) weekEl.textContent = thisWeek;
@@ -9145,7 +9162,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let streak = 0;
                 const checkDate = new Date();
                 for (let i = 0; i < 365; i++) {
-                    const ds = checkDate.toISOString().split('T')[0];
+                    const ds = localDateStr(checkDate);
                     if (workoutDates.has(ds)) {
                         streak++;
                         checkDate.setDate(checkDate.getDate() - 1);
@@ -9796,7 +9813,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const session = loadSession();
         if (!session) return;
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getTodayStr();
 
         // Set date picker to today
         const datePicker = document.getElementById('nutri-date');
@@ -9849,6 +9866,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // State: meals array
         let mealsData = [];
+        let exerciseData = [];  // [{name, calories}] extra activity logged for the day
         let waterOz = 0;
         let calorieGoal = 0;
         let foodHistory = [];   // cached from past logs for autocomplete
@@ -10025,11 +10043,15 @@ document.addEventListener('DOMContentLoaded', () => {
             set('total-fat-display',      Math.round(totalFat) + 'g');
             set('total-water-display',    waterOz);
 
-            // Update calorie goal display
+            // Update calorie goal display. Extra exercise widens the day's budget.
             const { pro: goalPro, carbs: goalCarbs, fat: goalFat } = getGoals();
-            const derivedCalGoal = calorieGoal || (goalPro * 4 + goalCarbs * 4 + goalFat * 9);
+            const baseCalGoal = calorieGoal || (goalPro * 4 + goalCarbs * 4 + goalFat * 9);
+            const burnedCal   = exerciseData.reduce((s, e) => s + (parseFloat(e.calories) || 0), 0);
+            const derivedCalGoal = baseCalGoal + burnedCal;   // effective budget for the day
             const goalEl = document.getElementById('calorie-goal-display');
-            if (goalEl) goalEl.textContent = derivedCalGoal || '--';
+            if (goalEl) goalEl.textContent = baseCalGoal
+                ? (burnedCal > 0 ? `${baseCalGoal} +${Math.round(burnedCal)}🔥` : baseCalGoal)
+                : '--';
 
             const setBar = (barId, labelId, current, goal) => {
                 const bar = document.getElementById(barId);
@@ -10068,6 +10090,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- RENDER MEALS ---
         const mealNames = ['Desayuno', 'Merienda AM', 'Almuerzo', 'Merienda PM', 'Cena', 'Snack'];
+
+        // --- EXERCISE (extra calories burned) ---
+        const renderExercise = () => {
+            const listEl  = document.getElementById('exercise-list');
+            const totalEl = document.getElementById('exercise-total-display');
+            const total   = exerciseData.reduce((s, e) => s + (parseFloat(e.calories) || 0), 0);
+            if (totalEl) totalEl.textContent = `${Math.round(total)} cal`;
+            if (!listEl) return;
+            if (!exerciseData.length) {
+                listEl.innerHTML = `<p class="text-xs text-[#FFDB89]/25 italic text-center py-1">Sin ejercicio extra registrado.</p>`;
+                return;
+            }
+            listEl.innerHTML = exerciseData.map((e, i) => `
+                <div class="flex items-center justify-between gap-2 bg-white/5 border border-[#FFDB89]/10 rounded-lg px-3 py-2">
+                    <span class="text-sm text-white/90 truncate">${(e.name || 'Ejercicio').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span class="text-xs font-bold text-green-400">${Math.round(parseFloat(e.calories) || 0)} cal</span>
+                        <button class="text-red-400/40 hover:text-red-400 transition" onclick="window._nutriRemoveExercise(${i})" title="Eliminar"><i class="fas fa-times text-xs"></i></button>
+                    </div>
+                </div>`).join('');
+        };
+
+        window._nutriRemoveExercise = (i) => {
+            exerciseData.splice(i, 1);
+            renderExercise();
+            recalcTotals();
+            doSaveNutrition({ silent: true });
+        };
+
+        const addExerciseEntry = () => {
+            const nameEl = document.getElementById('exercise-name-input');
+            const calEl  = document.getElementById('exercise-cal-input');
+            const cal  = Math.round(parseFloat(calEl?.value) || 0);
+            const name = (nameEl?.value || '').trim();
+            if (cal <= 0) { showToast('Ingresa las calorías quemadas (mayor a 0).', 'error'); return; }
+            exerciseData.push({ name: name || 'Ejercicio', calories: cal });
+            if (nameEl) nameEl.value = '';
+            if (calEl)  calEl.value  = '';
+            renderExercise();
+            recalcTotals();
+            doSaveNutrition({ silent: true });
+            nameEl?.focus();
+        };
+
+        document.getElementById('exercise-add-btn')?.addEventListener('click', addExerciseEntry);
+        ['exercise-name-input', 'exercise-cal-input'].forEach(id => {
+            document.getElementById(id)?.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); addExerciseEntry(); }
+            });
+        });
 
         const renderMeals = () => {
             const container = document.getElementById('meals-container');
@@ -10396,8 +10468,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                     class="w-20 p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] font-black text-sm text-center outline-none focus:ring-2 focus:ring-[#FFDB89]">
                             </div>
                             <div class="flex-1 flex flex-col">
-                                <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider mb-1">Unidad <span class="normal-case opacity-60">(opcional)</span></label>
-                                <input type="text" id="food-unit-input" placeholder="ej: huevos, rebanadas, tazas..."
+                                <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider mb-1">Unidad <span class="text-red-400">*</span></label>
+                                <input type="text" id="food-unit-input" placeholder="ej: huevos, rebanadas, tazas, g, oz..."
                                     class="w-full p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89] placeholder-[#FFDB89]/20" autocorrect="off" autocapitalize="none" spellcheck="false">
                             </div>
                         </div>
@@ -10431,8 +10503,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const qty  = parseFloat(qtyInput.value) || 1;
                     const unit = unitInput.value.trim();
                     const baseName = nameInput.value.trim();
+                    // Unit is now required — always reflect "qty unit name" in the display name.
                     const displayName = baseName
-                        ? (qty !== 1 ? `${qty}${unit ? ' ' + unit : 'x'} ${baseName}` : baseName)
+                        ? `${qty}${unit ? ' ' + unit : ''} ${baseName}`
                         : '';
                     // Macros are stored exactly as entered — qty only affects the display name.
                     const f = {
@@ -10443,8 +10516,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         fat:      Math.round(parseFloat(fatInput.value)  || 0)
                     };
                     if (baseName) setPreview(f, false);
+                    // Require both a name AND a unit before the food can be added.
                     const btn = document.getElementById('confirm-add-food');
-                    if (btn) btn.disabled = !baseName;
+                    if (btn) btn.disabled = !baseName || !unit;
                 };
 
                 [calInput, proInput, carbInput, fatInput, qtyInput, unitInput].forEach(el => el?.addEventListener('input', syncPreview));
@@ -10503,7 +10577,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     carbInput.value  = item.dataset.carb;
                     fatInput.value   = item.dataset.fat;
                     qtyInput.value   = 1;
-                    unitInput.value  = '';
+                    unitInput.value  = 'porción';   // satisfy the required unit; user can edit
                     suggestions.classList.add('hidden');
                     syncPreview();
                 });
@@ -10529,6 +10603,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const resultsDiv  = document.getElementById('off-results');
                 let lastProducts  = [];
                 let searchTimer   = null;
+                let searchSeq     = 0;   // guards against out-of-order responses
 
                 // ── Show recent foods (from history) ──
                 const showRecentFoods = async () => {
@@ -10667,13 +10742,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const doSearch = async () => {
                     const q = searchInput.value.trim();
                     if (!q) { showRecentFoods(); return; }
+                    const seq = ++searchSeq;   // tag this request as the latest
                     resultsDiv.innerHTML = '<p class="text-xs text-[#FFDB89]/40 text-center py-4 animate-pulse"><i class="fas fa-spinner fa-spin mr-2"></i>Buscando...</p>';
                     try {
                         const res = await apiFetch(`/api/food-search?q=${encodeURIComponent(q)}`);
+                        // Ignore if a newer search has since fired (slow external tiers
+                        // can otherwise resolve out of order and clobber fresh results).
+                        if (seq !== searchSeq) return;
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                        lastProducts = await res.json();
+                        const data = await res.json();
+                        if (seq !== searchSeq) return;
+                        lastProducts = data;
                         showResultsList(lastProducts);
                     } catch (e) {
+                        if (seq !== searchSeq) return;   // don't overwrite newer results with a stale error
                         resultsDiv.innerHTML = `<div class="text-center py-4 space-y-2">
                             <p class="text-xs text-red-400/70">No se pudo completar la búsqueda.</p>
                             <button id="retry-search-btn" class="text-xs text-[#FFDB89]/60 hover:text-[#FFDB89] underline transition">Intentar de nuevo</button>
@@ -11262,6 +11344,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const log = logs.find(l => l.date === dateStr);
                 if (log) {
                     mealsData = log.meals ? (Array.isArray(log.meals) ? log.meals : Object.values(log.meals)) : [];
+                    exerciseData = Array.isArray(log.exercise) ? log.exercise : [];
                     // DB is authoritative — use its value, then sync localStorage with it
                     waterOz = log.water || 0;
                     localStorage.setItem(`fbs_water_${session.id}_${dateStr}`, waterOz);
@@ -11271,6 +11354,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // (Goals come from macroSettings on /api/me, not from the consumed log values)
                 } else {
                     mealsData = mealNames.slice(0, 3).map(name => ({ name, foods: [] }));
+                    exerciseData = [];
                     // No DB entry yet — check localStorage for any unsaved click state
                     const cached = loadWaterLocal(dateStr);
                     waterOz = cached !== null ? cached : 0;
@@ -11278,6 +11362,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (notesEl) notesEl.value = '';
                 }
                 renderMeals();
+                renderExercise();
                 renderWaterCups();
                 recalcTotals();
             } catch (e) { console.error('Error loading nutrition log:', e); }
@@ -11297,6 +11382,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 carbs    += parseFloat(f.carbs)    || 0;
                 fat      += parseFloat(f.fat)      || 0;
             }));
+            const exerciseCalories = Math.round(exerciseData.reduce((s, e) => s + (parseFloat(e.calories) || 0), 0));
 
             try {
                 const res = await apiFetch('/api/nutrition-logs', {
@@ -11305,7 +11391,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         clientId: session.id, date: dateStr,
                         calories: Math.round(calories), protein: Math.round(protein),
                         carbs: Math.round(carbs), fat: Math.round(fat),
-                        water: waterOz, notes, meals: mealsData
+                        water: waterOz, notes, meals: mealsData,
+                        exercise: exerciseData, exerciseCalories
                     })
                 });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -11379,6 +11466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="text-yellow-400">${l.carbs}g C</span>
                                 <span class="text-orange-400">${l.fat}g G</span>
                                 ${l.water ? `<span class="text-sky-400"><i class="fas fa-tint mr-1"></i>${l.water} oz</span>` : ''}
+                                ${l.exerciseCalories ? `<span class="text-green-400"><i class="fas fa-person-running mr-1"></i>${l.exerciseCalories} cal</span>` : ''}
                             </div>
                         </div>
                         <button onclick="window._deleteNutriLog('${l._id}')"
@@ -11390,6 +11478,125 @@ document.addEventListener('DOMContentLoaded', () => {
                 window._deleteNutriLog = deleteNutriLog;
             } catch (e) { console.error('Error loading history:', e); }
         };
+
+        // --- "¿Qué como?" AI meal suggestions ---
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const mealSuggestBtn   = document.getElementById('meal-suggest-btn');
+        const mealSuggestModal = document.getElementById('meal-suggest-modal');
+        const mealSuggestBody  = document.getElementById('meal-suggest-body');
+        const mealSuggestSub   = document.getElementById('meal-suggest-sub');
+        const mealSuggestClose = document.getElementById('meal-suggest-close');
+
+        const closeMealSuggest = () => mealSuggestModal?.classList.add('hidden');
+        mealSuggestClose?.addEventListener('click', closeMealSuggest);
+        mealSuggestModal?.addEventListener('click', (e) => { if (e.target === mealSuggestModal) closeMealSuggest(); });
+
+        // Macros still remaining for the day, from current on-screen state
+        const computeRemaining = () => {
+            let cal = 0, pro = 0, carb = 0, fat = 0;
+            mealsData.forEach(m => (m.foods || []).forEach(f => {
+                cal  += parseFloat(f.calories) || 0;
+                pro  += parseFloat(f.protein)  || 0;
+                carb += parseFloat(f.carbs)    || 0;
+                fat  += parseFloat(f.fat)      || 0;
+            }));
+            const { pro: gP, carbs: gC, fat: gF } = getGoals();
+            const calGoal = calorieGoal || (gP * 4 + gC * 4 + gF * 9);
+            return {
+                calories: Math.max(0, Math.round(calGoal - cal)),
+                protein:  Math.max(0, Math.round(gP - pro)),
+                carbs:    Math.max(0, Math.round(gC - carb)),
+                fat:      Math.max(0, Math.round(gF - fat)),
+            };
+        };
+
+        const eatenFoodNames = () => {
+            const names = [];
+            mealsData.forEach(m => (m.foods || []).forEach(f => { if (f.name) names.push(f.name); }));
+            return names;
+        };
+
+        const renderSuggestions = ({ remaining, suggestions }) => {
+            if (mealSuggestSub) mealSuggestSub.textContent =
+                `Faltan ~${remaining.protein}g prot · ${remaining.carbs}g carbs · ${remaining.fat}g grasas · ${remaining.calories} kcal`;
+            if (!suggestions || !suggestions.length) {
+                mealSuggestBody.innerHTML = `<p class="text-center text-[#FFDB89]/40 py-6 text-sm">No se generaron sugerencias. Intenta de nuevo.</p>`;
+                return;
+            }
+            window._mealSuggestions = suggestions;
+            mealSuggestBody.innerHTML = suggestions.map((s, si) => `
+                <div class="bg-white/5 border border-[#FFDB89]/15 rounded-xl p-4">
+                    <div class="flex items-start justify-between gap-3 mb-1">
+                        <h4 class="font-bold text-white text-sm">${esc(s.title)}</h4>
+                        <span class="text-xs font-black text-[#FFDB89] shrink-0">${s.totals.calories} cal</span>
+                    </div>
+                    <p class="text-[11px] text-[#FFDB89]/50 mb-3">${esc(s.rationale)}</p>
+                    <div class="space-y-1.5 mb-3">
+                        ${s.items.map(it => {
+                            const warn = it.verified ? '' : ' <span class="text-yellow-500/60" title="No verificado en la base de datos">⚠</span>';
+                            return `<div class="flex items-center justify-between text-xs">
+                                <span class="text-white/80">${esc(it.food)} <span class="text-[#FFDB89]/30">· ${it.grams} g</span>${warn}</span>
+                                <span class="text-[#FFDB89]/50">${it.calories} cal</span>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    <div class="flex items-center justify-between pt-2.5 border-t border-[#FFDB89]/10">
+                        <div class="flex gap-2 text-[10px] font-bold">
+                            <span class="text-red-400/70">P:${s.totals.protein}g</span>
+                            <span class="text-yellow-400/70">C:${s.totals.carbs}g</span>
+                            <span class="text-orange-400/70">G:${s.totals.fat}g</span>
+                        </div>
+                        <button class="px-3 py-1.5 rounded-lg bg-[#FFDB89] text-[#030303] text-xs font-bold hover:bg-[#FFDB89]/80 transition" onclick="window._addSuggestedMeal(${si})">
+                            <i class="fas fa-plus mr-1"></i>Agregar
+                        </button>
+                    </div>
+                    ${s.hasUnverified ? `<p class="text-[10px] text-yellow-500/50 mt-2"><i class="fas fa-info-circle mr-1"></i>Algunos ingredientes no se encontraron en la base de datos; sus macros no se contaron.</p>` : ''}
+                </div>`).join('');
+        };
+
+        // Add a suggestion as a new meal on the page (verified ingredients only)
+        window._addSuggestedMeal = (si) => {
+            const s = (window._mealSuggestions || [])[si];
+            if (!s) return;
+            const foods = s.items.filter(it => it.verified).map(it => ({
+                name: it.matchedName || it.food,
+                calories: it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat,
+                servingAmount: it.grams, servingUnit: 'g',
+            }));
+            if (!foods.length) { showToast('Esta sugerencia no tiene ingredientes verificados.', 'error'); return; }
+            mealsData.push({ name: s.title, foods });
+            renderMeals();
+            recalcTotals();
+            closeMealSuggest();
+            showToast(`Agregado: ${s.title}. Recuerda guardar.`, 'success');
+        };
+
+        if (mealSuggestBtn) {
+            mealSuggestBtn.addEventListener('click', async () => {
+                const remaining = computeRemaining();
+                if (remaining.calories <= 0 && remaining.protein <= 0 && remaining.carbs <= 0 && remaining.fat <= 0) {
+                    showToast('Ya alcanzaste tus macros del día. 🎉', 'success');
+                    return;
+                }
+                mealSuggestModal.classList.remove('hidden');
+                mealSuggestBody.innerHTML = `<div class="py-10 text-center text-[#FFDB89]/50"><i class="fas fa-spinner fa-spin text-2xl mb-3"></i><p class="text-sm">Pensando en opciones para ti...</p></div>`;
+                if (mealSuggestSub) mealSuggestSub.textContent = 'Generando sugerencias...';
+                try {
+                    const res = await apiFetch('/api/meal-suggestion', {
+                        method: 'POST',
+                        body: JSON.stringify({ remaining, eaten: eatenFoodNames() })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        mealSuggestBody.innerHTML = `<p class="text-center text-red-400/70 py-6 text-sm">${esc(data.message || 'Error generando sugerencias.')}</p>`;
+                        return;
+                    }
+                    renderSuggestions(data);
+                } catch (e) {
+                    mealSuggestBody.innerHTML = `<p class="text-center text-red-400/70 py-6 text-sm">Error de conexión. Intenta de nuevo.</p>`;
+                }
+            });
+        }
 
         // Initial load
         await loadLogForDate(todayStr);
@@ -11543,7 +11750,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Upload modal
         const openUploadModal = () => {
             document.getElementById('client-upload-photo-modal')?.remove();
-            const today = new Date().toISOString().split('T')[0];
+            const today = getTodayStr();
             document.body.insertAdjacentHTML('beforeend', `
                 <div id="client-upload-photo-modal" class="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4">
                     <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
@@ -11830,7 +12037,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 html += `
-                    <div id="client-day-${dateStr}" class="flex items-stretch border-b border-[#FFDB89]/10 relative hover:bg-white/[0.02] transition-colors ${rowBg} ${isToday ? 'client-is-today' : ''}">
+                    <div id="client-day-${dateStr}" ${workout ? `data-date="${dateStr}" ` : ''}class="flex items-stretch border-b border-[#FFDB89]/10 relative hover:bg-white/[0.02] transition-colors ${workout ? 'cursor-pointer ' : ''}${rowBg} ${isToday ? 'client-is-today' : ''}">
                         <div class="w-16 shrink-0 flex flex-col items-center justify-center py-3 gap-0.5 border-r border-[#FFDB89]/10">
                             <span class="text-[10px] font-bold uppercase tracking-wide ${isToday ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'}">${dayName}</span>
                             ${dayNumDisplay}
@@ -11849,14 +12056,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (todayEl) todayEl.scrollIntoView({ block: 'center', behavior: 'auto' });
             }, 50);
 
-            // Workout detail expand
+            // Workout detail expand — the WHOLE row is tappable, not just the chevron
+            // (a completed/green workout was previously only openable via the tiny arrow).
             container.addEventListener('click', (e) => {
-                const btn = e.target.closest('.client-view-workout-btn');
-                if (!btn) return;
-                const date = btn.dataset.date;
-                const w = workoutMap[date];
-                if (!w) return;
-                showClientWorkoutDetail(w);
+                const row = e.target.closest('[data-date]');
+                if (!row) return;
+                const w = workoutMap[row.dataset.date];
+                if (w) showClientWorkoutDetail(w);
             });
         };
 
@@ -11865,7 +12071,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('client-upcoming-container');
             if (!container) return;
 
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getTodayStr();
             const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
             const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
@@ -11918,7 +12124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('client-history-container');
             if (!container) return;
 
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getTodayStr();
             const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
             const dayNames = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
@@ -11990,7 +12196,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // --- MOOD: load today's mood, wire up buttons ---
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getTodayStr();
         try {
             const moodRes = await apiFetch(`/api/nutrition-logs/${session.id}`);
             if (moodRes.ok) {
@@ -12568,7 +12774,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show loading state
         feedContainer.innerHTML = '<p class="text-center text-[#FFDB89]/50 py-8"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando actividad...</p>';
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getTodayStr();
 
         // Filter clients by type
         const clientsToRender = filterType === 'Todos'
