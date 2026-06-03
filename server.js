@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
-dotenv.config();
+// Keep the parsed values: dotenv does NOT override a variable already exported in
+// the shell (e.g. an empty ANTHROPIC_API_KEY), so we fall back to .env where needed.
+const dotenvParsed = dotenv.config().parsed || {};
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -45,10 +47,22 @@ cloudinary.config({
 });
 
 // --- ANTHROPIC (meal recommender) ---
-// Reads ANTHROPIC_API_KEY from env. Null when unset so the route can 503 gracefully.
-const anthropic = process.env.ANTHROPIC_API_KEY
-    ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    : null;
+// process.env wins, but fall back to the parsed .env value — dotenv won't override
+// an ANTHROPIC_API_KEY that's already exported (often empty) in the shell. Null when
+// truly unset so the route can 503 gracefully.
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || dotenvParsed.ANTHROPIC_API_KEY || '';
+const anthropic = ANTHROPIC_KEY ? new Anthropic({ apiKey: ANTHROPIC_KEY }) : null;
+
+// Meal recommender controls (override via env):
+//  - ENABLED: set 'false' to keep the feature dark in production until launch.
+//  - DAILY:   max suggestions per client per day (fairness + abuse guard).
+//  - MONTHLY: hard global cap per month. At Haiku rates (~$0.005/call) 3000 ≈ $15,
+//    a safety margin under a $20 budget. The Anthropic Console spend limit is the
+//    ultimate backstop — this just makes us hit it gracefully (or never).
+const MEAL_SUGGESTION_ENABLED = process.env.MEAL_SUGGESTION_ENABLED !== 'false';
+const intEnv = (v, d) => { const n = parseInt(v, 10); return Number.isNaN(n) ? d : n; };  // keeps a real 0
+const MEAL_DAILY_LIMIT   = intEnv(process.env.MEAL_DAILY_LIMIT,   5);
+const MEAL_MONTHLY_LIMIT = intEnv(process.env.MEAL_MONTHLY_LIMIT, 3000);
 
 // Multer: store file in memory so we can stream the buffer straight to Cloudinary
 const photoUpload = multer({
@@ -425,6 +439,17 @@ const NutritionLogSchema = new mongoose.Schema({
 });
 NutritionLogSchema.index({ clientId: 1, date: -1 });
 const NutritionLog = mongoose.model('NutritionLog', NutritionLogSchema);
+
+// Meal-recommender usage counters for cost caps: one 'global' doc per month and
+// one 'client' doc per client per day. Drives the daily + monthly limits.
+const AiUsageSchema = new mongoose.Schema({
+    scope:    { type: String, required: true },                                  // 'global' | 'client'
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    period:   { type: String, required: true },                                  // 'YYYY-MM' (global) | 'YYYY-MM-DD' (client)
+    count:    { type: Number, default: 0 },
+});
+AiUsageSchema.index({ scope: 1, clientId: 1, period: 1 }, { unique: true });
+const AiUsage = mongoose.model('AiUsage', AiUsageSchema);
 
 // --- Body Measurement Log Schema ---
 const BodyMeasurementSchema = new mongoose.Schema({
@@ -859,7 +884,8 @@ app.get('/api/me', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password -resetPasswordToken -resetPasswordExpires');
         if (!user) return res.status(404).json({ message: 'User not found' });
-        res.json(user);
+        // Surface whether the meal recommender is live, so the client UI can hide the button.
+        res.json({ ...user.toObject(), mealSuggestionEnabled: MEAL_SUGGESTION_ENABLED && !!anthropic });
     } catch (error) {
         console.error('Error fetching profile:', error);
         res.status(500).json({ message: 'Error fetching profile' });
@@ -2349,21 +2375,39 @@ function rankByNameRelevance(items, q) {
 // meal recommender to ground the LLM's suggestions in real database numbers.
 // Tries the curated local DB and shared library first (instant), then USDA.
 // Returns { name, per100:{cal,protein,carbs,fat} } or null if no confident match.
+// Preparation / packaging / connector words that don't change a food's identity.
+// Stripped to build a simplified query so "Yogur griego natural" still finds
+// "Yogurt griego" and "Atún enlatado en agua" still finds "Atún".
+const INGREDIENT_STOPWORDS = new Set([
+    'natural','cocido','cocida','cocidos','cocidas','crudo','cruda','asado','asada',
+    'frito','frita','hervido','hervida','enlatado','enlatada','enlatados','enlatadas',
+    'fresco','fresca','congelado','congelada','maduro','madura','light','descremado',
+    'descremada','desnatado','desnatada','entero','entera','magro','magra','plancha','vapor','horneado','horneada',
+    'piel','hueso','en','al','a','la','el','los','las','de','del','con','y','o','sin',
+]);
+const simplifyIngredient = (q) => normalizeStr(q).split(/\s+/).filter(w => w && !INGREDIENT_STOPWORDS.has(w)).join(' ');
+
 async function resolveIngredientMacros(query) {
     const q = (query || '').trim();
     if (!q || q.length < 2) return null;
+    const simplified = simplifyIngredient(q);
+    const firstTerm  = (simplified || normalizeStr(q)).split(/\s+/)[0] || '';
 
-    // 1 ── Curated local DB (instant, Spanish-friendly, USDA-quality)
-    const local = searchLocalFoods(q);
-    if (local.length) {
-        const f = local[0];
-        return { name: f.name, per100: { cal: f.cal100, protein: f.p100, carbs: f.c100, fat: f.f100 } };
+    // 1 ── Curated local DB (instant, Spanish-friendly, USDA-quality). Try the full
+    //      phrase first, then the simplified (qualifier-stripped) phrase.
+    for (const term of [q, simplified]) {
+        if (!term) continue;
+        const local = searchLocalFoods(term);
+        if (local.length) {
+            const f = local[0];
+            return { name: f.name, per100: { cal: f.cal100, protein: f.p100, carbs: f.c100, fat: f.f100 } };
+        }
     }
 
-    // 2 ── Shared community food library (Mongo, stored per-100g)
+    // 2 ── Shared community food library (Mongo, per-100g). Keep ALL-term matching
+    //      (noisy/branded data — looser matching invites false positives).
     try {
-        const normQ   = normalizeStr(q);
-        const terms   = normQ.split(/\s+/).filter(Boolean);
+        const terms   = normalizeStr(q).split(/\s+/).filter(Boolean);
         const pattern = terms.map(t => `(?=.*${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`).join('');
         const doc = await FoodLibrary.findOne({ nameNorm: new RegExp(pattern, 'i') }).sort({ timesUsed: -1 });
         if (doc) {
@@ -2371,10 +2415,12 @@ async function resolveIngredientMacros(query) {
         }
     } catch (_) { /* non-blocking */ }
 
-    // 3 ── USDA FoodData Central (gold-standard generic foods)
+    // 3 ── USDA FoodData Central — Foundation + SR Legacy only (generic whole foods).
+    //      FNDDS/Survey is excluded: it carries restaurant/branded items that caused
+    //      false matches like "papa" → "Papa John's Pizza".
     try {
         const usdaKey = process.env.USDA_API_KEY || 'DEMO_KEY';
-        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaKey}&query=${encodeURIComponent(q)}&pageSize=5&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS)&nutrients=1008,1003,1005,1004`;
+        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaKey}&query=${encodeURIComponent(q)}&pageSize=5&dataType=Foundation,SR%20Legacy&nutrients=1008,1003,1005,1004`;
         const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
         const data = await r.json();
         const ranked = rankByNameRelevance(
@@ -2387,9 +2433,11 @@ async function resolveIngredientMacros(query) {
                 .filter(f => f.cal100 > 0),
             q
         );
-        if (ranked.length) {
-            const f = ranked[0];
-            return { name: f.name, per100: { cal: f.cal100, protein: f.p100, carbs: f.c100, fat: f.f100 } };
+        // Relevance guard: only accept if the matched name actually contains the core
+        // term — prevents a weak fuzzy hit from passing as verified.
+        const top = ranked[0];
+        if (top && firstTerm && normalizeStr(top.name).includes(firstTerm)) {
+            return { name: top.name, per100: { cal: top.cal100, protein: top.p100, carbs: top.c100, fat: top.f100 } };
         }
     } catch (_) { /* non-blocking */ }
 
@@ -2692,6 +2740,9 @@ const MEAL_SUGGESTION_SCHEMA = {
 };
 
 app.post('/api/meal-suggestion', authenticateToken, async (req, res) => {
+    if (!MEAL_SUGGESTION_ENABLED) {
+        return res.status(503).json({ message: 'El recomendador de comidas estará disponible pronto.' });
+    }
     if (!anthropic) {
         return res.status(503).json({ message: 'El recomendador de comidas no está configurado. Agrega ANTHROPIC_API_KEY en .env.' });
     }
@@ -2708,6 +2759,23 @@ app.post('/api/meal-suggestion', authenticateToken, async (req, res) => {
 
         const user = await User.findById(targetId).select('dietaryPreferences macroSettings');
         if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+
+        // ── Usage caps (cost protection) ───────────────────────────────────
+        // Per-client daily limit + hard global monthly cap. Checked before the
+        // paid API call; incremented only on success.
+        const usageNow = new Date();
+        const usageMonth = usageNow.toISOString().slice(0, 7);   // YYYY-MM
+        const usageDay   = usageNow.toISOString().slice(0, 10);  // YYYY-MM-DD
+        const [globalUse, clientUse] = await Promise.all([
+            AiUsage.findOne({ scope: 'global', clientId: null,     period: usageMonth }),
+            AiUsage.findOne({ scope: 'client', clientId: targetId, period: usageDay   }),
+        ]);
+        if ((globalUse?.count || 0) >= MEAL_MONTHLY_LIMIT) {
+            return res.status(429).json({ message: 'El recomendador alcanzó su límite de uso este mes. Estará disponible de nuevo el próximo mes.' });
+        }
+        if ((clientUse?.count || 0) >= MEAL_DAILY_LIMIT) {
+            return res.status(429).json({ message: `Alcanzaste el máximo de ${MEAL_DAILY_LIMIT} sugerencias por hoy. Vuelve mañana 💪` });
+        }
 
         // Remaining macros for the day come from the client (it knows unsaved
         // foods on screen). Clamp to non-negative integers.
@@ -2743,7 +2811,12 @@ REGLAS ESTRICTAS:
 - Considera estas notas del cliente: ${notes}.
 - Da exactamente 3 sugerencias distintas.
 - Cada sugerencia debe priorizar cerrar el macro que más falta (normalmente proteína).
-- Usa nombres de ingredientes GENÉRICOS y SIMPLES que existan en una base de datos nutricional (ej: "Pechuga de pollo", "Arroz blanco", "Yogur griego", "Almendras"), NO platillos compuestos ni marcas.
+- Usa el nombre MÁS SIMPLE y genérico del ingrediente, sin palabras de preparación, empaque ni adjetivos. Ejemplos:
+    · "Yogur griego" (NO "Yogur griego natural")
+    · "Atún" (NO "Atún enlatado en agua")
+    · "Papa" (NO "Papa cocida")
+    · "Pechuga de pollo" (NO "Pechuga de pollo a la plancha")
+  Nada de platillos compuestos ni marcas comerciales — solo el alimento base como aparecería en una base de datos nutricional.
 - Especifica gramos realistas por ingrediente.
 - No calcules tú las calorías ni macros; solo propón ingredientes y gramos. El sistema calculará los macros reales.
 - Responde en español.`;
@@ -2810,6 +2883,12 @@ Sugiere 3 comidas/snacks para acercarlo a su meta.`;
                 hasUnverified: resolved.some(it => !it.verified),
             };
         }));
+
+        // Count this successful call against the daily + monthly caps.
+        await Promise.all([
+            AiUsage.updateOne({ scope: 'global', clientId: null,     period: usageMonth }, { $inc: { count: 1 } }, { upsert: true }),
+            AiUsage.updateOne({ scope: 'client', clientId: targetId, period: usageDay   }, { $inc: { count: 1 } }, { upsert: true }),
+        ]);
 
         res.json({ remaining, suggestions: verified });
     } catch (e) {

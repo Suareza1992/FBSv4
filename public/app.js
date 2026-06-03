@@ -9868,6 +9868,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let mealsData = [];
         let exerciseData = [];  // [{name, calories}] extra activity logged for the day
         let waterOz = 0;
+        let waterGoalOz = 64;   // trainer-set or default 8 × 8 oz — drives the water bar
         let calorieGoal = 0;
         let foodHistory = [];   // cached from past logs for autocomplete
         let servingUnit = localStorage.getItem('nutriServingUnit') || 'g'; // warm-start cache; DB value applied below
@@ -9930,6 +9931,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     servingUnit = me.servingUnit;
                     localStorage.setItem('nutriServingUnit', servingUnit);
                     updateUnitToggleUI();
+                }
+
+                // Water goal (oz) — used for the water progress bar (applied on next render)
+                if (me.waterGoal) waterGoalOz = me.waterGoal;
+
+                // Hide the "¿Qué como?" button until the recommender is enabled (launch).
+                if (me.mealSuggestionEnabled === false) {
+                    document.getElementById('meal-suggest-btn')?.classList.add('hidden');
                 }
 
                 // Macro targets set by trainer
@@ -11278,23 +11287,41 @@ document.addEventListener('DOMContentLoaded', () => {
             return v !== null ? (parseInt(v) || 0) : null;
         };
 
-        // Single source of truth for all water UI — keeps both displays in sync.
+        const WATER_CUP_OZ = 8;     // each cup = 8 oz
+        const WATER_CUPS   = 10;    // 10 × 8 oz = 80 oz meter
+
+        // Single source of truth for all water UI — keeps cups, count, macro card,
+        // and the manual input in sync.
         const updateWaterDisplay = () => {
+            const cupsFilled = Math.floor(waterOz / WATER_CUP_OZ);
             const tracker = document.getElementById('water-count-display');
-            if (tracker) tracker.textContent = waterOz + ' oz';
+            if (tracker) tracker.textContent = `${waterOz} oz`;
             const macro = document.getElementById('total-water-display');
             if (macro) macro.textContent = waterOz;
+            // Water bottle — starts FULL and EMPTIES as the client drinks (logs water).
+            // Level tracks what's left to drink (goal − consumed): 0 oz logged = full
+            // bottle, goal reached = empty.
+            const goal = waterGoalOz || 64;
+            const remainingPct = goal > 0 ? Math.max(0, 1 - waterOz / goal) : 1;
+            const fill = document.getElementById('water-fill');
+            const lbl  = document.getElementById('bar-water-label');
+            if (fill) fill.style.transform = `scaleY(${remainingPct})`;
+            if (lbl) lbl.textContent = `${waterOz} / ${goal} oz`;
+            // Reflect the number back into the manual field (unless the user is typing in it)
+            const input = document.getElementById('water-manual-input');
+            if (input && document.activeElement !== input) input.value = waterOz || '';
         };
 
         const renderWaterCups = () => {
             const cupsEl = document.getElementById('water-cups');
-            if (!cupsEl) return;
-            const cups = 10; // 10 × 8 oz = 80 oz
-            cupsEl.innerHTML = Array.from({ length: cups }, (_, i) => {
-                const filled = waterOz >= (i + 1) * 8;
+            if (!cupsEl) { updateWaterDisplay(); return; }
+            // A cup turns blue only once that 8 oz mark is fully reached (floor fill):
+            // 20 oz → 2 cups (16 reached, 24 not). Stays filled as more water is added.
+            cupsEl.innerHTML = Array.from({ length: WATER_CUPS }, (_, i) => {
+                const filled = waterOz >= (i + 1) * WATER_CUP_OZ;
                 return `<button class="water-cup-btn w-10 h-10 rounded-lg border-2 transition flex items-center justify-center text-lg
                     ${filled ? 'border-sky-400 bg-sky-400/20 text-sky-400' : 'border-[#FFDB89]/20 text-[#FFDB89]/20 hover:border-[#FFDB89]/40'}"
-                    data-oz="${(i + 1) * 8}" title="${(i + 1) * 8} oz">
+                    data-cup="${i + 1}" title="${(i + 1) * WATER_CUP_OZ} oz">
                     <i class="fas fa-tint text-sm"></i>
                 </button>`;
             }).join('');
@@ -11303,26 +11330,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.querySelectorAll('.water-cup-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const oz = parseInt(btn.dataset.oz);
-                    waterOz = waterOz === oz ? oz - 8 : oz;
-                    if (waterOz < 0) waterOz = 0;
-                    saveWaterLocal();          // persist instantly — survives navigation
-                    renderWaterCups();
-                    recalcTotals();
-                    doSaveNutrition({ silent: true });
+                    const cup   = parseInt(btn.dataset.cup);     // 1-based cup tapped
+                    const level = cup * WATER_CUP_OZ;            // oz if filled up to here
+                    // Tap the exact current level to remove that glass; otherwise fill up to the tapped cup.
+                    const next = (waterOz === level) ? level - WATER_CUP_OZ : level;
+                    setWaterOz(next);
                 });
             });
         };
 
+        // Set the day's water, refresh the UI, and persist (cup taps + "Establecer").
+        const setWaterOz = (oz) => {
+            waterOz = Math.max(0, Math.round(oz) || 0);
+            saveWaterLocal();               // instant local persistence — survives navigation
+            renderWaterCups();
+            recalcTotals();
+            doSaveNutrition({ silent: true });
+        };
+
+        // Manual oz field — update the cups LIVE as the client types, persist debounced.
+        const waterInput = document.getElementById('water-manual-input');
+        let _waterSaveTimer = null;
+        if (waterInput) {
+            waterInput.addEventListener('input', () => {
+                waterOz = Math.max(0, parseInt(waterInput.value) || 0);
+                renderWaterCups();          // cups fill/empty dynamically as the number changes
+                recalcTotals();
+                clearTimeout(_waterSaveTimer);
+                _waterSaveTimer = setTimeout(() => { saveWaterLocal(); doSaveNutrition({ silent: true }); }, 700);
+            });
+        }
+
         const waterSetBtn = document.getElementById('water-set-btn');
         if (waterSetBtn) {
             waterSetBtn.addEventListener('click', () => {
-                const val = parseInt(document.getElementById('water-manual-input')?.value) || 0;
-                waterOz = val;
-                saveWaterLocal();
-                renderWaterCups();
-                recalcTotals();
-                doSaveNutrition({ silent: true });
+                setWaterOz(parseInt(document.getElementById('water-manual-input')?.value) || 0);
             });
         }
 
@@ -11534,9 +11576,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="space-y-1.5 mb-3">
                         ${s.items.map(it => {
                             const warn = it.verified ? '' : ' <span class="text-yellow-500/60" title="No verificado en la base de datos">⚠</span>';
-                            return `<div class="flex items-center justify-between text-xs">
-                                <span class="text-white/80">${esc(it.food)} <span class="text-[#FFDB89]/30">· ${it.grams} g</span>${warn}</span>
-                                <span class="text-[#FFDB89]/50">${it.calories} cal</span>
+                            // Show the matched DB food when it differs, so any mismatch is visible.
+                            const matched = (it.verified && it.matchedName && it.matchedName.toLowerCase() !== (it.food || '').toLowerCase())
+                                ? `<span class="text-[#FFDB89]/30 text-[10px] block">≈ ${esc(it.matchedName)}</span>` : '';
+                            return `<div class="flex items-center justify-between text-xs gap-2">
+                                <span class="text-white/80 min-w-0">${esc(it.food)} <span class="text-[#FFDB89]/30">· ${it.grams} g</span>${warn}${matched}</span>
+                                <span class="text-[#FFDB89]/50 shrink-0">${it.calories} cal</span>
                             </div>`;
                         }).join('')}
                     </div>

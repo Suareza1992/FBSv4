@@ -132,13 +132,34 @@
                 </div>
             </div>
 
-            <!-- Water inline -->
-            <div class="flex items-center justify-between pt-3 border-t border-[#FFDB89]/10">
-                <div class="flex items-center gap-2">
-                    <i class="fas fa-tint text-sky-400 text-xs"></i>
-                    <span class="text-xs font-bold text-sky-400">Agua</span>
+            <!-- Water — filling bottle -->
+            <div class="pt-3 border-t border-[#FFDB89]/10 flex items-center gap-4">
+                <svg viewBox="0 0 40 84" width="34" height="70" class="shrink-0">
+                    <defs>
+                        <linearGradient id="bottleWater" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#67e8f9"/>
+                            <stop offset="100%" stop-color="#0ea5e9"/>
+                        </linearGradient>
+                        <clipPath id="bottleClip">
+                            <path d="M16,8 L16,11 C16,13 14,14 13,16 L9,23 C7,27 7,31 7,35 L7,74 C7,78 10,80 14,80 L26,80 C30,80 33,78 33,74 L33,35 C33,31 33,27 31,23 L27,16 C26,14 24,13 24,11 L24,8 Z"/>
+                        </clipPath>
+                    </defs>
+                    <!-- water fill (rises from the bottom) -->
+                    <rect id="water-fill" x="0" y="0" width="40" height="84" fill="url(#bottleWater)" clip-path="url(#bottleClip)"
+                          style="transform-box:fill-box;transform-origin:center bottom;transform:scaleY(0);transition:transform .7s cubic-bezier(.4,0,.2,1)"/>
+                    <!-- bottle outline -->
+                    <path d="M16,8 L16,11 C16,13 14,14 13,16 L9,23 C7,27 7,31 7,35 L7,74 C7,78 10,80 14,80 L26,80 C30,80 33,78 33,74 L33,35 C33,31 33,27 31,23 L27,16 C26,14 24,13 24,11 L24,8 Z"
+                          fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.65"/>
+                    <!-- cap -->
+                    <rect x="15" y="2" width="10" height="6" rx="1.5" fill="#38bdf8" opacity="0.8"/>
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-baseline mb-0.5">
+                        <span class="text-xs font-bold text-sky-400"><i class="fas fa-tint mr-1"></i>Agua</span>
+                        <span id="bar-water-label" class="text-[10px] text-[#FFDB89]/35">0 / 64 oz</span>
+                    </div>
+                    <span class="text-lg font-black text-sky-400"><span id="total-water-display">0</span> oz</span>
                 </div>
-                <span class="text-sm font-black text-sky-400" id="total-water-display">0</span>
             </div>
         </div>
     </div>
@@ -202,14 +223,14 @@
     <!-- Meal Suggestion Modal ("¿Qué como?") -->
     <div id="meal-suggest-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm">
         <div class="bg-[#0D0D0D] border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" style="max-height:90vh;max-height:90dvh">
-            <div class="px-5 py-4 border-b border-[#FFDB89]/15 flex justify-between items-center bg-[#FFDB89]/5 rounded-t-2xl">
-                <div>
+            <div class="px-5 py-4 border-b border-[#FFDB89]/15 flex justify-between items-center bg-[#FFDB89]/5 rounded-t-2xl shrink-0">
+                <div class="min-w-0">
                     <h3 class="text-lg font-bold text-[#FFDB89]"><i class="fas fa-wand-magic-sparkles mr-2"></i>¿Qué como?</h3>
                     <p id="meal-suggest-sub" class="text-xs text-[#FFDB89]/50 mt-0.5">Sugerencias para cerrar tus macros</p>
                 </div>
-                <button id="meal-suggest-close" class="text-[#FFDB89]/40 hover:text-red-400 transition"><i class="fas fa-times text-xl"></i></button>
+                <button id="meal-suggest-close" class="text-[#FFDB89]/40 hover:text-red-400 transition p-2 -mr-2 shrink-0"><i class="fas fa-times text-xl"></i></button>
             </div>
-            <div id="meal-suggest-body" class="p-5 overflow-y-auto space-y-4">
+            <div id="meal-suggest-body" class="p-5 overflow-y-auto space-y-4 flex-1 min-h-0">
                 <!-- rendered by JS -->
             </div>
         </div>
