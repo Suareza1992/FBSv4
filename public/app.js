@@ -322,7 +322,9 @@ document.addEventListener('DOMContentLoaded', () => {
             program_assigned:  { icon: 'fas fa-dumbbell',             color: '#FFDB89' },
             client_created:    { icon: 'fas fa-user-plus',            color: '#92A9E1' },
             rpe_submitted:     { icon: 'fas fa-fire',                 color: '#FB923C' },
-            contact_inquiry:   { icon: 'fas fa-envelope-open-text',   color: '#34D399' }
+            contact_inquiry:   { icon: 'fas fa-envelope-open-text',   color: '#34D399' },
+            muscle_restriction:{ icon: 'fas fa-person-rays',          color: '#F87171' },
+            equipment_updated: { icon: 'fas fa-dumbbell',             color: '#38BDF8' }
         };
         return configs[type] || { icon: 'fas fa-bell', color: '#FFDB89' };
     };
@@ -2282,6 +2284,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="nutrition">Nutrición</button>
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="photos">Fotos</button>
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="restrictions">Restricciones</button>
+                    <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="equipment">Equipo</button>
                     <div class="ml-auto flex items-center shrink-0 pl-2 pr-1" id="hoy-btn-wrap">
                         <button class="px-3 py-1 text-sm font-semibold border border-[#FFDB89]/30 bg-[#FFDB89]/10 text-[#FFDB89] rounded hover:bg-[#FFDB89]/20 transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
                     </div>
@@ -2315,6 +2318,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <!-- TAB: Restrictions -->
                 <div id="tab-restrictions" class="client-tab-content hidden flex-grow overflow-y-auto p-3 sm:p-6">
                     <p class="text-gray-400 text-sm animate-pulse">Cargando restricciones...</p>
+                </div>
+
+                <!-- TAB: Equipment (read-only) -->
+                <div id="tab-equipment" class="client-tab-content hidden flex-grow overflow-y-auto p-3 sm:p-6">
+                    <p class="text-gray-400 text-sm animate-pulse">Cargando equipo...</p>
                 </div>
 
                 <!-- Modals (shared) -->
@@ -2402,6 +2410,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (tab.dataset.tab === 'nutrition') loadClientNutrition(clientId);
                 if (tab.dataset.tab === 'photos') loadClientPhotos(clientId);
                 if (tab.dataset.tab === 'restrictions') loadClientRestrictions(clientId);
+                if (tab.dataset.tab === 'equipment') loadClientEquipment(clientId);
             };
         });
 
@@ -3841,6 +3850,101 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await apiFetch(`/api/progress-photos/${photoId}`, { method: 'DELETE' });
             if (res.ok) loadClientPhotos(clientId);
         } catch (e) { showToast('Error eliminando foto.', 'error'); }
+    };
+
+    // Read-only view of a client's equipment (so the trainer can see it while building workouts).
+    const loadClientEquipment = (clientId) => {
+        const container = document.getElementById('tab-equipment');
+        if (!container) return;
+        const client = clientsCache.find(c => (c._id == clientId) || (c.id == clientId));
+        const eq = (client && client.equipment) || {};
+        const unit = eq.unit || 'lbs';
+        const name = client ? client.name : 'este cliente';
+        const checkOn = client ? (client.equipmentCheckOn !== false) : true;
+
+        const hasAny =
+            (eq.dumbbells && eq.dumbbells.length) || (eq.plates && eq.plates.length) ||
+            (eq.kettlebells && eq.kettlebells.length) || (eq.cables && eq.cables.length) ||
+            (eq.stations && Object.values(eq.stations).some(Boolean)) ||
+            (eq.other && Object.values(eq.other).some(Boolean));
+
+        const weightRow = (label, list) => `
+            <div class="flex items-start justify-between gap-3 py-2.5 border-b border-[#FFDB89]/8 last:border-0">
+                <span class="text-sm font-bold text-[#FFDB89]/80 shrink-0">${label}</span>
+                <span class="text-sm text-[#FFDB89]/60 text-right">${(list && list.length) ? list.join(', ') + ' ' + unit : '—'}</span>
+            </div>`;
+
+        const STATION_LABELS = { barra: 'Barra', banco: 'Banco plano', prensa: 'Prensa de pierna', squat: 'Rack de sentadilla' };
+        const OTHER_LABELS = { bands: 'Bandas', trx: 'TRX', mat: 'Colchoneta', pullup: 'Barra de dominadas', treadmill: 'Trotadora', bike: 'Bicicleta', row: 'Máquina de remo', box: 'Cajón pliométrico' };
+        const chips = (obj, labels) => {
+            const on = Object.entries(obj || {}).filter(([, v]) => v).map(([k]) => labels[k] || k);
+            return on.length
+                ? on.map(l => `<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-[#FFDB89]/10 border border-[#FFDB89]/25 text-[#FFDB89]/80">${l}</span>`).join('')
+                : '<span class="text-sm text-[#FFDB89]/30">—</span>';
+        };
+
+        container.innerHTML = `
+            <div class="max-w-2xl mx-auto space-y-5">
+                <div class="flex items-end justify-between gap-3">
+                    <div>
+                        <h3 class="text-xl font-bold text-[#FFDB89]">Equipo y pesos disponibles</h3>
+                        <p class="text-sm text-[#FFDB89]/60 mt-1">Lo que ${name} marcó como disponible. Tenlo en cuenta al armar su rutina.</p>
+                    </div>
+                    <span class="text-xs font-bold text-[#FFDB89]/50 shrink-0">Unidad: ${unit}</span>
+                </div>
+
+                <div class="bg-white/5 border border-[#FFDB89]/15 rounded-2xl p-4 flex items-center justify-between gap-4">
+                    <div class="min-w-0">
+                        <p class="text-sm font-bold text-[#FFDB89]/85"><i class="fas fa-wand-magic-sparkles mr-1.5 text-sky-400"></i>Revisión de equipo con IA</p>
+                        <p class="text-xs text-[#FFDB89]/55 mt-1 leading-relaxed">Al armar la rutina, avisa si pides un ejercicio o un peso que ${name} no tiene. Desactívala para clientes con acceso a un gimnasio completo.</p>
+                    </div>
+                    <button onclick="window.toggleEquipmentCheck('${clientId}')" role="switch" aria-checked="${checkOn}" title="${checkOn ? 'Activada' : 'Desactivada'}" class="relative shrink-0 w-12 h-7 rounded-full transition-colors ${checkOn ? 'bg-sky-500' : 'bg-[#FFDB89]/20'}">
+                        <span class="absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${checkOn ? 'left-6' : 'left-1'}"></span>
+                    </button>
+                </div>
+                ${!hasAny ? `
+                    <div class="text-center py-10 text-[#FFDB89]/40">
+                        <i class="fas fa-dumbbell text-3xl mb-3 block"></i>
+                        <p class="text-sm">Este cliente aún no ha registrado su equipo.</p>
+                    </div>` : `
+                    <div class="bg-white/5 border border-[#FFDB89]/15 rounded-2xl p-4">
+                        <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-1">Pesos libres</p>
+                        ${weightRow('Mancuernas', eq.dumbbells)}
+                        ${weightRow('Discos / Platos', eq.plates)}
+                        ${weightRow('Kettlebells', eq.kettlebells)}
+                        ${weightRow('Poleas / Cables', eq.cables)}
+                    </div>
+                    <div class="bg-white/5 border border-[#FFDB89]/15 rounded-2xl p-4">
+                        <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-2">Estaciones</p>
+                        <div class="flex flex-wrap gap-1.5">${chips(eq.stations, STATION_LABELS)}</div>
+                    </div>
+                    <div class="bg-white/5 border border-[#FFDB89]/15 rounded-2xl p-4">
+                        <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-2">Otro equipo</p>
+                        <div class="flex flex-wrap gap-1.5">${chips(eq.other, OTHER_LABELS)}</div>
+                    </div>`}
+            </div>`;
+    };
+
+    window.toggleEquipmentCheck = async (clientId) => {
+        const client = clientsCache.find(c => (c._id == clientId) || (c.id == clientId));
+        if (!client) return;
+        const prev = client.equipmentCheckOn;
+        const newVal = !(prev !== false); // flip: on→off, off/undefined→on
+        client.equipmentCheckOn = newVal;   // optimistic
+        loadClientEquipment(clientId);
+        try {
+            const res = await apiFetch(`/api/clients/${clientId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ equipmentCheckOn: newVal })
+            });
+            if (!res.ok) throw new Error('save failed');
+            showToast(newVal ? 'Revisión de equipo activada.' : 'Revisión de equipo desactivada.', 'success');
+        } catch (e) {
+            client.equipmentCheckOn = prev; // revert
+            loadClientEquipment(clientId);
+            showToast('No se pudo guardar el cambio.', 'error');
+        }
     };
 
     const loadClientRestrictions = (clientId) => {
@@ -7564,7 +7668,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <!-- FOOTER -->
                 <div class="p-4 border-t border-[#FFDB89]/15 flex flex-col gap-2 bg-[#26262c] shrink-0">
+                    <div id="equip-check-results" class="hidden text-xs"></div>
                     <button class="w-full py-3 bg-[#3a3a3c] text-[#FFDB89] font-bold rounded hover:bg-[#3a3a3c]/80 transition shadow-lg" onclick="window.saveDayWorkout()">Guardar</button>
+                    <button onclick="window.checkEquipment()" class="w-full py-2 rounded-lg border border-sky-400/40 text-sky-400 text-xs font-bold hover:bg-sky-400/10 transition flex items-center justify-center gap-1.5" title="Revisa con IA si el cliente tiene el equipo y los pesos para estos ejercicios">
+                        <i class="fas fa-wand-magic-sparkles"></i> Revisar equipo del cliente
+                    </button>
                     <div class="grid grid-cols-2 gap-2 pt-1 border-t border-[#FFDB89]/10 mt-1">
                         <button id="editor-complete-btn"
                             class="py-2.5 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${editorIsComplete ? 'bg-green-500/20 border-green-500/60 text-green-400' : 'border-green-500/30 text-green-400/70 hover:bg-green-500/10 hover:border-green-500/50 hover:text-green-400'}"
@@ -7924,6 +8032,65 @@ document.addEventListener('DOMContentLoaded', () => {
         editorAutosaveInterval = null;
         editorIsDirty = false;
         document.getElementById('workout-editor-modal').classList.add('hidden');
+    };
+
+    // AI "Revisar equipo": flag exercises the client lacks equipment for, or whose
+    // prescribed weight exceeds what they own (parsed from the free-text instructions).
+    window.checkEquipment = async () => {
+        const resultsEl = document.getElementById('equip-check-results');
+        if (!currentClientViewId) { showToast('No hay cliente seleccionado.', 'error'); return; }
+        const exercises = editorExercises
+            .filter(ex => (ex.name || '').trim())
+            .map(ex => ({ name: ex.name.trim(), instructions: (ex.instructions || '').trim() }));
+        if (!exercises.length) { showToast('Agrega ejercicios antes de revisar.', 'info'); return; }
+        if (!resultsEl) return;
+
+        // Client-side short-circuit: trainer turned the check off for this client (Equipo tab).
+        const cachedClient = (clientsCache || []).find(c => c._id === currentClientViewId);
+        if (cachedClient && cachedClient.equipmentCheckOn === false) {
+            resultsEl.classList.remove('hidden');
+            resultsEl.innerHTML = `<p class="text-[#FFDB89]/50 py-2 text-center">La revisión de equipo está desactivada para este cliente. Actívala en la pestaña <b>Equipo</b>.</p>`;
+            return;
+        }
+
+        resultsEl.classList.remove('hidden');
+        resultsEl.innerHTML = '<p class="text-[#FFDB89]/50 py-2 text-center"><i class="fas fa-spinner fa-spin mr-1"></i>Revisando equipo del cliente...</p>';
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 30000);
+        try {
+            const res = await apiFetch('/api/equipment-check', {
+                method: 'POST',
+                body: JSON.stringify({ clientId: currentClientViewId, exercises }),
+                signal: ctrl.signal,
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                resultsEl.innerHTML = `<p class="text-red-400/80 py-2 text-center">${escHtml(data.message || 'Error al revisar.')}</p>`;
+                return;
+            }
+            if (data.disabled) {
+                resultsEl.innerHTML = `<p class="text-[#FFDB89]/50 py-2 text-center">La revisión de equipo está desactivada para este cliente. Actívala en la pestaña <b>Equipo</b>.</p>`;
+                return;
+            }
+            if (data.noEquipment) {
+                resultsEl.innerHTML = `<p class="text-[#FFDB89]/50 py-2 text-center">Este cliente aún no registró su equipo, no hay con qué comparar.</p>`;
+                return;
+            }
+            const flags = (data.results || []).filter(r => !r.ok);
+            if (!flags.length) {
+                resultsEl.innerHTML = `<p class="text-green-400/90 py-2 text-center"><i class="fas fa-check-circle mr-1"></i>Todo en orden — el cliente tiene el equipo para estos ejercicios.</p>`;
+            } else {
+                resultsEl.innerHTML = `
+                    <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 space-y-1.5">
+                        <p class="font-bold text-yellow-400/90"><i class="fas fa-triangle-exclamation mr-1"></i>${flags.length} ejercicio${flags.length > 1 ? 's' : ''} a revisar:</p>
+                        ${flags.map(f => `<div class="flex gap-2"><span class="text-yellow-400/70 shrink-0">•</span><span class="text-[#FFDB89]/75"><b>${escHtml(f.name)}:</b> ${escHtml(f.issue)}</span></div>`).join('')}
+                    </div>`;
+            }
+        } catch (e) {
+            resultsEl.innerHTML = `<p class="text-red-400/80 py-2 text-center">${e.name === 'AbortError' ? 'La revisión tardó demasiado. Intenta de nuevo.' : 'Error de conexión. Intenta de nuevo.'}</p>`;
+        } finally {
+            clearTimeout(t);
+        }
     };
 
     window.trainerMarkWorkout = async (action) => {

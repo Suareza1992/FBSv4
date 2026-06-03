@@ -67,6 +67,10 @@ const MEAL_MONTHLY_LIMIT = intEnv(process.env.MEAL_MONTHLY_LIMIT, 3000);   // sh
 // independently; its own per-client daily cap; shares the global monthly $ cap above.
 const FOOD_NLP_ENABLED     = process.env.FOOD_NLP_ENABLED !== 'false';
 const FOOD_NLP_DAILY_LIMIT = intEnv(process.env.FOOD_NLP_DAILY_LIMIT, 20);
+// Trainer's on-demand "Revisar equipo" workout check. Own flag + per-trainer daily
+// cap; shares the global monthly $ cap above.
+const EQUIPMENT_CHECK_ENABLED     = process.env.EQUIPMENT_CHECK_ENABLED !== 'false';
+const EQUIPMENT_CHECK_DAILY_LIMIT = intEnv(process.env.EQUIPMENT_CHECK_DAILY_LIMIT, 50);
 
 // Multer: store file in memory so we can stream the buffer straight to Cloudinary
 const photoUpload = multer({
@@ -265,6 +269,9 @@ const UserSchema = new mongoose.Schema({
     emailPreferences: { dailyRoutine: { type: Boolean, default: true }, incompleteRoutine: { type: Boolean, default: false } },
     profilePicture: { type: String, default: "" },
     equipment: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Per-client toggle for the trainer's AI "Revisar equipo" workout check.
+    // When false, the check is skipped entirely (no flags) — e.g. for full-gym clients.
+    equipmentCheckOn: { type: Boolean, default: true },
     injuredMuscles: { type: mongoose.Schema.Types.Mixed, default: {} },
     dietaryPreferences: {
         dietType:  { type: String,   default: '' },  // '' | omnivoro | vegetariano | vegano | pescetariano | keto | paleo | otro
@@ -397,7 +404,7 @@ const NotificationSchema = new mongoose.Schema({
             'workout_comment', 'video_upload',
             'reported_issue', 'metric_inactivity',
             'program_assigned', 'client_created', 'rpe_submitted',
-            'contact_inquiry'
+            'contact_inquiry', 'muscle_restriction', 'equipment_updated'
         ],
         required: true
     },
@@ -1084,7 +1091,7 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
         const ALLOWED = ['name','lastName','email','program','group','type','dueDate','isActive',
                          'location','timezone','unitSystem','phone','height','weight','birthday',
                          'gender','thr','mahr','restingHr','emailPreferences','hideFromDashboard',
-                         'profilePicture','equipment','macroSettings','waterGoal','injuredMuscles','dietaryPreferences'];
+                         'profilePicture','equipment','equipmentCheckOn','macroSettings','waterGoal','injuredMuscles','dietaryPreferences'];
         const updates = {};
         for (const key of ALLOWED) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -3128,6 +3135,148 @@ REGLAS:
 });
 
 // ==========================================================================
+// --- PROTECTED: AI Equipment Check (trainer's "Revisar equipo") ---
+// Given a client's equipment inventory and the day's exercises + free-text
+// instructions, the AI flags exercises the client lacks equipment for, or whose
+// prescribed weight exceeds what they own. Advisory only; trainer-initiated.
+// ==========================================================================
+const EQUIPMENT_CHECK_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        results: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    name:  { type: 'string', description: 'Nombre del ejercicio, igual al recibido' },
+                    ok:    { type: 'boolean', description: 'true si el cliente puede realizarlo con su equipo y pesos' },
+                    issue: { type: 'string', description: 'Si ok=false, explicación breve en español (equipo faltante o peso que excede lo disponible). Vacío si ok=true.' },
+                },
+                required: ['name', 'ok', 'issue'],
+            },
+        },
+    },
+    required: ['results'],
+};
+
+// Render a client's equipment object into readable text for the prompt.
+function describeEquipment(eq) {
+    if (!eq) return '';
+    const unit = eq.unit || 'lbs';
+    const lines = [];
+    const list = (label, arr) => { if (arr && arr.length) lines.push(`${label}: ${arr.join(', ')} ${unit}`); };
+    list('Mancuernas', eq.dumbbells);
+    list('Discos/Platos para barra', eq.plates);
+    list('Kettlebells', eq.kettlebells);
+    list('Pesos en poleas/cables', eq.cables);
+    const STATION = { barra: 'Barra', banco: 'Banco plano', prensa: 'Prensa de pierna', squat: 'Rack de sentadilla' };
+    const OTHER = { bands: 'Bandas', trx: 'TRX', mat: 'Colchoneta', pullup: 'Barra de dominadas', treadmill: 'Trotadora', bike: 'Bicicleta', row: 'Máquina de remo', box: 'Cajón pliométrico' };
+    const stations = Object.entries(eq.stations || {}).filter(([, v]) => v).map(([k]) => STATION[k] || k);
+    const other = Object.entries(eq.other || {}).filter(([, v]) => v).map(([k]) => OTHER[k] || k);
+    if (stations.length) lines.push(`Estaciones: ${stations.join(', ')}`);
+    if (other.length) lines.push(`Otro equipo: ${other.join(', ')}`);
+    return lines.join('\n');
+}
+
+app.post('/api/equipment-check', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    if (!EQUIPMENT_CHECK_ENABLED) {
+        return res.status(503).json({ message: 'La revisión de equipo estará disponible pronto.' });
+    }
+    if (!anthropic) {
+        return res.status(503).json({ message: 'La función no está configurada. Agrega ANTHROPIC_API_KEY en .env.' });
+    }
+    try {
+        const { clientId } = req.body;
+        const exercises = Array.isArray(req.body.exercises) ? req.body.exercises.slice(0, 30) : [];
+        if (!clientId) return res.status(400).json({ message: 'Falta el cliente.' });
+        if (!exercises.length) return res.status(400).json({ message: 'No hay ejercicios para revisar.' });
+
+        const client = await User.findById(clientId).select('equipment name equipmentCheckOn');
+        if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
+
+        // Per-client toggle: trainer disabled the check for this client (e.g. full-gym member).
+        if (client.equipmentCheckOn === false) {
+            return res.json({ results: [], disabled: true });
+        }
+
+        const equipText = describeEquipment(client.equipment);
+        if (!equipText) {
+            // No inventory on file — nothing to check against; tell the trainer instead of guessing.
+            return res.json({ results: [], noEquipment: true });
+        }
+
+        // Usage caps — per-trainer daily + shared global monthly $ cap.
+        const usageNow = new Date();
+        const usageMonth = usageNow.toISOString().slice(0, 7);
+        const usageDay   = usageNow.toISOString().slice(0, 10);
+        const [globalUse, trainerUse] = await Promise.all([
+            AiUsage.findOne({ scope: 'global',          clientId: null,        period: usageMonth }),
+            AiUsage.findOne({ scope: 'equipment_check', clientId: req.user.id, period: usageDay   }),
+        ]);
+        if ((globalUse?.count || 0) >= MEAL_MONTHLY_LIMIT) {
+            return res.status(429).json({ message: 'Se alcanzó el límite de uso de IA este mes.' });
+        }
+        if ((trainerUse?.count || 0) >= EQUIPMENT_CHECK_DAILY_LIMIT) {
+            return res.status(429).json({ message: 'Alcanzaste el máximo de revisiones por hoy.' });
+        }
+
+        const exerciseList = exercises.map((e, i) =>
+            `${i + 1}. ${String(e.name || '').trim()}${e.instructions ? ` — instrucciones: ${String(e.instructions).trim()}` : ''}`
+        ).join('\n');
+
+        const systemPrompt =
+`Revisas si un cliente puede realizar los ejercicios asignados con el equipo y los pesos que tiene disponibles.
+Para cada ejercicio decide ok=true o ok=false:
+- ok=false si el ejercicio REQUIERE equipo que el cliente NO tiene (ej: pide cable/polea y no tiene; pide barra y no tiene; pide kettlebell y no tiene).
+- ok=false si las instrucciones piden un PESO mayor al máximo que el cliente tiene disponible para ese tipo de equipo (ej: "mancuernas 40 kg" pero su mancuerna más pesada es 30 kg).
+- Los ejercicios de peso corporal siempre son ok=true.
+- Si NO estás seguro de que falte algo, marca ok=true (evita falsas alarmas).
+Cuando ok=false, escribe en 'issue' una explicación breve en español (qué falta o qué peso excede). Cuando ok=true, 'issue' vacío.
+Devuelve un resultado por cada ejercicio, con el mismo nombre recibido.`;
+        const userPrompt =
+`Equipo disponible del cliente:
+${equipText}
+
+Ejercicios asignados:
+${exerciseList}`;
+
+        const aiResp = await anthropic.messages.create({
+            model: 'claude-haiku-4-5',
+            max_tokens: 1500,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+            output_config: { format: { type: 'json_schema', schema: EQUIPMENT_CHECK_SCHEMA } },
+        }, { timeout: 25000, maxRetries: 1 });
+
+        const textBlock = aiResp.content.find(b => b.type === 'text');
+        let parsed;
+        try { parsed = JSON.parse(textBlock?.text || '{}'); }
+        catch { return res.status(502).json({ message: 'No se pudo interpretar la revisión. Intenta de nuevo.' }); }
+
+        const results = (Array.isArray(parsed.results) ? parsed.results : []).map(r => ({
+            name: String(r.name || ''),
+            ok: r.ok !== false,
+            issue: r.ok === false ? String(r.issue || 'Equipo o peso no disponible.') : '',
+        }));
+
+        await Promise.all([
+            AiUsage.updateOne({ scope: 'global',          clientId: null,        period: usageMonth }, { $inc: { count: 1 } }, { upsert: true }),
+            AiUsage.updateOne({ scope: 'equipment_check', clientId: req.user.id, period: usageDay   }, { $inc: { count: 1 } }, { upsert: true }),
+        ]);
+
+        res.json({ results });
+    } catch (e) {
+        console.error('Equipment check error:', e.message);
+        const isTimeout = e?.name === 'APIConnectionTimeoutError' || /timeout|timed out/i.test(e?.message || '');
+        res.status(isTimeout ? 504 : 500).json({
+            message: isTimeout ? 'La revisión tardó demasiado. Intenta de nuevo.' : 'Error revisando el equipo. Intenta de nuevo.',
+        });
+    }
+});
+
+// ==========================================================================
 // --- PROTECTED: Programs ---
 // ==========================================================================
 
@@ -3294,7 +3443,30 @@ app.get('/api/equipment', authenticateToken, async (req, res) => {
 app.put('/api/equipment', authenticateToken, async (req, res) => {
     try {
         const { equipment } = req.body;
-        await User.findByIdAndUpdate(req.user.id, { equipment });
+        const user = await User.findByIdAndUpdate(req.user.id, { equipment }, { new: true })
+            .select('name lastName email');
+
+        // Notify the trainer when a CLIENT updates their equipment — throttled so a
+        // setup session (which auto-saves on every change) collapses into one notice.
+        if (req.user.role === 'client' && user) {
+            const TWO_HOURS = 2 * 60 * 60 * 1000;
+            const recent = await Notification.findOne({
+                clientId: user._id,
+                type: 'equipment_updated',
+                createdAt: { $gte: new Date(Date.now() - TWO_HOURS) },
+            });
+            if (!recent) {
+                const clientName = `${user.name || ''}${user.lastName ? ' ' + user.lastName : ''}`.trim() || user.email;
+                await createNotification({
+                    clientId: user._id,
+                    clientName,
+                    type: 'equipment_updated',
+                    title: `${clientName} actualizó su equipo`,
+                    message: 'Revisa su equipo y pesos disponibles.',
+                    data: { equipment },
+                });
+            }
+        }
         res.json({ message: 'Equipment saved' });
     } catch (e) { res.status(500).json({ message: 'Error saving equipment' }); }
 });

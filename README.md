@@ -11,6 +11,7 @@ A full-stack web application built for Coach Suarez to manage clients, training 
 - [Stack Tecnológico (Español)](#stack-tecnológico-español)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Dormant Features (Built, Activated at Launch)](#dormant-features-built-activated-at-launch)
 - [Architecture Overview](#architecture-overview)
 - [Getting Started](#getting-started)
 - [Environment Variables](#environment-variables)
@@ -43,7 +44,8 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Constructor de programas multi-semana** — rutinas reutilizables con semanas y entrenamientos diarios, asignables a cada cliente.
 - **Editor de entrenamientos por cliente** — asignar entrenamientos por fecha; calentamiento/enfriamiento, supersets, videos de ejercicios y días de descanso (activo o total).
 - **Biblioteca de ejercicios** — base de datos por grupo muscular, con video e instrucciones; agregar y editar ejercicios.
-- **Feed de notificaciones** — actividad en tiempo real (entrenamientos completados/perdidos, RPE, peso, nutrición, fotos, nuevos clientes); filtrable.
+- **Equipo del cliente** — pestaña de solo lectura con el inventario y los pesos que el cliente marcó como disponibles; recibes una notificación cuando el cliente lo actualiza.
+- **Feed de notificaciones** — actividad en tiempo real (entrenamientos completados/perdidos, RPE, peso, nutrición, fotos, equipo actualizado, restricciones musculares, nuevos clientes); filtrable.
 - **Medidas corporales** — registrar y seguir circunferencias, % de grasa, IMC y peso por sesión.
 - **Facturación y pagos** — crear facturas, marcarlas pagadas/vencidas y enviar correos con enlaces a ATH Móvil, Venmo y PayPal.
 - **Métodos de cobro** — configurar los handles de ATH Móvil, Venmo y PayPal.
@@ -103,7 +105,8 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Multi-week program builder** — create reusable training programs with named weeks and daily workouts; assign programs to clients
 - **Client workout editor** — assign workouts directly to individual clients by calendar date; supports warmup/cooldown sections, superset grouping, exercise video links, and rest/active-rest days
 - **Exercise library** — curated database of exercises categorized by muscle group, each with an optional video URL and instructions; trainer can add/update exercises
-- **Notifications feed** — real-time activity feed showing workout completions, missed sessions, RPE ratings, weight updates, nutrition logs, progress photo uploads, and new client additions; filterable by last 7 days or unread
+- **Client equipment view** — read-only tab showing the equipment and weights a client has marked as available; the trainer receives a notification (throttled) whenever a client updates their inventory
+- **Notifications feed** — real-time activity feed showing workout completions, missed sessions, RPE ratings, weight updates, nutrition logs, progress photo uploads, equipment updates, muscle restrictions, and new client additions; filterable by last 7 days or unread
 - **Body measurements** — record and track circumference measurements (chest, biceps, waist, hips, quads, calves), body fat %, BMI, and weight per session
 - **Payment / Invoice management** — create invoices per client, mark them paid/overdue, send branded invoice emails with deep links to ATH Móvil, Venmo, and PayPal
 - **Settings** — configure payment handles (ATH Móvil business name, Venmo handle, PayPal.me username)
@@ -155,6 +158,24 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 | Hosting | Railway (auto-deploy from GitHub) |
 | Linting | ESLint 10 (flat config) |
 | Environment | `dotenv` |
+
+---
+
+## Dormant Features (Built, Activated at Launch)
+
+These features are **fully implemented but kept dark behind feature flags** until the platform officially launches. Each is wired end-to-end (backend + UI) and can be switched on per environment without a code change. All AI features share triple-layer cost protection: a per-user/day cap, a global monthly call cap, and a spend limit set in the Anthropic Console — so they can never produce surprise charges.
+
+| Feature | Flag | Status |
+|---|---|---|
+| 🤖 **AI meal recommender ("¿Qué como?")** — suggests meals to close the day's remaining macros, respecting allergies/preferences; every macro is DB-verified | `MEAL_SUGGESTION_ENABLED` | Built, dormant |
+| 🤖 **AI food logging by text ("Describir")** — client describes a meal in plain Spanish; the AI parses it into foods with macros to review and adjust before saving | `FOOD_NLP_ENABLED` | Built, dormant |
+| 🤖 **AI equipment check ("Revisar equipo")** — trainer-only button in the workout editor that uses AI to flag any exercise needing equipment the client doesn't own, or any prescribed weight that exceeds what they have (parsed from the free-text instructions); advisory only, never blocks saving | `EQUIPMENT_CHECK_ENABLED` | Built, dormant |
+
+**AI equipment check — safeguards (so it never produces unwanted flags):**
+- If the client hasn't registered any equipment, the check is skipped entirely (no AI call, no flags) and the trainer is told there's nothing to compare against.
+- A **per-client on/off toggle** (`equipmentCheckOn`, default on) lives in the client's *Equipo* tab — turn it off for clients with full gym access so they're never flagged. When off, the check short-circuits both client- and server-side.
+
+> Why dormant? The trainer wants to validate AI behavior and roll these out deliberately at launch rather than expose them to clients early. Flipping the relevant flag to `true` (and providing `ANTHROPIC_API_KEY`) activates a feature instantly.
 
 ---
 
@@ -252,8 +273,8 @@ All variables are defined in `.env.example`. Copy it to `.env` and fill in real 
 | `CORS_ORIGIN` | No | Same as `APP_URL` | Allowed origin for CORS. Should match `APP_URL` in most setups. |
 | `RESEND_API_KEY` | Yes | _(none)_ | API key for [Resend](https://resend.com); sends all transactional email (invite, password reset, welcome). From address: `FitBySuárez <noreply@fitbysuarez.com>`. |
 | `ANTHROPIC_API_KEY` | For AI | _(none)_ | Anthropic key powering the meal recommender and text food logging. Leave blank to disable both. |
-| `MEAL_SUGGESTION_ENABLED` / `FOOD_NLP_ENABLED` | No | `true` | Feature flags for the two AI features. Set to `false` to keep them dark (e.g., until launch). |
-| `MEAL_DAILY_LIMIT` / `FOOD_NLP_DAILY_LIMIT` / `MEAL_MONTHLY_LIMIT` | No | `5` / `20` / `3000` | AI usage caps — per-client/day and a global monthly cap. |
+| `MEAL_SUGGESTION_ENABLED` / `FOOD_NLP_ENABLED` / `EQUIPMENT_CHECK_ENABLED` | No | `true` | Feature flags for the three AI features (meal recommender, text food logging, trainer equipment check). Set to `false` to keep a feature dark (e.g., until launch). See [Dormant Features](#dormant-features-built-activated-at-launch). |
+| `MEAL_DAILY_LIMIT` / `FOOD_NLP_DAILY_LIMIT` / `EQUIPMENT_CHECK_DAILY_LIMIT` / `MEAL_MONTHLY_LIMIT` | No | `5` / `20` / `50` / `3000` | AI usage caps — per-user/day caps plus a shared global monthly cap. |
 | `PORT` | No | `3000` | Port the Express server listens on. |
 | `DEBUG` | No | `false` | Set to `true` locally to enable verbose logging (email config, notification creation). Never enable in production. |
 
@@ -398,7 +419,8 @@ All routes beginning with `/api/` are JSON endpoints. Routes marked **Trainer** 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/equipment` | Auth | Fetch the current user's equipment inventory. |
-| `PUT` | `/api/equipment` | Auth | Save the current user's equipment inventory. |
+| `PUT` | `/api/equipment` | Auth | Save the current user's equipment inventory. When a client saves, fires a throttled `equipment_updated` notification to the trainer. |
+| `POST` | `/api/equipment-check` | Trainer | 🤖 **Dormant** (flag: `EQUIPMENT_CHECK_ENABLED`). AI-checks a list of exercises against a client's equipment; returns per-exercise flags for missing equipment or over-budget weights. Short-circuits if the client has no inventory (`noEquipment`) or has the check toggled off (`disabled`). |
 
 ---
 
@@ -414,6 +436,7 @@ Core model for both trainers and clients. Notable fields:
 - `macroSettings` — trainer-set goal type and macro ratios; client-editable gram targets stored as `goalProtein`, `goalCarbs`, `goalFat`
 - `paymentHandles` — trainer's ATH Móvil, Venmo, and PayPal handles used to generate invoice payment links
 - `equipment` — free-form Mixed object storing the client's available gym equipment
+- `equipmentCheckOn` — per-client toggle (default `true`) for the dormant AI equipment check; when `false` the check is skipped for that client
 - `emailPreferences` — per-user toggles for automated email types
 - `thr` / `mahr` — Target Heart Rate and Maximum Aerobic Heart Rate, trainer-set for cardio programming
 - `unitSystem` (`'imperial'` | `'metric'`) and `servingUnit` (`'g'` | `'oz'`) — client display preferences
@@ -449,7 +472,7 @@ Circumference and composition measurements recorded by the trainer. Fields: `pec
 Base64-encoded progress photos. Categorized (`'front'`, `'back'`, `'side'`, `'general'`). Capped at 50 per client in list queries.
 
 ### `Notification`
-Activity feed entries directed at the trainer. Each notification has a `type` (one of 13 defined event types), `clientId`, `clientName`, `title`, `message`, optional `data` payload, and `isRead` flag. Indexed on `{ trainerId, isRead, createdAt }` for fast unread queries.
+Activity feed entries directed at the trainer. Each notification has a `type` (one of the defined event types — workout/nutrition/weight/photo activity, new clients, plus `equipment_updated` and `muscle_restriction`), `clientId`, `clientName`, `title`, `message`, optional `data` payload, and `isRead` flag. Indexed on `{ trainerId, isRead, createdAt }` for fast unread queries.
 
 ### `Group`
 Simple named cohort. Groups appear as filter options on the client list and can be assigned to clients for segmentation.
