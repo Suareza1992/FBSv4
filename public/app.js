@@ -11626,10 +11626,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 mealSuggestModal.classList.remove('hidden');
                 mealSuggestBody.innerHTML = `<div class="py-10 text-center text-[#FFDB89]/50"><i class="fas fa-spinner fa-spin text-2xl mb-3"></i><p class="text-sm">Pensando en opciones para ti...</p></div>`;
                 if (mealSuggestSub) mealSuggestSub.textContent = 'Generando sugerencias...';
+                // Abort if it takes too long so the spinner never hangs forever.
+                const ctrl = new AbortController();
+                const timeoutId = setTimeout(() => ctrl.abort(), 30000);
                 try {
                     const res = await apiFetch('/api/meal-suggestion', {
                         method: 'POST',
-                        body: JSON.stringify({ remaining, eaten: eatenFoodNames() })
+                        body: JSON.stringify({ remaining, eaten: eatenFoodNames() }),
+                        signal: ctrl.signal
                     });
                     const data = await res.json();
                     if (!res.ok) {
@@ -11638,7 +11642,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     renderSuggestions(data);
                 } catch (e) {
-                    mealSuggestBody.innerHTML = `<p class="text-center text-red-400/70 py-6 text-sm">Error de conexión. Intenta de nuevo.</p>`;
+                    const msg = e.name === 'AbortError'
+                        ? 'El recomendador tardó demasiado. Intenta de nuevo.'
+                        : 'Error de conexión. Intenta de nuevo.';
+                    mealSuggestBody.innerHTML = `<p class="text-center text-red-400/70 py-6 text-sm">${msg}</p>`;
+                } finally {
+                    clearTimeout(timeoutId);
                 }
             });
         }

@@ -2832,13 +2832,14 @@ Ya comió hoy: ${eaten.length ? eaten.join(', ') : '(sin registro detallado)'}
 
 Sugiere 3 comidas/snacks para acercarlo a su meta.`;
 
+        // Fail fast if Anthropic is slow — don't leave the client spinning.
         const aiResp = await anthropic.messages.create({
             model: 'claude-haiku-4-5',
             max_tokens: 2000,
             system: systemPrompt,
             messages: [{ role: 'user', content: userPrompt }],
             output_config: { format: { type: 'json_schema', schema: MEAL_SUGGESTION_SCHEMA } },
-        });
+        }, { timeout: 25000, maxRetries: 1 });
 
         const textBlock = aiResp.content.find(b => b.type === 'text');
         let parsed;
@@ -2893,10 +2894,13 @@ Sugiere 3 comidas/snacks para acercarlo a su meta.`;
         res.json({ remaining, suggestions: verified });
     } catch (e) {
         console.error('Meal suggestion error:', e.message);
+        const isTimeout = e?.name === 'APIConnectionTimeoutError' || /timeout|timed out/i.test(e?.message || '');
         const msg = e.status === 401
             ? 'Error de autenticación con el servicio de IA. Contacta al administrador.'
+            : isTimeout
+            ? 'El recomendador tardó demasiado. Intenta de nuevo.'
             : 'Error generando sugerencias. Intenta de nuevo.';
-        res.status(500).json({ message: msg });
+        res.status(isTimeout ? 504 : 500).json({ message: msg });
     }
 });
 
