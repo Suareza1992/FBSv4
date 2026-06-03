@@ -62,7 +62,11 @@ const anthropic = ANTHROPIC_KEY ? new Anthropic({ apiKey: ANTHROPIC_KEY }) : nul
 const MEAL_SUGGESTION_ENABLED = process.env.MEAL_SUGGESTION_ENABLED !== 'false';
 const intEnv = (v, d) => { const n = parseInt(v, 10); return Number.isNaN(n) ? d : n; };  // keeps a real 0
 const MEAL_DAILY_LIMIT   = intEnv(process.env.MEAL_DAILY_LIMIT,   5);
-const MEAL_MONTHLY_LIMIT = intEnv(process.env.MEAL_MONTHLY_LIMIT, 3000);
+const MEAL_MONTHLY_LIMIT = intEnv(process.env.MEAL_MONTHLY_LIMIT, 3000);   // shared global $ cap (recommender + parser)
+// Natural-language food logging ("Describir" tab). Separate flag so it can launch
+// independently; its own per-client daily cap; shares the global monthly $ cap above.
+const FOOD_NLP_ENABLED     = process.env.FOOD_NLP_ENABLED !== 'false';
+const FOOD_NLP_DAILY_LIMIT = intEnv(process.env.FOOD_NLP_DAILY_LIMIT, 20);
 
 // Multer: store file in memory so we can stream the buffer straight to Cloudinary
 const photoUpload = multer({
@@ -158,8 +162,8 @@ app.use(express.static('public'));
 
 // --- DEBUGGING (only printed when DEBUG=true in .env) ---
 if (DEBUG) {
-    console.log("Email User:", process.env.GMAIL_USER || "Not Set");
-    console.log("Email Pass Loaded:", process.env.GMAIL_APP_PASSWORD ? "YES" : "NO");
+    console.log("Resend key loaded:", process.env.RESEND_API_KEY ? "YES" : "NO");
+    console.log("Trainer email (GMAIL_USER):", process.env.GMAIL_USER || "Not Set");
 }
 
 // --- MONGODB CONNECTION ---
@@ -548,7 +552,7 @@ const Payment = mongoose.model('Payment', PaymentSchema);
 // =============================================================================
 
 // --- Helper: Send email via Resend API ---
-const sendEmail = async ({ from, to, subject, html, text }) => {
+const sendEmail = async ({ from, to, subject, html, text, replyTo }) => {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) throw new Error('RESEND_API_KEY is not set in environment variables.');
     const res = await fetch('https://api.resend.com/emails', {
@@ -559,7 +563,8 @@ const sendEmail = async ({ from, to, subject, html, text }) => {
             to: Array.isArray(to) ? to : [to],
             subject,
             html,
-            ...(text ? { text } : {})
+            ...(text ? { text } : {}),
+            ...(replyTo ? { reply_to: replyTo } : {})
         })
     });
     if (!res.ok) {
@@ -884,8 +889,12 @@ app.get('/api/me', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password -resetPasswordToken -resetPasswordExpires');
         if (!user) return res.status(404).json({ message: 'User not found' });
-        // Surface whether the meal recommender is live, so the client UI can hide the button.
-        res.json({ ...user.toObject(), mealSuggestionEnabled: MEAL_SUGGESTION_ENABLED && !!anthropic });
+        // Surface which AI features are live, so the client UI can hide their entry points.
+        res.json({
+            ...user.toObject(),
+            mealSuggestionEnabled: MEAL_SUGGESTION_ENABLED && !!anthropic,
+            foodNlpEnabled:        FOOD_NLP_ENABLED && !!anthropic,
+        });
     } catch (error) {
         console.error('Error fetching profile:', error);
         res.status(500).json({ message: 'Error fetching profile' });
@@ -1773,7 +1782,10 @@ app.post('/api/payments/:id/invoice', authenticateToken, authorizeRoles('trainer
             : `<p style="color:#aaa;">Contacta a tu entrenador para coordinar el pago.</p>`;
 
         const mailOptions = {
-            from: `"${trainerName}" <${process.env.GMAIL_USER}>`,
+            // Send from the verified Resend domain (a gmail.com "from" would be rejected);
+            // the trainer's address goes in reply-to so the client's replies reach them.
+            from: `"${trainerName}" <noreply@fitbysuarez.com>`,
+            replyTo: process.env.GMAIL_USER || undefined,
             to: client.email,
             subject: `Factura de entrenamiento — ${period}`,
             html: `
@@ -2128,6 +2140,93 @@ const LOCAL_FOODS = [
     { name: 'Syrup / Jarabe de maple',brand:null,  serving: 30,  cal100: 261, p100: 0.0,  c100: 67.0, f100: 0.1  },
     { name: 'Crema de cacahuate (PB)',brand:null,  serving: 32,  cal100: 588, p100: 25.0, c100: 20.0, f100: 50.0 },
     { name: 'Nutella / Hazelnut spread',brand:null,serving: 15, cal100: 539, p100: 6.3,  c100: 57.5, f100: 30.9 },
+
+    // ── Common gaps (proteins) ───────────────────────────────────────────
+    { name: 'Chuleta de cerdo',        brand: null, serving: 120, cal100: 231, p100: 26.0, c100: 0.0,  f100: 14.0 },
+    { name: 'Lomo de cerdo',           brand: null, serving: 120, cal100: 170, p100: 26.0, c100: 0.0,  f100: 7.0  },
+    { name: 'Bistec de res / Carne de res', brand: null, serving: 120, cal100: 206, p100: 28.0, c100: 0.0, f100: 9.0 },
+    { name: 'Pechuga de pavo',         brand: null, serving: 120, cal100: 135, p100: 30.0, c100: 0.0,  f100: 1.0  },
+    { name: 'Bacalao / Cod',           brand: null, serving: 120, cal100: 105, p100: 23.0, c100: 0.0,  f100: 0.9  },
+    { name: 'Salchicha / Hot dog',     brand: null, serving: 45,  cal100: 290, p100: 10.0, c100: 4.0,  f100: 26.0 },
+    { name: 'Chorizo',                 brand: null, serving: 60,  cal100: 455, p100: 24.0, c100: 2.0,  f100: 38.0 },
+    { name: 'Garbanzos (cocidos)',     brand: null, serving: 100, cal100: 164, p100: 8.9,  c100: 27.4, f100: 2.6  },
+
+    // ── Common gaps (dairy / cheese) ─────────────────────────────────────
+    { name: 'Queso blanco / Queso del país', brand: null, serving: 40, cal100: 300, p100: 21.0, c100: 3.0, f100: 23.0 },
+    { name: 'Queso parmesano',         brand: null, serving: 15,  cal100: 431, p100: 38.0, c100: 4.0,  f100: 29.0 },
+    { name: 'Crema / Heavy cream',     brand: null, serving: 30,  cal100: 340, p100: 2.8,  c100: 2.8,  f100: 36.0 },
+    { name: 'Helado de vainilla',      brand: null, serving: 65,  cal100: 207, p100: 3.5,  c100: 24.0, f100: 11.0 },
+
+    // ── Common gaps (nuts / fats) ────────────────────────────────────────
+    { name: 'Anacardos / Cashews',     brand: null, serving: 28,  cal100: 553, p100: 18.0, c100: 30.0, f100: 44.0 },
+    { name: 'Pistachos',               brand: null, serving: 28,  cal100: 562, p100: 20.0, c100: 28.0, f100: 45.0 },
+    { name: 'Aceitunas / Olives',      brand: null, serving: 15,  cal100: 115, p100: 0.8,  c100: 6.0,  f100: 11.0 },
+
+    // ── Common gaps (carbs) ──────────────────────────────────────────────
+    { name: 'Cereal (hojuelas de maíz)', brand: null, serving: 30, cal100: 357, p100: 7.0, c100: 84.0, f100: 0.9 },
+
+    // ── Common gaps (fruits) ─────────────────────────────────────────────
+    { name: 'Sandía / Watermelon',     brand: null, serving: 150, cal100: 30,  p100: 0.6,  c100: 7.6,  f100: 0.2  },
+    { name: 'Melón / Cantaloupe',      brand: null, serving: 150, cal100: 34,  p100: 0.8,  c100: 8.0,  f100: 0.2  },
+    { name: 'Uvas / Grapes',           brand: null, serving: 100, cal100: 69,  p100: 0.7,  c100: 18.0, f100: 0.2  },
+    { name: 'Papaya / Lechosa',        brand: null, serving: 140, cal100: 43,  p100: 0.5,  c100: 11.0, f100: 0.3  },
+    { name: 'Pera / Pear',             brand: null, serving: 150, cal100: 57,  p100: 0.4,  c100: 15.0, f100: 0.1  },
+    { name: 'Toronja / Grapefruit',    brand: null, serving: 150, cal100: 42,  p100: 0.8,  c100: 11.0, f100: 0.1  },
+
+    // ── Common gaps (vegetables) ─────────────────────────────────────────
+    { name: 'Calabacín / Zucchini',    brand: null, serving: 100, cal100: 17,  p100: 1.2,  c100: 3.1,  f100: 0.3  },
+    { name: 'Habichuelas tiernas / Green beans', brand: null, serving: 100, cal100: 35, p100: 1.9, c100: 7.9, f100: 0.2 },
+
+    // ══ Comida criolla puertorriqueña — platos compuestos (macros aprox. por 100g) ══
+    // ── Plátano y viandas ────────────────────────────────────────────────
+    { name: 'Tostones',                brand: null, serving: 80,  cal100: 250, p100: 2.0,  c100: 38.0, f100: 11.0 },
+    { name: 'Tostones rellenos',       brand: null, serving: 100, cal100: 270, p100: 8.0,  c100: 30.0, f100: 13.0 },
+    { name: 'Amarillos / Plátanos maduros fritos', brand: null, serving: 100, cal100: 230, p100: 1.3, c100: 38.0, f100: 8.0 },
+    { name: 'Mofongo',                 brand: null, serving: 150, cal100: 290, p100: 5.0,  c100: 35.0, f100: 15.0 },
+    { name: 'Mofongo relleno',         brand: null, serving: 200, cal100: 250, p100: 12.0, c100: 25.0, f100: 12.0 },
+    { name: 'Canoas (plátano relleno)',brand: null, serving: 150, cal100: 210, p100: 7.0,  c100: 24.0, f100: 10.0 },
+    { name: 'Pastelón',                brand: null, serving: 150, cal100: 200, p100: 9.0,  c100: 18.0, f100: 11.0 },
+    { name: 'Piononos',                brand: null, serving: 120, cal100: 230, p100: 8.0,  c100: 22.0, f100: 12.0 },
+    { name: 'Alcapurrias',             brand: null, serving: 100, cal100: 280, p100: 6.0,  c100: 24.0, f100: 18.0 },
+    { name: 'Arañitas',                brand: null, serving: 80,  cal100: 300, p100: 2.0,  c100: 36.0, f100: 17.0 },
+    { name: 'Mariquitas / Plátano chips', brand: null, serving: 30, cal100: 520, p100: 2.0, c100: 64.0, f100: 29.0 },
+    { name: 'Jibarito',                brand: null, serving: 250, cal100: 250, p100: 13.0, c100: 22.0, f100: 13.0 },
+    // ── Frituras ─────────────────────────────────────────────────────────
+    { name: 'Bacalaítos',              brand: null, serving: 60,  cal100: 290, p100: 8.0,  c100: 30.0, f100: 15.0 },
+    { name: 'Sorullitos de maíz',      brand: null, serving: 60,  cal100: 310, p100: 6.0,  c100: 38.0, f100: 15.0 },
+    { name: 'Empanadillas / Pastelillos', brand: null, serving: 90, cal100: 300, p100: 9.0, c100: 28.0, f100: 17.0 },
+    { name: 'Rellenos de papa',        brand: null, serving: 120, cal100: 250, p100: 7.0,  c100: 24.0, f100: 14.0 },
+    { name: 'Almojábanas',             brand: null, serving: 60,  cal100: 330, p100: 7.0,  c100: 35.0, f100: 18.0 },
+    // ── Arroz, habichuelas y viandas ─────────────────────────────────────
+    { name: 'Arroz con gandules',      brand: null, serving: 150, cal100: 160, p100: 3.5,  c100: 28.0, f100: 4.0  },
+    { name: 'Arroz con pollo',         brand: null, serving: 200, cal100: 165, p100: 9.0,  c100: 20.0, f100: 5.0  },
+    { name: 'Arroz mamposteao',        brand: null, serving: 150, cal100: 180, p100: 5.0,  c100: 28.0, f100: 5.0  },
+    { name: 'Habichuelas guisadas',    brand: null, serving: 130, cal100: 110, p100: 5.0,  c100: 18.0, f100: 2.0  },
+    { name: 'Pasteles',                brand: null, serving: 150, cal100: 180, p100: 6.0,  c100: 22.0, f100: 8.0  },
+    { name: 'Funche / Polenta',        brand: null, serving: 150, cal100: 90,  p100: 2.0,  c100: 16.0, f100: 2.0  },
+    // ── Carnes criollas ──────────────────────────────────────────────────
+    { name: 'Pernil (cerdo asado)',    brand: null, serving: 120, cal100: 290, p100: 25.0, c100: 0.0,  f100: 21.0 },
+    { name: 'Pollo guisado',           brand: null, serving: 150, cal100: 150, p100: 16.0, c100: 4.0,  f100: 8.0  },
+    { name: 'Carne guisada',           brand: null, serving: 150, cal100: 185, p100: 18.0, c100: 6.0,  f100: 9.0  },
+    { name: 'Pollo frito',             brand: null, serving: 120, cal100: 250, p100: 20.0, c100: 9.0,  f100: 15.0 },
+    { name: 'Chuleta can-can',         brand: null, serving: 150, cal100: 350, p100: 22.0, c100: 8.0,  f100: 25.0 },
+    { name: 'Bistec encebollado',      brand: null, serving: 150, cal100: 200, p100: 22.0, c100: 5.0,  f100: 10.0 },
+    { name: 'Costillas BBQ',           brand: null, serving: 150, cal100: 290, p100: 22.0, c100: 8.0,  f100: 19.0 },
+    // ── Pan y desayuno ───────────────────────────────────────────────────
+    { name: 'Mallorca',                brand: null, serving: 80,  cal100: 350, p100: 7.0,  c100: 50.0, f100: 13.0 },
+    { name: 'Pan sobao',               brand: null, serving: 60,  cal100: 280, p100: 8.0,  c100: 50.0, f100: 5.0  },
+    { name: 'Quesito',                 brand: null, serving: 60,  cal100: 380, p100: 6.0,  c100: 40.0, f100: 22.0 },
+    { name: 'Tripleta',                brand: null, serving: 250, cal100: 250, p100: 14.0, c100: 22.0, f100: 12.0 },
+    // ── Sopas y guisos ───────────────────────────────────────────────────
+    { name: 'Sancocho',                brand: null, serving: 250, cal100: 100, p100: 7.0,  c100: 10.0, f100: 3.0  },
+    { name: 'Mondongo',                brand: null, serving: 250, cal100: 120, p100: 9.0,  c100: 8.0,  f100: 6.0  },
+    { name: 'Asopao de pollo',         brand: null, serving: 250, cal100: 90,  p100: 7.0,  c100: 10.0, f100: 2.0  },
+    // ── Postres ──────────────────────────────────────────────────────────
+    { name: 'Flan',                    brand: null, serving: 100, cal100: 150, p100: 4.0,  c100: 22.0, f100: 5.0  },
+    { name: 'Tembleque',               brand: null, serving: 100, cal100: 150, p100: 1.5,  c100: 22.0, f100: 6.0  },
+    { name: 'Arroz con dulce',         brand: null, serving: 120, cal100: 200, p100: 2.5,  c100: 35.0, f100: 6.0  },
+    { name: 'Tres leches',             brand: null, serving: 100, cal100: 290, p100: 6.0,  c100: 38.0, f100: 13.0 },
+    { name: 'Besito de coco / Dulce de coco', brand: null, serving: 40, cal100: 400, p100: 3.0, c100: 55.0, f100: 19.0 },
 ];
 
 // Normalize: remove accents so "huevo" matches "Huevo", "proteína" matches "proteina", etc.
@@ -2200,8 +2299,9 @@ const FOOD_ALIASES = {
     'Proteina en polvo (planta)':    ['plant protein','vegan protein','plant based protein'],
     'Huevos revueltos':              ['scrambled eggs','scrambled'],
     // Caribbean / Puerto Rican
-    'Platano maduro':                ['platano','platano maduro','ripe plantain','plantain','maduros','tajadas','tostones ripe'],
-    'Platano verde':                 ['platano verde','green plantain','tostones','patacones','verde'],
+    'Platano maduro':                ['platano','platano maduro','ripe plantain','plantain','maduros','tajadas'],
+    'Platano verde':                 ['platano verde','green plantain','verde'],
+    'Tostones':                      ['tostones','toston','patacones'],
     'Yuca cocida':                   ['yuca','cassava','cooked cassava','mandioca','tapioca root'],
     'Yautia cocida':                 ['yautia','taro','dasheen','taro root','malanga amarilla'],
     'Malanga cocida':                ['malanga','taro blanco','malanga blanca','cooked malanga'],
@@ -2901,6 +3001,129 @@ Sugiere 3 comidas/snacks para acercarlo a su meta.`;
             ? 'El recomendador tardó demasiado. Intenta de nuevo.'
             : 'Error generando sugerencias. Intenta de nuevo.';
         res.status(isTimeout ? 504 : 500).json({ message: msg });
+    }
+});
+
+// ==========================================================================
+// --- PROTECTED: Natural-language food parsing ("Describir" tab) ---
+// Client types a meal in plain Spanish; Claude splits it into base foods +
+// estimated grams; the server verifies macros against the food DB. The client
+// confirms the preview before anything is logged.
+// ==========================================================================
+const FOOD_PARSE_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        items: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    food:  { type: 'string', description: 'Nombre base más simple y genérico del alimento, sin preparación ni marca (ej: "Huevo", "Avena", "Arroz blanco", "Plátano", "Leche", "Café")' },
+                    grams: { type: 'number', description: 'Cantidad total estimada en gramos' },
+                },
+                required: ['food', 'grams'],
+            },
+        },
+    },
+    required: ['items'],
+};
+
+app.post('/api/parse-food', authenticateToken, async (req, res) => {
+    if (!FOOD_NLP_ENABLED) {
+        return res.status(503).json({ message: 'El registro por texto estará disponible pronto.' });
+    }
+    if (!anthropic) {
+        return res.status(503).json({ message: 'La función no está configurada. Agrega ANTHROPIC_API_KEY en .env.' });
+    }
+    try {
+        const text = (req.body.text || '').trim();
+        if (text.length < 2)   return res.status(400).json({ message: 'Escribe lo que comiste.' });
+        if (text.length > 500) return res.status(400).json({ message: 'El texto es demasiado largo.' });
+
+        const targetId = req.user.id;  // clients log their own meals
+
+        // Usage caps — shared global monthly $ cap + per-client daily NLP cap.
+        const usageNow = new Date();
+        const usageMonth = usageNow.toISOString().slice(0, 7);
+        const usageDay   = usageNow.toISOString().slice(0, 10);
+        const [globalUse, clientUse] = await Promise.all([
+            AiUsage.findOne({ scope: 'global',     clientId: null,     period: usageMonth }),
+            AiUsage.findOne({ scope: 'client_nlp', clientId: targetId, period: usageDay   }),
+        ]);
+        if ((globalUse?.count || 0) >= MEAL_MONTHLY_LIMIT) {
+            return res.status(429).json({ message: 'El registro por texto alcanzó su límite de uso este mes.' });
+        }
+        if ((clientUse?.count || 0) >= FOOD_NLP_DAILY_LIMIT) {
+            return res.status(429).json({ message: `Alcanzaste el máximo de ${FOOD_NLP_DAILY_LIMIT} análisis por hoy. Vuelve mañana.` });
+        }
+
+        const systemPrompt =
+`Conviertes descripciones de comidas en español en una lista estructurada de alimentos.
+REGLAS:
+- Devuelve cada alimento por separado con su cantidad total estimada en GRAMOS.
+- Usa el nombre MÁS SIMPLE y genérico del alimento base, sin preparación, empaque ni marca (ej: "Huevo", "Avena", "Arroz blanco", "Pechuga de pollo", "Plátano", "Leche", "Café").
+- Si el usuario nombra un PLATO PREPARADO conocido (ej: mofongo, tostones, alcapurrias, pastelón, canoas, arroz con gandules, pernil, sancocho, mallorca, tripleta), trátalo como UN SOLO alimento con ese nombre. NO lo descompongas en ingredientes (aceite, sal, ajo, etc.).
+- Solo separa cuando el usuario menciona alimentos distintos juntos (ej: "arroz y habichuelas" → "Arroz" y "Habichuelas"; "café con leche" → "Café" y "Leche"; "avena con plátano" → "Avena" y "Plátano").
+- No agregues ingredientes, condimentos, aceite ni sal que el usuario no haya mencionado.
+- Estima gramos usando PESO COCIDO y PORCIÓN COMESTIBLE (sin hueso ni cáscara), con porciones TÍPICAS, no máximas. Guía de referencia:
+    · 1 huevo ≈ 50g  ·  1 rebanada de pan ≈ 30g  ·  1 plátano ≈ 120g  ·  1 papa mediana ≈ 150g
+    · 1 cucharada ≈ 15g  ·  1 cucharada grande / de servir ≈ 30g
+    · 1 taza de líquido ≈ 240g  ·  1 taza de arroz o avena COCIDOS ≈ 150g
+    · 1 muslo de pollo (carne sin hueso) ≈ 120g  ·  1 pechuga de pollo ≈ 150g  ·  1 porción de carne o pescado ≈ 150g
+- Si la unidad es ambigua, elige una porción típica conservadora (no la más grande).
+- Si no se menciona cantidad, asume 1 porción típica.
+- No inventes alimentos que no se mencionan, y no calcules calorías ni macros.`;
+        const userPrompt = `Comida descrita: "${text}"\n\nConviértela en una lista de alimentos con gramos.`;
+
+        const aiResp = await anthropic.messages.create({
+            model: 'claude-haiku-4-5',
+            max_tokens: 1500,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+            output_config: { format: { type: 'json_schema', schema: FOOD_PARSE_SCHEMA } },
+        }, { timeout: 25000, maxRetries: 1 });
+
+        const textBlock = aiResp.content.find(b => b.type === 'text');
+        let parsed;
+        try { parsed = JSON.parse(textBlock?.text || '{}'); }
+        catch { return res.status(502).json({ message: 'No se pudo interpretar la comida. Intenta de nuevo.' }); }
+
+        const rawItems = Array.isArray(parsed.items) ? parsed.items.slice(0, 15) : [];
+
+        // Verify each parsed food against the DB and compute real macros (in parallel).
+        const items = await Promise.all(rawItems.map(async (it) => {
+            const grams = Math.max(0, Number(it.grams) || 0);
+            const macro = await resolveIngredientMacros(it.food);
+            if (!macro || grams <= 0) {
+                return { food: it.food, grams, verified: false, calories: 0, protein: 0, carbs: 0, fat: 0 };
+            }
+            const factor = grams / 100;
+            return {
+                food: it.food,
+                matchedName: macro.name,
+                grams,
+                verified: true,
+                calories: Math.round(macro.per100.cal     * factor),
+                protein:  Math.round(macro.per100.protein * factor),
+                carbs:    Math.round(macro.per100.carbs   * factor),
+                fat:      Math.round(macro.per100.fat     * factor),
+            };
+        }));
+
+        await Promise.all([
+            AiUsage.updateOne({ scope: 'global',     clientId: null,     period: usageMonth }, { $inc: { count: 1 } }, { upsert: true }),
+            AiUsage.updateOne({ scope: 'client_nlp', clientId: targetId, period: usageDay   }, { $inc: { count: 1 } }, { upsert: true }),
+        ]);
+
+        res.json({ items });
+    } catch (e) {
+        console.error('Food parse error:', e.message);
+        const isTimeout = e?.name === 'APIConnectionTimeoutError' || /timeout|timed out/i.test(e?.message || '');
+        res.status(isTimeout ? 504 : 500).json({
+            message: isTimeout ? 'El análisis tardó demasiado. Intenta de nuevo.' : 'Error analizando la comida. Intenta de nuevo.',
+        });
     }
 });
 

@@ -7,6 +7,8 @@ A full-stack web application built for Coach Suarez to manage clients, training 
 ## Table of Contents
 
 - [Project Overview](#project-overview)
+- [Funcionalidades (Español)](#funcionalidades-español)
+- [Stack Tecnológico (Español)](#stack-tecnológico-español)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Architecture Overview](#architecture-overview)
@@ -31,6 +33,68 @@ The app is used in Spanish day-to-day but the codebase is commented in English.
 
 ---
 
+## Funcionalidades (Español)
+
+Resumen de todo lo que ofrece la plataforma FitBySuárez.
+
+### Panel del Entrenador
+- **Gestión de clientes** — crear, editar, archivar, filtrar y buscar clientes; agruparlos en cohortes personalizados.
+- **Sistema de invitaciones** — enlaces de invitación seguros (7 días) con correo automático al crear un cliente; se pueden reenviar.
+- **Constructor de programas multi-semana** — rutinas reutilizables con semanas y entrenamientos diarios, asignables a cada cliente.
+- **Editor de entrenamientos por cliente** — asignar entrenamientos por fecha; calentamiento/enfriamiento, supersets, videos de ejercicios y días de descanso (activo o total).
+- **Biblioteca de ejercicios** — base de datos por grupo muscular, con video e instrucciones; agregar y editar ejercicios.
+- **Feed de notificaciones** — actividad en tiempo real (entrenamientos completados/perdidos, RPE, peso, nutrición, fotos, nuevos clientes); filtrable.
+- **Medidas corporales** — registrar y seguir circunferencias, % de grasa, IMC y peso por sesión.
+- **Facturación y pagos** — crear facturas, marcarlas pagadas/vencidas y enviar correos con enlaces a ATH Móvil, Venmo y PayPal.
+- **Métodos de cobro** — configurar los handles de ATH Móvil, Venmo y PayPal.
+
+### Panel del Cliente
+- **Entrenamiento del día** — ver la rutina asignada con instrucciones y videos; marcar ejercicios y la sesión como completados o perdidos; enviar RPE (esfuerzo percibido).
+- **Historial de entrenamientos** — revisar y editar sesiones pasadas con su estado.
+- **Seguimiento de nutrición** — registrar calorías, macros (proteína, carbos, grasas) y agua por comida (desayuno, almuerzo, merienda, cena).
+- **Búsqueda de alimentos** — base local en español (incluye comida criolla puertorriqueña) más USDA / Nutritionix / Open Food Facts; entrada manual con unidad obligatoria.
+- **Recomendador de comidas con IA — "¿Qué como?"** 🤖 — sugiere comidas para cerrar los macros que faltan, respetando alergias y preferencias; los macros se verifican contra la base de datos.
+- **Registro de comidas por texto natural — "Describir"** 🤖 — el cliente describe lo que comió en español y la IA lo convierte en alimentos con macros; revisa y ajusta los gramos antes de guardar.
+- **Preferencias alimenticias** — tipo de dieta, alergias y alimentos que no le gustan; alimentan al recomendador.
+- **Ejercicio extra** — registrar entrenamientos adicionales y las calorías quemadas, que amplían el presupuesto calórico del día.
+- **Seguimiento de agua** — botella visual que se vacía según el agua consumida y se reinicia cada día.
+- **Fotos de progreso** — subir fotos por categoría (frente, espalda, lado, general) y ver el historial.
+- **Métricas corporales** — historial de peso y medidas con gráficas, y guía de medidas con figura anatómica.
+- **Inventario de equipo** — marcar el equipo disponible para personalizar las rutinas.
+- **Ajustes de perfil** — nombre, sistema de unidades (imperial/métrico), unidad de porción (g/oz), zona horaria y foto de perfil.
+- **Historial de pagos** — ver las facturas emitidas por el entrenador con su estado (pendiente, pagada, vencida).
+
+### Ambos roles
+- **Autenticación JWT** — sesiones con expiración de 7 días y cierre de sesión automático al vencer.
+- **Recuperación de contraseña** — flujo de restablecimiento con enlace temporal (1 hora) por correo.
+- **Notificaciones tipo *toast*** y **diálogos de confirmación** propios (sin `alert()`/`confirm()` nativos).
+- **Tema oscuro** — sistema de diseño carbón/dorado (`#030303` / `#FFDB89`).
+
+> 🤖 Las funciones de IA se controlan con *feature flags* y se activan al lanzamiento. Incluyen límites de uso (por cliente/día y un tope global mensual) y un límite de gasto en la consola de Anthropic para evitar cargos inesperados.
+
+---
+
+## Stack Tecnológico (Español)
+
+| Capa | Tecnología |
+|---|---|
+| Backend | Node.js (ESM) + Express 4 |
+| Base de datos | MongoDB con Mongoose 8 |
+| Autenticación | JWT (`jsonwebtoken`) + `bcryptjs` |
+| Seguridad | Helmet (CSP), CORS, rate limiting |
+| Inteligencia artificial | Anthropic Claude (modelo Haiku) — recomendador de comidas y registro por texto; salidas estructuradas + verificación de macros contra la base de datos |
+| Frontend | SPA en JavaScript puro (sin framework) |
+| Estilos | Tailwind CSS (compilado a `output.css`), fuente Inter, íconos Font Awesome 6 |
+| Gráficas | Chart.js |
+| Almacenamiento de imágenes | Cloudinary |
+| Datos de alimentos | Base local curada + USDA FoodData Central / Nutritionix / Open Food Facts |
+| Correo | Resend (API HTTP) |
+| Pagos | Enlaces directos a ATH Móvil, Venmo y PayPal; integración con Stripe |
+| Hospedaje | Railway (despliegue automático desde GitHub) |
+| Configuración | `dotenv` |
+
+---
+
 ## Features
 
 ### Trainer Dashboard
@@ -47,7 +111,12 @@ The app is used in Spanish day-to-day but the codebase is commented in English.
 ### Client Dashboard
 - **Workout view** — see today's assigned workout with exercise instructions, video demos, warmup, and cooldown; mark individual exercises complete; mark session complete or missed; submit RPE (Rate of Perceived Exertion) rating after each session
 - **Workout history** — browse past sessions by week with completion status
-- **Nutrition tracker** — log daily calories, macros (protein, carbs, fat), and water intake; search foods via local Spanish-language database or USDA FoodData Central API; log by meal slot (desayuno, almuerzo, merienda, cena, snacks)
+- **Nutrition tracker** — log daily calories, macros (protein, carbs, fat), and water by meal slot (desayuno, almuerzo, merienda, cena, snacks); food search backed by a curated local Spanish database (incl. Puerto Rican criollo dishes) plus USDA FoodData Central, Nutritionix, and Open Food Facts; manual entry requires a unit
+- **AI meal recommender ("¿Qué como?")** 🤖 — suggests meals to close the day's remaining macros, respecting the client's allergies and preferences; every macro is verified against the food database
+- **AI food logging by text ("Describir")** 🤖 — the client describes a meal in plain Spanish and the AI parses it into foods with macros; the client reviews and adjusts grams before saving
+- **Dietary preferences** — diet type, allergies, and disliked foods that feed the recommender
+- **Extra exercise** — log additional workouts and calories burned, which widen the day's calorie budget
+- **Water tracking** — visual bottle that empties as water is logged and resets daily
 - **Progress photos** — upload categorized progress photos (front, back, side, general); view photo history
 - **Body metrics** — view weight history and body measurement trends with charts (Chart.js)
 - **Equipment inventory** — mark available gym equipment to help the trainer personalize workouts
@@ -61,6 +130,8 @@ The app is used in Spanish day-to-day but the codebase is commented in English.
 - **Custom confirm dialogs** — branded async confirm modals replace all `confirm()` calls
 - **Dark theme** — charcoal/gold design system (`#030303` / `#FFDB89`) throughout
 
+> 🤖 AI features are controlled by feature flags and enabled at launch. They include usage limits (per-client/day and a global monthly cap) and an Anthropic Console spend limit to prevent surprise charges.
+
 ---
 
 ## Tech Stack
@@ -71,12 +142,18 @@ The app is used in Spanish day-to-day but the codebase is commented in English.
 | Web framework | Express 4 |
 | Database | MongoDB via Mongoose 8 |
 | Authentication | JWT (`jsonwebtoken`) + `bcryptjs` |
-| Email | Nodemailer (Gmail SMTP / App Password) |
+| Security | Helmet (CSP), CORS, rate limiting (`express-rate-limit`) |
+| AI | Anthropic Claude (Haiku) — meal recommender & text food logging; structured outputs + DB-verified macros |
 | Frontend | Vanilla JavaScript SPA (no framework) |
-| Styling | Tailwind CSS (CDN), Inter font (Google Fonts) |
+| Styling | Tailwind CSS (compiled to `output.css`), Inter font (Google Fonts) |
 | Icons | Font Awesome 6 |
-| Charts | Chart.js (CDN) |
-| Food data | USDA FoodData Central API + local curated fallback |
+| Charts | Chart.js |
+| Image storage | Cloudinary |
+| Food data | Local curated database + USDA FoodData Central / Nutritionix / Open Food Facts |
+| Email | Resend (HTTP API) |
+| Payments | ATH Móvil / Venmo / PayPal deep links; Stripe integration |
+| Hosting | Railway (auto-deploy from GitHub) |
+| Linting | ESLint 10 (flat config) |
 | Environment | `dotenv` |
 
 ---
@@ -127,8 +204,9 @@ The trainer dashboard and client dashboard are served from separate HTML shells 
 
 - Node.js 18+
 - MongoDB (local instance or MongoDB Atlas)
-- A Gmail account with a [Google App Password](https://support.google.com/accounts/answer/185833) enabled (for sending emails)
+- A [Resend](https://resend.com) account + API key (for sending invite, password-reset, and welcome emails)
 - A USDA FoodData Central API key (optional — `DEMO_KEY` works for light usage)
+- An [Anthropic](https://console.anthropic.com) API key (optional — only needed for the AI nutrition features)
 
 ### Installation
 
@@ -144,7 +222,7 @@ npm install
 cp .env.example .env
 
 # 4. Fill in the required values in .env (see table below)
-#    At minimum: MONGO_URI, JWT_SECRET, ADMIN_SEED_PASSWORD, GMAIL_USER, GMAIL_APP_PASSWORD
+#    At minimum: MONGO_URI, JWT_SECRET, ADMIN_SEED_PASSWORD, RESEND_API_KEY
 
 # 5. Start the server
 npm start
@@ -172,10 +250,14 @@ All variables are defined in `.env.example`. Copy it to `.env` and fill in real 
 | `ADMIN_SEED_PASSWORD` | Yes | _(none)_ | Temporary password for the auto-seeded trainer account. Only used on first boot. Change immediately. |
 | `APP_URL` | Yes | `http://localhost:3000` | Public URL of the app. Used in invite links and password-reset emails. Set to your production domain in prod. |
 | `CORS_ORIGIN` | No | Same as `APP_URL` | Allowed origin for CORS. Should match `APP_URL` in most setups. |
-| `GMAIL_USER` | Yes | _(none)_ | Gmail address used as the sender for all outgoing emails. |
-| `GMAIL_APP_PASSWORD` | Yes | _(none)_ | Google App Password (16-char, not your account password). Required for Gmail SMTP auth. |
+| `RESEND_API_KEY` | Yes | _(none)_ | API key for [Resend](https://resend.com); sends all transactional email (invite, password reset, welcome). From address: `FitBySuárez <noreply@fitbysuarez.com>`. |
+| `ANTHROPIC_API_KEY` | For AI | _(none)_ | Anthropic key powering the meal recommender and text food logging. Leave blank to disable both. |
+| `MEAL_SUGGESTION_ENABLED` / `FOOD_NLP_ENABLED` | No | `true` | Feature flags for the two AI features. Set to `false` to keep them dark (e.g., until launch). |
+| `MEAL_DAILY_LIMIT` / `FOOD_NLP_DAILY_LIMIT` / `MEAL_MONTHLY_LIMIT` | No | `5` / `20` / `3000` | AI usage caps — per-client/day and a global monthly cap. |
 | `PORT` | No | `3000` | Port the Express server listens on. |
 | `DEBUG` | No | `false` | Set to `true` locally to enable verbose logging (email config, notification creation). Never enable in production. |
+
+> Image storage (Cloudinary), payments (Stripe), and food-data APIs (USDA, Nutritionix) have their own keys — all documented in `.env.example`.
 
 ---
 
@@ -404,7 +486,7 @@ Clients cannot see other clients' data, cannot create/edit programs, cannot mana
 
 ## Email System
 
-All outgoing mail is sent via Gmail SMTP using Nodemailer. The sender name is `"Coach Suarez"` and the from address is `GMAIL_USER`. Emails are dark-themed HTML with the FitBySuárez gold branding.
+All outgoing mail is sent via the [Resend](https://resend.com) HTTP API (`RESEND_API_KEY`) — SMTP is avoided because Railway blocks it. The from address is `FitBySuárez <noreply@fitbysuarez.com>`. Emails are dark-themed HTML with the FitBySuárez gold branding.
 
 | Trigger | Recipient | Description |
 |---|---|---|

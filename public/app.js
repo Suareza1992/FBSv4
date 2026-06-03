@@ -9869,6 +9869,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let exerciseData = [];  // [{name, calories}] extra activity logged for the day
         let waterOz = 0;
         let waterGoalOz = 64;   // trainer-set or default 8 × 8 oz — drives the water bar
+        let nlpEnabled = true;  // natural-language "Describir" tab; toggled by /api/me flag
         let calorieGoal = 0;
         let foodHistory = [];   // cached from past logs for autocomplete
         let servingUnit = localStorage.getItem('nutriServingUnit') || 'g'; // warm-start cache; DB value applied below
@@ -9940,6 +9941,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (me.mealSuggestionEnabled === false) {
                     document.getElementById('meal-suggest-btn')?.classList.add('hidden');
                 }
+                // Whether the natural-language "Describir" tab should appear in the add-food modal.
+                nlpEnabled = me.foodNlpEnabled !== false;
 
                 // Macro targets set by trainer
                 const ms = me.macroSettings;
@@ -10379,9 +10382,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button id="close-food-modal" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl"><i class="fas fa-times"></i></button>
                     </div>
                     <div class="flex border-b border-[#FFDB89]/15 shrink-0">
-                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89] border-b-2 border-[#FFDB89] transition" data-tab="search"><i class="fas fa-search mr-1.5"></i>Buscar</button>
-                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition" data-tab="manual"><i class="fas fa-pencil-alt mr-1.5"></i>Manual</button>
-                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition" data-tab="scan"><i class="fas fa-barcode mr-1.5"></i>Escanear</button>
+                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89] border-b-2 border-[#FFDB89] transition" data-tab="search"><i class="fas fa-search mr-1"></i>Buscar</button>
+                        ${nlpEnabled ? `<button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition" data-tab="describe"><i class="fas fa-wand-magic-sparkles mr-1"></i>Describir</button>` : ''}
+                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition" data-tab="manual"><i class="fas fa-pencil-alt mr-1"></i>Manual</button>
+                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition" data-tab="scan"><i class="fas fa-barcode mr-1"></i>Escanear</button>
                     </div>
                     <div class="flex-1 overflow-y-auto" id="food-modal-body"></div>
                     <div class="shrink-0 border-t border-[#FFDB89]/15 p-4 space-y-3">
@@ -11153,6 +11157,141 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderCamera();
             };
 
+            // ==================================================
+            // TAB: DESCRIBE  (natural-language food logging)
+            // ==================================================
+            const showDescribeTab = () => {
+                setPreview(null); // this tab uses its own add button, not the shared footer
+                document.getElementById('food-modal-body').innerHTML = `
+                    <div class="p-5 space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Describe lo que comiste</label>
+                            <textarea id="nlp-input" rows="3" placeholder="Ej: 2 huevos revueltos, avena con plátano y un café con leche"
+                                class="w-full p-3 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30 resize-none" autocorrect="off" autocapitalize="none" spellcheck="false"></textarea>
+                            <p class="text-[10px] text-[#FFDB89]/30 mt-1">La IA separa los alimentos y calcula los macros. Revísalos antes de agregar.</p>
+                        </div>
+                        <button id="nlp-analyze-btn" class="w-full py-2.5 rounded-xl bg-[#FFDB89] text-[#030303] font-bold text-sm hover:bg-[#f5cb6e] transition flex items-center justify-center gap-2">
+                            <i class="fas fa-wand-magic-sparkles"></i> Analizar
+                        </button>
+                        <div id="nlp-results" class="space-y-2"></div>
+                    </div>`;
+
+                const escTxt = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const input      = document.getElementById('nlp-input');
+                const analyzeBtn = document.getElementById('nlp-analyze-btn');
+                const resultsEl  = document.getElementById('nlp-results');
+                setTimeout(() => input?.focus(), 80);
+
+                let parsedItems = [];
+
+                const addParsedItems = () => {
+                    if (!parsedItems.length) return;
+                    if (!mealsData[mealIndex].foods) mealsData[mealIndex].foods = [];
+                    parsedItems.forEach(it => {
+                        mealsData[mealIndex].foods.push({
+                            name:          it.matchedName || it.food,
+                            calories:      it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat,
+                            servingAmount: it.grams, servingUnit: 'g',
+                        });
+                    });
+                    const n = parsedItems.length;
+                    stopScanner();
+                    modal.remove();
+                    renderMeals();
+                    recalcTotals();
+                    doSaveNutrition({ silent: true });
+                    showToast(`${n} alimento${n !== 1 ? 's' : ''} agregado${n !== 1 ? 's' : ''}.`, 'success');
+                };
+
+                const renderResults = () => {
+                    if (!parsedItems.length) { resultsEl.innerHTML = ''; return; }
+                    resultsEl.innerHTML = `
+                        <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider">Alimentos detectados — ajusta los gramos si hace falta</p>
+                        ${parsedItems.map((it, i) => {
+                            const warn = it.verified ? '' : ' <span class="text-yellow-500/70">⚠ sin macros</span>';
+                            const matched = (it.verified && it.matchedName && it.matchedName.toLowerCase() !== (it.food || '').toLowerCase())
+                                ? ` <span class="text-[#FFDB89]/30">≈ ${escTxt(it.matchedName)}</span>` : '';
+                            return `<div class="bg-white/5 border border-[#FFDB89]/15 rounded-lg px-3 py-2">
+                                <div class="flex items-start justify-between gap-2">
+                                    <p class="text-sm text-white/90 flex-1 min-w-0">${escTxt(it.food)}${matched}${warn}</p>
+                                    <button class="nlp-remove text-red-400/40 hover:text-red-400 shrink-0 p-1 -mr-1" data-i="${i}" title="Quitar"><i class="fas fa-times pointer-events-none"></i></button>
+                                </div>
+                                <div class="flex items-center justify-between gap-2 mt-1.5">
+                                    <div class="flex items-center gap-1.5">
+                                        <input type="number" inputmode="numeric" class="nlp-grams w-16 p-1 bg-white/10 border border-[#FFDB89]/25 rounded-md text-[#FFDB89] text-xs text-center outline-none focus:ring-1 focus:ring-[#FFDB89]" data-i="${i}" value="${it.grams}" min="0" step="5">
+                                        <span class="text-[10px] text-[#FFDB89]/40">g</span>
+                                    </div>
+                                    <p class="text-[10px] text-[#FFDB89]/50" id="nlp-macros-${i}">${it.calories} cal · P${it.protein} C${it.carbs} G${it.fat}</p>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                        <button id="nlp-add-btn" class="w-full mt-1 py-2.5 rounded-xl bg-[#FFDB89] text-[#030303] font-bold text-sm hover:bg-[#f5cb6e] transition">
+                            <i class="fas fa-plus mr-1"></i>Agregar ${parsedItems.length} alimento${parsedItems.length !== 1 ? 's' : ''}
+                        </button>`;
+                    resultsEl.querySelectorAll('.nlp-remove').forEach(b =>
+                        b.addEventListener('click', () => { parsedItems.splice(parseInt(b.dataset.i), 1); renderResults(); }));
+                    // Editable grams → rescale macros live from the base (linear in grams).
+                    resultsEl.querySelectorAll('.nlp-grams').forEach(inp =>
+                        inp.addEventListener('input', () => {
+                            const i = parseInt(inp.dataset.i);
+                            const it = parsedItems[i];
+                            if (!it) return;
+                            const g = Math.max(0, parseFloat(inp.value) || 0);
+                            it.grams = g;
+                            if (it._baseGrams > 0) {
+                                const r = g / it._baseGrams;
+                                it.calories = Math.round(it._baseCal * r);
+                                it.protein  = Math.round(it._baseP   * r);
+                                it.carbs    = Math.round(it._baseC   * r);
+                                it.fat      = Math.round(it._baseF   * r);
+                            }
+                            const el = document.getElementById('nlp-macros-' + i);
+                            if (el) el.textContent = `${it.calories} cal · P${it.protein} C${it.carbs} G${it.fat}`;
+                        }));
+                    document.getElementById('nlp-add-btn')?.addEventListener('click', addParsedItems);
+                };
+
+                const analyze = async () => {
+                    const text = (input.value || '').trim();
+                    if (text.length < 2) { showToast('Escribe lo que comiste.', 'error'); return; }
+                    analyzeBtn.disabled = true;
+                    analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Analizando...';
+                    resultsEl.innerHTML = '';
+                    const ctrl = new AbortController();
+                    const t = setTimeout(() => ctrl.abort(), 30000);
+                    try {
+                        const res = await apiFetch('/api/parse-food', { method: 'POST', body: JSON.stringify({ text }), signal: ctrl.signal });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            resultsEl.innerHTML = `<p class="text-center text-red-400/70 py-3 text-sm">${escTxt(data.message || 'Error analizando la comida.')}</p>`;
+                            return;
+                        }
+                        // Keep a base (grams + macros) so editing grams rescales linearly
+                        // from the original values instead of compounding rounding.
+                        parsedItems = (data.items || []).map(it => ({
+                            ...it,
+                            _baseGrams: it.grams, _baseCal: it.calories,
+                            _baseP: it.protein, _baseC: it.carbs, _baseF: it.fat,
+                        }));
+                        if (!parsedItems.length) {
+                            resultsEl.innerHTML = `<p class="text-center text-[#FFDB89]/40 py-3 text-sm">No se detectaron alimentos. Intenta describirlo de otra forma.</p>`;
+                            return;
+                        }
+                        renderResults();
+                    } catch (e) {
+                        const msg = e.name === 'AbortError' ? 'El análisis tardó demasiado. Intenta de nuevo.' : 'Error de conexión. Intenta de nuevo.';
+                        resultsEl.innerHTML = `<p class="text-center text-red-400/70 py-3 text-sm">${msg}</p>`;
+                    } finally {
+                        clearTimeout(t);
+                        analyzeBtn.disabled = false;
+                        analyzeBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Analizar';
+                    }
+                };
+
+                analyzeBtn.addEventListener('click', analyze);
+                input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) analyze(); });
+            };
+
             // ---- Tab switching ----
             const switchFoodTab = (tab) => {
                 stopScanner();
@@ -11165,6 +11304,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (tab === 'manual') showManualTab();
                 else if (tab === 'search') showSearchTab();
+                else if (tab === 'describe') showDescribeTab();
                 else showScanTab();
             };
 
