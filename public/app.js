@@ -5292,9 +5292,15 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="card-action-overlay absolute inset-0 bg-[#030303]/96 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col cursor-pointer z-10 rounded-xl overflow-hidden">
                 ${hasContent ? `
-                <div class="action-view flex items-center justify-center gap-2 py-2.5 hover:bg-[#FFDB89]/12 text-[#FFDB89]/60 hover:text-[#FFDB89] transition border-b-2 border-[#FFDB89]/20 shrink-0" data-day="${dayNum}">
-                    <i class="fas fa-eye text-sm pointer-events-none"></i>
-                    <span class="text-[9px] font-bold uppercase tracking-wider pointer-events-none">Ver rutina</span>
+                <div class="flex border-b-2 border-[#FFDB89]/20 shrink-0">
+                    <div class="action-view flex-1 flex items-center justify-center gap-2 py-2.5 hover:bg-[#FFDB89]/12 text-[#FFDB89]/60 hover:text-[#FFDB89] transition border-r border-[#FFDB89]/10" data-day="${dayNum}">
+                        <i class="fas fa-eye text-sm pointer-events-none"></i>
+                        <span class="text-[9px] font-bold uppercase tracking-wider pointer-events-none">Ver</span>
+                    </div>
+                    <div class="action-assign-day flex-1 flex items-center justify-center gap-2 py-2.5 hover:bg-sky-500/15 text-sky-400/70 hover:text-sky-400 transition" data-day="${dayNum}" title="Asignar solo este día a un cliente">
+                        <i class="fas fa-paper-plane text-sm pointer-events-none"></i>
+                        <span class="text-[9px] font-bold uppercase tracking-wider pointer-events-none">Asignar</span>
+                    </div>
                 </div>` : ''}
                 <div class="flex-1 flex border-b border-[#FFDB89]/10">
                     <div class="action-add flex-1 flex flex-col items-center justify-center hover:bg-[#FFDB89]/10 text-[#FFDB89]/80 hover:text-[#FFDB89] transition border-r border-[#FFDB89]/10" data-day="${dayNum}"><i class="fas fa-dumbbell text-sm"></i><span class="text-[9px] font-bold mt-1 uppercase tracking-wider">Añadir</span></div>
@@ -5678,7 +5684,8 @@ document.addEventListener('DOMContentLoaded', () => {
         item.innerHTML = `
             <div class="flex gap-3 items-stretch">
                 <div class="flex flex-col justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 self-center">
-                    <button class="w-7 h-7 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 flex items-center justify-center transition" title="Reordenar"><i class="fas fa-grip-lines text-xs"></i></button>
+                    <button type="button" onclick="window.moveBuilderExercise(this, -1)" class="w-7 h-7 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 flex items-center justify-center transition" title="Mover arriba"><i class="fas fa-chevron-up text-xs"></i></button>
+                    <button type="button" onclick="window.moveBuilderExercise(this, 1)" class="w-7 h-7 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 flex items-center justify-center transition" title="Mover abajo"><i class="fas fa-chevron-down text-xs"></i></button>
                     <button class="w-7 h-7 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/50 hover:text-red-400 hover:bg-red-500/20 flex items-center justify-center transition" onclick="window.deleteBuilderExercise(this)" title="Eliminar"><i class="fas fa-trash text-xs"></i></button>
                 </div>
                 <div class="pt-2 shrink-0"><span class="text-2xl font-black text-[#FFDB89]/20 exercise-label">${label}</span></div>
@@ -5809,6 +5816,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         item.remove();
         window.reindexBuilderLabels();
+    };
+
+    // ── Read the builder's current state into a plain array ──────────────────
+    // isSuperset = the connector immediately BEFORE this item is active (linked
+    // to the previous exercise). Mirrors what addExerciseToBuilder(data) expects.
+    const serializeBuilder = () => {
+        const list = document.getElementById('exercise-list');
+        if (!list) return [];
+        return Array.from(list.querySelectorAll('.exercise-item')).map(item => {
+            const prev = item.previousElementSibling;
+            return {
+                name:  item.querySelector('.exercise-name-input')?.value || '',
+                stats: item.querySelector('.exercise-stats-input')?.value || '',
+                video: item.querySelector('.open-video-modal')?.dataset.video || '',
+                isSuperset: !!(prev?.classList.contains('superset-connector-row') && prev.dataset.active === 'true'),
+            };
+        });
+    };
+
+    const rebuildBuilder = (arr) => {
+        const list = document.getElementById('exercise-list');
+        if (!list) return;
+        list.innerHTML = '';
+        arr.forEach(data => addExerciseToBuilder(data));
+    };
+
+    // ── Move an exercise up (dir -1) or down (dir +1) in the builder ──────────
+    window.moveBuilderExercise = (btn, dir) => {
+        const list = document.getElementById('exercise-list');
+        const item = btn.closest('.exercise-item');
+        if (!list || !item) return;
+        const items = Array.from(list.querySelectorAll('.exercise-item'));
+        const i = items.indexOf(item);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= items.length) return; // already at the edge — no-op
+
+        const arr = serializeBuilder();
+        // Reordering clears superset links on the affected exercises so items never
+        // get accidentally regrouped into a superset they weren't part of.
+        [i, i + 1, j, j + 1].forEach(k => { if (arr[k]) arr[k].isSuperset = false; });
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+        rebuildBuilder(arr);
     };
 
     // ── Toggle the Superset connector button on/off ──────────────────────────
@@ -6347,6 +6396,153 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         return { created, skipped };
+    };
+
+    // ── Push a SINGLE program day to one client on one date (ClientWorkout) ───
+    // Mirrors the per-day mapping in pushProgramToCalendar. Returns true on success.
+    const pushSingleDay = async (dayData, clientId, dateStr, weekIdx, dayNum) => {
+        const isTraining = dayData.exercises?.length > 0;
+        let payload;
+        if (!isTraining && (dayData.isRest || dayData.isActiveRest)) {
+            payload = {
+                clientId, date: dateStr,
+                title: dayData.name || (dayData.isActiveRest ? 'Descanso Activo' : 'Descanso'),
+                isRest: true, restType: dayData.isActiveRest ? 'active_rest' : 'rest',
+                exercises: [],
+            };
+        } else {
+            payload = {
+                clientId, date: dateStr,
+                title: dayData.name || `Semana ${weekIdx + 1} — Día ${dayNum}`,
+                warmup:           dayData.warmup       || '',
+                warmupVideoUrl:   dayData.warmupVideo  || '',
+                warmupItems:      (dayData.warmupItems  || []).map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
+                cooldown:         dayData.cooldown     || '',
+                cooldownVideoUrl: dayData.cooldownVideo || '',
+                cooldownItems:    (dayData.cooldownItems || []).map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
+                exercises: dayData.exercises.map((ex, idx) => ({
+                    id:           Date.now() + idx,
+                    name:         ex.name,
+                    instructions: ex.stats || ex.instructions || '',
+                    videoUrl:     ex.video || ex.videoUrl || '',
+                    isSuperset:   ex.isSuperset   || false,
+                    supersetHead: ex.supersetHead || false,
+                })),
+            };
+        }
+        const res = await apiFetch('/api/client-workouts', { method: 'POST', body: JSON.stringify(payload) });
+        if (!res.ok) return false;
+
+        // Push nutrition targets for this day if set (best-effort, non-critical)
+        const nutr = dayData.nutrition;
+        if (nutr && (nutr.targets?.cal || nutr.targets?.p || nutr.targets?.c || nutr.targets?.f)) {
+            try {
+                await apiFetch('/api/nutrition-logs', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        clientId, date: dateStr,
+                        calories: nutr.targets?.cal || 0,
+                        protein:  nutr.targets?.p  || 0,
+                        carbs:    nutr.targets?.c  || 0,
+                        fat:      nutr.targets?.f  || 0,
+                        meals:    nutr.meals || [],
+                    }),
+                });
+            } catch { /* non-critical */ }
+        }
+        return true;
+    };
+
+    // ── Modal: assign just ONE day of the program to a client on a chosen date ──
+    const openAssignDayModal = (weekIndex, dayNum) => {
+        const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+        if (!prog) return;
+        const dayData = prog.weeks?.[weekIndex]?.days?.[String(dayNum)];
+        const hasContent = dayData?.exercises?.length > 0 || dayData?.isRest || dayData?.isActiveRest;
+        if (!hasContent) { showToast('Este día no tiene contenido para asignar.', 'info'); return; }
+
+        const dayNames = ['Día 1','Día 2','Día 3','Día 4','Día 5','Día 6','Día 7'];
+        const dayLabel = dayData.name || `${dayNames[(dayNum - 1) % 7]} · Semana ${weekIndex + 1}`;
+        const clients = (clientsCache || []).filter(c => !c.isDeleted);
+
+        document.getElementById('assign-single-day-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'assign-single-day-modal';
+        modal.className = 'fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
+        modal.innerHTML = `
+            <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+                <div class="flex items-center justify-between p-5 border-b border-[#FFDB89]/12">
+                    <div>
+                        <h3 class="text-lg font-bold text-[#FFDB89]"><i class="fas fa-paper-plane text-sky-400 mr-2"></i>Asignar día</h3>
+                        <p class="text-xs text-[#FFDB89]/50 mt-1">${escHtml(dayLabel)}</p>
+                    </div>
+                    <button id="assign-day-close" class="text-[#FFDB89]/40 hover:text-[#FFDB89] transition text-xl leading-none">&times;</button>
+                </div>
+                <div class="p-5 space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Cliente</label>
+                        <select id="assign-day-client" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:border-[#FFDB89]/50 transition">
+                            <option value="">Selecciona un cliente…</option>
+                            ${clients.map(c => `<option value="${c._id}">${escHtml(`${c.name || ''} ${c.lastName || ''}`.trim())}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Fecha</label>
+                        <input type="date" id="assign-day-date" value="${getTodayStr()}" style="color-scheme:dark" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:border-[#FFDB89]/50 transition">
+                    </div>
+                    <p class="text-[11px] text-[#FFDB89]/40 leading-relaxed"><i class="fas fa-circle-info mr-1"></i>Se carga solo este día en la fecha elegida. Si el cliente ya tiene una rutina ese día, te avisaremos antes de reemplazarla.</p>
+                </div>
+                <div class="flex gap-2 p-5 border-t border-[#FFDB89]/12">
+                    <button id="assign-day-cancel" class="flex-1 py-2.5 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/70 text-sm font-bold hover:bg-[#FFDB89]/5 transition">Cancelar</button>
+                    <button id="assign-day-confirm" class="flex-1 py-2.5 rounded-lg bg-sky-500/20 border border-sky-400/50 text-sky-300 text-sm font-bold hover:bg-sky-500/30 transition">Asignar</button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+
+        const close = () => modal.remove();
+        modal.querySelector('#assign-day-close').onclick = close;
+        modal.querySelector('#assign-day-cancel').onclick = close;
+        modal.addEventListener('click', (ev) => { if (ev.target === modal) close(); });
+
+        modal.querySelector('#assign-day-confirm').onclick = async () => {
+            const clientId = modal.querySelector('#assign-day-client').value;
+            const dateStr  = modal.querySelector('#assign-day-date').value;
+            if (!clientId) { showToast('Selecciona un cliente.', 'error'); return; }
+            if (!dateStr)  { showToast('Selecciona una fecha.', 'error'); return; }
+
+            // Warn before overwriting an existing routine on that date
+            try {
+                const existingRes = await apiFetch(`/api/client-workouts/${clientId}/${dateStr}`);
+                if (existingRes.ok) {
+                    const existing = await existingRes.json();
+                    const hasExisting = existing && (existing.exercises?.length > 0 || existing.isRest);
+                    if (hasExisting) {
+                        const ok = await showConfirm(`El cliente ya tiene una rutina el ${dateStr}. ¿Reemplazarla con este día?`, {
+                            confirmLabel: 'Reemplazar', cancelLabel: 'Cancelar', danger: true,
+                        });
+                        if (!ok) return;
+                    }
+                }
+            } catch { /* no existing workout — proceed */ }
+
+            const btn = modal.querySelector('#assign-day-confirm');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const ok = await pushSingleDay(dayData, clientId, dateStr, weekIndex, dayNum);
+                if (ok) {
+                    const cli = clients.find(c => c._id == clientId);
+                    close();
+                    showToast(`✓ Día asignado a ${cli ? (cli.name || 'el cliente') : 'el cliente'} para el ${dateStr}.`, 'success', 5000);
+                } else {
+                    btn.disabled = false; btn.textContent = 'Asignar';
+                    showToast('No se pudo asignar el día.', 'error');
+                }
+            } catch (e) {
+                btn.disabled = false; btn.textContent = 'Asignar';
+                showToast('Error de conexión.', 'error');
+            }
+        };
     };
 
     // --- Opens modal to assign the current program to a client ---
@@ -8655,7 +8851,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // ── Touch-device: tap program-day-card to reveal/hide its overlay ──────
         const dayCard = e.target.closest('.program-day-card');
-        const isAction = e.target.closest('.action-add, .action-nutri, .action-view, .action-rest, .action-active-rest, .action-copy, .action-paste');
+        const isAction = e.target.closest('.action-add, .action-nutri, .action-view, .action-assign-day, .action-rest, .action-active-rest, .action-copy, .action-paste');
         if (dayCard && !isAction) {
             // Close any other open cards first
             document.querySelectorAll('.program-day-card.touch-active').forEach(c => { if (c !== dayCard) c.classList.remove('touch-active'); });
@@ -8671,7 +8867,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.program-day-card.touch-active').forEach(c => c.classList.remove('touch-active'));
         }
 
-        const target = e.target.closest('a, button, [id], .program-card, .open-video-modal, .client-row, .action-add, .action-nutri, .action-view, .action-rest, .action-active-rest, .action-copy, .action-paste, .pill-option, .toggle-switch, .cal-action-btn');
+        const target = e.target.closest('a, button, [id], .program-card, .open-video-modal, .client-row, .action-add, .action-nutri, .action-view, .action-assign-day, .action-rest, .action-active-rest, .action-copy, .action-paste, .pill-option, .toggle-switch, .cal-action-btn');
         if (!target) return;
 
         if (target.id === 'theme-toggle' || target.closest('#theme-toggle')) { 
@@ -8857,6 +9053,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const weekBlocks = Array.from(document.querySelectorAll('.week-block'));
             const weekIndex = weekBlocks.indexOf(target.closest('.week-block'));
             openProgramDayView(weekIndex, parseInt(target.dataset.day));
+            return;
+        }
+        if (target.classList.contains('action-assign-day')) {
+            const weekBlocks = Array.from(document.querySelectorAll('.week-block'));
+            const weekIndex = weekBlocks.indexOf(target.closest('.week-block'));
+            openAssignDayModal(weekIndex, parseInt(target.dataset.day));
             return;
         }
         if (target.classList.contains('action-rest')) {
