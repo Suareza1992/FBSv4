@@ -6315,20 +6315,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Pushes all program days to a client's calendar starting from startDateStr ---
     // (localDateStr is now defined once at the top of this module.)
-    const pushProgramToCalendar = async (prog, clientId, startDateStr) => {
+    const pushProgramToCalendar = async (prog, clientId, startDateStr, opts = {}) => {
+        // opts.selectedKeys: a Set of "<weekIndex>-<dayNum>" strings to assign ONLY those days.
+        // When set, the FIRST selected day lands on startDate (e.g. start a program from Day 3),
+        // and later days keep their spacing. When null (default), every day is assigned as before.
+        const selectedKeys = opts.selectedKeys || null;
         const startDate = new Date(startDateStr + 'T00:00:00');
-        let current = new Date(startDate);
         let created = 0, skipped = 0;
+        let anchorOffset = selectedKeys ? null : 0; // default: grid day 0 anchors to startDate
 
         for (let wIdx = 0; wIdx < prog.weeks.length; wIdx++) {
             const week = prog.weeks[wIdx];
             for (let dayNum = 1; dayNum <= 7; dayNum++) {
+                const globalIndex = wIdx * 7 + (dayNum - 1);
                 // Mongoose Maps serialize with string keys
                 const dayData = week.days?.[String(dayNum)] ?? week.days?.[dayNum];
-                const dateStr = localDateStr(current);
 
-                if (dayData) {
-                    try {
+                // Skip days the trainer left unchecked (only when a selection is active).
+                if (selectedKeys && !selectedKeys.has(`${wIdx}-${dayNum}`)) continue;
+                if (!dayData) continue;
+
+                const willPost = ((dayData.isRest || dayData.isActiveRest) && !dayData.exercises?.length) || (dayData.exercises?.length > 0);
+                if (!willPost) continue;
+
+                // Anchor the first day we actually post to startDate; preserve later days' spacing.
+                if (anchorOffset === null) anchorOffset = globalIndex;
+                const dateObj = new Date(startDate);
+                dateObj.setDate(startDate.getDate() + (globalIndex - anchorOffset));
+                const dateStr = localDateStr(dateObj);
+
+                try {
                         // Exercises take priority — a day with exercises is always a training day,
                         // even if leftover isRest/isActiveRest flags exist from a previous state.
                         if ((dayData.isRest || dayData.isActiveRest) && !dayData.exercises?.length) {
@@ -6388,11 +6404,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 } catch { /* nutrition push failure is non-critical */ }
                             }
                         }
-                    } catch { skipped++; }
-                }
-
-                // Every day (training, rest or unset) advances the calendar slot
-                current.setDate(current.getDate() + 1);
+                } catch { skipped++; }
             }
         }
         return { created, skipped };
@@ -6553,6 +6565,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const clients = clientsCache.filter(c => !c.isDeleted && c.isActive);
         const todayStr = localDateStr(new Date());
 
+        // Build the optional per-day checklist (only days that actually have content).
+        const daysPanelHtml = prog.weeks.map((week, wIdx) => {
+            const rows = [];
+            for (let d = 1; d <= 7; d++) {
+                const dd = week.days?.[String(d)] ?? week.days?.[d];
+                if (!dd) continue;
+                const has = (dd.exercises?.length > 0) || dd.isRest || dd.isActiveRest;
+                if (!has) continue;
+                const desc = dd.exercises?.length > 0
+                    ? `${dd.exercises.length} ej.`
+                    : (dd.isActiveRest ? 'Desc. activo' : 'Descanso');
+                const nm = dd.name || `Día ${d}`;
+                rows.push(`<label class="flex items-center gap-2 text-xs text-[#FFDB89]/80 py-0.5 cursor-pointer">
+                    <input type="checkbox" class="assign-day-cb accent-[#FFDB89] w-3.5 h-3.5 shrink-0" data-week="${wIdx}" data-day="${d}" checked>
+                    <span class="truncate">${escHtml(nm)} <span class="text-[#FFDB89]/35">· ${desc}</span></span>
+                </label>`);
+            }
+            return rows.length
+                ? `<div><p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-1">Semana ${wIdx + 1}</p>${rows.join('')}</div>`
+                : '';
+        }).join('');
+
         let existing = document.getElementById('assign-to-client-modal');
         if (existing) existing.remove();
 
@@ -6575,6 +6609,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     <label class="block text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1.5">Fecha de inicio</label>
                     <input type="date" id="assign-start-date" value="${todayStr}"
                         class="w-full px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-sm text-[#FFDB89] outline-none focus:border-[#FFDB89]/50 mb-3">
+                    ${daysPanelHtml ? `
+                    <div class="mb-3">
+                        <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-[#FFDB89]/60 select-none">
+                            <input type="checkbox" id="assign-pick-days" class="accent-[#FFDB89] w-3.5 h-3.5">
+                            Asignar solo días específicos
+                        </label>
+                        <div id="assign-days-panel" class="hidden mt-2 max-h-44 overflow-y-auto border border-[#FFDB89]/15 rounded-lg p-2.5 bg-[#FFDB89]/5 space-y-2.5">
+                            <p class="text-[10px] text-[#FFDB89]/40 leading-snug">El primer día seleccionado comienza en la fecha de inicio; los demás mantienen su espaciado.</p>
+                            ${daysPanelHtml}
+                            <div class="flex gap-3 pt-1 border-t border-[#FFDB89]/10 text-[10px] font-bold">
+                                <button type="button" id="assign-days-all" class="text-[#FFDB89]/60 hover:text-[#FFDB89] transition">Todos</button>
+                                <button type="button" id="assign-days-none" class="text-[#FFDB89]/60 hover:text-[#FFDB89] transition">Ninguno</button>
+                            </div>
+                        </div>
+                    </div>` : ''}
                     <input type="text" id="assign-client-search" placeholder="Buscar cliente..."
                         class="w-full px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50" autocorrect="off" autocapitalize="none" spellcheck="false">
                 </div>
@@ -6635,6 +6684,17 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        // ── Optional day selection ─────────────────────────────────────────────
+        document.getElementById('assign-pick-days')?.addEventListener('change', (e) => {
+            document.getElementById('assign-days-panel')?.classList.toggle('hidden', !e.target.checked);
+        });
+        document.getElementById('assign-days-all')?.addEventListener('click', () => {
+            modal.querySelectorAll('.assign-day-cb').forEach(cb => { cb.checked = true; });
+        });
+        document.getElementById('assign-days-none')?.addEventListener('click', () => {
+            modal.querySelectorAll('.assign-day-cb').forEach(cb => { cb.checked = false; });
+        });
+
         // ── Close ──────────────────────────────────────────────────────────────
         document.getElementById('close-assign-modal').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
@@ -6672,6 +6732,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const startDateStr = document.getElementById('assign-start-date')?.value;
             if (!startDateStr) { showToast('Selecciona una fecha de inicio.', 'error'); return; }
 
+            // Optional day selection — only assign the checked days when the toggle is on.
+            let selectedKeys = null;
+            if (document.getElementById('assign-pick-days')?.checked) {
+                selectedKeys = new Set();
+                modal.querySelectorAll('.assign-day-cb:checked').forEach(cb => selectedKeys.add(`${cb.dataset.week}-${cb.dataset.day}`));
+                if (selectedKeys.size === 0) { showToast('Selecciona al menos un día para asignar.', 'error'); return; }
+            }
+
             // Switch to progress state
             document.getElementById('assign-client-list').classList.add('hidden');
             document.getElementById('assign-progress').classList.remove('hidden');
@@ -6688,7 +6756,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 client.program = prog.name;
 
                 // 2. Push every training day to the client calendar
-                const { created, skipped } = await pushProgramToCalendar(prog, selectedClientId, startDateStr);
+                const { created, skipped } = await pushProgramToCalendar(prog, selectedClientId, startDateStr, { selectedKeys });
 
                 // 3. Update count badge in builder header
                 const assigned = clientsCache.filter(c => c.program === prog.name && !c.isDeleted).length;
