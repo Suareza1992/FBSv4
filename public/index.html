@@ -654,6 +654,49 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        // Render a tiny, safe subset of Markdown for blog posts:
+        //   [text](https://url)  → link      **bold** → bold      *italic* / _italic_ → italic
+        // Everything is HTML-escaped FIRST (no script/HTML injection); only http(s) links
+        // are allowed, and link HTML is shielded so emphasis passes can't mangle URLs.
+        function formatBlogContent(s) {
+          var html = escHtmlPublic(s);
+          var links = [];
+          html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, function (_m, text, url) {
+            var i = links.length;
+            links.push('<a href="' + url + '" target="_blank" rel="noopener noreferrer" class="text-fbs-gold underline underline-offset-2 hover:text-white transition">' + text + '</a>');
+            return '@@LK' + i + 'KL@@';
+          });
+          html = html
+            .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+            .replace(/_([^_\n]+)_/g, '<em>$1</em>');
+          html = html.replace(/@@LK(\d+)KL@@/g, function (_m, i) { return links[+i] != null ? links[+i] : _m; });
+          var out = '';
+          var listType = null;
+          function closeList() { if (listType) { out += '</' + listType + '>'; listType = null; } }
+          var arr = html.split('\n');
+          for (var k = 0; k < arr.length; k++) {
+            var ln = arr[k];
+            var bullet = ln.match(/^\s*(?:[-*]|[•◦○·–—])\s+(.*\S)\s*$/);
+            var numbered = ln.match(/^\s*(\d+)[.)]\s+(.*\S)\s*$/);
+            if (bullet) {
+              if (listType !== 'ul') { closeList(); out += '<ul class="list-disc pl-5 space-y-1 my-2">'; listType = 'ul'; }
+              out += '<li>' + bullet[1] + '</li>';
+            } else if (numbered) {
+              if (listType !== 'ol') { closeList(); out += '<ol class="list-decimal pl-5 space-y-1 my-2" start="' + numbered[1] + '">'; listType = 'ol'; }
+              out += '<li>' + numbered[2] + '</li>';
+            } else if (ln.trim() === '') {
+              closeList();
+              out += '<br>';
+            } else {
+              closeList();
+              out += ln + '<br>';
+            }
+          }
+          closeList();
+          return out;
+        }
+
         (async () => {
           const grid        = document.getElementById('blog-cards-grid');
           const emptyEl     = document.getElementById('blog-empty');
@@ -724,7 +767,7 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
                 ${dateStr ? `<span class="text-fbs-gold/40 text-xs">${escHtmlPublic(dateStr)}</span>` : ''}
               </div>
               <h3 class="text-white font-black text-base sm:text-lg leading-snug mb-3">${escHtmlPublic(post.title)}</h3>
-              <div class="blog-body text-fbs-gold/70 text-sm leading-relaxed whitespace-pre-line">${escHtmlPublic(post.content)}</div>
+              <div class="blog-body text-fbs-gold/70 text-sm leading-relaxed whitespace-pre-line">${formatBlogContent(post.content)}</div>
               <button class="blog-read-more" aria-expanded="false">
                 <span class="btn-label">${(translations[window.__fbsLang || 'es'] || translations.es).readMore}</span>
                 <i class="fas fa-chevron-down"></i>
