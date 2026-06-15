@@ -43,6 +43,8 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Sistema de invitaciones** — enlaces de invitación seguros (7 días) con correo automático al crear un cliente; se pueden reenviar.
 - **Constructor de programas multi-semana** — rutinas reutilizables con semanas y entrenamientos diarios, asignables a cada cliente.
 - **Editor de entrenamientos por cliente** — asignar entrenamientos por fecha; calentamiento/enfriamiento, supersets, videos de ejercicios y días de descanso (activo o total).
+- **Asignación flexible de programas** — asignar un programa a **varios clientes a la vez**, con fecha de inicio y selección opcional de qué días cargar (p. ej. empezar desde el Día 3); también asignar **un solo día** suelto al calendario de un cliente.
+- **Blog** — redactar y publicar artículos con formato Markdown (enlaces, negrita, cursiva, listas); se muestran en el sitio público con fecha de publicación y, si se editan, de actualización.
 - **Biblioteca de ejercicios** — base de datos por grupo muscular, con video e instrucciones; agregar y editar ejercicios.
 - **Equipo del cliente** — pestaña de solo lectura con el inventario y los pesos que el cliente marcó como disponibles; recibes una notificación cuando el cliente lo actualiza.
 - **Feed de notificaciones** — actividad en tiempo real (entrenamientos completados/perdidos, RPE, peso, nutrición, fotos, equipo actualizado, restricciones musculares, nuevos clientes); filtrable.
@@ -104,6 +106,8 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Invite system** — generate secure 7-day invite tokens; resend invite links at any time; invite email sent automatically on client creation
 - **Multi-week program builder** — create reusable training programs with named weeks and daily workouts; assign programs to clients
 - **Client workout editor** — assign workouts directly to individual clients by calendar date; supports warmup/cooldown sections, superset grouping, exercise video links, and rest/active-rest days
+- **Flexible program assignment** — assign a program to **multiple clients at once**, with a start date and an optional day picker (assign only specific days, e.g. start from Day 3); also assign a **single program day** to one client's calendar
+- **Blog editor** — write and publish articles with Markdown formatting (links, bold, italic, bullet/numbered lists); they render on the public marketing site with a publish date (and an "updated" date if edited later)
 - **Exercise library** — curated database of exercises categorized by muscle group, each with an optional video URL and instructions; trainer can add/update exercises
 - **Client equipment view** — read-only tab showing the equipment and weights a client has marked as available; the trainer receives a notification (throttled) whenever a client updates their inventory
 - **Notifications feed** — real-time activity feed showing workout completions, missed sessions, RPE ratings, weight updates, nutrition logs, progress photo uploads, equipment updates, muscle restrictions, and new client additions; filterable by last 7 days or unread
@@ -409,7 +413,7 @@ All routes beginning with `/api/` are JSON endpoints. Routes marked **Trainer** 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/notifications` | Auth | Fetch up to 50 notifications for the trainer, newest first. |
+| `GET` | `/api/notifications` | Auth | Paginated notifications for the trainer, newest first. Query: `skip`, `limit` (default 30, max 100), `filter` (`unread` / `7days`, applied server-side). Returns `{ notifications, hasMore }` for "Cargar más" infinite-scroll. |
 | `GET` | `/api/notifications/unread-count` | Auth | Return the count of unread notifications (used for the bell badge). |
 | `PUT` | `/api/notifications/read-all` | Auth | Mark all notifications as read. |
 | `PUT` | `/api/notifications/:id/read` | Auth | Mark a single notification as read. |
@@ -421,6 +425,17 @@ All routes beginning with `/api/` are JSON endpoints. Routes marked **Trainer** 
 | `GET` | `/api/equipment` | Auth | Fetch the current user's equipment inventory. |
 | `PUT` | `/api/equipment` | Auth | Save the current user's equipment inventory. When a client saves, fires a throttled `equipment_updated` notification to the trainer. |
 | `POST` | `/api/equipment-check` | Trainer | 🤖 **Dormant** (flag: `EQUIPMENT_CHECK_ENABLED`). AI-checks a list of exercises against a client's equipment; returns per-exercise flags for missing equipment or over-budget weights. Short-circuits if the client has no inventory (`noEquipment`) or has the check toggled off (`disabled`). |
+
+### Blog
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/blog` | Public | List published posts, newest first. Returns `publishedAt` + `updatedAt` so the public page can show both dates. |
+| `GET` | `/api/blog/all` | Trainer | List every post, including unpublished drafts. |
+| `GET` | `/api/blog/:slug` | Public | Fetch a single published post by its slug. |
+| `POST` | `/api/blog` | Trainer | Create a post (auto-generates a unique slug; stamps `publishedAt` if published on creation). |
+| `PATCH` | `/api/blog/:id` | Trainer | Update a post. **Preserves the original `publishedAt`** (stamped only on first publish); `updatedAt` auto-bumps via Mongoose timestamps. |
+| `DELETE` | `/api/blog/:id` | Trainer | Delete a post. |
 
 ---
 
@@ -479,6 +494,9 @@ Simple named cohort. Groups appear as filter options on the client list and can 
 
 ### `Payment`
 Invoice record linking a client to the trainer. Fields: `amount` (USD), `status` (`'pending'` | `'paid'` | `'overdue'`), `method` (payment platform used), `periodLabel` (display period, e.g. "Mayo 2026"), `dueDate`, `paidDate`, and `notes`. `paidDate` is auto-set when status transitions to `'paid'`.
+
+### `BlogPost`
+Educational/marketing articles authored by the trainer and rendered on the public site. Fields: `title`, `slug` (unique, auto-generated), `category`, `excerpt`, `content` (a safe Markdown subset — links, bold, italic, bullet/numbered lists — rendered client-side with HTML escaping + http(s)-only links), and `published`. `publishedAt` is stamped once on first publish and never overwritten on later edits; `createdAt`/`updatedAt` are auto-managed (`timestamps: true`), letting the public page show a publish date plus an "updated" date when a post is edited well after publishing.
 
 ---
 

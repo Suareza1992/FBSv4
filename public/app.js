@@ -10712,6 +10712,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="w-full text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] transition flex items-center justify-center gap-1.5 mt-2 py-2 rounded-xl border border-dashed border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/5" onclick="window._openAddFoodModal(${mi})">
                             <i class="fas fa-plus text-[10px]"></i> Añadir alimento
                         </button>
+                        ${(meal.foods || []).length > 0 ? `<button class="w-full text-[10px] text-[#FFDB89]/40 hover:text-[#FFDB89] transition flex items-center justify-center gap-1.5 mt-1.5" onclick="window._saveMealCombo(${mi})"><i class="fas fa-bookmark text-[9px]"></i> Guardar como combinación</button>` : ''}
                     </div>
                 </div>
             `).join('');
@@ -12051,6 +12052,146 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { console.error('Error loading nutrition log:', e); }
         };
 
+        // ── Saved meal combos ───────────────────────────────────────────────
+        // Re-log an identical meal in one tap. Stored per ingredient so the client
+        // can tweak quantities before adding (we always ASK before logging).
+        let savedMealsCache = [];
+
+        const renderSavedMeals = () => {
+            const panel = document.getElementById('saved-meals-panel');
+            if (!panel) return;
+            if (!savedMealsCache.length) { panel.innerHTML = ''; return; }
+            panel.innerHTML = `
+                <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-xl p-3 mb-1">
+                    <p class="text-[11px] font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-2"><i class="fas fa-bookmark mr-1.5"></i>Mis combinaciones</p>
+                    <div class="flex flex-wrap gap-2">
+                        ${savedMealsCache.map(sm => {
+                            const cal = Math.round((sm.foods || []).reduce((s, f) => s + (Number(f.calories) || 0), 0));
+                            const n = (sm.foods || []).length;
+                            return `
+                            <div class="group/sm flex items-center gap-1.5 bg-white/5 border border-[#FFDB89]/20 rounded-full pl-3 pr-1.5 py-1.5">
+                                <button onclick="window._addSavedMeal('${sm._id}')" class="flex items-center gap-2 text-left" title="Añadir esta combinación">
+                                    <i class="fas fa-plus text-[10px] text-[#FFDB89]"></i>
+                                    <span class="text-xs font-semibold text-white">${escHtml(sm.name)}</span>
+                                    <span class="text-[10px] text-[#FFDB89]/40">${n} item${n !== 1 ? 's' : ''} · ${cal} cal</span>
+                                </button>
+                                <button onclick="window._deleteSavedMeal('${sm._id}')" class="text-red-400/30 hover:text-red-400 opacity-0 group-hover/sm:opacity-100 transition p-1" title="Eliminar"><i class="fas fa-times text-[10px]"></i></button>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>`;
+        };
+
+        const fetchSavedMeals = async () => {
+            try {
+                const res = await apiFetch('/api/saved-meals');
+                if (res.ok) savedMealsCache = await res.json();
+            } catch { /* non-critical */ }
+            renderSavedMeals();
+        };
+
+        // Save a meal's current foods as a reusable combo.
+        window._saveMealCombo = async (mi) => {
+            const meal = mealsData[mi];
+            if (!meal || !(meal.foods || []).length) { showToast('Agrega alimentos antes de guardar.', 'info'); return; }
+            const name = (window.prompt('Nombre para esta combinación:', meal.name || 'Mi combinación') || '').trim();
+            if (!name) return;
+            const foods = meal.foods.map(f => ({
+                name: f.name, calories: Number(f.calories) || 0, protein: Number(f.protein) || 0,
+                carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
+                servingAmount: f.servingAmount != null ? Number(f.servingAmount) : null, servingUnit: f.servingUnit || '',
+            }));
+            try {
+                const res = await apiFetch('/api/saved-meals', { method: 'POST', body: JSON.stringify({ name, mealSlot: meal.name || '', foods }) });
+                if (!res.ok) throw new Error();
+                showToast(`✓ "${name}" guardada como combinación.`, 'success');
+                fetchSavedMeals();
+            } catch { showToast('No se pudo guardar la combinación.', 'error'); }
+        };
+
+        window._deleteSavedMeal = async (id) => {
+            const sm = savedMealsCache.find(m => m._id === id);
+            if (!sm) return;
+            if (!await showConfirm(`¿Eliminar la combinación "${sm.name}"?`, { confirmLabel: 'Eliminar', cancelLabel: 'Cancelar', danger: true })) return;
+            try {
+                await apiFetch(`/api/saved-meals/${id}`, { method: 'DELETE' });
+                savedMealsCache = savedMealsCache.filter(m => m._id !== id);
+                renderSavedMeals();
+            } catch { showToast('No se pudo eliminar.', 'error'); }
+        };
+
+        // Click + on a combo → ASK first: choose the meal, optionally tweak quantities, then add.
+        window._addSavedMeal = (id) => {
+            const sm = savedMealsCache.find(m => m._id === id);
+            if (!sm) return;
+            document.getElementById('add-combo-modal')?.remove();
+            const defaultIdx = Math.max(0, mealsData.findIndex(m => m.name === sm.mealSlot));
+            const items = sm.foods.map(f => ({ ...f })); // editable working copy
+
+            const modal = document.createElement('div');
+            modal.id = 'add-combo-modal';
+            modal.className = 'fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+            modal.innerHTML = `
+                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+                    <div class="flex justify-between items-center p-4 border-b border-[#FFDB89]/12">
+                        <h3 class="text-base font-bold text-[#FFDB89]"><i class="fas fa-bookmark mr-2 text-sm"></i>${escHtml(sm.name)}</h3>
+                        <button id="combo-close" class="text-[#FFDB89]/50 hover:text-[#FFDB89] text-lg"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div>
+                            <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Añadir a</label>
+                            <select id="combo-meal" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/25 rounded-lg text-white text-sm outline-none">
+                                ${mealsData.map((m, i) => `<option value="${i}" ${i === defaultIdx ? 'selected' : ''}>${escHtml(m.name)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div id="combo-items" class="space-y-1.5 max-h-52 overflow-y-auto"></div>
+                        <p class="text-[11px] text-[#FFDB89]/40 leading-snug"><i class="fas fa-circle-info mr-1"></i>Ajusta el multiplicador (×) si comiste una cantidad distinta, o añádela tal cual.</p>
+                    </div>
+                    <div class="flex gap-2 p-4 border-t border-[#FFDB89]/12">
+                        <button id="combo-cancel" class="flex-1 py-2.5 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/70 text-sm font-bold hover:bg-[#FFDB89]/5">Cancelar</button>
+                        <button id="combo-add" class="flex-1 py-2.5 rounded-lg bg-[#FFDB89] text-[#030303] text-sm font-bold">Añadir</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            modal.querySelector('#combo-items').innerHTML = items.map((f, i) => `
+                <div class="flex items-center gap-2 bg-white/5 border border-[#FFDB89]/10 rounded-lg px-2.5 py-2">
+                    <span class="flex-1 text-sm text-white truncate">${escHtml(f.name)}</span>
+                    <input type="number" step="0.1" min="0" value="1" data-i="${i}" class="combo-mult w-14 p-1 bg-white/10 border border-[#FFDB89]/25 rounded text-[#FFDB89] text-xs text-center outline-none" title="multiplicador">
+                    <span class="text-[10px] text-[#FFDB89]/40 w-12 text-right">${Math.round(Number(f.calories) || 0)} cal</span>
+                </div>`).join('');
+
+            const close = () => modal.remove();
+            modal.querySelector('#combo-close').onclick = close;
+            modal.querySelector('#combo-cancel').onclick = close;
+            modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+            modal.querySelector('#combo-add').onclick = () => {
+                const targetIdx = parseInt(modal.querySelector('#combo-meal').value) || 0;
+                if (!mealsData[targetIdx]) return;
+                if (!mealsData[targetIdx].foods) mealsData[targetIdx].foods = [];
+                modal.querySelectorAll('.combo-mult').forEach(inp => {
+                    const f = items[+inp.dataset.i];
+                    const mult = parseFloat(inp.value);
+                    const m = (isNaN(mult) || mult <= 0) ? 1 : mult;
+                    mealsData[targetIdx].foods.push({
+                        name: f.name,
+                        calories: Math.round((Number(f.calories) || 0) * m),
+                        protein:  +(((Number(f.protein) || 0) * m).toFixed(1)),
+                        carbs:    +(((Number(f.carbs)   || 0) * m).toFixed(1)),
+                        fat:      +(((Number(f.fat)     || 0) * m).toFixed(1)),
+                        servingAmount: f.servingAmount != null ? +((Number(f.servingAmount) * m).toFixed(1)) : null,
+                        servingUnit: f.servingUnit || '',
+                    });
+                });
+                close();
+                renderMeals();
+                recalcTotals();
+                doSaveNutrition({ silent: true });
+                showToast(`✓ "${sm.name}" añadida.`, 'success');
+            };
+        };
+
         // --- SAVE ---
         const saveBtn = document.getElementById('save-nutrition-btn');
         // Shared save function — called by button and auto-save
@@ -12295,6 +12436,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Initial load
         await loadLogForDate(todayStr);
+        fetchSavedMeals();
         await loadHistory();
     };
 

@@ -451,6 +451,20 @@ const NutritionLogSchema = new mongoose.Schema({
 NutritionLogSchema.index({ clientId: 1, date: -1 });
 const NutritionLog = mongoose.model('NutritionLog', NutritionLogSchema);
 
+// Reusable meal combos a client saves to re-log identical meals in one tap.
+// Stores each ingredient individually so the client can edit before re-adding.
+const SavedMealSchema = new mongoose.Schema({
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    name:     { type: String, required: true },
+    mealSlot: { type: String, default: '' }, // which meal it was saved from (e.g. "Desayuno")
+    foods: [{
+        name: String, calories: Number, protein: Number, carbs: Number, fat: Number,
+        servingAmount: Number, servingUnit: String,
+    }],
+}, { timestamps: true });
+SavedMealSchema.index({ clientId: 1, createdAt: -1 });
+const SavedMeal = mongoose.model('SavedMeal', SavedMealSchema);
+
 // Meal-recommender usage counters for cost caps: one 'global' doc per month and
 // one 'client' doc per client per day. Drives the daily + monthly limits.
 const AiUsageSchema = new mongoose.Schema({
@@ -1665,6 +1679,44 @@ app.delete('/api/nutrition-logs/:logId', authenticateToken, async (req, res) => 
         await NutritionLog.findByIdAndDelete(req.params.logId);
         res.json({ message: 'Deleted' });
     } catch (e) { res.status(500).json({ message: 'Error deleting nutrition log' }); }
+});
+
+// --- Saved meal combos (per client) ---
+// List the current user's saved combos, newest first.
+app.get('/api/saved-meals', authenticateToken, async (req, res) => {
+    try {
+        const meals = await SavedMeal.find({ clientId: req.user.id }).sort({ createdAt: -1 });
+        res.json(meals);
+    } catch (e) { res.status(500).json({ message: 'Error fetching saved meals' }); }
+});
+
+// Save a combo (snapshot of a meal's foods). Body: { name, mealSlot, foods: [...] }
+app.post('/api/saved-meals', authenticateToken, async (req, res) => {
+    try {
+        const { name, mealSlot, foods } = req.body;
+        if (!name || !Array.isArray(foods) || foods.length === 0)
+            return res.status(400).json({ message: 'Se requiere un nombre y al menos un alimento.' });
+        const clean = foods.map(f => ({
+            name: f.name || 'Sin nombre',
+            calories: Number(f.calories) || 0, protein: Number(f.protein) || 0,
+            carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
+            servingAmount: f.servingAmount != null ? Number(f.servingAmount) : null,
+            servingUnit: f.servingUnit || '',
+        }));
+        const meal = await SavedMeal.create({ clientId: req.user.id, name, mealSlot: mealSlot || '', foods: clean });
+        res.status(201).json(meal);
+    } catch (e) { res.status(500).json({ message: 'Error saving meal combo' }); }
+});
+
+// Delete one of the user's own combos.
+app.delete('/api/saved-meals/:id', authenticateToken, async (req, res) => {
+    try {
+        const meal = await SavedMeal.findById(req.params.id);
+        if (!meal) return res.status(404).json({ message: 'No encontrado' });
+        if (meal.clientId.toString() !== req.user.id) return res.status(403).json({ message: 'Forbidden' });
+        await SavedMeal.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Deleted' });
+    } catch (e) { res.status(500).json({ message: 'Error deleting saved meal' }); }
 });
 
 // ==========================================================================
