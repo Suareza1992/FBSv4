@@ -238,44 +238,80 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { /* silently ignore — user may not be logged in */ }
     };
 
+    const NOTIF_PAGE = 30;
+    let notifOffset = 0;
+    let notifLoadingMore = false;
+
+    // Fetch one page of notifications honoring the current filter + offset.
+    const fetchNotificationsPage = async () => {
+        const params = new URLSearchParams({ skip: String(notifOffset), limit: String(NOTIF_PAGE) });
+        if (currentNotifFilter === 'unread' || currentNotifFilter === '7days') params.set('filter', currentNotifFilter);
+        const res = await apiFetch(`/api/notifications?${params.toString()}`);
+        if (!res.ok) return { notifications: [], hasMore: false };
+        return await res.json();
+    };
+
+    // Append (or remove) the "Cargar más" button after the feed.
+    const renderNotifLoadMore = (hasMore) => {
+        document.getElementById('notif-load-more-wrap')?.remove();
+        if (!hasMore) return;
+        const feed = document.getElementById('activity-feed');
+        if (!feed) return;
+        feed.insertAdjacentHTML('beforeend', `
+            <div id="notif-load-more-wrap" class="flex justify-center py-4">
+                <button id="notif-load-more" class="px-5 py-2 rounded-lg border border-[#FFDB89]/25 text-[#FFDB89]/80 text-sm font-bold hover:bg-[#FFDB89]/10 transition">
+                    Cargar más
+                </button>
+            </div>`);
+        document.getElementById('notif-load-more')?.addEventListener('click', loadMoreNotifications);
+    };
+
     const fetchAndRenderNotifications = async (filter) => {
         if (filter !== undefined) currentNotifFilter = filter;
+        notifOffset = 0;
+        const feed = document.getElementById('activity-feed');
+        const loading = document.getElementById('notifications-loading');
         try {
-            const res = await apiFetch('/api/notifications');
-            if (res.ok) {
-                let notifications = await res.json();
-                const feed = document.getElementById('activity-feed');
-                const loading = document.getElementById('notifications-loading');
-                const empty = document.getElementById('notifications-empty');
-                if (!feed) return;
-                if (loading) loading.classList.add('hidden');
-                // Apply filter
-                if (currentNotifFilter === '7days') {
-                    const sevenDaysAgo = new Date();
-                    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-                    notifications = notifications.filter(n => new Date(n.createdAt) >= sevenDaysAgo);
-                } else if (currentNotifFilter === 'unread') {
-                    notifications = notifications.filter(n => !n.isRead);
-                }
-                if (notifications.length === 0) {
-                    const emptyMsg = currentNotifFilter === 'unread'
-                        ? 'No tienes notificaciones sin leer.'
-                        : 'No hay actividad de clientes en los últimos 7 días.';
-                    feed.innerHTML = `<div class="flex flex-col items-center justify-center py-14 gap-3 text-[#FFDB89]/30">
-                        <i class="fas fa-bell-slash text-4xl"></i>
-                        <p class="text-sm font-medium">${emptyMsg}</p>
-                    </div>`;
-                    return;
-                }
-                feed.innerHTML = notifications.map(n => renderNotificationItem(n)).join('');
+            const { notifications = [], hasMore = false } = await fetchNotificationsPage();
+            if (loading) loading.classList.add('hidden');
+            if (!feed) return;
+            if (notifications.length === 0) {
+                const emptyMsg = currentNotifFilter === 'unread'
+                    ? 'No tienes notificaciones sin leer.'
+                    : 'No hay actividad de clientes en los últimos 7 días.';
+                feed.innerHTML = `<div class="flex flex-col items-center justify-center py-14 gap-3 text-[#FFDB89]/30">
+                    <i class="fas fa-bell-slash text-4xl"></i>
+                    <p class="text-sm font-medium">${emptyMsg}</p>
+                </div>`;
+                return;
             }
+            feed.innerHTML = notifications.map(n => renderNotificationItem(n)).join('');
+            notifOffset += notifications.length;
+            renderNotifLoadMore(hasMore);
         } catch (e) { console.error('Error fetching notifications:', e); }
+    };
+
+    const loadMoreNotifications = async () => {
+        if (notifLoadingMore) return;
+        notifLoadingMore = true;
+        const btn = document.getElementById('notif-load-more');
+        if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
+        try {
+            const { notifications = [], hasMore = false } = await fetchNotificationsPage();
+            const feed = document.getElementById('activity-feed');
+            if (!feed) return;
+            document.getElementById('notif-load-more-wrap')?.remove();
+            feed.insertAdjacentHTML('beforeend', notifications.map(n => renderNotificationItem(n)).join(''));
+            notifOffset += notifications.length;
+            renderNotifLoadMore(hasMore);
+        } catch (e) { console.error(e); }
+        finally { notifLoadingMore = false; }
     };
 
     const renderNotificationItem = (n) => {
         const config = getNotificationConfig(n.type);
         const timeAgo = getTimeAgo(new Date(n.createdAt));
-        const unreadDot = !n.isRead ? `<span class="w-2 h-2 rounded-full shrink-0 mt-1.5 ml-3" style="background:${config.color}"></span>` : '';
+        const unreadDot = !n.isRead ? `<span class="notif-unread-dot w-2 h-2 rounded-full shrink-0 mt-1.5 ml-3" style="background:${config.color}"></span>` : '';
         // H-1+M-8: escHtml on all server-supplied strings in attribute and content contexts
         const safeId       = escHtml(n._id);
         const safeClientId = escHtml(n.clientId);
@@ -346,7 +382,14 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             await apiFetch(`/api/notifications/${id}/read`, { method: 'PUT' });
             fetchNotificationCount();
-            fetchAndRenderNotifications();
+            // Update the clicked item in place so the loaded pages / scroll position are kept.
+            const el = document.querySelector(`[data-notification-id="${id}"]`);
+            if (el) {
+                el.classList.add('opacity-50');
+                el.classList.remove('cursor-pointer', 'hover:border-[#FFDB89]/30');
+                el.removeAttribute('onclick');
+                el.querySelector('.notif-unread-dot')?.remove();
+            }
         } catch (e) { console.error(e); }
     };
 
@@ -7027,11 +7070,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         document.getElementById('edit-routine-modal').classList.add('hidden');
-        if(currentClientViewId) openClientProfile(currentClientViewId);
-        // Re-render program builder if we're in program view
-        if(currentProgramId && document.getElementById('program-builder-view') && !document.getElementById('program-builder-view').classList.contains('hidden')) {
+        // Return to the correct context. If we're in the program builder, re-render it and
+        // stay put — do NOT fall back to openClientProfile(): currentClientViewId can be
+        // stale from a previously-viewed client and would wrongly bounce us to Clientes.
+        const inProgramBuilder = currentProgramId
+            && document.getElementById('program-builder-view')
+            && !document.getElementById('program-builder-view').classList.contains('hidden');
+        if (inProgramBuilder) {
             const prog = programsCache.find(p => (p.id == currentProgramId) || (p._id == currentProgramId));
-            if(prog) renderProgramBuilder(prog);
+            if (prog) renderProgramBuilder(prog);
+        } else if (currentClientViewId) {
+            openClientProfile(currentClientViewId);
         }
     };
 

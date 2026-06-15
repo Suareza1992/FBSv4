@@ -3403,10 +3403,26 @@ app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
 // GET all notifications for the logged-in trainer
 app.get('/api/notifications', authenticateToken, async (req, res) => {
     try {
-        const notifications = await Notification.find({ trainerId: req.user.id })
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 100);
+        const skip  = Math.max(parseInt(req.query.skip, 10) || 0, 0);
+        const filter = req.query.filter;
+
+        const query = { trainerId: req.user.id };
+        if (filter === 'unread') {
+            query.isRead = false;
+        } else if (filter === '7days') {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            query.createdAt = { $gte: sevenDaysAgo };
+        }
+
+        // Fetch one extra to detect whether more pages exist.
+        const docs = await Notification.find(query)
             .sort({ createdAt: -1 })
-            .limit(50);
-        res.json(notifications);
+            .skip(skip)
+            .limit(limit + 1);
+        const hasMore = docs.length > limit;
+        res.json({ notifications: hasMore ? docs.slice(0, limit) : docs, hasMore });
     } catch (error) {
         console.error('Error fetching notifications:', error);
         res.status(500).json({ message: 'Error fetching notifications' });
