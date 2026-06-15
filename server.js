@@ -3799,7 +3799,7 @@ app.get('/api/blog', async (req, res) => {
     try {
         const posts = await BlogPost.find({ published: true })
             .sort({ publishedAt: -1 })
-            .select('title slug category excerpt content publishedAt');
+            .select('title slug category excerpt content publishedAt updatedAt');
         res.json(posts);
     } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -3850,13 +3850,18 @@ app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
         return res.status(403).json({ message: 'Acceso restringido.' });
     try {
         const { title, category, excerpt, content, published } = req.body;
-        const update = { title, category, content, published };
+        const existing = await BlogPost.findById(req.params.id);
+        if (!existing) return res.status(404).json({ message: 'Post no encontrado.' });
+
+        const update = { title, category, content, published: !!published };
         if (excerpt !== undefined) update.excerpt = excerpt;
         else if (content) update.excerpt = content.slice(0, 160).replace(/\n/g, ' ');
-        if (published) update.publishedAt = new Date();
-        else update.publishedAt = null; // clear date when unpublishing
+        // Preserve the ORIGINAL publish date — only stamp it the first time the post
+        // goes live. Subsequent edits leave publishedAt untouched (updatedAt auto-bumps
+        // via timestamps), so we keep both dates for clarity/honesty.
+        if (published && !existing.publishedAt) update.publishedAt = new Date();
+
         const post = await BlogPost.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
-        if (!post) return res.status(404).json({ message: 'Post no encontrado.' });
         res.json(post);
     } catch (e) { res.status(500).json({ message: e.message }); }
 });
