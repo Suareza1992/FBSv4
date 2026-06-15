@@ -5335,24 +5335,24 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="card-action-overlay absolute inset-0 bg-[#030303]/96 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col cursor-pointer z-10 rounded-xl overflow-hidden">
                 ${hasContent ? `
-                <div class="flex border-b-2 border-[#FFDB89]/20 shrink-0">
-                    <div class="action-view flex-1 flex items-center justify-center gap-2 py-2.5 hover:bg-[#FFDB89]/12 text-[#FFDB89]/60 hover:text-[#FFDB89] transition border-r border-[#FFDB89]/10" data-day="${dayNum}">
-                        <i class="fas fa-eye text-sm pointer-events-none"></i>
-                        <span class="text-[9px] font-bold uppercase tracking-wider pointer-events-none">Ver</span>
+                <div class="flex shrink-0 border-b border-[#FFDB89]/15">
+                    <div class="action-view flex-1 flex items-center justify-center gap-2 py-2.5 text-[#FFDB89]/55 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition border-r border-[#FFDB89]/10" data-day="${dayNum}">
+                        <i class="fas fa-eye text-xs pointer-events-none"></i>
+                        <span class="text-[9px] font-bold tracking-wide pointer-events-none">Ver</span>
                     </div>
-                    <div class="action-assign-day flex-1 flex items-center justify-center gap-2 py-2.5 hover:bg-sky-500/15 text-sky-400/70 hover:text-sky-400 transition" data-day="${dayNum}" title="Asignar solo este día a un cliente">
-                        <i class="fas fa-paper-plane text-sm pointer-events-none"></i>
-                        <span class="text-[9px] font-bold uppercase tracking-wider pointer-events-none">Asignar</span>
+                    <div class="action-assign-day flex-1 flex items-center justify-center gap-2 py-2.5 text-[#FFDB89]/55 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition" data-day="${dayNum}" title="Asignar solo este día a un cliente">
+                        <i class="fas fa-paper-plane text-xs pointer-events-none"></i>
+                        <span class="text-[9px] font-bold tracking-wide pointer-events-none">Asignar</span>
                     </div>
                 </div>` : ''}
-                <div class="flex-1 flex border-b border-[#FFDB89]/10">
-                    <div class="action-add flex-1 flex flex-col items-center justify-center hover:bg-[#FFDB89]/10 text-[#FFDB89]/80 hover:text-[#FFDB89] transition border-r border-[#FFDB89]/10" data-day="${dayNum}"><i class="fas fa-dumbbell text-sm"></i><span class="text-[9px] font-bold mt-1 uppercase tracking-wider">Añadir</span></div>
-                    <div class="action-nutri flex-1 flex flex-col items-center justify-center hover:bg-orange-500/10 text-orange-400/70 hover:text-orange-400 transition" data-day="${dayNum}"><i class="fas fa-apple-alt text-sm"></i><span class="text-[9px] font-bold mt-1 uppercase tracking-wider">Nutrición</span></div>
+                <div class="flex-1 flex border-b border-[#FFDB89]/15">
+                    <div class="action-add flex-1 flex flex-col items-center justify-center gap-1.5 text-[#FFDB89] hover:bg-[#FFDB89]/10 transition border-r border-[#FFDB89]/10" data-day="${dayNum}"><i class="fas fa-dumbbell text-base pointer-events-none"></i><span class="text-[10px] font-bold tracking-wide pointer-events-none">Añadir</span></div>
+                    <div class="action-nutri flex-1 flex flex-col items-center justify-center gap-1.5 text-[#FFDB89] hover:bg-[#FFDB89]/10 transition" data-day="${dayNum}"><i class="fas fa-apple-alt text-base text-orange-300/80 pointer-events-none"></i><span class="text-[10px] font-bold tracking-wide pointer-events-none">Nutrición</span></div>
                 </div>
                 <div class="flex-1 flex">
-                    <div class="action-rest flex-1 flex flex-col items-center justify-center hover:bg-green-500/10 text-green-400/70 hover:text-green-400 transition border-r border-[#FFDB89]/10" data-day="${dayNum}"><i class="fas fa-bed text-sm"></i><span class="text-[9px] font-bold mt-1 uppercase tracking-wider">Descanso</span></div>
-                    <div class="action-active-rest flex-1 flex flex-col items-center justify-center hover:bg-[#6EE7B7]/10 text-[#6EE7B7]/60 hover:text-[#6EE7B7] transition border-r border-[#FFDB89]/10" data-day="${dayNum}"><i class="fas fa-person-walking text-sm"></i><span class="text-[9px] font-bold mt-1 uppercase tracking-wider">Activo</span></div>
-                    <div class="action-copy flex-1 flex flex-col items-center justify-center hover:bg-[#FFDB89]/10 text-[#FFDB89]/40 hover:text-[#FFDB89]/70 transition" data-day="${dayNum}"><i class="fas fa-copy text-sm"></i><span class="text-[9px] font-bold mt-1 uppercase tracking-wider">Copiar</span></div>
+                    <div class="action-rest flex-1 flex flex-col items-center justify-center gap-1 text-[#FFDB89]/55 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition border-r border-[#FFDB89]/10" data-day="${dayNum}"><i class="fas fa-bed text-sm text-emerald-300/75 pointer-events-none"></i><span class="text-[9px] font-bold tracking-wide pointer-events-none">Descanso</span></div>
+                    <div class="action-active-rest flex-1 flex flex-col items-center justify-center gap-1 text-[#FFDB89]/55 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition border-r border-[#FFDB89]/10" data-day="${dayNum}"><i class="fas fa-person-walking text-sm text-teal-300/75 pointer-events-none"></i><span class="text-[9px] font-bold tracking-wide pointer-events-none">Activo</span></div>
+                    <div class="action-copy flex-1 flex flex-col items-center justify-center gap-1 text-[#FFDB89]/55 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition" data-day="${dayNum}"><i class="fas fa-copy text-sm pointer-events-none"></i><span class="text-[9px] font-bold tracking-wide pointer-events-none">Copiar</span></div>
                 </div>
             </div>
         </div>`;
@@ -6694,7 +6694,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <!-- Footer action bar -->
                 <div class="px-4 py-3 border-t border-[#FFDB89]/10 shrink-0 flex items-center justify-between gap-3">
-                    <p id="assign-selected-label" class="text-xs text-[#FFDB89]/40 italic truncate">Selecciona un cliente de la lista</p>
+                    <p id="assign-selected-label" class="text-xs text-[#FFDB89]/40 italic truncate">Selecciona uno o más clientes</p>
                     <button id="confirm-assign-btn" disabled
                         class="shrink-0 px-5 py-2 bg-[#FFDB89] text-[#030303] font-bold rounded-lg text-sm transition opacity-40 cursor-not-allowed">
                         <i class="fas fa-check mr-1.5"></i>Asignar
@@ -6704,17 +6704,20 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(modal);
 
         // ── State ──────────────────────────────────────────────────────────────
-        let selectedClientId = null;
+        const selectedClientIds = new Set(); // multi-select
 
         const updateConfirmBtn = () => {
             const btn = document.getElementById('confirm-assign-btn');
             if (!btn) return;
-            if (selectedClientId) {
+            const n = selectedClientIds.size;
+            if (n > 0) {
                 btn.disabled = false;
                 btn.classList.remove('opacity-40', 'cursor-not-allowed');
+                btn.innerHTML = `<i class="fas fa-check mr-1.5"></i>Asignar${n > 1 ? ` (${n})` : ''}`;
             } else {
                 btn.disabled = true;
                 btn.classList.add('opacity-40', 'cursor-not-allowed');
+                btn.innerHTML = `<i class="fas fa-check mr-1.5"></i>Asignar`;
             }
         };
 
@@ -6742,34 +6745,37 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('close-assign-modal').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 
-        // ── Client row click → SELECT only, do NOT assign yet ─────────────────
+        // ── Client row click → TOGGLE selection (multiple allowed) ────────────
         document.getElementById('assign-client-list').addEventListener('click', (e) => {
             const row = e.target.closest('.assign-client-row');
             if (!row) return;
+            const id = row.dataset.clientId;
 
-            // Deselect all rows
-            document.querySelectorAll('.assign-client-row').forEach(r => {
-                r.classList.remove('bg-[#FFDB89]/10', 'border-l-2', 'border-[#FFDB89]');
-                r.querySelector('.assign-check')?.classList.add('opacity-0');
-            });
+            if (selectedClientIds.has(id)) {
+                selectedClientIds.delete(id);
+                row.classList.remove('bg-[#FFDB89]/10', 'border-l-2', 'border-[#FFDB89]');
+                row.querySelector('.assign-check')?.classList.add('opacity-0');
+            } else {
+                selectedClientIds.add(id);
+                row.classList.add('bg-[#FFDB89]/10', 'border-l-2', 'border-[#FFDB89]');
+                row.querySelector('.assign-check')?.classList.remove('opacity-0');
+            }
 
-            // Select clicked row
-            row.classList.add('bg-[#FFDB89]/10', 'border-l-2', 'border-[#FFDB89]');
-            row.querySelector('.assign-check')?.classList.remove('opacity-0');
-            selectedClientId = row.dataset.clientId;
-
-            // Update label
+            // Update label with the running count
             const label = document.getElementById('assign-selected-label');
-            if (label) label.textContent = `Cliente: ${row.dataset.clientName}`;
+            if (label) {
+                const n = selectedClientIds.size;
+                label.textContent = n === 0
+                    ? 'Selecciona uno o más clientes'
+                    : `${n} cliente${n > 1 ? 's' : ''} seleccionado${n > 1 ? 's' : ''}`;
+            }
 
             updateConfirmBtn();
         });
 
-        // ── Confirm button → ACTUALLY assign ──────────────────────────────────
+        // ── Confirm button → ACTUALLY assign (to every selected client) ───────
         document.getElementById('confirm-assign-btn').addEventListener('click', async () => {
-            if (!selectedClientId) return;
-            const client = clientsCache.find(c => c._id === selectedClientId);
-            if (!client) return;
+            if (selectedClientIds.size === 0) return;
 
             // Read the date at the moment the user clicks Asignar
             const startDateStr = document.getElementById('assign-start-date')?.value;
@@ -6783,35 +6789,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (selectedKeys.size === 0) { showToast('Selecciona al menos un día para asignar.', 'error'); return; }
             }
 
+            const ids = Array.from(selectedClientIds);
+
             // Switch to progress state
             document.getElementById('assign-client-list').classList.add('hidden');
             document.getElementById('assign-progress').classList.remove('hidden');
             document.querySelector('#assign-to-client-modal .shrink-0.flex').classList.add('hidden'); // hide footer
             document.getElementById('close-assign-modal').disabled = true;
 
-            try {
-                // 1. Link program name to client record
-                const res = await apiFetch(`/api/clients/${selectedClientId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ program: prog.name })
-                });
-                if (!res.ok) { showToast('Error asignando programa.', 'error'); modal.remove(); return; }
-                client.program = prog.name;
+            // Assign to each selected client, one at a time.
+            let okCount = 0, failCount = 0;
+            for (const cid of ids) {
+                const client = clientsCache.find(c => c._id === cid);
+                if (!client) { failCount++; continue; }
+                try {
+                    const res = await apiFetch(`/api/clients/${cid}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ program: prog.name })
+                    });
+                    if (!res.ok) { failCount++; continue; }
+                    client.program = prog.name;
+                    await pushProgramToCalendar(prog, cid, startDateStr, { selectedKeys });
+                    okCount++;
+                } catch (err) { failCount++; }
+            }
 
-                // 2. Push every training day to the client calendar
-                const { created, skipped } = await pushProgramToCalendar(prog, selectedClientId, startDateStr, { selectedKeys });
+            // Update count badge in builder header
+            const assigned = clientsCache.filter(c => c.program === prog.name && !c.isDeleted).length;
+            const countEl = document.getElementById('builder-client-count');
+            if (countEl) countEl.textContent = `${assigned} ${assigned === 1 ? 'Cliente' : 'Clientes'}`;
 
-                // 3. Update count badge in builder header
-                const assigned = clientsCache.filter(c => c.program === prog.name && !c.isDeleted).length;
-                const countEl = document.getElementById('builder-client-count');
-                if (countEl) countEl.textContent = `${assigned} ${assigned === 1 ? 'Cliente' : 'Clientes'}`;
+            modal.remove();
 
-                modal.remove();
-
-                const skipNote = skipped > 0 ? ` (${skipped} día${skipped > 1 ? 's' : ''} ya tenían rutina y no fueron sobreescritos)` : '';
-                showToast(`✓ ${prog.name} asignado a ${client.name}. ${created} día${created !== 1 ? 's' : ''} cargado${created !== 1 ? 's' : ''} al calendario desde el ${startDateStr}.${skipNote}`, 'success');
-
-            } catch(err) { showToast('Error de conexión.', 'error'); modal.remove(); }
+            if (okCount === 0) {
+                showToast('No se pudo asignar el programa.', 'error');
+            } else {
+                const failNote = failCount > 0 ? ` (${failCount} fallaron)` : '';
+                showToast(`✓ ${prog.name} asignado a ${okCount} cliente${okCount !== 1 ? 's' : ''} desde el ${startDateStr}.${failNote}`, 'success', 5000);
+            }
         });
     };
 
