@@ -564,9 +564,28 @@ const PaymentSchema = new mongoose.Schema({
     stripeInvoiceId:         { type: String, default: null },
     stripePaymentLink:       { type: String, default: null },       // Hosted Checkout / Invoice URL
     trialDays:               { type: Number, default: 0 },
+    // ── PayPal fields ──────────────────────────────────────────────────────────
+    paypalOrderId:           { type: String, default: null },       // one-time order id
+    paypalSubscriptionId:    { type: String, default: null },       // recurring subscription id
 });
 PaymentSchema.index({ trainerId: 1, dueDate: -1 });
 const Payment = mongoose.model('Payment', PaymentSchema);
+
+// Carries self-serve signup details across the PayPal approval redirect (TTL 24h).
+const PendingSignupSchema = new mongoose.Schema({
+    ref:       { type: String, required: true, unique: true }, // PayPal order id OR subscription id
+    kind:      { type: String, enum: ['order', 'subscription'], required: true },
+    name:      { type: String, default: '' },
+    lastName:  { type: String, default: '' },
+    email:     { type: String, required: true },
+    planId:    { type: String, required: true },
+    createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 },
+});
+const PendingSignup = mongoose.model('PendingSignup', PendingSignupSchema);
+
+// Tiny key/value store — caches the lazily-created PayPal billing plan id.
+const AppSettingSchema = new mongoose.Schema({ key: { type: String, unique: true }, value: String });
+const AppSetting = mongoose.model('AppSetting', AppSettingSchema);
 
 // =============================================================================
 // 2. API ROUTES
@@ -3660,6 +3679,319 @@ const getOrCreateStripeCustomer = async (clientUser) => {
     return customer;
 };
 
+// ==========================================================================
+// --- PUBLIC SELF-SERVE SIGNUP (pricing page → Stripe → auto-create account)
+// ==========================================================================
+
+// EDIT these to match your real offering. `mode` is 'subscription' (recurring
+// monthly) or 'payment' (one-time). Amounts are in USD.
+const SIGNUP_PLANS = [
+    { id: 'monthly',       label: 'Coaching Mensual',  amount: 99,  mode: 'subscription', blurb: 'Entrenamiento + nutrición personalizados, con ajustes cada semana. Se renueva cada mes.' },
+    {
+        id: 'progressions3', label: '3 Progresiones', amount: 250, mode: 'payment',
+        blurb: 'Tres progresiones de programa completas en un solo pago. Sin renovación.',
+        // ─────────────────────────────────────────────────────────────────────────────
+        //  EDITA AQUÍ ↓  — Este texto aparece al pulsar "Más información" en el plan $250.
+        //  Explica qué es una "progresión". Usa saltos de línea normales para párrafos.
+        // ─────────────────────────────────────────────────────────────────────────────
+        moreInfo: `Una "progresión" es un bloque de entrenamiento diseñado para un objetivo específico (normalmente ~4 semanas).
+
+Cada progresión sube la dificultad de forma planificada — más peso, más volumen o nuevos ejercicios — para que sigas avanzando sin estancarte.
+
+Con este plan recibes 3 progresiones consecutivas: empezamos donde estás hoy y construimos sobre cada bloque. Es un pago único, sin renovación automática.`,
+    },
+];
+const findSignupPlan = (id) => SIGNUP_PLANS.find(p => p.id === id);
+
+// Create the client account + send the activation email + record the paid invoice.
+// Called from the Stripe webhook once a self-serve checkout completes. Idempotent:
+// safe to run twice for the same session (Stripe retries webhooks).
+// Activation email (set-your-password link) for a freshly created self-signup account.
+async function sendActivationEmail(client, inviteRawToken) {
+    const inviteLink = `${APP_URL}/?invite=${inviteRawToken}`;
+    try {
+        await sendEmail({
+            from: 'FitBySuárez <noreply@fitbysuarez.com>',
+            to: client.email,
+            subject: '¡Bienvenido a FitBySuárez! — Activa tu cuenta',
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0a0a0a; color: #f5f5f5;">
+                    <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 1px solid #FFDB8930;">
+                        <h1 style="color: #FFDB89; margin: 0; font-size: 28px; letter-spacing: 2px;">FitBySuárez</h1>
+                    </div>
+                    <div style="background: #1c1c1e; border: 1px solid #FFDB8930; border-radius: 12px; padding: 30px;">
+                        <h2 style="color: #FFDB89; margin-top: 0;">¡Hola, ${client.name}!</h2>
+                        <p style="color: #ccc; line-height: 1.7;">Gracias por unirte a <strong style="color: #FFDB89;">FitBySuárez</strong>. Tu pago se procesó con éxito. Haz clic abajo para activar tu cuenta y crear tu contraseña.</p>
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="${inviteLink}" style="display: inline-block; background: #FFDB89; color: #030303; padding: 16px 36px; text-decoration: none; border-radius: 10px; font-weight: 900; font-size: 16px;">Activar mi cuenta</a>
+                        </div>
+                        <p style="color: #888; font-size: 13px;">O copia este enlace: <span style="color:#FFDB89; word-break:break-all;">${inviteLink}</span></p>
+                        <p style="color: #ef4444; font-size: 13px; margin-top: 20px;"><strong>El enlace expira en 7 días.</strong></p>
+                    </div>
+                </div>`,
+        });
+    } catch (e) { console.error('[signup] activation email failed', e.message); }
+}
+
+// Generic self-serve provisioning — shared by Stripe and PayPal. Creates the client
+// account (if new) + records the paid invoice + sends the activation email. Idempotent
+// via `dedupeQuery` (so webhook/finalize retries don't double-charge or double-create).
+// opts: { email, name, lastName, planId, amount, method, stripeCustomerId, dedupeQuery, paymentFields }
+async function provisionSignupAccount(opts) {
+    const email = (opts.email || '').toLowerCase().trim();
+    if (!email) { console.error('[signup] provision with no email'); return null; }
+    if (opts.dedupeQuery && await Payment.findOne(opts.dedupeQuery)) return null; // already done
+
+    const trainer = await User.findOne({ role: { $in: ['trainer', 'admin'] } }).select('_id');
+    if (!trainer) { console.error('[signup] no trainer/admin to own the new client'); return null; }
+
+    const plan   = findSignupPlan(opts.planId);
+    const amount = opts.amount != null ? opts.amount : (plan?.amount || 0);
+    const today  = new Date().toISOString().split('T')[0];
+
+    let client = await User.findOne({ email });
+    let inviteRawToken = null;
+    if (!client) {
+        inviteRawToken = crypto.randomBytes(32).toString('hex');
+        client = new User({
+            name: opts.name || 'Nuevo', lastName: opts.lastName || '', email,
+            password: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10),
+            isFirstLogin: true, role: 'client', trainerId: trainer._id,
+            ...(opts.stripeCustomerId ? { stripeCustomerId: opts.stripeCustomerId } : {}),
+            inviteToken: crypto.createHash('sha256').update(inviteRawToken).digest('hex'),
+            inviteExpires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
+        await client.save();
+        await createNotification({
+            clientId: client._id,
+            clientName: `${client.name} ${client.lastName || ''}`.trim(),
+            type: 'client_created',
+            title: 'se registró y pagó en línea',
+            message: `${email}${plan ? ` · ${plan.label}` : ''} · $${amount} · ${opts.method}`,
+        });
+    }
+
+    await new Payment({
+        clientId: client._id, trainerId: trainer._id,
+        amount, status: 'paid', method: opts.method, paidDate: today, dueDate: today,
+        periodLabel: plan?.label || '',
+        type: plan?.mode === 'subscription' ? 'subscription' : 'one_time',
+        planLabel: plan?.label || '',
+        ...(opts.paymentFields || {}),
+    }).save();
+
+    if (inviteRawToken) await sendActivationEmail(client, inviteRawToken);
+    return client;
+}
+
+// Stripe adapter — called from the Stripe webhook on checkout.session.completed.
+async function provisionSelfSignupClient(session) {
+    const md = session.metadata || {};
+    await provisionSignupAccount({
+        email: md.email || session.customer_details?.email,
+        name: md.name, lastName: md.lastName, planId: md.planId,
+        amount: session.amount_total != null ? session.amount_total / 100 : null,
+        method: 'stripe',
+        stripeCustomerId: session.customer || null,
+        dedupeQuery: { stripeCheckoutSessionId: session.id },
+        paymentFields: {
+            stripeCheckoutSessionId: session.id,
+            stripeSubscriptionId: session.subscription || null,
+            stripePaymentIntentId: session.payment_intent || null,
+        },
+    });
+}
+
+// Public: list the plans shown on the pricing page.
+app.get('/api/signup/plans', (req, res) => res.json(SIGNUP_PLANS));
+
+// Public: start a self-serve checkout. Body: { name, lastName, email, planId }
+// On success Stripe fires checkout.session.completed → provisionSelfSignupClient().
+app.post('/api/signup/checkout', authLimiter, async (req, res) => {
+    if (!stripeReady(res)) return;
+    try {
+        const { name, lastName, email, planId } = req.body;
+        const cleanEmail = (email || '').toLowerCase().trim();
+        if (!name || !cleanEmail || !planId) return res.status(400).json({ message: 'Nombre, email y plan son requeridos.' });
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) return res.status(400).json({ message: 'Email inválido.' });
+
+        const plan = findSignupPlan(planId);
+        if (!plan) return res.status(400).json({ message: 'Plan no válido.' });
+
+        if (await User.findOne({ email: cleanEmail })) {
+            return res.status(409).json({ message: 'Ya existe una cuenta con ese email. Inicia sesión.' });
+        }
+
+        const isRecurring = plan.mode === 'subscription';
+        const session = await stripe.checkout.sessions.create({
+            mode: isRecurring ? 'subscription' : 'payment',
+            customer_email: cleanEmail,
+            line_items: [{
+                price_data: {
+                    currency: 'usd',
+                    unit_amount: Math.round(plan.amount * 100),
+                    product_data: { name: `FitBySuárez — ${plan.label}` },
+                    ...(isRecurring ? { recurring: { interval: 'month' } } : {}),
+                },
+                quantity: 1,
+            }],
+            success_url: `${APP_URL}/signup.html?status=success`,
+            cancel_url:  `${APP_URL}/signup.html?status=cancelled`,
+            metadata: { signup: 'true', name, lastName: lastName || '', email: cleanEmail, planId, planLabel: plan.label },
+        });
+        res.json({ checkoutUrl: session.url });
+    } catch (e) {
+        console.error('Signup checkout error:', e);
+        res.status(500).json({ message: e.message || 'Error iniciando el pago.' });
+    }
+});
+
+// ── Native PayPal (self-serve signup) ────────────────────────────────────────
+// Money lands in the trainer's PayPal directly. Requires env: PAYPAL_CLIENT_ID,
+// PAYPAL_SECRET, and optionally PAYPAL_ENV ('sandbox' | 'live', default 'live').
+const PAYPAL_ENV  = process.env.PAYPAL_ENV || 'live';
+const PAYPAL_BASE = PAYPAL_ENV === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+const paypalConfigured = () => !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_SECRET);
+const paypalReady = (res) => {
+    if (!paypalConfigured()) { res.status(503).json({ message: 'PayPal no está configurado. Agrega PAYPAL_CLIENT_ID y PAYPAL_SECRET.' }); return false; }
+    return true;
+};
+
+async function paypalToken() {
+    const auth = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET}`).toString('base64');
+    const r = await fetch(`${PAYPAL_BASE}/v1/oauth2/token`, {
+        method: 'POST',
+        headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'grant_type=client_credentials',
+    });
+    if (!r.ok) throw new Error('PayPal auth failed');
+    return (await r.json()).access_token;
+}
+async function paypalApi(path, method, token, body) {
+    const r = await fetch(`${PAYPAL_BASE}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.message || `PayPal ${method} ${path} → ${r.status}`);
+    return data;
+}
+// Lazily create (once) a PayPal product + monthly billing plan for a subscription
+// plan, caching the resulting plan id in AppSetting so we don't recreate it.
+async function getPaypalPlanId(token, plan) {
+    const key = `paypal_plan_${plan.id}`;
+    const cached = await AppSetting.findOne({ key });
+    if (cached?.value) return cached.value;
+    const product = await paypalApi('/v1/catalogs/products', 'POST', token, {
+        name: `FitBySuárez — ${plan.label}`, type: 'SERVICE', category: 'EXERCISE_AND_FITNESS',
+    });
+    const created = await paypalApi('/v1/billing/plans', 'POST', token, {
+        product_id: product.id,
+        name: `FitBySuárez ${plan.label}`,
+        billing_cycles: [{
+            frequency: { interval_unit: 'MONTH', interval_count: 1 },
+            tenure_type: 'REGULAR', sequence: 1, total_cycles: 0,
+            pricing_scheme: { fixed_price: { value: plan.amount.toFixed(2), currency_code: 'USD' } },
+        }],
+        payment_preferences: { auto_bill_outstanding: true, setup_fee_failure_action: 'CANCEL', payment_failure_threshold: 1 },
+    });
+    await AppSetting.create({ key, value: created.id });
+    return created.id;
+}
+
+// Public: start a PayPal signup. Body: { name, lastName, email, planId }.
+// Returns { approveUrl } to redirect the browser to PayPal for approval.
+app.post('/api/signup/paypal/create', authLimiter, async (req, res) => {
+    if (!paypalReady(res)) return;
+    try {
+        const { name, lastName, email, planId } = req.body;
+        const cleanEmail = (email || '').toLowerCase().trim();
+        if (!name || !cleanEmail || !planId) return res.status(400).json({ message: 'Nombre, email y plan son requeridos.' });
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) return res.status(400).json({ message: 'Email inválido.' });
+        const plan = findSignupPlan(planId);
+        if (!plan) return res.status(400).json({ message: 'Plan no válido.' });
+        if (await User.findOne({ email: cleanEmail })) return res.status(409).json({ message: 'Ya existe una cuenta con ese email. Inicia sesión.' });
+
+        const token = await paypalToken();
+        let ref, approveUrl, kind;
+
+        if (plan.mode === 'subscription') {
+            kind = 'subscription';
+            const paypalPlanId = await getPaypalPlanId(token, plan);
+            const sub = await paypalApi('/v1/billing/subscriptions', 'POST', token, {
+                plan_id: paypalPlanId,
+                subscriber: { name: { given_name: name, surname: lastName || '' }, email_address: cleanEmail },
+                application_context: {
+                    brand_name: 'FitBySuárez', user_action: 'SUBSCRIBE_NOW',
+                    return_url: `${APP_URL}/signup.html?paypal=subscription`,
+                    cancel_url: `${APP_URL}/signup.html?status=cancelled`,
+                },
+            });
+            ref = sub.id;
+            approveUrl = (sub.links || []).find(l => l.rel === 'approve')?.href;
+        } else {
+            kind = 'order';
+            const order = await paypalApi('/v2/checkout/orders', 'POST', token, {
+                intent: 'CAPTURE',
+                purchase_units: [{ amount: { currency_code: 'USD', value: plan.amount.toFixed(2) }, description: `FitBySuárez — ${plan.label}` }],
+                application_context: {
+                    brand_name: 'FitBySuárez', user_action: 'PAY_NOW',
+                    return_url: `${APP_URL}/signup.html?paypal=order`,
+                    cancel_url: `${APP_URL}/signup.html?status=cancelled`,
+                },
+            });
+            ref = order.id;
+            approveUrl = (order.links || []).find(l => l.rel === 'approve' || l.rel === 'payer-action')?.href;
+        }
+
+        if (!ref || !approveUrl) throw new Error('PayPal no devolvió un enlace de aprobación.');
+        await PendingSignup.create({ ref, kind, name, lastName: lastName || '', email: cleanEmail, planId });
+        res.json({ approveUrl });
+    } catch (e) {
+        console.error('PayPal create error:', e);
+        res.status(500).json({ message: e.message || 'Error iniciando el pago con PayPal.' });
+    }
+});
+
+// Public: finalize after PayPal approval. Body: { ref, kind }.
+// Captures the order / verifies the subscription, then provisions the account.
+app.post('/api/signup/paypal/finalize', authLimiter, async (req, res) => {
+    if (!paypalReady(res)) return;
+    try {
+        const { ref } = req.body;
+        if (!ref) return res.status(400).json({ message: 'Falta la referencia del pago.' });
+        const pending = await PendingSignup.findOne({ ref });
+        if (!pending) return res.json({ status: 'ok' }); // already finalized (retry) — treat as success
+
+        const token = await paypalToken();
+
+        if (pending.kind === 'subscription') {
+            const sub = await paypalApi(`/v1/billing/subscriptions/${ref}`, 'GET', token);
+            if (!['ACTIVE', 'APPROVED'].includes(sub.status)) return res.status(402).json({ message: 'La suscripción no está activa todavía.' });
+            await provisionSignupAccount({
+                email: pending.email, name: pending.name, lastName: pending.lastName, planId: pending.planId,
+                amount: findSignupPlan(pending.planId)?.amount, method: 'paypal',
+                dedupeQuery: { paypalSubscriptionId: ref }, paymentFields: { paypalSubscriptionId: ref },
+            });
+        } else {
+            const cap = await paypalApi(`/v2/checkout/orders/${ref}/capture`, 'POST', token, {});
+            if (cap.status !== 'COMPLETED') return res.status(402).json({ message: 'El pago no se completó.' });
+            const captured = parseFloat(cap.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value);
+            await provisionSignupAccount({
+                email: pending.email, name: pending.name, lastName: pending.lastName, planId: pending.planId,
+                amount: Number.isNaN(captured) ? undefined : captured, method: 'paypal',
+                dedupeQuery: { paypalOrderId: ref }, paymentFields: { paypalOrderId: ref },
+            });
+        }
+        await PendingSignup.deleteOne({ ref });
+        res.json({ status: 'ok' });
+    } catch (e) {
+        console.error('PayPal finalize error:', e);
+        res.status(500).json({ message: e.message || 'Error confirmando el pago con PayPal.' });
+    }
+});
+
 // POST /api/stripe/checkout — create a Stripe Checkout Session or Invoice
 // Body: { clientId, amount, periodLabel, dueDate, notes, type, planLabel, trialDays }
 app.post('/api/stripe/checkout', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
@@ -3777,6 +4109,11 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
             // ── Checkout completed (one-time or subscription first payment) ──
             case 'checkout.session.completed': {
                 const session = event.data.object;
+                // Self-serve signup → create the account + record payment, then stop.
+                if (session.metadata?.signup === 'true') {
+                    await provisionSelfSignupClient(session);
+                    break;
+                }
                 const payment = await Payment.findOne({ stripeCheckoutSessionId: session.id });
                 if (payment) {
                     payment.status = 'paid';

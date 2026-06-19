@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Únete a FitBySuárez</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #030303; color: #f5f5f5; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .wrap { width: 100%; max-width: 720px; }
+    .brand { text-align: center; margin-bottom: 28px; }
+    .brand h1 { color: #FFDB89; font-size: 30px; letter-spacing: 2px; font-weight: 800; }
+    .brand p { color: rgba(255,219,137,0.5); margin-top: 6px; font-size: 15px; }
+    .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 22px; }
+    @media (max-width: 560px) { .plans { grid-template-columns: 1fr; } }
+    .plan {
+      background: #1c1c1e; border: 1.5px solid rgba(255,219,137,0.18); border-radius: 16px;
+      padding: 20px; cursor: pointer; transition: border-color .15s, transform .1s;
+    }
+    .plan:hover { border-color: rgba(255,219,137,0.4); }
+    .plan.selected { border-color: #FFDB89; background: rgba(255,219,137,0.06); }
+    .plan .name { color: #FFDB89; font-size: 17px; font-weight: 800; }
+    .plan .price { font-size: 30px; font-weight: 900; margin: 8px 0 2px; }
+    .plan .price small { font-size: 14px; font-weight: 600; color: rgba(255,219,137,0.6); }
+    .plan .blurb { color: #bbb; font-size: 13px; line-height: 1.5; margin-top: 8px; }
+    .plan .more {
+      background: none; border: none; padding: 0; margin: 12px 0 0; width: auto;
+      color: #FFDB89; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+    }
+    .plan .moreText {
+      color: #cfcfcf; font-size: 13px; line-height: 1.6; margin-top: 10px; white-space: pre-line;
+      border-top: 1px solid rgba(255,219,137,0.15); padding-top: 10px;
+    }
+    .card { background: #1c1c1e; border: 1px solid rgba(255,219,137,0.15); border-radius: 16px; padding: 22px; }
+    label { display: block; color: rgba(255,219,137,0.6); font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
+    input {
+      width: 100%; background: rgba(255,219,137,0.06); border: 1px solid rgba(255,219,137,0.2);
+      border-radius: 10px; padding: 13px 14px; color: #fff; font-size: 16px; outline: none;
+    }
+    input:focus { border-color: #FFDB89; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    button {
+      width: 100%; margin-top: 20px; background: #FFDB89; color: #030303; border: none;
+      border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 800; cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    button.paypal { background: #ffc439; color: #003087; margin-top: 10px; }
+    button.paypal strong { font-weight: 800; }
+    .msg { padding: 14px; border-radius: 10px; font-size: 14px; margin-bottom: 18px; line-height: 1.5; }
+    .msg.err { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.4); color: #fca5a5; }
+    .msg.ok  { background: rgba(52,211,153,0.1);  border: 1px solid rgba(52,211,153,0.4); color: #6ee7b7; }
+    .foot { text-align: center; margin-top: 18px; color: #666; font-size: 13px; }
+    .foot a { color: rgba(255,219,137,0.7); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <h1>FitBySuárez</h1>
+      <p>Entrenamiento y nutrición personalizados</p>
+    </div>
+
+    <div id="success" style="display:none">
+      <div class="card" style="text-align:center">
+        <h2 style="color:#FFDB89; margin-bottom:10px;">¡Bienvenido! 🎉</h2>
+        <p style="color:#ccc; line-height:1.6;">Tu pago se procesó con éxito. Te enviamos un correo para <strong style="color:#FFDB89;">activar tu cuenta y crear tu contraseña</strong>. Revisa tu bandeja (y spam) y luego inicia sesión en la app.</p>
+        <div class="foot"><a href="/">Ir a iniciar sesión</a></div>
+      </div>
+    </div>
+
+    <div id="signup">
+      <div id="msg-cancel" class="msg err" style="display:none">El pago se canceló. Cuando estés listo, elige un plan y vuelve a intentarlo.</div>
+      <div id="msg-confirm" class="msg ok" style="display:none">Confirmando tu pago con PayPal…</div>
+      <div id="msg-err" class="msg err" style="display:none"></div>
+
+      <div class="plans" id="plans"></div>
+
+      <div class="card">
+        <div class="row">
+          <div><label>Nombre</label><input id="name" placeholder="Tu nombre" /></div>
+          <div><label>Apellido</label><input id="lastName" placeholder="Tu apellido" /></div>
+        </div>
+        <label>Correo electrónico</label>
+        <input id="email" type="email" placeholder="tu@correo.com" autocomplete="email" />
+        <button id="submit">Pagar con tarjeta</button>
+        <button id="paypal" class="paypal">Pagar con <strong>PayPal</strong></button>
+      </div>
+
+      <div class="foot">Pago seguro con Stripe o PayPal · ¿Ya tienes cuenta? <a href="/">Inicia sesión</a></div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get('status') === 'success') {
+      document.getElementById('signup').style.display = 'none';
+      document.getElementById('success').style.display = 'block';
+    }
+    if (params.get('status') === 'cancelled') {
+      document.getElementById('msg-cancel').style.display = 'block';
+    }
+
+    // Returning from PayPal approval → confirm the payment, then show success.
+    const ppKind = params.get('paypal');
+    if (ppKind) {
+      const ref = ppKind === 'subscription' ? params.get('subscription_id') : params.get('token');
+      if (ref) finalizePaypal(ref);
+    }
+    async function finalizePaypal(ref) {
+      document.getElementById('msg-confirm').style.display = 'block';
+      try {
+        const res = await fetch('/api/signup/paypal/finalize', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ref }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'No se pudo confirmar el pago.');
+        document.getElementById('signup').style.display = 'none';
+        document.getElementById('success').style.display = 'block';
+      } catch (e) {
+        document.getElementById('msg-confirm').style.display = 'none';
+        showErr(e.message);
+      }
+    }
+
+    let plans = [];
+    let selected = null;
+    const fmtPrice = (p) => `$${p.amount}${p.mode === 'subscription' ? '<small>/mes</small>' : ''}`;
+    const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    async function loadPlans() {
+      try {
+        const res = await fetch('/api/signup/plans');
+        plans = await res.json();
+      } catch { plans = []; }
+      const wrap = document.getElementById('plans');
+      wrap.innerHTML = plans.map((p, i) => `
+        <div class="plan${i === 0 ? ' selected' : ''}" data-id="${p.id}">
+          <div class="name">${esc(p.label)}</div>
+          <div class="price">${fmtPrice(p)}</div>
+          <div class="blurb">${esc(p.blurb)}</div>
+          ${p.moreInfo ? `
+            <button class="more" data-toggle="${p.id}" type="button">Más información <span data-arrow="${p.id}">▾</span></button>
+            <div class="moreText" id="more-${p.id}" style="display:none">${esc(p.moreInfo)}</div>` : ''}
+        </div>`).join('');
+      selected = plans[0]?.id || null;
+
+      // Select a plan (ignores clicks that originate on the "Más información" toggle).
+      wrap.querySelectorAll('.plan').forEach(el => el.addEventListener('click', () => {
+        wrap.querySelectorAll('.plan').forEach(x => x.classList.remove('selected'));
+        el.classList.add('selected');
+        selected = el.dataset.id;
+      }));
+
+      // "Más información" expand/collapse — stop propagation so it doesn't change the selection.
+      wrap.querySelectorAll('.more').forEach(btn => btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.toggle;
+        const box = document.getElementById('more-' + id);
+        const arrow = wrap.querySelector(`[data-arrow="${id}"]`);
+        const showing = box.style.display !== 'none';
+        box.style.display = showing ? 'none' : 'block';
+        if (arrow) arrow.textContent = showing ? '▾' : '▴';
+      }));
+    }
+    loadPlans();
+
+    const showErr = (m) => { const e = document.getElementById('msg-err'); e.textContent = m; e.style.display = 'block'; };
+
+    // Shared form read + validation. Returns the payload, or null if invalid.
+    function collectForm() {
+      document.getElementById('msg-err').style.display = 'none';
+      const name = document.getElementById('name').value.trim();
+      const lastName = document.getElementById('lastName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      if (!name || !email) { showErr('Completa tu nombre y correo.'); return null; }
+      if (!selected) { showErr('Selecciona un plan.'); return null; }
+      return { name, lastName, email, planId: selected };
+    }
+
+    // Generic "validate → POST → redirect to the returned URL" for both processors.
+    async function startPayment(endpoint, btn, busyText, idleText, urlKey) {
+      const payload = collectForm();
+      if (!payload) return;
+      btn.disabled = true; btn.textContent = busyText;
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'No se pudo iniciar el pago.');
+        location.href = data[urlKey];
+      } catch (e) {
+        showErr(e.message);
+        btn.disabled = false; btn.innerHTML = idleText;
+      }
+    }
+
+    document.getElementById('submit').addEventListener('click', (e) =>
+      startPayment('/api/signup/checkout', e.currentTarget, 'Redirigiendo a Stripe…', 'Pagar con tarjeta', 'checkoutUrl'));
+
+    document.getElementById('paypal').addEventListener('click', (e) =>
+      startPayment('/api/signup/paypal/create', e.currentTarget, 'Redirigiendo a PayPal…', 'Pagar con <strong>PayPal</strong>', 'approveUrl'));
+  </script>
+</body>
+</html>
