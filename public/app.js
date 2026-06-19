@@ -3135,7 +3135,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // `clientData` = { weight, bodyFat, macroSettings }  (from DB)
     // `clientId`   = MongoDB _id (null for client self-view)
     // `readOnly`   = if true, hides the save button (client self-view)
-    const renderMacroCalculator = (container, clientData, clientId = null, readOnly = false, onApply = null) => {
+    const renderMacroCalculator = (container, clientData, clientId = null, readOnly = false, onApply = null, onLiveChange = null) => {
         const weight   = parseMeasurement(clientData.weight);
         const rawBf    = parseMeasurement(clientData.bodyFat);
         if (!weight || rawBf === null) {
@@ -3315,7 +3315,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Helper: querySelector scoped to this container (avoids conflicts when two calculators exist in DOM)
         const $ = (id) => container.querySelector(`#${id}`);
 
-        const recompute = () => {
+        const recompute = (live = false) => {
             const proRatio  = (parseFloat($('mc-ratio-pro')?.value)  || 0) / 100;
             const fatRatio  = (parseFloat($('mc-ratio-fat')?.value)  || 0) / 100;
             const carbRatio = (parseFloat($('mc-ratio-carb')?.value) || 0) / 100;
@@ -3347,6 +3347,16 @@ document.addEventListener('DOMContentLoaded', () => {
             set('mc-g-fat',     `${Math.round(calFat / 9)} g`);
             set('mc-cal-carb',  Math.round(calCarb).toLocaleString());
             set('mc-g-carb',    `${Math.round(calCarb / 4)} g`);
+
+            // Live preview: when the user changes the deficit/surplus or ratios, push the new
+            // targets to whoever is listening (e.g. the client's Nutrición page recalculates
+            // its goal, remaining calories and macro bars instantly — no "Aplicar" click needed).
+            if (live && onLiveChange) onLiveChange({
+                targetCal:   Math.round(targetCal),
+                goalProtein: Math.round(calPro / 4),
+                goalFat:     Math.round(calFat / 9),
+                goalCarbs:   Math.round(calCarb / 4),
+            });
         };
 
         // Goal pill clicks
@@ -3360,13 +3370,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     b.style.borderColor     = active ? goalColors[g] : 'rgba(255,219,137,0.2)';
                     b.style.color           = active ? goalColors[g] : 'rgba(255,219,137,0.4)';
                 });
-                recompute();
+                recompute(true);
             });
         });
 
         // Ratio input changes
         ['mc-ratio-pro','mc-ratio-fat','mc-ratio-carb'].forEach(id => {
-            $(id)?.addEventListener('input', recompute);
+            $(id)?.addEventListener('input', () => recompute(true));
         });
 
         // Collapse toggle (client view only)
@@ -10346,19 +10356,32 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (gP) gP.value = goalProtein;
                         if (gC) gC.value = goalCarbs;
                         if (gF) gF.value = goalFat;
-                        // Refresh the calorie goal display
+                        // Refresh the calorie goal + remaining + macro bars
                         calorieGoal = targetCal;
-                        const goalEl = document.getElementById('calorie-goal-display');
-                        if (goalEl) goalEl.textContent = targetCal;
+                        recalcTotals();
                         showToast(`✓ Metas aplicadas: ${goalProtein}g prot · ${goalCarbs}g carbs · ${goalFat}g grasas`, 'success');
                     } catch { showToast('Error guardando las metas. Intenta de nuevo.', 'error'); }
+                };
+
+                // Live preview (no save): as the client changes their deficit/surplus or ratios,
+                // immediately reflect the new goal, remaining calories and macro targets on the
+                // page. They press "Aplicar metas" to persist the choice.
+                const previewMacrosToGoals = ({ targetCal, goalProtein, goalFat, goalCarbs }) => {
+                    const gP = document.getElementById('goal-protein');
+                    const gC = document.getElementById('goal-carbs');
+                    const gF = document.getElementById('goal-fat');
+                    if (gP) gP.value = goalProtein;
+                    if (gC) gC.value = goalCarbs;
+                    if (gF) gF.value = goalFat;
+                    calorieGoal = targetCal;          // baseCalGoal source in recalcTotals
+                    recalcTotals();                   // Meta · Restante · barras de macros
                 };
 
                 if (latest) {
                     renderMacroCalculator(calcWrapper,
                         { weight: parseMeasurement(latest.weight), bodyFat: parseMeasurement(latest.bodyFat),
                           macroSettings: me.macroSettings, evalDate: latest.date },
-                        null, true /* readOnly */, applyMacrosToGoals);
+                        null, true /* readOnly */, applyMacrosToGoals, previewMacrosToGoals);
                 } else {
                     calcWrapper.innerHTML = `<div class="bg-[#1C1C1E] border border-[#FFDB89]/10 rounded-2xl p-6 text-center text-[#FFDB89]/40 text-sm"><i class="fas fa-ruler-combined text-2xl mb-2 block"></i>Sin evaluación registrada todavía.</div>`;
                 }
@@ -11934,33 +11957,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Single source of truth for all water UI — keeps cups, count, macro card,
         // and the manual input in sync.
-        const updateWaterDisplay = () => {
-            const cupsFilled = Math.floor(waterOz / WATER_CUP_OZ);
+        const updateWaterDisplay = (displayOz = waterOz) => {
             const tracker = document.getElementById('water-count-display');
-            if (tracker) tracker.textContent = `${waterOz} oz`;
+            if (tracker) tracker.textContent = `${displayOz} oz`;
             const macro = document.getElementById('total-water-display');
-            if (macro) macro.textContent = waterOz;
+            if (macro) macro.textContent = displayOz;
             // Water bottle — starts FULL and EMPTIES as the client drinks (logs water).
-            // Level tracks what's left to drink (goal − consumed): 0 oz logged = full
-            // bottle, goal reached = empty.
             const goal = waterGoalOz || 64;
-            const remainingPct = goal > 0 ? Math.max(0, 1 - waterOz / goal) : 1;
+            const remainingPct = goal > 0 ? Math.max(0, 1 - displayOz / goal) : 1;
             const fill = document.getElementById('water-fill');
             const lbl  = document.getElementById('bar-water-label');
             if (fill) fill.style.transform = `scaleY(${remainingPct})`;
-            if (lbl) lbl.textContent = `${waterOz} / ${goal} oz`;
-            // Reflect the number back into the manual field (unless the user is typing in it)
-            const input = document.getElementById('water-manual-input');
-            if (input && document.activeElement !== input) input.value = waterOz || '';
+            if (lbl) lbl.textContent = `${displayOz} / ${goal} oz`;
+            // NOTE: the manual field is a "how much did you just drink" box — never auto-filled.
         };
 
-        const renderWaterCups = () => {
+        const renderWaterCups = (displayOz = waterOz) => {
             const cupsEl = document.getElementById('water-cups');
-            if (!cupsEl) { updateWaterDisplay(); return; }
+            if (!cupsEl) { updateWaterDisplay(displayOz); return; }
             // A cup turns blue only once that 8 oz mark is fully reached (floor fill):
-            // 20 oz → 2 cups (16 reached, 24 not). Stays filled as more water is added.
+            // 20 oz → 2 cups (16 reached, 24 not). `displayOz` may be a live PREVIEW
+            // (committed total + amount being typed) so the drops react as the client types.
             cupsEl.innerHTML = Array.from({ length: WATER_CUPS }, (_, i) => {
-                const filled = waterOz >= (i + 1) * WATER_CUP_OZ;
+                const filled = displayOz >= (i + 1) * WATER_CUP_OZ;
                 return `<button class="water-cup-btn w-10 h-10 rounded-lg border-2 transition flex items-center justify-center text-lg
                     ${filled ? 'border-sky-400 bg-sky-400/20 text-sky-400' : 'border-[#FFDB89]/20 text-[#FFDB89]/20 hover:border-[#FFDB89]/40'}"
                     data-cup="${i + 1}" title="${(i + 1) * WATER_CUP_OZ} oz">
@@ -11968,7 +11987,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </button>`;
             }).join('');
 
-            updateWaterDisplay();
+            updateWaterDisplay(displayOz);
 
             document.querySelectorAll('.water-cup-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -11976,12 +11995,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     const level = cup * WATER_CUP_OZ;            // oz if filled up to here
                     // Tap the exact current level to remove that glass; otherwise fill up to the tapped cup.
                     const next = (waterOz === level) ? level - WATER_CUP_OZ : level;
+                    const input = document.getElementById('water-manual-input');
+                    if (input) input.value = '';                // drop any half-typed "add" amount
                     setWaterOz(next);
                 });
             });
         };
 
-        // Set the day's water, refresh the UI, and persist (cup taps + "Establecer").
+        // Set the day's water (absolute), refresh the UI, and persist (cup taps + additive field).
         const setWaterOz = (oz) => {
             waterOz = Math.max(0, Math.round(oz) || 0);
             saveWaterLocal();               // instant local persistence — survives navigation
@@ -11990,25 +12011,32 @@ document.addEventListener('DOMContentLoaded', () => {
             doSaveNutrition({ silent: true });
         };
 
-        // Manual oz field — update the cups LIVE as the client types, persist debounced.
+        // Manual oz field — a "how much did you just drink" box that ADDS to the day's
+        // running total. Clients are lazy: type a number, hit Establecer/Enter, it adds
+        // to whatever was already logged today and clears itself.
         const waterInput = document.getElementById('water-manual-input');
-        let _waterSaveTimer = null;
+        const addTypedWater = () => {
+            if (!waterInput) return;
+            const add = parseInt(waterInput.value);
+            if (!Number.isNaN(add) && add !== 0) setWaterOz(waterOz + add);  // ADD to existing total
+            waterInput.value = '';        // auto-reset the field so they don't have to delete it
+            renderWaterCups();            // snap drops back to the committed total
+        };
         if (waterInput) {
+            // Live PREVIEW while typing: drops show the would-be new total (existing + typed).
             waterInput.addEventListener('input', () => {
-                waterOz = Math.max(0, parseInt(waterInput.value) || 0);
-                renderWaterCups();          // cups fill/empty dynamically as the number changes
-                recalcTotals();
-                clearTimeout(_waterSaveTimer);
-                _waterSaveTimer = setTimeout(() => { saveWaterLocal(); doSaveNutrition({ silent: true }); }, 700);
+                const add = parseInt(waterInput.value) || 0;
+                renderWaterCups(Math.max(0, waterOz + add));
             });
+            waterInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); addTypedWater(); }
+            });
+            // Tab away without submitting → restore the committed view.
+            waterInput.addEventListener('blur', () => { if (!waterInput.value) renderWaterCups(); });
         }
 
         const waterSetBtn = document.getElementById('water-set-btn');
-        if (waterSetBtn) {
-            waterSetBtn.addEventListener('click', () => {
-                setWaterOz(parseInt(document.getElementById('water-manual-input')?.value) || 0);
-            });
-        }
+        if (waterSetBtn) waterSetBtn.addEventListener('click', addTypedWater);
 
         // --- LOAD LOG FOR A DATE ---
         const loadLogForDate = async (dateStr) => {
@@ -12075,6 +12103,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <span class="text-xs font-semibold text-white">${escHtml(sm.name)}</span>
                                     <span class="text-[10px] text-[#FFDB89]/40">${n} item${n !== 1 ? 's' : ''} · ${cal} cal</span>
                                 </button>
+                                <button onclick="window._editSavedMeal('${sm._id}')" class="text-[#FFDB89]/30 hover:text-[#FFDB89] opacity-0 group-hover/sm:opacity-100 transition p-1" title="Editar combinación"><i class="fas fa-pen text-[9px]"></i></button>
                                 <button onclick="window._deleteSavedMeal('${sm._id}')" class="text-red-400/30 hover:text-red-400 opacity-0 group-hover/sm:opacity-100 transition p-1" title="Eliminar"><i class="fas fa-times text-[10px]"></i></button>
                             </div>`;
                         }).join('')}
@@ -12118,6 +12147,133 @@ document.addEventListener('DOMContentLoaded', () => {
                 savedMealsCache = savedMealsCache.filter(m => m._id !== id);
                 renderSavedMeals();
             } catch { showToast('No se pudo eliminar.', 'error'); }
+        };
+
+        // Click the pencil → edit the SAVED combo itself: rename, tweak amounts, add or remove
+        // items, then save over the original entry (PUT). For when "5 huevos + 1 jamón" becomes
+        // "6 huevos + 2 jamón" — no need to delete and recreate.
+        window._editSavedMeal = (id) => {
+            const sm = savedMealsCache.find(m => m._id === id);
+            if (!sm) return;
+            document.getElementById('edit-combo-modal')?.remove();
+            const items = (sm.foods || []).map(f => ({ ...f }));   // editable working copy
+
+            const modal = document.createElement('div');
+            modal.id = 'edit-combo-modal';
+            modal.className = 'fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+            modal.innerHTML = `
+                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+                    <div class="flex justify-between items-center p-4 border-b border-[#FFDB89]/12">
+                        <h3 class="text-base font-bold text-[#FFDB89]"><i class="fas fa-pen mr-2 text-sm"></i>Editar combinación</h3>
+                        <button id="edit-close" class="text-[#FFDB89]/50 hover:text-[#FFDB89] text-lg"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div>
+                            <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Nombre</label>
+                            <input id="edit-combo-name" value="${escHtml(sm.name || '')}" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/25 rounded-lg text-white text-sm outline-none">
+                        </div>
+                        <div id="edit-combo-items" class="space-y-1.5 max-h-44 overflow-y-auto"></div>
+                        <div class="border-t border-[#FFDB89]/10 pt-3">
+                            <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1.5">Añadir alimento</label>
+                            <div class="flex gap-1.5">
+                                <input id="edit-add-name" placeholder="Nombre" class="flex-1 min-w-0 p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-xs outline-none">
+                                <input id="edit-add-cal" type="number" min="0" placeholder="cal" class="w-14 p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-xs text-center outline-none">
+                                <button id="edit-add-btn" class="px-3 rounded-lg bg-[#FFDB89]/15 border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold"><i class="fas fa-plus text-[11px]"></i></button>
+                            </div>
+                            <div class="flex gap-1.5 mt-1.5">
+                                <input id="edit-add-pro" type="number" min="0" placeholder="P (g)" class="flex-1 min-w-0 p-2 bg-white/10 border border-[#F87171]/25 rounded-lg text-[#F87171] text-xs text-center outline-none">
+                                <input id="edit-add-carb" type="number" min="0" placeholder="C (g)" class="flex-1 min-w-0 p-2 bg-white/10 border border-yellow-400/25 rounded-lg text-yellow-400 text-xs text-center outline-none">
+                                <input id="edit-add-fat" type="number" min="0" placeholder="G (g)" class="flex-1 min-w-0 p-2 bg-white/10 border border-orange-400/25 rounded-lg text-orange-400 text-xs text-center outline-none">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 p-4 border-t border-[#FFDB89]/12">
+                        <button id="edit-cancel" class="flex-1 py-2.5 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/70 text-sm font-bold hover:bg-[#FFDB89]/5">Cancelar</button>
+                        <button id="edit-save" class="flex-1 py-2.5 rounded-lg bg-[#FFDB89] text-[#030303] text-sm font-bold">Guardar cambios</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            // Paint the editable item rows from the working `items` array.
+            const renderItems = () => {
+                const wrap = modal.querySelector('#edit-combo-items');
+                if (!items.length) { wrap.innerHTML = `<p class="text-[11px] text-[#FFDB89]/40 text-center py-2">Sin alimentos. Añade al menos uno.</p>`; return; }
+                wrap.innerHTML = items.map((f, i) => `
+                    <div class="flex items-center gap-2 bg-white/5 border border-[#FFDB89]/10 rounded-lg px-2.5 py-2">
+                        <div class="flex-1 min-w-0">
+                            <span class="block text-sm text-white truncate">${escHtml(f.name || '')}</span>
+                            <span class="text-[10px] text-[#FFDB89]/40">${Math.round(Number(f.calories) || 0)} cal · ${Math.round(Number(f.protein) || 0)}P ${Math.round(Number(f.carbs) || 0)}C ${Math.round(Number(f.fat) || 0)}G</span>
+                        </div>
+                        <input type="number" step="0.1" min="0" value="${Number(f.calories) || 0}" data-i="${i}" class="edit-item-cal w-14 p-1 bg-white/10 border border-[#FFDB89]/25 rounded text-[#FFDB89] text-xs text-center outline-none" title="calorías">
+                        <button data-del="${i}" class="edit-item-del text-red-400/50 hover:text-red-400 p-1" title="Quitar"><i class="fas fa-times text-[11px]"></i></button>
+                    </div>`).join('');
+                // Editing the calorie box scales that item's macros proportionally.
+                wrap.querySelectorAll('.edit-item-cal').forEach(inp => {
+                    inp.addEventListener('change', () => {
+                        const f = items[+inp.dataset.i];
+                        const newCal = parseFloat(inp.value);
+                        const oldCal = Number(f.calories) || 0;
+                        if (isNaN(newCal) || newCal < 0) { inp.value = oldCal; return; }
+                        if (oldCal > 0) {
+                            const r = newCal / oldCal;
+                            f.protein = +(((Number(f.protein) || 0) * r).toFixed(1));
+                            f.carbs   = +(((Number(f.carbs)   || 0) * r).toFixed(1));
+                            f.fat     = +(((Number(f.fat)     || 0) * r).toFixed(1));
+                            if (f.servingAmount != null) f.servingAmount = +((Number(f.servingAmount) * r).toFixed(1));
+                        }
+                        f.calories = newCal;
+                        renderItems();
+                    });
+                });
+                wrap.querySelectorAll('.edit-item-del').forEach(btn => {
+                    btn.addEventListener('click', () => { items.splice(+btn.dataset.del, 1); renderItems(); });
+                });
+            };
+            renderItems();
+
+            const close = () => modal.remove();
+            modal.querySelector('#edit-close').onclick = close;
+            modal.querySelector('#edit-cancel').onclick = close;
+            modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+            modal.querySelector('#edit-add-btn').onclick = () => {
+                const name = (modal.querySelector('#edit-add-name').value || '').trim();
+                if (!name) { showToast('Escribe un nombre para el alimento.', 'info'); return; }
+                items.push({
+                    name,
+                    calories: Number(modal.querySelector('#edit-add-cal').value) || 0,
+                    protein:  Number(modal.querySelector('#edit-add-pro').value)  || 0,
+                    carbs:    Number(modal.querySelector('#edit-add-carb').value) || 0,
+                    fat:      Number(modal.querySelector('#edit-add-fat').value)  || 0,
+                    servingAmount: null, servingUnit: '',
+                });
+                ['#edit-add-name','#edit-add-cal','#edit-add-pro','#edit-add-carb','#edit-add-fat'].forEach(s => modal.querySelector(s).value = '');
+                renderItems();
+            };
+
+            modal.querySelector('#edit-save').onclick = async () => {
+                const name = (modal.querySelector('#edit-combo-name').value || '').trim();
+                if (!name) { showToast('La combinación necesita un nombre.', 'info'); return; }
+                if (!items.length) { showToast('Añade al menos un alimento.', 'info'); return; }
+                const btn = modal.querySelector('#edit-save');
+                btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                try {
+                    const res = await apiFetch(`/api/saved-meals/${id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ name, mealSlot: sm.mealSlot || '', foods: items }),
+                    });
+                    if (!res.ok) throw new Error();
+                    const updated = await res.json();
+                    const idx = savedMealsCache.findIndex(m => m._id === id);
+                    if (idx !== -1) savedMealsCache[idx] = updated;
+                    renderSavedMeals();
+                    close();
+                    showToast(`✓ "${name}" actualizada.`, 'success');
+                } catch {
+                    btn.disabled = false; btn.innerHTML = 'Guardar cambios';
+                    showToast('No se pudo guardar la combinación.', 'error');
+                }
+            };
         };
 
         // Click + on a combo → ASK first: choose the meal, optionally tweak quantities, then add.

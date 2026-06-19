@@ -1708,6 +1708,30 @@ app.post('/api/saved-meals', authenticateToken, async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Error saving meal combo' }); }
 });
 
+// Update one of the user's own combos in place (rename / add / remove / edit items).
+// Overwrites the existing saved entry. Body: { name?, mealSlot?, foods: [...] }
+app.put('/api/saved-meals/:id', authenticateToken, async (req, res) => {
+    try {
+        const meal = await SavedMeal.findById(req.params.id);
+        if (!meal) return res.status(404).json({ message: 'No encontrado' });
+        if (meal.clientId.toString() !== req.user.id) return res.status(403).json({ message: 'Forbidden' });
+        const { name, mealSlot, foods } = req.body;
+        if (!name || !Array.isArray(foods) || foods.length === 0)
+            return res.status(400).json({ message: 'Se requiere un nombre y al menos un alimento.' });
+        meal.name = name;
+        if (mealSlot !== undefined) meal.mealSlot = mealSlot || '';
+        meal.foods = foods.map(f => ({
+            name: f.name || 'Sin nombre',
+            calories: Number(f.calories) || 0, protein: Number(f.protein) || 0,
+            carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
+            servingAmount: f.servingAmount != null ? Number(f.servingAmount) : null,
+            servingUnit: f.servingUnit || '',
+        }));
+        await meal.save();
+        res.json(meal);
+    } catch (e) { res.status(500).json({ message: 'Error updating saved meal' }); }
+});
+
 // Delete one of the user's own combos.
 app.delete('/api/saved-meals/:id', authenticateToken, async (req, res) => {
     try {
@@ -1746,6 +1770,14 @@ app.get('/api/payments/client/:clientId', authenticateToken, authorizeRoles('tra
             .sort({ dueDate: -1 }).lean();
         res.json(payments);
     } catch (e) { res.status(500).json({ message: 'Error fetching client payments' }); }
+});
+
+// A client reads their OWN invoices (for the mobile/client app).
+app.get('/api/payments/mine', authenticateToken, async (req, res) => {
+    try {
+        const payments = await Payment.find({ clientId: req.user.id }).sort({ dueDate: -1 }).lean();
+        res.json(payments);
+    } catch (e) { res.status(500).json({ message: 'Error fetching payments' }); }
 });
 
 // POST create a new invoice
