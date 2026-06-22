@@ -57,6 +57,18 @@ bottleLiquid.style.transform = `scaleY(${remainingPct})`; // drains downward
 
 **Food search** — local DB first, then external APIs (details in [Part 4 §22](04-integrations.md#22-food-data-apis)). Manual entry requires a unit.
 
+### Three refinements worth copying
+
+**Saved meal combos** — a `SavedMeal` collection (`{ clientId, name, mealSlot, foods[] }`) lets a client snapshot a meal and re-log it with one tap. Full CRUD on `/api/saved-meals` (the `PUT` overwrites in place so editing — rename / add / remove items / scale calories — doesn't spawn duplicates). Ownership-checked on every write.
+
+**Additive water** — the oz field is a *"how much did you just drink"* box that **adds to** the day's total, then clears itself; the cups/drops fill by `floor(total / 8oz)` and **live-preview** the would-be total while typing. (Clients won't do the math to "set" a new total — make the common action one number + Enter.)
+```js
+const addTypedWater = () => { const add = parseInt(input.value); if (add) setWaterOz(waterOz + add); input.value = ''; };
+input.addEventListener('input', () => renderWaterCups(waterOz + (parseInt(input.value) || 0))); // preview
+```
+
+**Live deficit/surplus** — the macro calculator's goal pills (`maintain` / `cut250` / `cut500` / `bulk250` / `bulk500`) recompute `targetCal` + macro grams. On the client's page, changing a pill must **live-update the page** (calorie goal, the macro inputs, and `recalcTotals()` → remaining calories + bars), with an explicit **"Aplicar metas"** to persist (`PUT /api/me` `{ macroGoals }`). The bug to avoid: updating the calculator's own numbers but forgetting to call `recalcTotals()`, so "Restante" never moves.
+
 ---
 
 ## 18. Progress photos

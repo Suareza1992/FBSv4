@@ -253,6 +253,10 @@ const UserSchema = new mongoose.Schema({
     isActive: { type: Boolean, default: true },
     isFirstLogin: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+    // Daily "active day" streak (Duolingo-style) — updated by POST /api/me/active.
+    lastActiveDate: { type: String, default: null },   // YYYY-MM-DD of last app open
+    activityStreak: { type: Number, default: 0 },      // consecutive active days
+    longestStreak:  { type: Number, default: 0 },      // best run ever
     location: { type: String, default: "" },
     timezone: { type: String, default: "America/Puerto_Rico" },
     unitSystem: { type: String, default: "imperial" },
@@ -567,6 +571,7 @@ const PaymentSchema = new mongoose.Schema({
     // ── PayPal fields ──────────────────────────────────────────────────────────
     paypalOrderId:           { type: String, default: null },       // one-time order id
     paypalSubscriptionId:    { type: String, default: null },       // recurring subscription id
+    paypalSaleId:            { type: String, default: null },       // per-cycle sale id (dedupes renewals)
 });
 PaymentSchema.index({ trainerId: 1, dueDate: -1 });
 const Payment = mongoose.model('Payment', PaymentSchema);
@@ -938,6 +943,34 @@ app.get('/api/me', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error fetching profile:', error);
         res.status(500).json({ message: 'Error fetching profile' });
+    }
+});
+
+// Record an "active day" and return the streak. Idempotent per day. The client
+// sends its LOCAL date so the streak respects the user's timezone, not the server's.
+app.post('/api/me/active', authenticateToken, async (req, res) => {
+    try {
+        const today = (typeof req.body?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.body.date))
+            ? req.body.date
+            : new Date().toISOString().split('T')[0];
+        const user = await User.findById(req.user.id).select('lastActiveDate activityStreak longestStreak');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        if (user.lastActiveDate !== today) {
+            // Yesterday, computed in UTC on the date string (timezone-safe).
+            const d = new Date(today + 'T00:00:00Z');
+            d.setUTCDate(d.getUTCDate() - 1);
+            const yesterday = d.toISOString().split('T')[0];
+
+            user.activityStreak = (user.lastActiveDate === yesterday) ? (user.activityStreak || 0) + 1 : 1;
+            user.lastActiveDate = today;
+            user.longestStreak = Math.max(user.longestStreak || 0, user.activityStreak);
+            await user.save();
+        }
+        res.json({ activityStreak: user.activityStreak, longestStreak: user.longestStreak, lastActiveDate: user.lastActiveDate });
+    } catch (error) {
+        console.error('Error updating activity streak:', error);
+        res.status(500).json({ message: 'Error updating activity' });
     }
 });
 
@@ -3989,6 +4022,72 @@ app.post('/api/signup/paypal/finalize', authLimiter, async (req, res) => {
     } catch (e) {
         console.error('PayPal finalize error:', e);
         res.status(500).json({ message: e.message || 'Error confirmando el pago con PayPal.' });
+    }
+});
+
+// Record a recurring PayPal subscription payment. The FIRST cycle's record was
+// already created by /finalize (no saleId yet) — so we backfill that one and only
+// create NEW Payment rows for month 2+. Deduped by saleId for webhook retries.
+async function recordPaypalSubscriptionPayment(subId, sale) {
+    const saleId = sale.id;
+    if (!saleId || await Payment.findOne({ paypalSaleId: saleId })) return; // already recorded
+    const original = await Payment.findOne({ paypalSubscriptionId: subId }).sort({ createdAt: 1 });
+    if (!original) return;                                   // unknown subscription — ignore
+    if (!original.paypalSaleId) {                            // first cycle → tag the existing record
+        original.paypalSaleId = saleId;
+        await original.save();
+        return;
+    }
+    const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const now = new Date(), today = now.toISOString().split('T')[0];
+    await new Payment({
+        clientId: original.clientId, trainerId: original.trainerId,
+        amount: parseFloat(sale.amount?.total) || original.amount,
+        status: 'paid', method: 'paypal', paidDate: today, dueDate: today,
+        periodLabel: `${months[now.getMonth()]} ${now.getFullYear()}`,
+        type: 'subscription', planLabel: original.planLabel,
+        paypalSubscriptionId: subId, paypalSaleId: saleId,
+    }).save();
+}
+
+// POST /api/paypal/webhook — PayPal posts subscription lifecycle events here.
+// Records renewals (PAYMENT.SALE.COMPLETED) and flags cancellations. Verified
+// against PAYPAL_WEBHOOK_ID; uses the parsed JSON body (PayPal verifies the event,
+// not a raw-byte signature like Stripe — so no special body middleware needed).
+app.post('/api/paypal/webhook', async (req, res) => {
+    if (!paypalConfigured()) return res.status(503).end();
+    const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+    if (!webhookId) { console.error('[paypal webhook] PAYPAL_WEBHOOK_ID not set'); return res.status(503).end(); }
+    try {
+        const token = await paypalToken();
+        const verify = await paypalApi('/v1/notifications/verify-webhook-signature', 'POST', token, {
+            auth_algo:         req.headers['paypal-auth-algo'],
+            cert_url:          req.headers['paypal-cert-url'],
+            transmission_id:   req.headers['paypal-transmission-id'],
+            transmission_sig:  req.headers['paypal-transmission-sig'],
+            transmission_time: req.headers['paypal-transmission-time'],
+            webhook_id:        webhookId,
+            webhook_event:     req.body,
+        });
+        if (verify.verification_status !== 'SUCCESS') {
+            console.error('[paypal webhook] signature verification failed');
+            return res.status(400).end();
+        }
+
+        const event = req.body;
+        if (event.event_type === 'PAYMENT.SALE.COMPLETED') {
+            const sale = event.resource || {};
+            if (sale.billing_agreement_id) await recordPaypalSubscriptionPayment(sale.billing_agreement_id, sale);
+        } else if (['BILLING.SUBSCRIPTION.CANCELLED', 'BILLING.SUBSCRIPTION.SUSPENDED'].includes(event.event_type)) {
+            await Payment.updateMany(
+                { paypalSubscriptionId: event.resource?.id, status: 'pending' },
+                { $set: { status: 'overdue', notes: 'Suscripción de PayPal cancelada/suspendida.' } }
+            );
+        }
+        res.json({ received: true });
+    } catch (e) {
+        console.error('[paypal webhook] handler error', e);
+        res.status(200).json({ received: true }); // 200 so PayPal doesn't hammer retries on our bugs
     }
 });
 
