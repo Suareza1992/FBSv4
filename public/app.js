@@ -12296,7 +12296,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="p-4 space-y-3">
                         <div>
                             <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Añadir a</label>
-                            <select id="combo-meal" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/25 rounded-lg text-white text-sm outline-none">
+                            <select id="combo-meal" style="color-scheme:dark" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/25 rounded-lg text-white text-sm outline-none">
                                 ${mealsData.map((m, i) => `<option value="${i}" ${i === defaultIdx ? 'selected' : ''}>${escHtml(m.name)}</option>`).join('')}
                             </select>
                         </div>
