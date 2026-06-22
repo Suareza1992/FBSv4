@@ -10791,14 +10791,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="text" id="ef-name" value="${(food.name||'').replace(/"/g,'&quot;')}"
                             class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
                     </div>
-                    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/10 rounded-xl p-3">
-                        <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-2">Ajustar cantidad (multiplica los macros)</label>
-                        <div class="flex items-center gap-3">
-                            <input type="number" id="ef-multiplier" value="1" step="0.1"
-                                class="w-24 p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] font-black text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]">
-                            <span class="text-xs text-[#FFDB89]/40">× los valores actuales</span>
-                        </div>
-                    </div>
                     <div>
                         <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-2">Macros (totales):</p>
                         <div class="grid grid-cols-2 gap-2">
@@ -10826,21 +10818,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>`;
             document.body.appendChild(modal);
-
-            // Base values for multiplier
-            const base = {
-                cal:  parseFloat(food.calories) || 0,
-                pro:  parseFloat(food.protein)  || 0,
-                carb: parseFloat(food.carbs)    || 0,
-                fat:  parseFloat(food.fat)      || 0
-            };
-            document.getElementById('ef-multiplier').addEventListener('input', e => {
-                const m = parseFloat(e.target.value) || 1;
-                document.getElementById('ef-cal').value  = Math.round(base.cal  * m) || '';
-                document.getElementById('ef-pro').value  = Math.round(base.pro  * m) || '';
-                document.getElementById('ef-carb').value = Math.round(base.carb * m) || '';
-                document.getElementById('ef-fat').value  = Math.round(base.fat  * m) || '';
-            });
 
             document.getElementById('ef-save').addEventListener('click', () => {
                 mealsData[mi].foods[fi] = {
@@ -12301,7 +12278,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </select>
                         </div>
                         <div id="combo-items" class="space-y-1.5 max-h-52 overflow-y-auto"></div>
-                        <p class="text-[11px] text-[#FFDB89]/40 leading-snug"><i class="fas fa-circle-info mr-1"></i>Ajusta el multiplicador (×) si comiste una cantidad distinta, o añádela tal cual.</p>
+                        <p class="text-[11px] text-[#FFDB89]/40 leading-snug"><i class="fas fa-circle-info mr-1"></i>Cambia las calorías si comiste una cantidad distinta — los demás macros se ajustan proporcionalmente.</p>
                     </div>
                     <div class="flex gap-2 p-4 border-t border-[#FFDB89]/12">
                         <button id="combo-cancel" class="flex-1 py-2.5 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/70 text-sm font-bold hover:bg-[#FFDB89]/5">Cancelar</button>
@@ -12313,8 +12290,8 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.querySelector('#combo-items').innerHTML = items.map((f, i) => `
                 <div class="flex items-center gap-2 bg-white/5 border border-[#FFDB89]/10 rounded-lg px-2.5 py-2">
                     <span class="flex-1 text-sm text-white truncate">${escHtml(f.name)}</span>
-                    <input type="number" step="0.1" min="0" value="1" data-i="${i}" class="combo-mult w-14 p-1 bg-white/10 border border-[#FFDB89]/25 rounded text-[#FFDB89] text-xs text-center outline-none" title="multiplicador">
-                    <span class="text-[10px] text-[#FFDB89]/40 w-12 text-right">${Math.round(Number(f.calories) || 0)} cal</span>
+                    <input type="number" step="1" min="0" value="${Math.round(Number(f.calories) || 0)}" data-i="${i}" data-base-cal="${Number(f.calories) || 0}" data-base-pro="${Number(f.protein) || 0}" data-base-carb="${Number(f.carbs) || 0}" data-base-fat="${Number(f.fat) || 0}" class="combo-cal w-16 p-1 bg-white/10 border border-[#FFDB89]/25 rounded text-[#FFDB89] text-xs text-center outline-none" title="calorías">
+                    <span class="text-[10px] text-[#FFDB89]/40">cal</span>
                 </div>`).join('');
 
             const close = () => modal.remove();
@@ -12326,17 +12303,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const targetIdx = parseInt(modal.querySelector('#combo-meal').value) || 0;
                 if (!mealsData[targetIdx]) return;
                 if (!mealsData[targetIdx].foods) mealsData[targetIdx].foods = [];
-                modal.querySelectorAll('.combo-mult').forEach(inp => {
+                modal.querySelectorAll('.combo-cal').forEach(inp => {
                     const f = items[+inp.dataset.i];
-                    const mult = parseFloat(inp.value);
-                    const m = (isNaN(mult) || mult <= 0) ? 1 : mult;
+                    const newCal   = parseFloat(inp.value);
+                    const baseCal  = parseFloat(inp.dataset.baseCal)  || 0;
+                    const ratio    = (baseCal > 0 && !isNaN(newCal)) ? newCal / baseCal : 1;
+                    const finalCal = isNaN(newCal) ? (Number(f.calories) || 0) : newCal;
                     mealsData[targetIdx].foods.push({
-                        name: f.name,
-                        calories: Math.round((Number(f.calories) || 0) * m),
-                        protein:  +(((Number(f.protein) || 0) * m).toFixed(1)),
-                        carbs:    +(((Number(f.carbs)   || 0) * m).toFixed(1)),
-                        fat:      +(((Number(f.fat)     || 0) * m).toFixed(1)),
-                        servingAmount: f.servingAmount != null ? +((Number(f.servingAmount) * m).toFixed(1)) : null,
+                        name:     f.name,
+                        calories: Math.round(finalCal),
+                        protein:  +(((parseFloat(inp.dataset.basePro)  || 0) * ratio).toFixed(1)),
+                        carbs:    +(((parseFloat(inp.dataset.baseCarb) || 0) * ratio).toFixed(1)),
+                        fat:      +(((parseFloat(inp.dataset.baseFat)  || 0) * ratio).toFixed(1)),
+                        servingAmount: f.servingAmount != null ? +((Number(f.servingAmount) * ratio).toFixed(1)) : null,
                         servingUnit: f.servingUnit || '',
                     });
                 });
