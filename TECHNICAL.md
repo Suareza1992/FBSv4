@@ -160,13 +160,17 @@ The trainer views a continuous infinite-scroll calendar for each client. They ca
 | `warmup` | String | text instructions |
 | `warmupVideoUrl` | String | YouTube/Vimeo URL |
 | `cooldown` | String | text instructions |
-| `exercises` | Array | `{ id: Number, name, instructions, videoUrl, isSuperset: Boolean }` |
+| `exercises` | Array | `{ id: Number, name, instructions, videoUrl, isSuperset: Boolean, isComplete: Boolean, results: String }` |
 | `rpe` | Number (1–10) | Rate of Perceived Exertion, submitted by client |
 | `isComplete` | Boolean | |
 | `isMissed` | Boolean | |
+| `sourceProgramId` | ObjectId (ref: Program) | **Provenance**: the program this day was pushed from. `null` = a manually-added standalone day, which auto-sync never touches. |
+| `sourceWeek` | Number | 0-based week index in the program grid this day came from |
+| `sourceDayNum` | Number | 1–7 day-of-week slot in the program grid |
+| `manualEdit` | Boolean | Set true once a trainer hand-edits this client's day after assignment, so a program re-sync preserves the custom version |
 | `createdAt`, `updatedAt` | Date | |
 
-Index: `{ clientId: 1, date: 1 }` unique — one workout document per client per day.
+Indexes: `{ clientId: 1, date: 1 }` unique (one workout per client per day); `{ clientId: 1, sourceProgramId: 1 }` (fast lookup during program re-sync).
 
 **`ProgramSchema`** (model: `Program`)
 
@@ -181,6 +185,16 @@ Index: `{ clientId: 1, date: 1 }` unique — one workout document per client per
 | `createdAt`, `updatedAt` | Date | |
 
 `weeks[].days` is a Mongoose `Map` of `Mixed`. Keys are day identifiers (e.g. `"1"`, `"2"`), values are day objects with exercises, warmup, cooldown, etc. `program.markModified('weeks')` must be called before `save()` because Mongoose cannot auto-detect deep changes inside `Map<Mixed>`.
+
+**`UserSchema.assignedProgram`** (the live program↔client link)
+
+| Field | Type | Notes |
+|---|---|---|
+| `programId` | ObjectId (ref: Program) | The program currently assigned to this client; `null` = none |
+| `startDate` | String | `YYYY-MM-DD` that grid index `anchorOffset` mapped to at assignment |
+| `anchorOffset` | Number | Global grid index (`week*7 + (day-1)`) anchored to `startDate` |
+
+This record is what makes auto-sync possible: a client is only re-synced when `assignedProgram.programId` matches the edited program. The date for any grid slot is recomputed as `startDate + (week*7 + (day-1) - anchorOffset)` days — identical to the original assignment mapping in `pushProgramToCalendar`.
 
 **`WorkoutLogSchema`** (model: `WorkoutLog`) — legacy per-exercise completion log
 
@@ -198,13 +212,14 @@ Index: `{ clientId: 1, date: 1 }` unique — one workout document per client per
 |---|---|---|---|
 | `GET` | `/api/client-workouts/:clientId` | any | All workouts for client, sorted `date: 1` |
 | `GET` | `/api/client-workouts/:clientId/:date` | any | Single workout for a specific date |
-| `POST` | `/api/client-workouts` | any | Upsert workout (findOneAndUpdate on `{clientId, date}`); fires `workout_completed` notification if caller is a client |
-| `PATCH` | `/api/client-workouts/:clientId/:date` | any | Partial update (`$set`); fires `rpe_submitted`, `workout_completed`, or `workout_missed` notifications on state transitions |
+| `POST` | `/api/client-workouts` | any | Upsert workout (findOneAndUpdate on `{clientId, date}`); fires `workout_completed` notification if caller is a client. Accepts `sourceProgramId`/`sourceWeek`/`sourceDayNum` to tag a program-pushed day; a trainer POST **without** those fields sets `manualEdit: true` to protect the day from later re-sync |
+| `PATCH` | `/api/client-workouts/:clientId/:date` | any | Partial update (`$set`); fires `rpe_submitted`, `workout_completed`, or `workout_missed` notifications on state transitions. A **trainer** PATCH touching prescription fields (title/exercises/warmup/cooldown/rest) sets `manualEdit: true` |
 | `DELETE` | `/api/client-workouts/:clientId/:date` | trainer | Deletes a workout day |
 | `GET` | `/api/programs` | any | All programs, sorted `createdAt: -1` |
 | `POST` | `/api/programs` | trainer | Creates new program |
-| `PUT` | `/api/programs/:id` | trainer | Full program update; must call `markModified('weeks')` |
+| `PUT` | `/api/programs/:id` | trainer | Full program update; calls `markModified('weeks')`. **When `weeks` is included, auto-syncs the new content to every client with this program assigned** (see Program → Calendar Sync below). Returns `{ ...program, _sync }` where `_sync = { clients, updated, created, removed }`. |
 | `DELETE` | `/api/programs/:id` | trainer | Deletes program |
+| `PUT` | `/api/clients/:clientId/assigned-program` | trainer | Records (or clears, when `programId` is null) the `assignedProgram` link. Called automatically by `pushProgramToCalendar` after a program is pushed. |
 | `POST` | `/api/log` | any | Legacy workout log upsert (exercise-level completion) |
 | `GET` | `/api/log/:clientId` | any | All legacy workout logs for client |
 
@@ -233,9 +248,25 @@ Notification transitions use a "read before write" pattern: the PATCH handler fe
 
 **Copy/paste:** Single day copy stores the serialized workout object. Multi-day copy collects all checked days, computes relative offsets from the earliest selected date, and on paste shifts all workouts by `(targetDate - anchorDate)` days.
 
-**`applyProgramToCalendar`** — takes a selected program from `mockProgramsDb`, iterates its weeks/days structure, and POSTs/PATCHes each day to the API starting from a trainer-chosen start date.
+**`pushProgramToCalendar(prog, clientId, startDateStr, opts)`** (`app.js`) — iterates the program's weeks/days grid and POSTs each content day to `/api/client-workouts`, mapping grid slot → date (`startDate + globalIndex - anchorOffset`). Each POST carries `sourceProgramId`/`sourceWeek`/`sourceDayNum` for provenance. After pushing, it records the live link via `PUT /api/clients/:clientId/assigned-program` so future program edits auto-sync. `opts.selectedKeys` supports partial assignment (start a client mid-program). `pushSingleDay` assigns one day to a chosen date and is intentionally left unlinked (manual).
 
 **Program builder** (`programas_content.html`) — separate module loaded into `mainContentArea`. The builder mutates `currentProgramId` and `mockProgramsDb[idx]`. On save it calls `PUT /api/programs/:id` with the full weeks array.
+
+### Program → Client Calendar Sync
+When a trainer edits a program (e.g. turning a 3-day program into 4 days), the change propagates automatically to every client who has that program assigned. Implemented server-side in `syncProgramToClients(program, todayStr)` (`server.js`), called from `PUT /api/programs/:id` only when `weeks` is part of the update (a rename never moves days, so it skips the sync).
+
+**How a client is matched:** `User.find({ 'assignedProgram.programId': program._id })`. Each client's `assignedProgram.startDate` + `anchorOffset` recompute the calendar date of every program grid slot.
+
+**The "today" cutoff** is the trainer's local date, sent on every request via the `X-Client-Date` header (set in `apiFetch`) and validated server-side. This keeps the "future only" rule aligned with what the trainer sees, regardless of server timezone.
+
+**Sync rules (chosen with the trainer):**
+1. **Future only.** Days whose computed date is before today are never modified.
+2. **Update in place.** A future program day that already exists in the calendar is overwritten with the new content — *unless* it is "protected."
+3. **Add new days.** A newly-filled grid slot is created on its mapped date, but only if no workout already occupies that date (a manual day is never clobbered).
+4. **Remove dropped days.** A grid slot emptied/removed from the program is deleted from the calendar — only if future and not protected.
+5. **Protected days are never touched:** `isComplete`, `isMissed`, `manualEdit`, any `rpe`, or any logged exercise `results`/`isComplete`. This is what preserves a trainer's manually-added or hand-edited days, and anything the client already engaged with. See `isProtectedWorkout(w)`.
+
+The mapping/content helpers (`addDaysStr`, `dayHasContent`, `programDayToWorkout`) mirror the client-side `pushProgramToCalendar` so an assigned day and a re-synced day are byte-for-byte equivalent. The save UI shows a toast (`notifyProgramSync`) summarizing `{ clients, updated, created, removed }`.
 
 ### Key design decisions
 - `ClientWorkout` uses a `{ clientId, date }` unique index. Upserting with `findOneAndUpdate + upsert: true` means the trainer can overwrite a day without checking existence first.
@@ -248,6 +279,9 @@ Notification transitions use a "read before write" pattern: the PATCH handler fe
 - No server-side validation that `exercises[].videoUrl` is a real YouTube/Vimeo URL.
 - The program `clientCount` field is never auto-updated when a program is assigned or unassigned.
 - Calendar is generated for a fixed date range client-side; very old or future dates outside that range won't have day cells.
+- **Program auto-sync only applies to assignments made after the feature shipped.** Clients assigned earlier have no `assignedProgram` link (nor `sourceProgramId` on their days), so they won't auto-update until the program is re-assigned to them once.
+- Auto-sync assumes program days map to consecutive calendar dates via the grid anchor. Single-day assignments (`pushSingleDay`) are intentionally left unlinked (treated as manual) and never auto-sync.
+- A program edit re-syncs on every save of the day grid; with many assigned clients this is several DB writes per save (acceptable at current scale, not batched).
 
 ---
 

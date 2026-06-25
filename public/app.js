@@ -34,6 +34,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiFetch = async (url, options = {}) => {
         const headers = {
             'Content-Type': 'application/json',
+            // The browser's local date — lets date-sensitive server logic (e.g.
+            // program→calendar sync's "future only" cutoff) use the trainer's day.
+            'X-Client-Date': localDateStr(),
             ...(options.headers || {}),
         };
 
@@ -51,6 +54,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return res;
+    };
+
+    // GET a JSON endpoint with automatic retry on TRANSIENT failures (network
+    // errors and 5xx — e.g. server cold-starts on Railway). 4xx are not retried
+    // (401 is already handled by apiFetch). Throws if all attempts fail, so the
+    // caller can keep its existing cache instead of blanking it.
+    const apiGetJSON = async (url, { retries = 2, backoff = 600 } = {}) => {
+        let lastErr;
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            try {
+                const res = await apiFetch(url);
+                if (res.ok) return await res.json();
+                if (res.status < 500) throw new Error(`HTTP ${res.status}`); // client error — don't retry
+                lastErr = new Error(`HTTP ${res.status}`);
+            } catch (e) {
+                if (e.message === 'Session expired') throw e; // auth handled — stop
+                lastErr = e;
+            }
+            if (attempt < retries) await new Promise(r => setTimeout(r, backoff * (attempt + 1)));
+        }
+        throw lastErr;
     };
 
     // ─── TOAST NOTIFICATION SYSTEM ──────────────────────────────────────────────
@@ -112,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DATA STORES ---
     let clientsCache = [];
+    let clientsLoadFailed = false;   // true when the last clients fetch errored (vs. genuinely empty)
     let programsCache = [];
     let globalExerciseLibrary = [];
     let groupsCache = [];
@@ -171,13 +196,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fetchGroupsFromDB = async () => {
         try {
-            const res = await apiFetch('/api/groups');
-            if (res.ok) {
-                const groups = await res.json();
-                groupsCache = groups.map(g => g.name);
-                // Ensure 'General' always exists
-                if (!groupsCache.includes('General')) groupsCache.unshift('General');
-            }
+            const groups = await apiGetJSON('/api/groups');
+            groupsCache = groups.map(g => g.name);
+            // Ensure 'General' always exists
+            if (!groupsCache.includes('General')) groupsCache.unshift('General');
         } catch (e) { console.error('Error fetching groups:', e); }
     };
 
@@ -190,27 +212,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fetchClientsFromDB = async () => {
         try {
-            const res = await apiFetch('/api/clients');
-            if(res.ok) {
-                clientsCache = await res.json();
-                if(typeof window.renderClientsTable === 'function') {
-                    window.renderClientsTable();
-                }
-            }
-        } catch(e) { console.error("Error cargando clientes:", e); }
+            // On success the new list replaces the cache; on failure we keep the
+            // previous cache (apiGetJSON throws) so a transient blip never blanks it.
+            clientsCache = await apiGetJSON('/api/clients');
+            clientsLoadFailed = false;
+        } catch(e) {
+            console.error("Error cargando clientes:", e);
+            clientsLoadFailed = true;
+        }
+        if(typeof window.renderClientsTable === 'function') window.renderClientsTable();
     };
 
     const fetchLibraryFromDB = async () => {
         try {
-            const res = await apiFetch('/api/library');
-            if(res.ok) globalExerciseLibrary = await res.json();
+            globalExerciseLibrary = await apiGetJSON('/api/library');
         } catch(e) { console.error("Error cargando librería:", e); }
     };
 
     const fetchProgramsFromDB = async () => {
         try {
-            const res = await apiFetch('/api/programs');
-            if(res.ok) programsCache = await res.json();
+            programsCache = await apiGetJSON('/api/programs');
         } catch(e) { console.error("Error cargando programas:", e); }
     };
 
@@ -246,9 +267,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const fetchNotificationsPage = async () => {
         const params = new URLSearchParams({ skip: String(notifOffset), limit: String(NOTIF_PAGE) });
         if (currentNotifFilter === 'unread' || currentNotifFilter === '7days') params.set('filter', currentNotifFilter);
-        const res = await apiFetch(`/api/notifications?${params.toString()}`);
-        if (!res.ok) return { notifications: [], hasMore: false };
-        return await res.json();
+        try {
+            return await apiGetJSON(`/api/notifications?${params.toString()}`);
+        } catch (e) {
+            console.error('Error fetching notifications:', e);
+            return { notifications: [], hasMore: false, _failed: true };
+        }
     };
 
     // Append (or remove) the "Cargar más" button after the feed.
@@ -267,14 +291,25 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchAndRenderNotifications = async (filter) => {
+        window.fetchAndRenderNotifications = fetchAndRenderNotifications; // expose for inline retry button
         if (filter !== undefined) currentNotifFilter = filter;
         notifOffset = 0;
         const feed = document.getElementById('activity-feed');
         const loading = document.getElementById('notifications-loading');
         try {
-            const { notifications = [], hasMore = false } = await fetchNotificationsPage();
+            const { notifications = [], hasMore = false, _failed = false } = await fetchNotificationsPage();
             if (loading) loading.classList.add('hidden');
             if (!feed) return;
+            if (_failed) {
+                feed.innerHTML = `<div class="flex flex-col items-center justify-center py-14 gap-3 text-[#FFDB89]/60">
+                    <i class="fas fa-triangle-exclamation text-3xl"></i>
+                    <p class="text-sm font-medium">No se pudieron cargar las notificaciones.</p>
+                    <button onclick="window.fetchAndRenderNotifications()" class="px-4 py-2 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 border border-[#FFDB89]/30 text-[#FFDB89] rounded-lg text-sm font-bold transition">
+                        <i class="fas fa-rotate-right mr-1.5"></i> Reintentar
+                    </button>
+                </div>`;
+                return;
+            }
             if (notifications.length === 0) {
                 const emptyMsg = currentNotifFilter === 'unread'
                     ? 'No tienes notificaciones sin leer.'
@@ -1521,7 +1556,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const html = await res.text();
             updateContent(MODULE_TITLES[moduleToLoad] ?? '', html);
 
-            if (moduleToLoad === 'clientes_content') { renderClientsTable(); attachClientFilterListeners(); }
+            if (moduleToLoad === 'clientes_content') {
+                renderClientsTable();          // instant paint from cache
+                attachClientFilterListeners();
+                fetchClientsFromDB();          // always refresh on open — re-renders when done
+            }
             if (moduleToLoad === 'programas_content') {
                 await Promise.all([fetchProgramsFromDB(), clientsCache.length === 0 ? fetchClientsFromDB() : Promise.resolve()]);
                 renderProgramsList();
@@ -4449,6 +4488,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // RENDER CLIENTS TABLE (with search + status filter support)
+    window.retryLoadClients = () => {
+        const tbody = document.getElementById('clients-table-body');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[#FFDB89]/60"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando…</td></tr>`;
+        fetchClientsFromDB();
+    };
+
     window.renderClientsTable = () => {
         const tbody = document.getElementById('clients-table-body');
         if(!tbody) return;
@@ -4471,7 +4516,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusValue === 'active') filtered = filtered.filter(c => c.isActive);
         if (statusValue === 'inactive') filtered = filtered.filter(c => !c.isActive);
 
-        if(filtered.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[#FFDB89]">No hay clientes.</td></tr>`; return; }
+        if(filtered.length === 0) {
+            // Distinguish a failed load from a genuinely empty list so a transient
+            // fetch error doesn't masquerade as "you have no clients".
+            const cell = (clientsLoadFailed && clientsCache.length === 0)
+                ? `<div class="flex flex-col items-center gap-3 text-[#FFDB89]/60">
+                       <i class="fas fa-triangle-exclamation text-2xl"></i>
+                       <p>No se pudieron cargar los clientes.</p>
+                       <button onclick="window.retryLoadClients()" class="px-4 py-2 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 border border-[#FFDB89]/30 text-[#FFDB89] rounded-lg text-sm font-bold transition">
+                           <i class="fas fa-rotate-right mr-1.5"></i> Reintentar
+                       </button>
+                   </div>`
+                : 'No hay clientes.';
+            tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[#FFDB89]">${cell}</td></tr>`;
+            return;
+        }
 
         filtered.forEach(client => {
             const tr = document.createElement('tr');
@@ -6368,6 +6427,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Pushes all program days to a client's calendar starting from startDateStr ---
     // (localDateStr is now defined once at the top of this module.)
+    // Toast feedback after a program save that re-synced assigned clients.
+    // `s` is the server's _sync summary: { clients, updated, created, removed }.
+    const notifyProgramSync = (s) => {
+        if (!s || !s.clients) return;
+        const parts = [];
+        if (s.updated) parts.push(`${s.updated} actualizado${s.updated !== 1 ? 's' : ''}`);
+        if (s.created) parts.push(`${s.created} añadido${s.created !== 1 ? 's' : ''}`);
+        if (s.removed) parts.push(`${s.removed} removido${s.removed !== 1 ? 's' : ''}`);
+        const who = `${s.clients} cliente${s.clients !== 1 ? 's' : ''}`;
+        showToast(`Calendario sincronizado · ${who}${parts.length ? ' (' + parts.join(', ') + ')' : ''}`, 'success', 4000);
+    };
+
     const pushProgramToCalendar = async (prog, clientId, startDateStr, opts = {}) => {
         // opts.selectedKeys: a Set of "<weekIndex>-<dayNum>" strings to assign ONLY those days.
         // When set, the FIRST selected day lands on startDate (e.g. start a program from Day 3),
@@ -6410,7 +6481,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                     clientId, date: dateStr,
                                     title: dayData.name || restTitle,
                                     isRest: true, restType,
-                                    exercises: []
+                                    exercises: [],
+                                    sourceProgramId: prog._id, sourceWeek: wIdx, sourceDayNum: dayNum
                                 })
                             });
                             if (res.ok) created++; else skipped++;
@@ -6434,7 +6506,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         videoUrl:     ex.video || ex.videoUrl || '',
                                         isSuperset:   ex.isSuperset   || false,
                                         supersetHead: ex.supersetHead || false
-                                    }))
+                                    })),
+                                    sourceProgramId: prog._id, sourceWeek: wIdx, sourceDayNum: dayNum
                                 })
                             });
                             if (res.ok) created++; else skipped++;
@@ -6459,6 +6532,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                 } catch { skipped++; }
             }
+        }
+
+        // Record the live link so later edits to this program auto-sync the
+        // client's calendar. anchorOffset is whatever the loop resolved (0 for a
+        // full assign, or the first selected day's grid index for a partial one).
+        if (created > 0) {
+            try {
+                await apiFetch(`/api/clients/${clientId}/assigned-program`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ programId: prog._id, startDate: startDateStr, anchorOffset: anchorOffset || 0 }),
+                });
+            } catch { /* non-critical — calendar still populated */ }
         }
         return { created, skipped };
     };
@@ -7082,6 +7167,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Sync the local cache with the server response so
                         // subsequent opens always reflect the latest saved data
                         const updated = await res.json();
+                        notifyProgramSync(updated._sync);   // toast if assigned clients were re-synced
+                        delete updated._sync;
                         const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
                         if (idx > -1) programsCache[idx] = updated;
                     } else {

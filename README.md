@@ -42,6 +42,7 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Gestión de clientes** — crear, editar, archivar, filtrar y buscar clientes; agruparlos en cohortes personalizados.
 - **Sistema de invitaciones** — enlaces de invitación seguros (7 días) con correo automático al crear un cliente; se pueden reenviar.
 - **Constructor de programas multi-semana** — rutinas reutilizables con semanas y entrenamientos diarios, asignables a cada cliente.
+- **Sincronización automática de programas** — al editar un programa (p. ej. convertir uno de 3 días en uno de 4), el cambio se propaga solo a los calendarios de **todos los clientes con ese programa asignado**. Solo afecta días futuros; nunca toca días ya completados, perdidos, con RPE/resultados del cliente, ni los que editaste manualmente para ese cliente. Los días que agregas a mano sobreviven a la sincronización.
 - **Editor de entrenamientos por cliente** — asignar entrenamientos por fecha; calentamiento/enfriamiento, supersets, videos de ejercicios y días de descanso (activo o total).
 - **Asignación flexible de programas** — asignar un programa a **varios clientes a la vez**, con fecha de inicio y selección opcional de qué días cargar (p. ej. empezar desde el Día 3); también asignar **un solo día** suelto al calendario de un cliente.
 - **Blog** — redactar y publicar artículos con formato Markdown (enlaces, negrita, cursiva, listas); se muestran en el sitio público con fecha de publicación y, si se editan, de actualización.
@@ -105,6 +106,7 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Client management** — create, edit, soft-delete, filter, and search clients; group clients into custom cohorts
 - **Invite system** — generate secure 7-day invite tokens; resend invite links at any time; invite email sent automatically on client creation
 - **Multi-week program builder** — create reusable training programs with named weeks and daily workouts; assign programs to clients
+- **Automatic program sync** — editing a program (e.g. turning a 3-day program into 4) auto-propagates to the calendars of **every client who has it assigned**. Future days only; it never overwrites days the client already completed/missed/logged, or days you hand-edited for that client. Manually-added days always survive
 - **Client workout editor** — assign workouts directly to individual clients by calendar date; supports warmup/cooldown sections, superset grouping, exercise video links, and rest/active-rest days
 - **Flexible program assignment** — assign a program to **multiple clients at once**, with a start date and an optional day picker (assign only specific days, e.g. start from Day 3); also assign a **single program day** to one client's calendar
 - **Blog editor** — write and publish articles with Markdown formatting (links, bold, italic, bullet/numbered lists); they render on the public marketing site with a publish date (and an "updated" date if edited later)
@@ -338,8 +340,9 @@ All routes beginning with `/api/` are JSON endpoints. Routes marked **Trainer** 
 |---|---|---|---|
 | `GET` | `/api/programs` | Auth | List all programs sorted newest first. |
 | `POST` | `/api/programs` | Trainer | Create a new program. |
-| `PUT` | `/api/programs/:id` | Trainer | Update program name, description, tags, or weeks. |
+| `PUT` | `/api/programs/:id` | Trainer | Update program name, description, tags, or weeks. When `weeks` change, auto-syncs assigned clients' future calendar days. |
 | `DELETE` | `/api/programs/:id` | Trainer | Permanently delete a program. |
+| `PUT` | `/api/clients/:clientId/assigned-program` | Trainer | Record/clear the program↔client link that drives auto-sync. |
 
 ### Client Workouts
 
@@ -466,10 +469,12 @@ A single workout assigned to a specific client on a specific date. Key fields:
 - `exercises` — ordered array with name, instructions, video URL, and superset flag
 - `isComplete` / `isMissed` — client-toggled status flags
 - `rpe` — client's perceived exertion rating (1–10)
+- `sourceProgramId` / `sourceWeek` / `sourceDayNum` — provenance: which program day this came from (`null` = manually added, never auto-synced)
+- `manualEdit` — set when a trainer hand-edits this client's day, so program re-sync preserves it
 - Compound unique index on `{ clientId, date }` — one workout document per client per day
 
 ### `Program`
-A reusable training template. Structured as an array of weeks, each containing a `Map` of day keys to day data (exercises, rest flags, etc.). Programs can be assigned to multiple clients via the `program` field on `User`.
+A reusable training template. Structured as an array of weeks, each containing a `Map` of day keys to day data (exercises, rest flags, etc.). Programs can be assigned to multiple clients via the `program` field on `User`. Editing a program auto-syncs assigned clients' future calendars (see [Automatic program sync](#features)); the live link is stored in `User.assignedProgram` (`{ programId, startDate, anchorOffset }`).
 
 ### `WorkoutLog`
 Granular per-exercise completion log (legacy, pre-dates `ClientWorkout`). Tracks which individual exercises within a session were marked done.

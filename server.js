@@ -247,6 +247,13 @@ const UserSchema = new mongoose.Schema({
     password: { type: String, required: true },
     role: { type: String, default: 'client' },
     program: { type: String, default: "Sin Asignar" },
+    // Live link to the assigned program so edits to it can re-sync this client's
+    // calendar. Set when a program is pushed to the calendar; cleared on unassign.
+    assignedProgram: {
+        programId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Program', default: null },
+        startDate:    { type: String, default: null },  // YYYY-MM-DD that grid day `anchorOffset` mapped to
+        anchorOffset: { type: Number, default: 0 },     // global grid index anchored to startDate
+    },
     group: { type: String, default: "General" },
     type: { type: String, default: "Remoto" },
     dueDate: { type: String, default: "" },
@@ -337,6 +344,16 @@ const ClientWorkoutSchema = new mongoose.Schema({
     isRest:   { type: Boolean, default: false },
     restType: { type: String, default: '' },          // 'rest' | 'active_rest'
 
+    // ── Program provenance (for auto-sync when the program is edited) ────────────
+    // Set when this day was created by pushing a program. null sourceProgramId =
+    // a manually-added/standalone day, which auto-sync must NEVER touch.
+    sourceProgramId: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', default: null },
+    sourceWeek:      { type: Number, default: null },  // 0-based week index in the program grid
+    sourceDayNum:    { type: Number, default: null },  // 1..7 day-of-week slot in the program grid
+    // True once a trainer hand-edits this client's day after assignment, so a
+    // later program re-sync preserves the custom version instead of overwriting.
+    manualEdit:      { type: Boolean, default: false },
+
     // ── Warmup ─────────────────────────────────────────────────────────────────
     warmup:        { type: String, default: '' },     // general instructions text
     warmupVideoUrl:{ type: String, default: '' },     // section-level video (legacy)
@@ -377,6 +394,7 @@ const ClientWorkoutSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now },
 });
 ClientWorkoutSchema.index({ clientId: 1, date: 1 }, { unique: true });
+ClientWorkoutSchema.index({ clientId: 1, sourceProgramId: 1 }); // fast lookup during program re-sync
 const ClientWorkout = mongoose.model('ClientWorkout', ClientWorkoutSchema);
 
 const ProgramSchema = new mongoose.Schema({
@@ -1334,22 +1352,36 @@ app.post('/api/client-workouts', authenticateToken, async (req, res) => {
             warmup, warmupVideoUrl, warmupItems,
             exercises,
             cooldown, cooldownVideoUrl, cooldownItems,
+            sourceProgramId, sourceWeek, sourceDayNum,
         } = req.body;
+        const update = {
+            title:            title || '',
+            isRest:           !!isRest,
+            restType:         restType         || '',
+            warmup:           warmup            || '',
+            warmupVideoUrl:   warmupVideoUrl    || '',
+            warmupItems:      warmupItems       || [],
+            exercises:        exercises         || [],
+            cooldown:         cooldown          || '',
+            cooldownVideoUrl: cooldownVideoUrl  || '',
+            cooldownItems:    cooldownItems     || [],
+            updatedAt:        Date.now(),
+        };
+        if (sourceProgramId) {
+            // This day comes from a program push — record provenance for re-sync.
+            update.sourceProgramId = sourceProgramId;
+            update.sourceWeek      = sourceWeek ?? null;
+            update.sourceDayNum    = sourceDayNum ?? null;
+            update.manualEdit      = false;
+        } else if (req.user.role !== 'client') {
+            // A trainer hand-saving a day in the calendar — protect it so a later
+            // program re-sync won't overwrite the customization. (Provenance, if
+            // any, is left intact so the day still belongs to its program.)
+            update.manualEdit = true;
+        }
         const workout = await ClientWorkout.findOneAndUpdate(
             { clientId, date },
-            {
-                title:            title || '',
-                isRest:           !!isRest,
-                restType:         restType         || '',
-                warmup:           warmup            || '',
-                warmupVideoUrl:   warmupVideoUrl    || '',
-                warmupItems:      warmupItems       || [],
-                exercises:        exercises         || [],
-                cooldown:         cooldown          || '',
-                cooldownVideoUrl: cooldownVideoUrl  || '',
-                cooldownItems:    cooldownItems     || [],
-                updatedAt:        Date.now(),
-            },
+            update,
             { new: true, upsert: true }
         );
 
@@ -1505,9 +1537,17 @@ app.patch('/api/client-workouts/:clientId/:date', authenticateToken, async (req,
         const wasComplete = before?.isComplete || false;
         const wasMissed   = before?.isMissed   || false;
 
+        const patch = { ...req.body, updatedAt: Date.now() };
+        // A trainer editing a day's prescription = a manual customization. Flag it
+        // so a later program re-sync preserves it. (Client edits — results/rpe/
+        // completion — never set this; the sync routine itself bypasses PATCH.)
+        const PRESCRIPTION_FIELDS = ['title', 'exercises', 'warmup', 'warmupItems', 'cooldown', 'cooldownItems', 'isRest', 'restType'];
+        if (req.user.role !== 'client' && PRESCRIPTION_FIELDS.some(f => f in req.body)) {
+            patch.manualEdit = true;
+        }
         const workout = await ClientWorkout.findOneAndUpdate(
             { clientId, date },
-            { $set: { ...req.body, updatedAt: Date.now() } },
+            { $set: patch },
             { new: true }
         );
         if (!workout) return res.status(404).json({ message: 'Workout not found' });
@@ -3413,6 +3453,123 @@ ${exerciseList}`;
 });
 
 // ==========================================================================
+// --- PROGRAM → CLIENT CALENDAR SYNC ---
+// ==========================================================================
+// When a trainer edits a program, every client who has it assigned gets their
+// FUTURE calendar days re-synced from the new program content. Past days,
+// completed/missed days, client-logged days, and trainer-customized days are
+// always preserved. Manually-added standalone days (no sourceProgramId) are
+// never touched. See the design decisions captured in STUDY_GUIDE / README.
+
+// Add `n` days to a 'YYYY-MM-DD' string and return the resulting 'YYYY-MM-DD'.
+const addDaysStr = (dateStr, n) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+// Does a program day-cell have real content worth pushing?
+const dayHasContent = (dd) =>
+    !!dd && (((dd.isRest || dd.isActiveRest) && !(dd.exercises?.length)) || (dd.exercises?.length > 0));
+
+// A client's day is "protected" (sync must not overwrite or delete it) when the
+// client has engaged with it or the trainer customized it.
+const isProtectedWorkout = (w) =>
+    w.isComplete || w.isMissed || w.manualEdit || w.rpe != null ||
+    (Array.isArray(w.exercises) && w.exercises.some(e => (e.results || '').trim() || e.isComplete));
+
+// Map a program day-cell to a ClientWorkout field object (mirrors the client-side
+// pushProgramToCalendar mapping so assigned and synced days are identical).
+const programDayToWorkout = (dd, programId, wIdx, dayNum) => {
+    const base = { sourceProgramId: programId, sourceWeek: wIdx, sourceDayNum: dayNum, manualEdit: false, updatedAt: Date.now() };
+    if ((dd.isRest || dd.isActiveRest) && !(dd.exercises?.length)) {
+        return {
+            ...base,
+            title: dd.name || (dd.isActiveRest ? 'Descanso Activo' : 'Descanso'),
+            isRest: true, restType: dd.isActiveRest ? 'active_rest' : 'rest',
+            exercises: [], warmup: '', warmupItems: [], cooldown: '', cooldownItems: [],
+        };
+    }
+    return {
+        ...base,
+        title: dd.name || `Semana ${wIdx + 1} — Día ${dayNum}`,
+        isRest: false, restType: '',
+        warmup:        dd.warmup        || '',
+        warmupVideoUrl: dd.warmupVideo  || '',
+        warmupItems:   (dd.warmupItems  || []).map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
+        cooldown:      dd.cooldown      || '',
+        cooldownVideoUrl: dd.cooldownVideo || '',
+        cooldownItems: (dd.cooldownItems || []).map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
+        exercises: dd.exercises.map((ex, idx) => ({
+            id:           Date.now() + idx,
+            name:         ex.name,
+            instructions: ex.stats || ex.instructions || '',
+            videoUrl:     ex.video || ex.videoUrl || '',
+            isSuperset:   ex.isSuperset   || false,
+            supersetHead: ex.supersetHead || false,
+        })),
+    };
+};
+
+// Re-sync one program to every client that has it assigned. `todayStr` is the
+// trainer's local date (passed from the browser) used as the "future" cutoff.
+const syncProgramToClients = async (program, todayStr) => {
+    const summary = { clients: 0, updated: 0, created: 0, removed: 0 };
+    const clients = await User.find({ 'assignedProgram.programId': program._id });
+    for (const client of clients) {
+        const startDate    = client.assignedProgram?.startDate;
+        const anchorOffset = client.assignedProgram?.anchorOffset || 0;
+        if (!startDate) continue;
+        summary.clients++;
+
+        // Build the program's current slots keyed by "week-day" with target dates.
+        const slots = new Map();
+        for (let wIdx = 0; wIdx < (program.weeks?.length || 0); wIdx++) {
+            const week = program.weeks[wIdx];
+            for (let dayNum = 1; dayNum <= 7; dayNum++) {
+                const dd = week?.days?.[String(dayNum)] ?? week?.days?.[dayNum];
+                const globalIndex = wIdx * 7 + (dayNum - 1);
+                const dateStr = addDaysStr(startDate, globalIndex - anchorOffset);
+                slots.set(`${wIdx}-${dayNum}`, { dd, wIdx, dayNum, dateStr, hasContent: dayHasContent(dd) });
+            }
+        }
+
+        const existing = await ClientWorkout.find({ clientId: client._id, sourceProgramId: program._id });
+        const existingByKey = new Map(existing.map(w => [`${w.sourceWeek}-${w.sourceDayNum}`, w]));
+
+        // 1) UPDATE existing & CREATE new program days (future, content slots only).
+        for (const [key, slot] of slots) {
+            if (!slot.hasContent || slot.dateStr < todayStr) continue;
+            const cur = existingByKey.get(key);
+            const fields = programDayToWorkout(slot.dd, program._id, slot.wIdx, slot.dayNum);
+            if (cur) {
+                if (isProtectedWorkout(cur)) continue;          // keep client/trainer changes
+                Object.assign(cur, fields);
+                await cur.save();
+                summary.updated++;
+            } else {
+                // New day — never clobber whatever already sits on that date.
+                const occupied = await ClientWorkout.findOne({ clientId: client._id, date: slot.dateStr });
+                if (occupied) continue;
+                await ClientWorkout.create({ clientId: client._id, date: slot.dateStr, ...fields });
+                summary.created++;
+            }
+        }
+
+        // 2) REMOVE days dropped/emptied from the program (future & untouched only).
+        for (const w of existing) {
+            const slot = slots.get(`${w.sourceWeek}-${w.sourceDayNum}`);
+            if (slot && slot.hasContent) continue;              // still part of the program
+            if (w.date < todayStr || isProtectedWorkout(w)) continue;
+            await ClientWorkout.deleteOne({ _id: w._id });
+            summary.removed++;
+        }
+    }
+    return summary;
+};
+
+// ==========================================================================
 // --- PROTECTED: Programs ---
 // ==========================================================================
 
@@ -3463,10 +3620,46 @@ app.put('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin
         program.markModified('weeks');
         await program.save();
 
-        res.json(program);
+        // Auto-propagate the edit to every client who has this program assigned —
+        // but only when the day grid actually changed (a rename can't move days).
+        // The cutoff uses the trainer's local date (X-Client-Date header) so the
+        // "future only" rule matches what the trainer sees. Non-fatal: a sync
+        // failure must never fail the program save itself.
+        let sync = null;
+        if (weeks !== undefined) {
+            try {
+                const hdr = req.headers['x-client-date'];
+                const todayStr = (typeof hdr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(hdr))
+                    ? hdr
+                    : new Date().toISOString().slice(0, 10);
+                sync = await syncProgramToClients(program, todayStr);
+            } catch (e) {
+                console.error('Program sync failed (program still saved):', e.message);
+            }
+        }
+
+        res.json({ ...program.toObject(), _sync: sync });
     } catch (error) {
         console.error('Error updating program:', error);
         res.status(500).json({ message: 'Error updating program', error });
+    }
+});
+
+// Record (or clear) which program is assigned to a client. Drives the auto-sync
+// above: a client is only re-synced if assignedProgram.programId points here.
+app.put('/api/clients/:clientId/assigned-program', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        const { clientId } = req.params;
+        const { programId, startDate, anchorOffset } = req.body;
+        const assignedProgram = (programId && startDate)
+            ? { programId, startDate, anchorOffset: anchorOffset || 0 }
+            : { programId: null, startDate: null, anchorOffset: 0 };
+        const user = await User.findByIdAndUpdate(clientId, { assignedProgram }, { new: true });
+        if (!user) return res.status(404).json({ message: 'Client not found' });
+        res.json({ ok: true, assignedProgram: user.assignedProgram });
+    } catch (e) {
+        console.error('Error setting assigned program:', e.message);
+        res.status(500).json({ message: 'Error setting assigned program' });
     }
 });
 
