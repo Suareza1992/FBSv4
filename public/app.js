@@ -10660,7 +10660,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-            set('total-calories-display', Math.round(totalCal));
+            // total-calories-display now shows REMAINING calories (set below, once
+            // the exercise-adjusted goal is known).
             set('total-protein-display',  Math.round(totalPro) + 'g');
             set('total-carbs-display',    Math.round(totalCarbs) + 'g');
             set('total-fat-display',      Math.round(totalFat) + 'g');
@@ -10675,6 +10676,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (goalEl) goalEl.textContent = baseCalGoal
                 ? (burnedCal > 0 ? `${baseCalGoal} +${Math.round(burnedCal)}🔥` : baseCalGoal)
                 : '--';
+
+            // Center of the ring = calories REMAINING for the day (goal − consumed).
+            // When over budget, show the overage in red with an "excedidas" label.
+            const centerEl  = document.getElementById('total-calories-display');
+            const centerLbl = document.getElementById('calorie-center-label');
+            if (derivedCalGoal > 0) {
+                const remaining = Math.round(derivedCalGoal - totalCal);
+                if (centerEl)  { centerEl.textContent = Math.abs(remaining); centerEl.style.color = remaining >= 0 ? '#FFDB89' : '#ef4444'; }
+                if (centerLbl) centerLbl.textContent = remaining >= 0 ? 'restantes' : 'excedidas';
+            } else {
+                // No goal set yet — fall back to showing what's been eaten.
+                if (centerEl)  { centerEl.textContent = Math.round(totalCal); centerEl.style.color = '#FFDB89'; }
+                if (centerLbl) centerLbl.textContent = 'comidas';
+            }
 
             const setBar = (barId, labelId, current, goal) => {
                 const bar = document.getElementById(barId);
@@ -10696,18 +10711,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 ring.style.strokeDashoffset = (314.16 * (1 - pct)).toFixed(2);
                 ring.style.stroke = (derivedCalGoal > 0 && totalCal > derivedCalGoal) ? '#ef4444' : '#FFDB89';
             }
-            // Remaining calories display
-            const remainEl = document.getElementById('calories-remaining-display');
-            if (remainEl) {
-                if (derivedCalGoal > 0) {
-                    const diff = Math.round(derivedCalGoal - totalCal);
-                    remainEl.textContent = Math.abs(diff) + ' cal';
-                    remainEl.style.color = diff >= 0 ? 'rgba(255,219,137,0.65)' : '#ef4444';
-                    remainEl.title = diff >= 0 ? 'restantes' : 'excedidas';
-                } else {
-                    remainEl.textContent = '--';
-                    remainEl.style.color = 'rgba(255,219,137,0.4)';
-                }
+            // Below the ring: calories CONSUMED so far (the remaining value now
+            // lives in the center of the ring).
+            const consumedEl = document.getElementById('calories-consumed-display');
+            if (consumedEl) {
+                consumedEl.textContent = Math.round(totalCal) + ' cal';
+                consumedEl.style.color = (derivedCalGoal > 0 && totalCal > derivedCalGoal) ? '#ef4444' : 'rgba(255,219,137,0.65)';
             }
         };
 
