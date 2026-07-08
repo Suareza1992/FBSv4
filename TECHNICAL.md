@@ -394,11 +394,118 @@ Index: `{ clientId: 1, date: -1 }`.
 - USDA's `DEMO_KEY` is used — it is rate-limited to 30 requests/minute per IP. This should be replaced with a real API key for production.
 - `$set` partial update in `POST /api/nutrition-logs` means a client logging water does not accidentally overwrite a meal they logged earlier in the same day.
 
+### Personal Food Library
+
+**Schema — `PersonalFoodLibrarySchema`** (model: `PersonalFoodLibrary`)
+
+| Field | Type | Notes |
+|---|---|---|
+| `clientId` | ObjectId (required, indexed) | Owner of the personal library entry |
+| `name` | String (required) | Food name |
+| `calories` | Number | default 0 |
+| `protein` | Number | default 0 |
+| `carbs` | Number | default 0 |
+| `fat` | Number | default 0 |
+| `servingSize` | Number | default 100 (typically grams) |
+| `servingUnit` | String | default `'g'` (e.g., `'g'`, `'oz'`, `'portions'`) |
+| `timesUsed` | Number | default 1; increments each time the food is re-saved (self-learning) |
+| `submittedToCommunity` | Boolean | default false; true if submitted to shared `FoodLibrary` |
+| `communityFoodId` | ObjectId (ref: FoodLibrary) | Points to the community entry if submitted |
+| `createdAt` | Date | |
+| `updatedAt` | Date | |
+
+Indexes: `{ clientId: 1, createdAt: -1 }` (list sorted by newest), `{ clientId: 1, name: 1 }` (unique per client; upsert on name collision increments `timesUsed`).
+
+**Backend routes**
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/personal-foods?sort=recent\|frequent` | any | Lists client's personal foods; `sort=frequent` orders by `timesUsed` (most-used first) |
+| `POST` | `/api/personal-foods` | any | Upsert: if food exists (by clientId + name), increment `timesUsed`; else create new. Used when client saves a logged food to their library |
+| `PUT` | `/api/personal-foods/:id` | any | Edit name/macros/serving info; ownership guard ensures `clientId` matches |
+| `DELETE` | `/api/personal-foods/:id` | any | Remove from personal library; ownership guard |
+| `POST` | `/api/personal-foods/:id/submit-community` | any | Submit entry to shared `FoodLibrary`; deduplicates by `nameNorm` (normalized name). Sets `submittedToCommunity: true` and stores `communityFoodId` link. Returns `{ ok, communityFoodId }` |
+
+**Frontend flow**
+
+**`loadPersonalFoods()`** (`app.js`) — on nutrition module init, fetches `GET /api/personal-foods?sort=frequent` in parallel with saved meals. Populates `personalFoods` array and calls `_renderPersonalFoodsList()`.
+
+**`_renderPersonalFoodsList()`** — renders "Mis alimentos" chip section below "Mis combinaciones". Each chip shows food name + calorie count; tap to add to current meal; pencil icon to edit; share icon to submit to community.
+
+**`_addPersonalFoodToMeal(foodId)`** — when client taps a personal food chip, adds it to the selected meal slot and saves via `POST /api/nutrition-logs`.
+
+**`_editPersonalFood(foodId)`** — opens edit modal with name/calorie/macro inputs. Save button calls `PUT /api/personal-foods/:id`; delete button calls `DELETE /api/personal-foods/:id` with confirmation.
+
+**`_submitPersonalFoodToCommunity(foodId)`** — calls `POST /api/personal-foods/:id/submit-community`; on success, marks the chip with "✓ Enviado" badge and disables re-submission.
+
+**Food search modal enhancement** — Added "Mis alimentos" tab (conditional, shows only if `personalFoods.length > 0`). Displays personal foods in scrollable list; tap a food to pre-fill the entry form for quick reuse.
+
+**Save-to-library checkbox** — food edit modal includes checkbox "Guardar a Mis alimentos". When checked and food is saved, `POST /api/personal-foods` is called (non-blocking; fires after `POST /api/nutrition-logs`).
+
+### Community Food Library
+
+**Schema — `FoodLibrarySchema`** (model: `FoodLibrary`) — shared, read-only per-user
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | String (required) | Food name as submitted |
+| `nameNorm` | String (required, unique) | Accent-stripped lowercase for dedup |
+| `calories` | Number | default 0 |
+| `protein` | Number | default 0 |
+| `carbs` | Number | default 0 |
+| `fat` | Number | default 0 |
+| `timesUsed` | Number | default 1; increments when re-submitted (dedup by nameNorm) |
+| `createdAt`, `updatedAt` | Date | |
+
+Index: `{ nameNorm: 1 }` unique.
+
+**Usage** — When client searches for foods (`GET /api/food-search`), community library results are merged with local DB. When a personal food is submitted via `/api/personal-foods/:id/submit-community`, the backend checks if a matching `nameNorm` exists; if yes, increments `timesUsed`; else creates new entry. The community library grows organically as clients submit foods, building a Spanish-language nutrition database reusable by all users.
+
+### Curated Local Food DB (`LOCAL_FOODS`)
+
+The first tier of food search is a hardcoded array in `server.js` (~345 entries) with per-100g macros, a typical `serving` in grams, and a companion `FOOD_ALIASES` map for bilingual matching ("burger" → "Hamburguesa sencilla", "malta" → "Malta India"). It covers whole foods, Costco/brand staples, and an extensive Puerto Rican section (mofongo, tostones, arroz con gandules, pernil, tripleta…) plus US fast-food and restaurant plates (hamburguesas, pizza, nuggets, mac and cheese, pancakes, donuts…).
+
+**Why hardcoded instead of Mongo:** instant (no DB round-trip), version-controlled, curated quality (the community `FoodLibrary` is noisy/unmoderated), and it doubles as the grounding source for the AI meal recommender (`resolveIngredientMacros` tries `LOCAL_FOODS` first, then `FoodLibrary`, then USDA). To add foods: append to `LOCAL_FOODS` (per-100g values + serving grams) and add an alias entry keyed by the exact food name.
+
+### "Buscar en internet" (client-side food search)
+
+**User perspective** — In the Buscar tab, a sky-blue "Buscar en internet" button appears under the results (and in the no-results state). It searches external food databases **from the client's own device** and shows results tagged with an "internet" badge; picking one flows into the normal quantity picker.
+
+**Why client-side** — The server's `/api/food-search` already blends internet tiers (Nutritionix → OFF → USDA), but those run on the *server's* connection, keys, and quotas, and generic matches can outrank branded products. The button is an explicit escape hatch that costs the server nothing:
+
+1. **Open Food Facts** (`world.openfoodfacts.org/cgi/search.pl`) — keyless, CORS-enabled, best packaged/Spanish-product coverage. The endpoint intermittently 503s, so failures fall through to…
+2. **USDA FoodData Central** — CORS-open; queried with the public `DEMO_KEY`, whose rate limit is **per client IP** — every user brings their own quota, which is the whole point of running it client-side.
+
+Both mappers normalize to the search-result shape (`{name, brand, serving, cal100…, fromInternet: true}`) and escape names with `escNutri` before they're interpolated into `innerHTML` (external data is untrusted). Mobile mirrors the same two-tier logic in `searchInternet()` (no CSP constraints in React Native).
+
+**CSP note** — `connectSrc` now includes `world.openfoodfacts.org` (this also fixed the barcode scanner, whose browser-side OFF fetch had been silently blocked by CSP) and `search.openfoodfacts.org`. The *server's* two OFF call sites were migrated from the dying `/cgi/search.pl` to the modern Search-a-licious API (`search.openfoodfacts.org/search`) via the `searchOffProducts()` helper — note that API is server-only (it doesn't send CORS headers), returns `hits[]`, uses `brands` as an array, and sometimes only carries energy in kJ (converted at 4.184 kJ/kcal).
+
+### Nutrition Label Scanner (AI vision)
+
+**User perspective** — In the add-food modal's "Escanear" tab, below the barcode scanner, the client can photograph a product's Nutrition Facts panel. Claude vision extracts name, serving size, calories, protein, carbs, and fat, and the client lands on a **confirm/edit screen**: every value is an editable input, with a quantity + unit selector (porción / g / oz) that scales the printed per-serving values. Nothing is logged until the client presses confirm — the AI result is a pre-fill, never a silent write.
+
+**Backend — `POST /api/scan-label`** (`server.js`):
+- Follows the exact pattern of `/api/parse-food`: `authenticateToken`, feature flag (`FOOD_SCAN_ENABLED` + `foodScanEnabled` on `/api/me`), shared global monthly `AiUsage` cap plus a per-client daily cap (`FOOD_SCAN_DAILY_LIMIT`, default 10, scope `client_scan`).
+- Accepts `{ image }` as a data URL or raw base64 (+ optional `mediaType`); validates type (jpeg/png/webp) and size (fits the 2MB `express.json` limit because clients downscale first).
+- Calls `claude-haiku-4-5` with an image content block + structured outputs (`output_config.format` with a strict JSON schema: `found`, `name`, `servingText`, `servingGrams`, `calories`, `protein`, `carbs`, `fat`).
+- Prompt rules worth knowing: values are extracted **per serving as printed** (never scaled to 100g by the AI); if "Total Fat" is missing, the model **sums all visible fat subtypes including trans**; `servingGrams` comes only from the printed gram weight (0 if absent — never estimated); illegible values return 0 rather than guesses.
+- Server sanitizes the response (clamps negatives, 1 decimal, name length cap) before returning.
+
+**Web frontend** (`app.js`, inside `showScanTab`):
+- `compressLabelImage()` — canvas downscale to ≤1280px JPEG q0.82 so the base64 upload stays under the body limit.
+- `scanLabelPhoto()` — POSTs to `/api/scan-label`, shows a spinner, falls back to the camera view with a toast on `found:false` or errors.
+- `showLabelResult()` — the confirm/edit view. Editable name + 4 macro inputs (per-serving base), qty + unit selector. When `servingGrams > 0` it derives per-100g values so the shared footer serving row keeps working; when the label printed no gram weight, only "porción" scaling is offered (g/oz would be a guess).
+
+**Mobile** (`nutricion.tsx`): a 4th "Escanear" tab in the add-food modal, gated on `user.foodScanEnabled`. Uses `expo-image-picker` (camera or gallery) + `expo-image-manipulator` (resize ≤1280px, JPEG base64) → same endpoint → same confirm/edit form (editable name/macros, qty + porción/g/oz chips, live total). Confirm adds to the selected meal slot via the standard partial-save `POST /api/nutrition-logs`, and best-effort teaches the community library like manual entry does.
+
 ### Known limitations
 - `meals` is stored as a plain object with no type enforcement. A migration or schema change would require custom scripts.
 - USDA `DEMO_KEY` will 429 under moderate load.
 - No server-side calorie/macro recomputation — the client computes totals locally and sends them. A bug in client-side math would persist silently.
 - Food history autocomplete is built from all historical logs on every init — for clients with years of data this could be slow.
+- Personal food library edits do NOT re-validate nutrition math — trainer-side could theoretically inject invalid macros.
+- Community library is global and unmoderated; any client can submit a food with arbitrary macros.
+- Label scanner reads what's printed per serving; blurry or angled photos can misread small decimals (e.g. "0.5g" trans fat). The confirm/edit step is the guard — the client is always shown the values before logging.
 
 ---
 
@@ -819,6 +926,52 @@ Some nav items use `href="#"` and are wired entirely via JavaScript click handle
 | `client_progress.html` | client | wired inline |
 | `client_equipo.html` | client | wired inline |
 
+### Recipe: Adding a New Page/Module
+
+Concrete steps to add a page — say, a new client-facing "Recetas" (Recipes) module. This is the pattern every existing module follows.
+
+**1. Create the HTML fragment.** New file `public/client_recetas.html` — a content-only div, no `<html>`/`<head>`/`<body>`. It gets injected into `#main-content`, so it should start with a wrapper div and can use any Tailwind utility classes already loaded via CDN:
+```html
+<div id="recetas-module">
+  <h2 class="text-2xl font-bold text-[#FFDB89]">Recetas</h2>
+  <div id="recetas-list"></div>
+</div>
+```
+
+**2. Add a backend route (if the page needs data).** In `server.js`, define the schema (if new data) and route, following the existing pattern: `authenticateToken` on every route, `assertOwnership(req, res, clientId)` on any client-scoped read/write, and role restriction (`authorizeRoles('trainer','admin')`) if the page is trainer-only. Example:
+```js
+app.get('/api/recipes/:clientId', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
+    const recipes = await Recipe.find({ clientId: req.params.clientId });
+    res.json(recipes);
+});
+```
+
+**3. Write the init function in `app.js`.** Every module has a function that runs after its HTML is injected — this is where you `apiFetch` data and wire event listeners (the HTML fragment has no `<script>` tag; all JS lives in `app.js`):
+```js
+const initClientRecetas = async () => {
+    const session = loadSession();
+    if (!session) return;
+    const res = await apiFetch(`/api/recipes/${session.id}`);
+    const recipes = res.ok ? await res.json() : [];
+    document.getElementById('recetas-list').innerHTML = recipes.map(r =>
+        `<div>${escHtml(r.name)}</div>`
+    ).join('');
+};
+```
+Always escape client-controlled strings with `escHtml` before interpolating into `innerHTML` (see Section 13 — this is the platform's stored-XSS defense).
+
+**4. Register the module in the loader.** Find the `if/else if` chain around `app.js:1593` (where `initClientNutrition()` etc. are dispatched after `loadModule`) and add a branch:
+```js
+if (moduleToLoad === 'client_recetas') initClientRecetas();
+```
+
+**5. Wire the nav link.** Add a sidebar link in `client-dashboard.html` (or `trainer-dashboard.html` for trainer-only pages) pointing at the module name, following the existing `href="#"` + click-handler pattern used by other client-side-routed links (see "Navigation model" above), or add a branch in the link-text matching logic near `app.js:9172`.
+
+**6. Role-gate it if needed.** There is no route table — a page is only reachable if a nav link exists in the sidebar the user's role loads (`trainer-dashboard.html` vs `client-dashboard.html`, chosen in `router()`). If a client-only page must also be *server*-safe against a trainer poking the API directly, add `assertOwnership` (trainers pass through) or `authorizeRoles` as needed — **never rely on the missing nav link alone as a security boundary.**
+
+**7. Reuse existing UI primitives** instead of rebuilding them: `showToast()` / `showConfirm()` (Section 11) for feedback, `escHtml()` for safety, `apiFetch()` for all network calls (handles the auth header and 401 redirect for you).
+
 ### Global state variables
 
 Key module-level state in `app.js` (accessible to all closures within `DOMContentLoaded`):
@@ -842,3 +995,34 @@ Key module-level state in `app.js` (accessible to all closures within `DOMConten
 - `MODULE_CACHE` has no TTL or size limit. In a long session, all visited modules remain in memory.
 - All global state is in a single closure — there is no state management library. Complex inter-module state is shared via `window.*` properties and module-level variables, making the dependency graph implicit.
 - `updateContent()` destroys and re-creates module HTML on every navigation, losing any unsaved form state in the replaced module.
+
+---
+
+## 13. Security Posture
+
+The platform is multi-tenant in spirit (one trainer, many clients), so the core risks are **IDOR** (one client reaching another's data) and **privilege escalation**. Both are addressed by design.
+
+### Authentication & secrets
+- JWT in an **HttpOnly, Secure, SameSite** cookie (`auth_token`, 7-day expiry). The token is never exposed to JS; `apiFetch` relies on the browser/native layer to send it.
+- **`JWT_SECRET` boot guard** (`server.js`): the app **refuses to start in production** if `JWT_SECRET` is unset, equal to the placeholder, or shorter than 32 chars — a missing secret would let anyone forge admin tokens. Non-production logs a loud warning instead.
+- Login is **rate-limited** (`authLimiter`, 10 / 15 min) and bcrypt-hashes passwords. Inputs are explicitly type-checked (`typeof email === 'string'`) to defeat NoSQL-operator injection (e.g. `{ "$gt": "" }`).
+- Password recovery and invite activation use **hashed, single-use, time-boxed tokens** (reset = 1 h, invite = 7 days); the raw token only ever travels in the email link.
+
+### Authorization
+- **`assertOwnership(req, res, clientId)`** guards every client-data endpoint (workouts, nutrition, weights, measurements, photos, exercise history): a `client` may only act on their own `id`; trainers/admins pass. Trainer-only routes use `authorizeRoles('trainer','admin')`, and payment reads are additionally scoped to `trainerId`.
+- **Mass-assignment is blocked by allowlists.** `PUT /api/me` and `PUT /api/clients/:id` each copy only an explicit set of fields — `role`, `password`, `email`, and invite/reset tokens are **not** updatable, so no client can self-escalate to trainer.
+- Self-signup (`provisionSignupAccount`) never overwrites an existing account — an existing email reuses the account and only attaches a payment (no takeover, no data clobber).
+
+### Output safety (XSS)
+- The SPA renders with `innerHTML`, so all **client-controlled strings** (names, food names, exercise results/history, nutrition & photo notes, notification text) are escaped with `escHtml` before interpolation. This matters because client-entered text is rendered in the **trainer's** browser — an unescaped field would be a stored-XSS vector from client → trainer.
+
+### Webhooks & dependencies
+- Stripe (`constructEvent`) and PayPal (`verify-webhook-signature` against `PAYPAL_WEBHOOK_ID`) webhooks are **signature-verified**; PayPal returns `503` if its webhook id is unset rather than trusting the event.
+- Dependencies are kept clean (`npm audit` → 0 vulnerabilities).
+
+### Data persistence guarantees
+Client entries and uploads are **durable** — there is no mechanism that erases them randomly:
+- Storage is MongoDB Atlas + Cloudinary (both cloud, permanent). Image uploads are `type: 'upload'` (no expiry); profile pics use a deterministic `public_id` with `overwrite` (always one current copy).
+- **No TTL** on any client-data collection (only `PendingSignup`, an ephemeral 24 h signup-redirect record). **No cron / scheduled cleanup.** All deletes are explicit/user-initiated.
+- The one automated deletion — program → calendar **re-sync** — only removes *future, untouched, program-derived* days; `isProtectedWorkout` blocks deletion of anything completed, missed, RPE'd, with logged results, or manually edited (see section 3).
+- Nutrition saves are **partial** (`$set` of only provided fields), so saving water never wipes meals, and logging exercise never wipes either.

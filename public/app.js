@@ -3612,7 +3612,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <td class="px-4 py-3 text-[#FFDB89]/70">${l.carbs}g</td>
                                     <td class="px-4 py-3 text-[#FFDB89]/70">${l.fat}g</td>
                                     <td class="px-4 py-3 text-[#FFDB89]/70">${l.water || '--'}</td>
-                                    <td class="px-4 py-3 text-[#FFDB89]/50">${l.notes || '--'}</td>
+                                    <td class="px-4 py-3 text-[#FFDB89]/50">${escHtml(l.notes) || '--'}</td>
                                     <td class="px-4 py-3 text-right">
                                         <button onclick="window._deleteClientNutriLog('${l._id}','${clientId}')" class="opacity-0 group-hover:opacity-100 text-red-400/50 hover:text-red-400 transition p-1 rounded" title="Eliminar registro">
                                             <i class="fas fa-trash-alt text-xs"></i>
@@ -3757,7 +3757,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <div class="p-2">
                                             <p class="text-xs font-bold text-[#FFDB89]/70">${dateStr}</p>
                                             ${p.category ? `<p class="text-[10px] text-[#FFDB89]/40">${p.category}</p>` : ''}
-                                            ${p.notes ? `<p class="text-xs text-[#FFDB89]/50 truncate">${p.notes}</p>` : ''}
+                                            ${p.notes ? `<p class="text-xs text-[#FFDB89]/50 truncate">${escHtml(p.notes)}</p>` : ''}
                                         </div>
                                         ${!compareMode ? `<button onclick="event.stopPropagation(); window.deleteProgressPhoto('${p._id}','${clientId}')"
                                             class="absolute top-2 right-2 w-7 h-7 bg-red-600 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
@@ -3825,7 +3825,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="px-4 py-3 bg-black/20 shrink-0 text-center">
                                 <p class="font-bold text-[#FFDB89] text-sm">${dateStr}</p>
                                 ${p.category ? `<p class="text-xs text-[#FFDB89]/50">${p.category}</p>` : ''}
-                                ${p.notes ? `<p class="text-xs text-[#FFDB89]/40 truncate">${p.notes}</p>` : ''}
+                                ${p.notes ? `<p class="text-xs text-[#FFDB89]/40 truncate">${escHtml(p.notes)}</p>` : ''}
                             </div>
                             <div class="flex-1 overflow-hidden bg-black/30">
                                 <img src="${p.imageData}" alt="Foto ${i+1}" class="w-full h-full object-contain">
@@ -5483,7 +5483,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         ${ex.stats ? `<p class="text-xs text-[#FFDB89]/50 mt-1 leading-relaxed whitespace-pre-line">${ex.stats}</p>` : ''}
                         ${ex.instructions ? `<p class="text-xs text-[#FFDB89]/50 mt-1 leading-relaxed whitespace-pre-line">${ex.instructions}</p>` : ''}
-                        ${ex.results ? `<p class="text-xs text-green-400/60 mt-1 italic">${ex.results}</p>` : ''}
+                        ${ex.results ? `<p class="text-xs text-green-400/60 mt-1 italic">${escHtml(ex.results)}</p>` : ''}
                     </div>
                 </div>`;
             }).join('');
@@ -5720,7 +5720,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const positionExAc = (inputEl) => {
         const r = inputEl.getBoundingClientRect();
         const p = getExAcPortal();
-        p.style.top   = (r.bottom + 4) + 'px';
+        // Fixed-position portal: clamp to the visible viewport so the list never
+        // extends past the bottom edge (where no scroll can reach it). If there's
+        // more room above the input than below, flip the list upward instead.
+        const spaceBelow = window.innerHeight - r.bottom - 12;
+        const spaceAbove = r.top - 12;
+        if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
+            p.style.top       = (r.bottom + 4) + 'px';
+            p.style.bottom    = 'auto';
+            p.style.maxHeight = Math.max(80, Math.min(220, spaceBelow)) + 'px';
+        } else {
+            p.style.top       = 'auto';
+            p.style.bottom    = (window.innerHeight - r.top + 4) + 'px';
+            p.style.maxHeight = Math.max(80, Math.min(220, spaceAbove)) + 'px';
+        }
         p.style.left  = r.left + 'px';
         p.style.width = r.width + 'px';
     };
@@ -10481,9 +10494,22 @@ document.addEventListener('DOMContentLoaded', () => {
         let waterOz = 0;
         let waterGoalOz = 64;   // trainer-set or default 8 × 8 oz — drives the water bar
         let nlpEnabled = true;  // natural-language "Describir" tab; toggled by /api/me flag
+        let labelScanEnabled = true; // nutrition-label photo scanner; toggled by /api/me flag
         let calorieGoal = 0;
         let foodHistory = [];   // cached from past logs for autocomplete
+        let personalFoods = [];  // client's manually-saved personal food library for reuse
         let servingUnit = localStorage.getItem('nutriServingUnit') || 'g'; // warm-start cache; DB value applied below
+
+        // Load personal food library for reuse (runs once on init)
+        const loadPersonalFoods = async () => {
+            try {
+                const res = await apiFetch('/api/personal-foods?sort=frequent');
+                if (!res.ok) return;
+                personalFoods = await res.json();
+                _renderPersonalFoodsList();
+            } catch (e) { /* silently fail */ }
+        };
+        loadPersonalFoods();
 
         // Build food history from all past nutrition logs (runs once on init)
         const buildFoodHistory = async () => {
@@ -10554,6 +10580,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 // Whether the natural-language "Describir" tab should appear in the add-food modal.
                 nlpEnabled = me.foodNlpEnabled !== false;
+                // Whether the "Foto de etiqueta" option shows inside the Escanear tab.
+                labelScanEnabled = me.foodScanEnabled !== false;
 
                 // Macro targets set by trainer
                 const ms = me.macroSettings;
@@ -10904,6 +10932,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 class="w-full p-2.5 bg-white/10 border border-orange-400/20 rounded-lg text-orange-400 font-bold text-sm text-center outline-none focus:ring-1 focus:ring-orange-400"></div>
                         </div>
                     </div>
+                    <label class="flex items-center gap-2 px-3 py-2 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg cursor-pointer hover:bg-[#FFDB89]/10 transition">
+                        <input type="checkbox" id="ef-save-to-library" class="w-4 h-4 rounded">
+                        <span class="text-xs font-semibold text-[#FFDB89]">Guardar a Mis alimentos</span>
+                    </label>
                     <div class="flex gap-2 pt-1">
                         <button id="ef-delete" class="px-4 py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 text-sm font-bold transition">
                             <i class="fas fa-trash-alt mr-1.5"></i>Eliminar
@@ -10915,8 +10947,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
             document.body.appendChild(modal);
 
-            document.getElementById('ef-save').addEventListener('click', () => {
-                mealsData[mi].foods[fi] = {
+            document.getElementById('ef-save').addEventListener('click', async () => {
+                const newFood = {
                     ...mealsData[mi].foods[fi],
                     name:     document.getElementById('ef-name').value.trim() || food.name,
                     calories: document.getElementById('ef-cal').value,
@@ -10924,6 +10956,33 @@ document.addEventListener('DOMContentLoaded', () => {
                     carbs:    document.getElementById('ef-carb').value,
                     fat:      document.getElementById('ef-fat').value
                 };
+                mealsData[mi].foods[fi] = newFood;
+
+                // If checkbox is checked, save to personal library
+                if (document.getElementById('ef-save-to-library')?.checked) {
+                    try {
+                        const res = await apiFetch('/api/personal-foods', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                name: newFood.name,
+                                calories: Number(newFood.calories) || 0,
+                                protein: Number(newFood.protein) || 0,
+                                carbs: Number(newFood.carbs) || 0,
+                                fat: Number(newFood.fat) || 0,
+                                servingSize: 100,
+                                servingUnit: 'g'
+                            })
+                        });
+                        if (res.ok) {
+                            const saved = await res.json();
+                            const idx = personalFoods.findIndex(f => f.name === newFood.name);
+                            if (idx !== -1) personalFoods[idx] = saved;
+                            else personalFoods.push(saved);
+                            _renderPersonalFoodsList();
+                        }
+                    } catch (e) { /* non-critical — already saved to meal */ }
+                }
+
                 modal.remove();
                 renderMeals();
                 recalcTotals();
@@ -10979,11 +11038,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h3 class="text-lg font-bold text-[#FFDB89]">Añadir alimento</h3>
                         <button id="close-food-modal" class="text-[#FFDB89]/50 hover:text-[#FFDB89] transition text-xl"><i class="fas fa-times"></i></button>
                     </div>
-                    <div class="flex border-b border-[#FFDB89]/15 shrink-0">
-                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89] border-b-2 border-[#FFDB89] transition" data-tab="search"><i class="fas fa-search mr-1"></i>Buscar</button>
-                        ${nlpEnabled ? `<button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition" data-tab="describe"><i class="fas fa-wand-magic-sparkles mr-1"></i>Describir</button>` : ''}
-                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition" data-tab="manual"><i class="fas fa-pencil-alt mr-1"></i>Manual</button>
-                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition" data-tab="scan"><i class="fas fa-barcode mr-1"></i>Escanear</button>
+                    <div class="flex border-b border-[#FFDB89]/15 shrink-0 overflow-x-auto">
+                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89] border-b-2 border-[#FFDB89] transition shrink-0" data-tab="search"><i class="fas fa-search mr-1"></i>Buscar</button>
+                        ${personalFoods.length > 0 ? `<button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition shrink-0" data-tab="library"><i class="fas fa-utensils mr-1"></i>Mis alimentos</button>` : ''}
+                        ${nlpEnabled ? `<button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition shrink-0" data-tab="describe"><i class="fas fa-wand-magic-sparkles mr-1"></i>Describir</button>` : ''}
+                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition shrink-0" data-tab="manual"><i class="fas fa-pencil-alt mr-1"></i>Manual</button>
+                        <button class="food-tab-btn flex-1 py-3 text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border-b-2 border-transparent transition shrink-0" data-tab="scan"><i class="fas fa-barcode mr-1"></i>Escanear</button>
                     </div>
                     <div class="flex-1 overflow-y-auto" id="food-modal-body"></div>
                     <div class="shrink-0 border-t border-[#FFDB89]/15 p-4 space-y-3">
@@ -11141,7 +11201,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="food-suggest-item w-full text-left px-4 py-2.5 hover:bg-[#FFDB89]/10 transition border-b border-[#FFDB89]/10 last:border-0"
                             data-name="${f.name.replace(/"/g,'&quot;')}" data-cal="${f.calories}" data-pro="${f.protein}" data-carb="${f.carbs}" data-fat="${f.fat}">
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="text-sm text-white font-medium">${f.name}</span>
+                                <span class="text-sm text-white font-medium">${escHtml(f.name)}</span>
                                 ${f.fromLibrary ? '<span class="text-[8px] font-bold text-[#FFDB89]/30 uppercase tracking-wider border border-[#FFDB89]/20 rounded px-1">comunidad</span>' : ''}
                             </div>
                             <span class="text-xs text-[#FFDB89]/50">${f.calories} cal &middot; P:${f.protein}g C:${f.carbs}g G:${f.fat}g</span>
@@ -11311,6 +11371,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         resultsDiv.innerHTML = `
                         <div class="py-4 text-center space-y-3">
                             <p class="text-xs text-[#FFDB89]/40">Sin resultados. Prueba otro término.</p>
+                            <button class="net-search-cta w-full text-xs font-bold text-sky-300 border border-sky-400/30 hover:border-sky-400/60 hover:bg-sky-400/10 px-4 py-2 rounded-xl transition">
+                                <i class="fas fa-globe mr-1.5"></i>Buscar en internet
+                            </button>
                             <button class="add-manual-cta text-xs font-bold text-[#FFDB89] border border-[#FFDB89]/30 hover:border-[#FFDB89]/60 hover:bg-[#FFDB89]/10 px-4 py-2 rounded-xl transition">
                                 <i class="fas fa-plus-circle mr-1.5"></i>Añadir manualmente
                             </button>
@@ -11321,6 +11384,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         const brand = p.brand ? `<span class="text-[#FFDB89]/40">${p.brand} · </span>` : '';
                         const communityBadge = p.fromLibrary
                             ? `<span class="text-[8px] font-bold text-green-400/70 uppercase tracking-wider border border-green-400/25 rounded px-1 py-px shrink-0">comunidad</span>`
+                            : p.fromInternet
+                            ? `<span class="text-[8px] font-bold text-sky-300/80 uppercase tracking-wider border border-sky-400/30 rounded px-1 py-px shrink-0">internet</span>`
                             : '';
                         return `<button class="off-result-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition" data-idx="${i}">
                             <div class="flex justify-between items-center gap-2">
@@ -11340,13 +11405,108 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (p) showQtyPicker(p);
                         });
                     });
-                    // "Add manually" fallback at the bottom of results
+                    // "Search the internet" + "Add manually" fallbacks at the bottom of results
                     resultsDiv.insertAdjacentHTML('beforeend', `
-                        <div class="text-center pt-1 pb-1">
-                            <button class="add-manual-cta text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] border border-[#FFDB89]/20 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/8 px-4 py-2 rounded-xl transition">
+                        <div class="text-center pt-1 pb-1 space-y-2">
+                            ${products.some(p => p.fromInternet) ? '' : `
+                            <button class="net-search-cta w-full text-xs font-bold text-sky-300/80 hover:text-sky-300 border border-sky-400/20 hover:border-sky-400/50 hover:bg-sky-400/8 px-4 py-2 rounded-xl transition">
+                                <i class="fas fa-globe mr-1.5"></i>¿No aparece? Buscar en internet
+                            </button>`}
+                            <button class="add-manual-cta w-full text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] border border-[#FFDB89]/20 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/8 px-4 py-2 rounded-xl transition">
                                 <i class="fas fa-plus-circle mr-1.5"></i>¿No encuentras tu alimento? Añadir manualmente
                             </button>
                         </div>`);
+                };
+
+                // ── "Buscar en internet" — external food DBs straight from the browser ──
+                // Uses the CLIENT's connection (no server quota). Tries Open Food Facts
+                // first (best packaged/Spanish coverage; endpoint is flaky), then falls
+                // back to USDA FoodData Central (CORS-open; DEMO_KEY limits are per
+                // client IP, so each user gets their own quota).
+                const fetchWithTimeout = async (url, ms) => {
+                    const ctrl = new AbortController();
+                    const tid  = setTimeout(() => ctrl.abort(), ms);
+                    try {
+                        const r = await fetch(url, { signal: ctrl.signal });
+                        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                        return await r.json();
+                    } finally { clearTimeout(tid); }
+                };
+
+                const fetchOffProducts = async (q) => {
+                    const data = await fetchWithTimeout(
+                        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&fields=product_name,nutriments,brands,serving_quantity&page_size=20&action=process`,
+                        8000
+                    );
+                    return (data.products || [])
+                        .filter(p => p.product_name?.trim() && (p.nutriments?.['energy-kcal_100g'] || p.nutriments?.['energy-kcal']))
+                        .map(p => ({
+                            name:    escNutri(p.product_name.trim()),
+                            brand:   escNutri(p.brands?.split(',')[0]?.trim() || '') || null,
+                            serving: parseFloat(p.serving_quantity) || 100,
+                            cal100:  Math.round(p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal'] || 0),
+                            p100:    parseFloat((p.nutriments.proteins_100g      || 0).toFixed(1)),
+                            c100:    parseFloat((p.nutriments.carbohydrates_100g || 0).toFixed(1)),
+                            f100:    parseFloat((p.nutriments.fat_100g           || 0).toFixed(1)),
+                            fromInternet: true,
+                        }))
+                        .filter(f => f.cal100 > 0);
+                };
+
+                const fetchUsdaFoods = async (q) => {
+                    const data = await fetchWithTimeout(
+                        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY&query=${encodeURIComponent(q)}&pageSize=15&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS),Branded&nutrients=1008,1003,1005,1004`,
+                        8000
+                    );
+                    return (data.foods || [])
+                        .filter(f => f.description?.trim())
+                        .map(f => {
+                            const get = id => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
+                            return {
+                                name:    escNutri(f.description.trim()),
+                                brand:   escNutri(f.brandOwner || f.brandName || '') || null,
+                                serving: 100,
+                                cal100:  Math.round(get(1008)),
+                                p100:    parseFloat(get(1003).toFixed(1)),
+                                c100:    parseFloat(get(1005).toFixed(1)),
+                                f100:    parseFloat(get(1004).toFixed(1)),
+                                fromInternet: true,
+                            };
+                        })
+                        .filter(f => f.cal100 > 0);
+                };
+
+                const doInternetSearch = async () => {
+                    const q = searchInput.value.trim();
+                    if (!q) return;
+                    const seq = ++searchSeq;
+                    resultsDiv.innerHTML = '<p class="text-xs text-sky-300/70 text-center py-4 animate-pulse"><i class="fas fa-globe mr-2"></i>Buscando en internet...</p>';
+                    let items = [];
+                    try { items = await fetchOffProducts(q); } catch (_) { /* OFF down or CORS-blocked — try USDA */ }
+                    if (seq !== searchSeq) return;   // user typed again meanwhile
+                    if (!items.length) {
+                        try { items = await fetchUsdaFoods(q); } catch (_) { items = null; }
+                        if (seq !== searchSeq) return;
+                    }
+                    if (items === null) {
+                        resultsDiv.innerHTML = `<div class="text-center py-4 space-y-2">
+                            <p class="text-xs text-red-400/70">No se pudo buscar en internet. Verifica tu conexión.</p>
+                            <button class="net-search-cta text-xs text-sky-300/70 hover:text-sky-300 underline transition">Intentar de nuevo</button>
+                        </div>`;
+                        return;
+                    }
+                    if (!items.length) {
+                        resultsDiv.innerHTML = `
+                            <div class="py-4 text-center space-y-3">
+                                <p class="text-xs text-[#FFDB89]/40">Sin resultados en internet para "${escNutri(q)}".</p>
+                                <button class="add-manual-cta text-xs font-bold text-[#FFDB89] border border-[#FFDB89]/30 hover:border-[#FFDB89]/60 hover:bg-[#FFDB89]/10 px-4 py-2 rounded-xl transition">
+                                    <i class="fas fa-plus-circle mr-1.5"></i>Añadir manualmente
+                                </button>
+                            </div>`;
+                        return;
+                    }
+                    lastProducts = items;
+                    showResultsList(items);
                 };
 
                 // ── Instant search (debounced 350ms) ──
@@ -11387,10 +11547,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Show recent foods immediately on tab open
                 showRecentFoods();
 
-                // Delegated listener: any ".add-manual-cta" button inside resultsDiv → switch to Manual tab
+                // Delegated listeners: ".add-manual-cta" → Manual tab; ".net-search-cta" → internet search
                 resultsDiv.addEventListener('click', e => {
                     if (e.target.closest('.add-manual-cta')) {
                         modal.querySelector('.food-tab-btn[data-tab="manual"]')?.click();
+                    } else if (e.target.closest('.net-search-cta')) {
+                        clearTimeout(searchTimer);
+                        doInternetSearch();
                     }
                 });
 
@@ -11537,6 +11700,19 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </button>
                             </div>
                             <p class="text-[10px] text-[#FFDB89]/30 text-center">Funciona mejor con la cámara trasera · Requiere permisos de cámara</p>
+                            ${labelScanEnabled ? `
+                            <div class="flex items-center gap-3 pt-1">
+                                <div class="flex-1 h-px bg-[#FFDB89]/10"></div>
+                                <span class="text-[10px] text-[#FFDB89]/30 uppercase tracking-wider">o</span>
+                                <div class="flex-1 h-px bg-[#FFDB89]/10"></div>
+                            </div>
+                            <button id="label-scan-btn"
+                                class="w-full py-2.5 bg-[#FFDB89]/10 border border-[#FFDB89]/25 text-[#FFDB89] rounded-xl text-sm font-bold hover:bg-[#FFDB89]/20 transition flex items-center justify-center gap-2">
+                                <i class="fas fa-camera"></i> Foto de la tabla nutricional
+                            </button>
+                            <input type="file" id="label-scan-file" accept="image/*" capture="environment" class="hidden">
+                            <p class="text-[10px] text-[#FFDB89]/30 text-center">Toma una foto del "Nutrition Facts" y la IA lee los macros para que los confirmes.</p>
+                            ` : ''}
                         </div>`;
 
                     const setStatus = (msg, cls = 'text-white/70') => {
@@ -11552,7 +11728,180 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('manual-barcode-btn')?.addEventListener('click', doManual);
                     document.getElementById('manual-barcode-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') doManual(); });
 
+                    // wire nutrition-label photo scan
+                    const labelFile = document.getElementById('label-scan-file');
+                    document.getElementById('label-scan-btn')?.addEventListener('click', () => labelFile?.click());
+                    labelFile?.addEventListener('change', () => {
+                        const f = labelFile.files?.[0];
+                        if (f) { stopScanner(); scanLabelPhoto(f); }
+                    });
+
                     startCamera(setStatus);
+                };
+
+                // ── nutrition-label photo → AI extraction ────────────
+                // Downscale client-side (max 1280px, JPEG) so the upload stays well
+                // under the server's 2MB JSON body limit.
+                const compressLabelImage = (file) => new Promise((resolve, reject) => {
+                    const img = new Image();
+                    const url = URL.createObjectURL(file);
+                    img.onload = () => {
+                        URL.revokeObjectURL(url);
+                        const maxSide = 1280;
+                        const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+                        const canvas = document.createElement('canvas');
+                        canvas.width  = Math.round(img.width  * ratio);
+                        canvas.height = Math.round(img.height * ratio);
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.82));
+                    };
+                    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('bad image')); };
+                    img.src = url;
+                });
+
+                const scanLabelPhoto = async (file) => {
+                    const body = document.getElementById('food-modal-body');
+                    if (!body) return;
+                    body.innerHTML = `
+                        <div class="p-8 text-center space-y-3">
+                            <i class="fas fa-camera text-3xl text-[#FFDB89]/40 animate-pulse"></i>
+                            <p class="text-sm text-[#FFDB89]/70 animate-pulse">Leyendo la etiqueta...</p>
+                            <p class="text-[10px] text-[#FFDB89]/30">Esto toma unos segundos</p>
+                        </div>`;
+                    try {
+                        const dataUrl = await compressLabelImage(file);
+                        const res = await apiFetch('/api/scan-label', {
+                            method: 'POST',
+                            body: JSON.stringify({ image: dataUrl }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.message || 'Error leyendo la etiqueta.');
+                        if (!data.found) {
+                            showToast('No se detectó una tabla nutricional. Intenta con una foto más clara.', 'error');
+                            showScanTab();
+                            return;
+                        }
+                        showLabelResult(data);
+                    } catch (e) {
+                        showToast(e.message || 'Error leyendo la etiqueta.', 'error');
+                        showScanTab();
+                    }
+                };
+
+                // ── confirm/edit view for the extracted label values ──
+                const showLabelResult = (d) => {
+                    const sGrams = d.servingGrams > 0 ? d.servingGrams : 0;
+                    // Editable per-serving base values (as printed on the label)
+                    const base = { cal: d.calories || 0, p: d.protein || 0, c: d.carbs || 0, f: d.fat || 0 };
+                    const escAttr = s => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                    const servingNote = d.servingText
+                        ? `porción: ${d.servingText}` : (sGrams ? `porción: ${sGrams}g` : 'valores por porción');
+
+                    document.getElementById('food-modal-body').innerHTML = `
+                        <div class="p-5 space-y-3">
+                            <button id="label-back-btn" class="flex items-center gap-1.5 text-xs text-[#FFDB89]/50 hover:text-[#FFDB89] transition">
+                                <i class="fas fa-chevron-left text-[10px]"></i> Escanear de nuevo
+                            </button>
+                            <div class="bg-white/5 border border-[#FFDB89]/20 rounded-xl px-4 py-3 space-y-2">
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-camera text-[#FFDB89]/30 shrink-0"></i>
+                                    <input type="text" id="label-name" value="${escAttr(d.name)}"
+                                        class="flex-1 min-w-0 bg-transparent text-sm font-bold text-white outline-none border-b border-transparent focus:border-[#FFDB89]/40 transition" placeholder="Nombre del alimento">
+                                </div>
+                                <p class="text-[10px] text-[#FFDB89]/40">${escAttr(servingNote)} · revisa que los valores coincidan con la etiqueta</p>
+                            </div>
+                            <div class="grid grid-cols-4 gap-2">
+                                ${[['cal', 'Cal', base.cal, 'text-[#FFDB89]'], ['p', 'Prot (g)', base.p, 'text-red-400'], ['c', 'Carbs (g)', base.c, 'text-yellow-400'], ['f', 'Grasa (g)', base.f, 'text-orange-400']].map(([k, lbl, v, color]) => `
+                                    <div class="bg-white/5 border border-[#FFDB89]/15 rounded-xl p-2 text-center">
+                                        <p class="text-[9px] text-[#FFDB89]/50 uppercase tracking-wide mb-1">${lbl}</p>
+                                        <input type="number" id="label-${k}" value="${v}" min="0" step="0.1" inputmode="decimal"
+                                            class="w-full bg-transparent ${color} text-base font-black text-center outline-none">
+                                    </div>`).join('')}
+                            </div>
+                            <div class="flex gap-2 items-end">
+                                <div class="flex flex-col gap-1" style="width:90px">
+                                    <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider">Cantidad</label>
+                                    <input type="number" id="label-qty" value="1" step="any"
+                                        class="p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-center text-lg font-black outline-none focus:ring-2 focus:ring-[#FFDB89]">
+                                </div>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider">Unidad</label>
+                                    <select id="label-unit"
+                                        class="w-full pl-2.5 pr-8 py-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] cursor-pointer appearance-none" style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
+                                        <option value="portion">porción${sGrams ? ` (${sGrams}g c/u)` : ''}</option>
+                                        ${sGrams ? `
+                                        <option value="1">gramos (g)</option>
+                                        <option value="28.35">onzas (oz)</option>` : ''}
+                                    </select>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-[#FFDB89]/30 text-center">Ajusta cualquier valor si el escaneo no fue exacto y pulsa "Añadir al diario".</p>
+                        </div>`;
+
+                    const qtyEl  = document.getElementById('label-qty');
+                    const unitEl = document.getElementById('label-unit');
+
+                    const recalcLabel = (clamp = false) => {
+                        // Re-read the (possibly edited) per-serving base values
+                        base.cal = Math.max(0, parseFloat(document.getElementById('label-cal')?.value) || 0);
+                        base.p   = Math.max(0, parseFloat(document.getElementById('label-p')?.value)   || 0);
+                        base.c   = Math.max(0, parseFloat(document.getElementById('label-c')?.value)   || 0);
+                        base.f   = Math.max(0, parseFloat(document.getElementById('label-f')?.value)   || 0);
+                        const name = (document.getElementById('label-name')?.value || '').trim() || 'Producto escaneado';
+
+                        const raw = parseFloat(qtyEl.value);
+                        const qty = (!isNaN(raw) && raw > 0) ? raw : 1;
+                        if (clamp) qtyEl.value = qty;
+
+                        // multiplier over the printed per-serving values
+                        let mult, grams;
+                        if (unitEl.value === 'portion' || !sGrams) {
+                            mult  = qty;
+                            grams = sGrams ? qty * sGrams : 0;
+                        } else {
+                            const gPerU = parseFloat(unitEl.value) || 1;
+                            grams = qty * gPerU;
+                            mult  = grams / sGrams;
+                        }
+
+                        // Keep the shared footer serving row consistent when grams are known
+                        if (grams > 0) {
+                            servingG = grams;
+                            baseNutrients = {
+                                name,
+                                calories_100g: (base.cal / sGrams) * 100,
+                                protein_100g:  (base.p   / sGrams) * 100,
+                                carbs_100g:    (base.c   / sGrams) * 100,
+                                fat_100g:      (base.f   / sGrams) * 100,
+                            };
+                        } else {
+                            baseNutrients = null;
+                        }
+
+                        setPreview({
+                            name,
+                            calories: Math.round(base.cal * mult),
+                            protein:  Math.round(base.p   * mult * 10) / 10,
+                            carbs:    Math.round(base.c   * mult * 10) / 10,
+                            fat:      Math.round(base.f   * mult * 10) / 10,
+                        }, grams > 0);
+                    };
+
+                    qtyEl.addEventListener('focus', () => qtyEl.select());
+                    qtyEl.addEventListener('input', () => recalcLabel(false));
+                    qtyEl.addEventListener('blur',  () => recalcLabel(true));
+                    unitEl.addEventListener('change', () => recalcLabel(true));
+                    ['label-name', 'label-cal', 'label-p', 'label-c', 'label-f'].forEach(id => {
+                        document.getElementById(id)?.addEventListener('input', () => recalcLabel(false));
+                    });
+                    recalcLabel(true);
+
+                    document.getElementById('label-back-btn')?.addEventListener('click', () => {
+                        baseNutrients = null;
+                        servingG = 100;
+                        setPreview(null);
+                        showScanTab();
+                    });
                 };
 
                 // ── fetch product from Open Food Facts ───────────────
@@ -11758,6 +12107,50 @@ document.addEventListener('DOMContentLoaded', () => {
             // ==================================================
             // TAB: DESCRIBE  (natural-language food logging)
             // ==================================================
+            // ---- Mis Alimentos (Personal Library) Tab ----
+            const showLibraryTab = () => {
+                document.getElementById('food-modal-body').innerHTML = `
+                    <div class="p-4 space-y-2">
+                        ${!personalFoods.length ? `
+                        <p class="text-center py-6 text-[#FFDB89]/40 text-sm">
+                            <i class="fas fa-inbox text-2xl block mb-2 opacity-30"></i>
+                            Aún no has guardado alimentos en tu biblioteca.
+                        </p>` : `
+                        <div class="space-y-2" id="library-foods-list"></div>
+                        `}
+                    </div>`;
+
+                if (personalFoods.length) {
+                    const foodsList = document.getElementById('library-foods-list');
+                    foodsList.innerHTML = personalFoods.map(pf => `
+                        <button class="library-food-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition"
+                            data-name="${(pf.name||'').replace(/"/g,'&quot;')}" data-cal="${pf.calories||0}" data-pro="${pf.protein||0}" data-carb="${pf.carbs||0}" data-fat="${pf.fat||0}">
+                            <div class="flex justify-between items-center gap-2">
+                                <p class="text-sm font-semibold text-white leading-tight truncate">${(pf.name||'').replace(/</g,'&lt;')}</p>
+                                <span class="text-sm font-black text-[#FFDB89] shrink-0">${pf.calories||0} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
+                            </div>
+                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">P:${pf.protein||0}g · C:${pf.carbs||0}g · G:${pf.fat||0}g</p>
+                        </button>`).join('');
+
+                    foodsList.querySelectorAll('.library-food-item').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const cal  = parseFloat(btn.dataset.cal)  || 0;
+                            const pro  = parseFloat(btn.dataset.pro)  || 0;
+                            const carb = parseFloat(btn.dataset.carb) || 0;
+                            const fat  = parseFloat(btn.dataset.fat)  || 0;
+                            pending = { name: btn.dataset.name, calories: cal, protein: pro, carbs: carb, fat: fat };
+                            baseNutrients = {
+                                name: btn.dataset.name,
+                                calories_100g: cal, protein_100g: pro,
+                                carbs_100g: carb, fat_100g: fat
+                            };
+                            servingG = 100;
+                            setPreview({ name: btn.dataset.name, calories: cal, protein: pro, carbs: carb, fat: fat }, false);
+                        });
+                    });
+                }
+            };
+
             const showDescribeTab = () => {
                 setPreview(null); // this tab uses its own add button, not the shared footer
                 document.getElementById('food-modal-body').innerHTML = `
@@ -11902,6 +12295,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (tab === 'manual') showManualTab();
                 else if (tab === 'search') showSearchTab();
+                else if (tab === 'library') showLibraryTab();
                 else if (tab === 'describe') showDescribeTab();
                 else showScanTab();
             };
@@ -12151,6 +12545,219 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderWaterCups();
                 recalcTotals();
             } catch (e) { console.error('Error loading nutrition log:', e); }
+        };
+
+        // ── Personal Food Library ───────────────────────────────────────────
+        // Foods the client manually saved for easy reuse (not community-shared).
+        const _renderPersonalFoodsList = () => {
+            const panel = document.getElementById('personal-foods-panel');
+            if (!panel) return;
+            if (!personalFoods.length) { panel.innerHTML = ''; return; }
+            panel.innerHTML = `
+                <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-xl p-3 mb-1">
+                    <p class="text-[11px] font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-2"><i class="fas fa-utensils mr-1.5"></i>Mis alimentos</p>
+                    <div class="flex flex-wrap gap-2">
+                        ${personalFoods.map(pf => {
+                            const badge = pf.submittedToCommunity ? ' ✓ Enviado' : '';
+                            return `
+                            <div class="group/pf flex items-center gap-1.5 bg-white/5 border border-[#FFDB89]/20 rounded-full pl-3 pr-1.5 py-1.5">
+                                <button onclick="window._addPersonalFoodToMeal('${pf._id}')" class="flex items-center gap-2 text-left" title="Añadir a una comida">
+                                    <i class="fas fa-plus text-[10px] text-[#FFDB89]"></i>
+                                    <span class="text-xs font-semibold text-white">${escHtml(pf.name)}</span>
+                                    <span class="text-[10px] text-[#FFDB89]/40">${Math.round(pf.calories || 0)} cal${badge}</span>
+                                </button>
+                                <button onclick="window._editPersonalFood('${pf._id}')" class="text-[#FFDB89]/30 hover:text-[#FFDB89] opacity-0 group-hover/pf:opacity-100 transition p-1" title="Editar"><i class="fas fa-pen text-[9px]"></i></button>
+                                <button onclick="window._deletePersonalFood('${pf._id}')" class="text-red-400/30 hover:text-red-400 opacity-0 group-hover/pf:opacity-100 transition p-1" title="Eliminar"><i class="fas fa-times text-[10px]"></i></button>
+                                ${!pf.submittedToCommunity ? `<button onclick="window._submitPersonalFoodToCommunity('${pf._id}')" class="text-green-400/30 hover:text-green-400 opacity-0 group-hover/pf:opacity-100 transition p-1" title="Enviar a comunidad"><i class="fas fa-share text-[9px]"></i></button>` : ''}
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>`;
+        };
+
+        window._addPersonalFoodToMeal = (id) => {
+            const pf = personalFoods.find(f => f._id === id);
+            if (!pf) return;
+            const defaultIdx = 0;
+            const modal = document.createElement('div');
+            modal.id = 'add-personal-food-modal';
+            modal.className = 'fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+            modal.innerHTML = `
+                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+                    <div class="flex justify-between items-center p-4 border-b border-[#FFDB89]/12">
+                        <h3 class="text-base font-bold text-[#FFDB89]"><i class="fas fa-utensils mr-2 text-sm"></i>${escHtml(pf.name)}</h3>
+                        <button id="pf-close" class="text-[#FFDB89]/50 hover:text-[#FFDB89] text-lg"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div>
+                            <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Añadir a</label>
+                            <select id="pf-meal" style="color-scheme:dark" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/25 rounded-lg text-white text-sm outline-none">
+                                ${mealsData.map((m, i) => `<option value="${i}" ${i === defaultIdx ? 'selected' : ''}>${escHtml(m.name)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="bg-white/5 border border-[#FFDB89]/10 rounded-lg p-3">
+                            <div class="flex justify-between mb-2">
+                                <span class="text-sm text-white">${escHtml(pf.name)}</span>
+                                <input type="number" id="pf-quantity" step="0.5" min="0.5" value="1" class="w-16 p-1 bg-white/10 border border-[#FFDB89]/25 rounded text-[#FFDB89] text-xs text-center outline-none" title="cantidad">
+                            </div>
+                            <div class="text-[10px] text-[#FFDB89]/50 grid grid-cols-4 gap-1">
+                                <span>${Math.round((pf.calories || 0) * 1)} cal</span>
+                                <span class="text-red-400">${Math.round((pf.protein || 0) * 1)}g P</span>
+                                <span class="text-yellow-400">${Math.round((pf.carbs || 0) * 1)}g C</span>
+                                <span class="text-orange-400">${Math.round((pf.fat || 0) * 1)}g G</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 p-4 border-t border-[#FFDB89]/12">
+                        <button id="pf-cancel" class="flex-1 py-2.5 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/70 text-sm font-bold hover:bg-[#FFDB89]/5">Cancelar</button>
+                        <button id="pf-add" class="flex-1 py-2.5 rounded-lg bg-[#FFDB89] text-[#030303] text-sm font-bold">Añadir</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            const close = () => modal.remove();
+            modal.querySelector('#pf-close').onclick = close;
+            modal.querySelector('#pf-cancel').onclick = close;
+            modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+            modal.querySelector('#pf-add').onclick = () => {
+                const targetIdx = parseInt(modal.querySelector('#pf-meal').value) || 0;
+                const qty = parseFloat(modal.querySelector('#pf-quantity').value) || 1;
+                if (!mealsData[targetIdx]) return;
+                if (!mealsData[targetIdx].foods) mealsData[targetIdx].foods = [];
+                mealsData[targetIdx].foods.push({
+                    name: pf.name,
+                    calories: Math.round((pf.calories || 0) * qty),
+                    protein: +((pf.protein || 0) * qty).toFixed(1),
+                    carbs: +((pf.carbs || 0) * qty).toFixed(1),
+                    fat: +((pf.fat || 0) * qty).toFixed(1),
+                    servingAmount: pf.servingSize ? pf.servingSize * qty : null,
+                    servingUnit: pf.servingUnit || 'g',
+                });
+                close();
+                renderMeals();
+                recalcTotals();
+                doSaveNutrition({ silent: true });
+                showToast(`✓ "${pf.name}" añadido.`, 'success');
+            };
+        };
+
+        window._editPersonalFood = (id) => {
+            const pf = personalFoods.find(f => f._id === id);
+            if (!pf) return;
+            const modal = document.createElement('div');
+            modal.id = 'edit-personal-food-modal';
+            modal.className = 'fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+            modal.innerHTML = `
+                <div class="bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+                    <div class="flex justify-between items-center p-4 border-b border-[#FFDB89]/12">
+                        <h3 class="text-base font-bold text-[#FFDB89]"><i class="fas fa-pen mr-2 text-sm"></i>Editar alimento</h3>
+                        <button id="epf-close" class="text-[#FFDB89]/50 hover:text-[#FFDB89] text-lg"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div>
+                            <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Nombre</label>
+                            <input id="epf-name" value="${escHtml(pf.name || '')}" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/25 rounded-lg text-white text-sm outline-none">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Calorías</label>
+                                <input id="epf-cal" type="number" step="1" min="0" value="${Math.round(pf.calories || 0)}" class="w-full p-2 bg-white/10 border border-[#FFDB89]/25 rounded text-white text-sm outline-none text-center">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Porción (${pf.servingUnit || 'g'})</label>
+                                <input id="epf-serving" type="number" step="0.5" min="0.5" value="${pf.servingSize || 100}" class="w-full p-2 bg-white/10 border border-[#FFDB89]/25 rounded text-white text-sm outline-none text-center">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="text-[10px] text-red-400/60 uppercase tracking-wider block mb-1">Proteína (g)</label>
+                                <input id="epf-pro" type="number" step="0.1" min="0" value="${parseFloat(pf.protein || 0).toFixed(1)}" class="w-full p-2 bg-red-400/5 border border-red-400/20 rounded text-red-400 text-sm outline-none text-center font-bold">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-yellow-400/60 uppercase tracking-wider block mb-1">Carbos (g)</label>
+                                <input id="epf-carb" type="number" step="0.1" min="0" value="${parseFloat(pf.carbs || 0).toFixed(1)}" class="w-full p-2 bg-yellow-400/5 border border-yellow-400/20 rounded text-yellow-400 text-sm outline-none text-center font-bold">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-orange-400/60 uppercase tracking-wider block mb-1">Grasas (g)</label>
+                                <input id="epf-fat" type="number" step="0.1" min="0" value="${parseFloat(pf.fat || 0).toFixed(1)}" class="w-full p-2 bg-orange-400/5 border border-orange-400/20 rounded text-orange-400 text-sm outline-none text-center font-bold">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 p-4 border-t border-[#FFDB89]/12">
+                        <button id="epf-delete" class="flex-1 py-2.5 rounded-lg border border-red-400/30 text-red-400/70 text-sm font-bold hover:bg-red-400/5">Eliminar</button>
+                        <button id="epf-cancel" class="flex-1 py-2.5 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/70 text-sm font-bold hover:bg-[#FFDB89]/5">Cancelar</button>
+                        <button id="epf-save" class="flex-1 py-2.5 rounded-lg bg-[#FFDB89] text-[#030303] text-sm font-bold">Guardar</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            const close = () => modal.remove();
+            modal.querySelector('#epf-close').onclick = close;
+            modal.querySelector('#epf-cancel').onclick = close;
+            modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+            modal.querySelector('#epf-delete').onclick = async () => {
+                if (!await showConfirm(`¿Eliminar "${pf.name}" de Mis alimentos?`, { confirmLabel: 'Eliminar', cancelLabel: 'Cancelar', danger: true })) return;
+                close();
+                await window._deletePersonalFood(id);
+            };
+
+            modal.querySelector('#epf-save').onclick = async () => {
+                const name = (modal.querySelector('#epf-name').value || '').trim();
+                if (!name) { showToast('El alimento necesita un nombre.', 'info'); return; }
+                const btn = modal.querySelector('#epf-save');
+                btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                try {
+                    const res = await apiFetch(`/api/personal-foods/${id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            name,
+                            calories: Number(modal.querySelector('#epf-cal').value) || 0,
+                            protein: Number(modal.querySelector('#epf-pro').value) || 0,
+                            carbs: Number(modal.querySelector('#epf-carb').value) || 0,
+                            fat: Number(modal.querySelector('#epf-fat').value) || 0,
+                            servingSize: Number(modal.querySelector('#epf-serving').value) || 100,
+                            servingUnit: pf.servingUnit || 'g',
+                        })
+                    });
+                    if (!res.ok) throw new Error();
+                    const updated = await res.json();
+                    const idx = personalFoods.findIndex(f => f._id === id);
+                    if (idx !== -1) personalFoods[idx] = updated;
+                    _renderPersonalFoodsList();
+                    close();
+                    showToast(`✓ "${name}" actualizado.`, 'success');
+                } catch {
+                    btn.disabled = false; btn.innerHTML = 'Guardar';
+                    showToast('No se pudo guardar el alimento.', 'error');
+                }
+            };
+        };
+
+        window._deletePersonalFood = async (id) => {
+            try {
+                await apiFetch(`/api/personal-foods/${id}`, { method: 'DELETE' });
+                personalFoods = personalFoods.filter(f => f._id !== id);
+                _renderPersonalFoodsList();
+                showToast('✓ Alimento eliminado.', 'success');
+            } catch { showToast('No se pudo eliminar.', 'error'); }
+        };
+
+        window._submitPersonalFoodToCommunity = async (id) => {
+            const pf = personalFoods.find(f => f._id === id);
+            if (!pf) return;
+            if (!await showConfirm(`¿Enviar "${pf.name}" a la biblioteca comunitaria? Otros clientes podrán usarlo.`, { confirmLabel: 'Enviar', cancelLabel: 'Cancelar' })) return;
+            try {
+                const res = await apiFetch(`/api/personal-foods/${id}/submit-community`, { method: 'POST' });
+                if (!res.ok) throw new Error();
+                const idx = personalFoods.findIndex(f => f._id === id);
+                if (idx !== -1) {
+                    personalFoods[idx].submittedToCommunity = true;
+                    _renderPersonalFoodsList();
+                }
+                showToast(`✓ "${pf.name}" enviado a la comunidad.`, 'success');
+            } catch { showToast('No se pudo enviar a la comunidad.', 'error'); }
         };
 
         // ── Saved meal combos ───────────────────────────────────────────────
@@ -12755,7 +13362,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="font-bold text-white text-xs">${photo.category || 'Progreso'}</span>
                                 <span class="text-[10px] text-[#FFDB89]/50">${dateStr}</span>
                             </div>
-                            ${photo.notes ? `<p class="text-[10px] text-[#FFDB89]/50 mt-0.5 truncate px-1">${photo.notes}</p>` : ''}
+                            ${photo.notes ? `<p class="text-[10px] text-[#FFDB89]/50 mt-0.5 truncate px-1">${escHtml(photo.notes)}</p>` : ''}
                             ${!clientCompareMode ? `<button class="delete-photo-btn absolute top-2 right-2 w-7 h-7 bg-red-500/80 hover:bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
                                 data-id="${photo._id}" title="Eliminar">
                                 <i class="fas fa-trash text-[10px]"></i>
@@ -13588,7 +14195,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <i class="fas fa-history text-[#FFDB89]/30 text-[10px] mt-0.5 shrink-0"></i>
                             <div class="min-w-0">
                                 <span class="text-[10px] font-bold text-[#FFDB89]/35 uppercase tracking-wide">Última vez · ${dateLabel}</span>
-                                <p class="text-xs text-[#FFDB89]/55 leading-snug mt-0.5 break-words">${h.results}</p>
+                                <p class="text-xs text-[#FFDB89]/55 leading-snug mt-0.5 break-words">${escHtml(h.results)}</p>
                             </div>
                         </div>`;
                     chip.classList.remove('hidden');

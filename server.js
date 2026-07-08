@@ -27,6 +27,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION'; // NEW: JWT secret from env
+// SECURITY: a missing/default JWT secret means anyone can forge admin tokens.
+// Refuse to boot in production; warn loudly elsewhere so it gets fixed.
+if (!process.env.JWT_SECRET || JWT_SECRET === 'CHANGE_ME_IN_PRODUCTION' || JWT_SECRET.length < 32) {
+    const msg = 'FATAL: JWT_SECRET is unset, default, or too short (<32 chars). Set a long random JWT_SECRET in the environment.';
+    if (process.env.NODE_ENV === 'production') { console.error(msg); throw new Error(msg); }
+    console.warn('WARNING: ' + msg + ' (allowed only in non-production)');
+}
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';         // NEW: app URL from env
 const DEBUG = process.env.DEBUG === 'true'; // Set DEBUG=true in .env for local dev verbose logging
 
@@ -71,6 +78,11 @@ const FOOD_NLP_DAILY_LIMIT = intEnv(process.env.FOOD_NLP_DAILY_LIMIT, 20);
 // cap; shares the global monthly $ cap above.
 const EQUIPMENT_CHECK_ENABLED     = process.env.EQUIPMENT_CHECK_ENABLED !== 'false';
 const EQUIPMENT_CHECK_DAILY_LIMIT = intEnv(process.env.EQUIPMENT_CHECK_DAILY_LIMIT, 50);
+// Nutrition-label photo scanner ("Escanear > Etiqueta"). Client photographs a
+// Nutrition Facts panel; Claude vision extracts serving + macros for confirm/edit.
+// Own flag + per-client daily cap; shares the global monthly $ cap above.
+const FOOD_SCAN_ENABLED     = process.env.FOOD_SCAN_ENABLED !== 'false';
+const FOOD_SCAN_DAILY_LIMIT = intEnv(process.env.FOOD_SCAN_DAILY_LIMIT, 10);
 
 // Multer: store file in memory so we can stream the buffer straight to Cloudinary
 const photoUpload = multer({
@@ -117,7 +129,10 @@ app.use(helmet({
                          "https://images.unsplash.com", "https://i.pravatar.cc",
                          "https://img.youtube.com", "https://i.ytimg.com", "https://*.ytimg.com"], // YouTube thumbnails + Cloudinary profile/progress photos
             fontSrc:    ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-            connectSrc: ["'self'", "https://api.nal.usda.gov", "https://cdn.jsdelivr.net"],
+            // openfoodfacts domains: the browser calls OFF directly for barcode
+            // lookups (world.) and the "Buscar en internet" food search (search.)
+            // — client's own connection: free, keyless, and no server quota.
+            connectSrc: ["'self'", "https://api.nal.usda.gov", "https://cdn.jsdelivr.net", "https://world.openfoodfacts.org", "https://search.openfoodfacts.org"],
             frameSrc:   ["'self'", "https://www.youtube.com", "https://youtube.com",
                          "https://www.youtube-nocookie.com", "https://player.vimeo.com", "https://drive.google.com"],
         }
@@ -545,6 +560,27 @@ const FoodLibrarySchema = new mongoose.Schema({
 FoodLibrarySchema.index({ nameNorm: 1 }, { unique: true });
 const FoodLibrary = mongoose.model('FoodLibrary', FoodLibrarySchema);
 
+// --- Personal Food Library Schema ---
+// Per-client foods they've logged and manually saved for reuse (not shared).
+const PersonalFoodLibrarySchema = new mongoose.Schema({
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    name: { type: String, required: true },
+    calories: { type: Number, default: 0 },
+    protein: { type: Number, default: 0 },
+    carbs: { type: Number, default: 0 },
+    fat: { type: Number, default: 0 },
+    servingSize: { type: Number, default: 100 },      // grams or units
+    servingUnit: { type: String, default: 'g' },      // g, oz, portions, etc.
+    timesUsed: { type: Number, default: 1 },          // self-learning counter
+    submittedToCommunity: { type: Boolean, default: false },
+    communityFoodId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodLibrary', default: null },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+}, { timestamps: true });
+PersonalFoodLibrarySchema.index({ clientId: 1, createdAt: -1 });
+PersonalFoodLibrarySchema.index({ clientId: 1, name: 1 }, { unique: true });
+const PersonalFoodLibrary = mongoose.model('PersonalFoodLibrary', PersonalFoodLibrarySchema);
+
 // --- Blog Post Schema ---
 const BlogPostSchema = new mongoose.Schema({
     title:       { type: String, required: true },
@@ -685,7 +721,9 @@ app.post('/api/auth/register', (req, res) => {
 app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
-        if (!email || !password) {
+        // Reject non-string inputs explicitly (defense-in-depth vs. NoSQL operator
+        // injection like { "$gt": "" }).
+        if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
             return res.status(400).json({ message: 'Email and password are required' });
         }
 
@@ -957,6 +995,7 @@ app.get('/api/me', authenticateToken, async (req, res) => {
             ...user.toObject(),
             mealSuggestionEnabled: MEAL_SUGGESTION_ENABLED && !!anthropic,
             foodNlpEnabled:        FOOD_NLP_ENABLED && !!anthropic,
+            foodScanEnabled:       FOOD_SCAN_ENABLED && !!anthropic,
         });
     } catch (error) {
         console.error('Error fetching profile:', error);
@@ -1836,6 +1875,133 @@ app.delete('/api/saved-meals/:id', authenticateToken, async (req, res) => {
 });
 
 // ==========================================================================
+// --- PROTECTED: Personal Food Library (per-client foods saved for reuse) ---
+// ==========================================================================
+
+// List client's personal food library, sorted by requested criteria
+app.get('/api/personal-foods', authenticateToken, async (req, res) => {
+    try {
+        const { sort } = req.query;
+        let sortQuery = { createdAt: -1 };
+        if (sort === 'frequent') sortQuery = { timesUsed: -1, createdAt: -1 };
+
+        const foods = await PersonalFoodLibrary.find({ clientId: req.user.id })
+            .sort(sortQuery);
+        res.json(foods);
+    } catch (e) { res.status(500).json({ message: 'Error fetching personal foods' }); }
+});
+
+// Save a food to personal library (or increment timesUsed if already exists)
+// Body: { name, calories, protein, carbs, fat, servingSize?, servingUnit? }
+app.post('/api/personal-foods', authenticateToken, async (req, res) => {
+    try {
+        const { name, calories, protein, carbs, fat, servingSize, servingUnit } = req.body;
+        if (!name) return res.status(400).json({ message: 'Se requiere el nombre del alimento.' });
+
+        const food = await PersonalFoodLibrary.findOneAndUpdate(
+            { clientId: req.user.id, name },
+            {
+                $set: {
+                    calories: Number(calories) || 0,
+                    protein: Number(protein) || 0,
+                    carbs: Number(carbs) || 0,
+                    fat: Number(fat) || 0,
+                    servingSize: Number(servingSize) || 100,
+                    servingUnit: servingUnit || 'g',
+                    updatedAt: new Date()
+                },
+                $inc: { timesUsed: 1 }
+            },
+            { new: true, upsert: true }
+        );
+        res.status(201).json(food);
+    } catch (e) { res.status(500).json({ message: 'Error saving personal food' }); }
+});
+
+// Edit a personal food entry
+// Body: { name?, calories?, protein?, carbs?, fat?, servingSize?, servingUnit? }
+app.put('/api/personal-foods/:id', authenticateToken, async (req, res) => {
+    try {
+        const food = await PersonalFoodLibrary.findById(req.params.id);
+        if (!food) return res.status(404).json({ message: 'Alimento no encontrado' });
+        if (food.clientId.toString() !== req.user.id) return res.status(403).json({ message: 'Forbidden' });
+
+        const { name, calories, protein, carbs, fat, servingSize, servingUnit } = req.body;
+        const updateFields = {};
+        if (name !== undefined) updateFields.name = name;
+        if (calories !== undefined) updateFields.calories = Number(calories);
+        if (protein !== undefined) updateFields.protein = Number(protein);
+        if (carbs !== undefined) updateFields.carbs = Number(carbs);
+        if (fat !== undefined) updateFields.fat = Number(fat);
+        if (servingSize !== undefined) updateFields.servingSize = Number(servingSize);
+        if (servingUnit !== undefined) updateFields.servingUnit = servingUnit;
+        updateFields.updatedAt = new Date();
+
+        const updated = await PersonalFoodLibrary.findByIdAndUpdate(
+            req.params.id,
+            { $set: updateFields },
+            { new: true }
+        );
+        res.json(updated);
+    } catch (e) { res.status(500).json({ message: 'Error updating personal food' }); }
+});
+
+// Delete a personal food entry
+app.delete('/api/personal-foods/:id', authenticateToken, async (req, res) => {
+    try {
+        const food = await PersonalFoodLibrary.findById(req.params.id);
+        if (!food) return res.status(404).json({ message: 'Alimento no encontrado' });
+        if (food.clientId.toString() !== req.user.id) return res.status(403).json({ message: 'Forbidden' });
+
+        await PersonalFoodLibrary.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Deleted' });
+    } catch (e) { res.status(500).json({ message: 'Error deleting personal food' }); }
+});
+
+// Submit a personal food to the community library
+// Updates FoodLibrary (dedup by nameNorm, increment timesUsed if exists) and marks as submitted
+app.post('/api/personal-foods/:id/submit-community', authenticateToken, async (req, res) => {
+    try {
+        const food = await PersonalFoodLibrary.findById(req.params.id);
+        if (!food) return res.status(404).json({ message: 'Alimento no encontrado' });
+        if (food.clientId.toString() !== req.user.id) return res.status(403).json({ message: 'Forbidden' });
+
+        // Normalize name for dedup (strip accents, lowercase)
+        const normalizeStr = (s) => {
+            return (s || '').toLowerCase()
+                .normalize('NFD')
+                .replace(/[̀-ͯ]/g, '');
+        };
+        const nameNorm = normalizeStr(food.name);
+
+        // Upsert to community library: if name exists, increment timesUsed; otherwise create
+        const communityFood = await FoodLibrary.findOneAndUpdate(
+            { nameNorm },
+            {
+                $set: {
+                    name: food.name,
+                    nameNorm,
+                    calories: food.calories,
+                    protein: food.protein,
+                    carbs: food.carbs,
+                    fat: food.fat,
+                    updatedAt: new Date()
+                },
+                $inc: { timesUsed: 1 }
+            },
+            { new: true, upsert: true }
+        );
+
+        // Mark personal food as submitted
+        food.submittedToCommunity = true;
+        food.communityFoodId = communityFood._id;
+        await food.save();
+
+        res.json({ ok: true, communityFoodId: communityFood._id });
+    } catch (e) { res.status(500).json({ message: 'Error submitting to community library' }); }
+});
+
+// ==========================================================================
 // --- PROTECTED: Payments / Invoices ---
 // ==========================================================================
 
@@ -2410,6 +2576,115 @@ const LOCAL_FOODS = [
     { name: 'Arroz con dulce',         brand: null, serving: 120, cal100: 200, p100: 2.5,  c100: 35.0, f100: 6.0  },
     { name: 'Tres leches',             brand: null, serving: 100, cal100: 290, p100: 6.0,  c100: 38.0, f100: 13.0 },
     { name: 'Besito de coco / Dulce de coco', brand: null, serving: 40, cal100: 400, p100: 3.0, c100: 55.0, f100: 19.0 },
+    // ── Fast food / restaurante (EE.UU.) ─────────────────────────────────
+    { name: 'Hamburguesa sencilla (con pan)',   brand: null, serving: 100, cal100: 245, p100: 12.2, c100: 30.0, f100: 9.0  },
+    { name: 'Cheeseburger / Hamburguesa con queso', brand: null, serving: 113, cal100: 265, p100: 13.3, c100: 28.0, f100: 11.5 },
+    { name: 'Hamburguesa doble con queso',      brand: null, serving: 219, cal100: 247, p100: 11.5, c100: 20.5, f100: 12.8 },
+    { name: 'Papas fritas',                     brand: null, serving: 117, cal100: 312, p100: 3.4,  c100: 41.0, f100: 15.0 },
+    { name: 'Nuggets de pollo',                 brand: null, serving: 96,  cal100: 297, p100: 15.5, c100: 18.0, f100: 18.8 },
+    { name: 'Pizza de queso (slice)',           brand: null, serving: 107, cal100: 266, p100: 11.0, c100: 33.0, f100: 10.0 },
+    { name: 'Pizza de pepperoni (slice)',       brand: null, serving: 113, cal100: 298, p100: 13.0, c100: 34.0, f100: 12.0 },
+    { name: 'Hot dog completo (con pan)',       brand: null, serving: 100, cal100: 290, p100: 10.4, c100: 24.0, f100: 17.0 },
+    { name: 'Taco de carne (crujiente)',        brand: null, serving: 78,  cal100: 218, p100: 10.3, c100: 16.7, f100: 12.8 },
+    { name: 'Burrito de pollo',                 brand: null, serving: 250, cal100: 180, p100: 10.0, c100: 22.0, f100: 5.5  },
+    { name: 'Quesadilla de pollo',              brand: null, serving: 180, cal100: 260, p100: 14.0, c100: 22.0, f100: 13.0 },
+    { name: 'Alitas Buffalo',                   brand: null, serving: 100, cal100: 220, p100: 18.3, c100: 2.9,  f100: 14.7 },
+    { name: 'Chicken tenders / Dedos de pollo', brand: null, serving: 130, cal100: 271, p100: 18.7, c100: 17.6, f100: 14.0 },
+    { name: 'Sandwich de pollo (fast food)',    brand: null, serving: 190, cal100: 250, p100: 13.5, c100: 25.0, f100: 11.0 },
+    { name: 'Wrap de pollo',                    brand: null, serving: 220, cal100: 190, p100: 12.5, c100: 18.5, f100: 7.5  },
+    { name: 'Sub de pavo (6 pulgadas)',         brand: null, serving: 219, cal100: 114, p100: 8.2,  c100: 18.7, f100: 1.6  },
+    { name: 'Ensalada César con pollo',         brand: null, serving: 300, cal100: 127, p100: 10.0, c100: 5.0,  f100: 7.5  },
+    { name: 'Aros de cebolla',                  brand: null, serving: 85,  cal100: 411, p100: 4.6,  c100: 46.0, f100: 23.0 },
+    // ── Comfort americano / casero ───────────────────────────────────────
+    { name: 'Mac and cheese',                   brand: null, serving: 200, cal100: 176, p100: 6.6,  c100: 20.1, f100: 7.8  },
+    { name: 'Lasaña de carne',                  brand: null, serving: 250, cal100: 132, p100: 8.0,  c100: 12.4, f100: 5.4  },
+    { name: 'Espagueti con carne',              brand: null, serving: 250, cal100: 129, p100: 6.7,  c100: 15.9, f100: 4.3  },
+    { name: 'Puré de papa',                     brand: null, serving: 210, cal100: 113, p100: 1.9,  c100: 17.0, f100: 4.2  },
+    { name: 'Sopa de pollo con fideos',         brand: null, serving: 245, cal100: 36,  p100: 2.5,  c100: 3.7,  f100: 1.2  },
+    { name: 'Sopa de vegetales',                brand: null, serving: 245, cal100: 30,  p100: 1.3,  c100: 5.5,  f100: 0.5  },
+    { name: 'Chili con carne',                  brand: null, serving: 250, cal100: 115, p100: 8.0,  c100: 9.0,  f100: 5.4  },
+    { name: 'Meatloaf / Pastel de carne',       brand: null, serving: 150, cal100: 200, p100: 15.0, c100: 8.0,  f100: 12.0 },
+    { name: 'Pollo rostizado (rotisserie)',     brand: null, serving: 140, cal100: 190, p100: 24.0, c100: 0.0,  f100: 10.0 },
+    { name: 'Grilled cheese / Sandwich de queso', brand: null, serving: 120, cal100: 330, p100: 12.0, c100: 30.0, f100: 18.0 },
+    { name: 'Sandwich BLT',                     brand: null, serving: 150, cal100: 240, p100: 10.0, c100: 22.0, f100: 12.5 },
+    { name: 'Sandwich PB&J',                    brand: null, serving: 100, cal100: 350, p100: 11.0, c100: 42.0, f100: 16.0 },
+    { name: 'Ensalada de atún (con mayonesa)',  brand: null, serving: 100, cal100: 187, p100: 16.0, c100: 3.5,  f100: 12.0 },
+    // ── Desayuno americano ───────────────────────────────────────────────
+    { name: 'Pancakes / Panqueques',            brand: null, serving: 114, cal100: 227, p100: 6.4,  c100: 28.0, f100: 9.7  },
+    { name: 'Waffles',                          brand: null, serving: 75,  cal100: 291, p100: 7.9,  c100: 33.0, f100: 14.0 },
+    { name: 'Tostada francesa / French toast',  brand: null, serving: 130, cal100: 229, p100: 7.7,  c100: 25.0, f100: 11.0 },
+    { name: 'Bagel',                            brand: null, serving: 105, cal100: 250, p100: 10.0, c100: 49.0, f100: 1.5  },
+    { name: 'Croissant',                        brand: null, serving: 67,  cal100: 406, p100: 8.2,  c100: 45.8, f100: 21.0 },
+    { name: 'Donut glaseado',                   brand: null, serving: 60,  cal100: 421, p100: 5.1,  c100: 49.0, f100: 22.8 },
+    { name: 'Muffin de arándanos',              brand: null, serving: 113, cal100: 377, p100: 4.5,  c100: 54.0, f100: 16.0 },
+    { name: 'Avena cocida (con agua)',          brand: null, serving: 234, cal100: 71,  p100: 2.5,  c100: 12.0, f100: 1.5  },
+    { name: 'Cereal Cheerios',                  brand: null, serving: 28,  cal100: 376, p100: 12.1, c100: 73.2, f100: 6.7  },
+    { name: 'Granola',                          brand: null, serving: 61,  cal100: 471, p100: 10.0, c100: 64.0, f100: 20.0 },
+    { name: 'Huevo frito',                      brand: null, serving: 46,  cal100: 196, p100: 13.6, c100: 0.8,  f100: 15.0 },
+    { name: 'Hash browns / Papas doradas',      brand: null, serving: 105, cal100: 265, p100: 3.0,  c100: 28.5, f100: 15.9 },
+    { name: 'Salchicha de desayuno',            brand: null, serving: 48,  cal100: 325, p100: 13.0, c100: 2.0,  f100: 30.0 },
+    // ── Snacks y dulces ──────────────────────────────────────────────────
+    { name: 'Papitas / Potato chips',           brand: null, serving: 28,  cal100: 536, p100: 7.0,  c100: 53.0, f100: 34.0 },
+    { name: 'Tortilla chips / Nachos (solos)',  brand: null, serving: 28,  cal100: 497, p100: 7.8,  c100: 63.0, f100: 24.0 },
+    { name: 'Nachos con queso',                 brand: null, serving: 113, cal100: 306, p100: 8.0,  c100: 32.0, f100: 16.5 },
+    { name: 'Pretzels',                         brand: null, serving: 28,  cal100: 380, p100: 10.0, c100: 80.0, f100: 2.9  },
+    { name: 'Palomitas de maíz (con mantequilla)', brand: null, serving: 33, cal100: 500, p100: 9.0, c100: 57.0, f100: 28.0 },
+    { name: 'Galletas saladas (soda crackers)', brand: null, serving: 28,  cal100: 421, p100: 9.4,  c100: 71.0, f100: 10.5 },
+    { name: 'Galletas María',                   brand: null, serving: 26,  cal100: 443, p100: 7.0,  c100: 75.0, f100: 12.0 },
+    { name: 'Galleta de chocolate chip',        brand: null, serving: 30,  cal100: 488, p100: 5.1,  c100: 65.0, f100: 23.0 },
+    { name: 'Brownie',                          brand: null, serving: 56,  cal100: 466, p100: 6.0,  c100: 58.0, f100: 24.0 },
+    { name: 'Cheesecake',                       brand: null, serving: 125, cal100: 321, p100: 5.5,  c100: 25.5, f100: 22.5 },
+    { name: 'Pastel de manzana / Apple pie',    brand: null, serving: 125, cal100: 237, p100: 1.9,  c100: 34.0, f100: 11.0 },
+    { name: 'Helado de chocolate',              brand: null, serving: 66,  cal100: 216, p100: 3.8,  c100: 28.2, f100: 11.0 },
+    { name: 'Chocolate con leche (barra)',      brand: null, serving: 43,  cal100: 535, p100: 7.7,  c100: 59.0, f100: 30.0 },
+    // ── Puerto Rico: platos y antojos adicionales ────────────────────────
+    { name: 'Arroz blanco con habichuelas',     brand: null, serving: 300, cal100: 128, p100: 4.5,  c100: 24.0, f100: 1.5  },
+    { name: 'Serenata de bacalao',              brand: null, serving: 250, cal100: 120, p100: 8.0,  c100: 10.0, f100: 5.0  },
+    { name: 'Bacalao guisado',                  brand: null, serving: 250, cal100: 105, p100: 12.0, c100: 6.0,  f100: 3.5  },
+    { name: 'Ensalada de coditos',              brand: null, serving: 200, cal100: 202, p100: 3.5,  c100: 22.0, f100: 11.0 },
+    { name: 'Ensalada de papa',                 brand: null, serving: 200, cal100: 143, p100: 2.7,  c100: 11.0, f100: 10.0 },
+    { name: 'Guineítos en escabeche',           brand: null, serving: 150, cal100: 135, p100: 1.0,  c100: 18.0, f100: 7.0  },
+    { name: 'Pinchos de pollo',                 brand: null, serving: 120, cal100: 175, p100: 25.0, c100: 3.0,  f100: 7.0  },
+    { name: 'Pinchos de cerdo',                 brand: null, serving: 120, cal100: 220, p100: 22.0, c100: 3.0,  f100: 13.0 },
+    { name: 'Chicharrón de pollo',              brand: null, serving: 150, cal100: 290, p100: 22.0, c100: 12.0, f100: 17.0 },
+    { name: 'Chicharrón de cerdo',              brand: null, serving: 28,  cal100: 544, p100: 61.0, c100: 0.0,  f100: 31.0 },
+    { name: 'Carne frita de cerdo',             brand: null, serving: 150, cal100: 290, p100: 25.0, c100: 3.0,  f100: 19.0 },
+    { name: 'Bistec empanizado',                brand: null, serving: 180, cal100: 250, p100: 18.0, c100: 12.0, f100: 15.0 },
+    { name: 'Churrasco (con chimichurri)',      brand: null, serving: 170, cal100: 250, p100: 26.0, c100: 1.0,  f100: 16.0 },
+    { name: 'Camarones al ajillo',              brand: null, serving: 150, cal100: 150, p100: 18.0, c100: 3.0,  f100: 7.0  },
+    { name: 'Arroz con calamares',              brand: null, serving: 250, cal100: 145, p100: 6.0,  c100: 25.0, f100: 2.5  },
+    { name: 'Arroz chino boricua (frito)',      brand: null, serving: 300, cal100: 163, p100: 6.0,  c100: 21.0, f100: 5.5  },
+    { name: 'Salchichas guisadas (de lata)',    brand: null, serving: 150, cal100: 200, p100: 9.0,  c100: 6.0,  f100: 16.0 },
+    { name: 'Corned beef guisado',              brand: null, serving: 150, cal100: 180, p100: 12.0, c100: 6.0,  f100: 12.0 },
+    { name: 'Jamonilla / Spam (frita)',         brand: null, serving: 56,  cal100: 310, p100: 13.0, c100: 3.0,  f100: 27.0 },
+    { name: 'Morcilla',                         brand: null, serving: 100, cal100: 379, p100: 14.6, c100: 1.3,  f100: 34.5 },
+    { name: 'Longaniza',                        brand: null, serving: 75,  cal100: 320, p100: 15.0, c100: 2.0,  f100: 28.0 },
+    { name: 'Salchichón',                       brand: null, serving: 28,  cal100: 336, p100: 19.0, c100: 2.0,  f100: 28.0 },
+    { name: 'Revoltillo con jamón',             brand: null, serving: 120, cal100: 170, p100: 12.0, c100: 2.0,  f100: 12.5 },
+    { name: 'Pan de agua',                      brand: null, serving: 60,  cal100: 270, p100: 8.5,  c100: 55.0, f100: 1.5  },
+    { name: 'Tostada con mantequilla (pan sobao)', brand: null, serving: 60, cal100: 330, p100: 7.0, c100: 45.0, f100: 13.0 },
+    { name: 'Sandwich de jamón y queso',        brand: null, serving: 150, cal100: 250, p100: 12.5, c100: 25.0, f100: 11.0 },
+    { name: 'Sandwich cubano',                  brand: null, serving: 250, cal100: 240, p100: 15.0, c100: 22.0, f100: 10.5 },
+    { name: 'Arepas de coco',                   brand: null, serving: 60,  cal100: 380, p100: 6.0,  c100: 50.0, f100: 17.0 },
+    { name: 'Avena caliente (con leche y azúcar)', brand: null, serving: 240, cal100: 95, p100: 3.5, c100: 15.0, f100: 2.3 },
+    { name: 'Farina (crema de trigo)',          brand: null, serving: 240, cal100: 65,  p100: 1.8,  c100: 13.5, f100: 0.3  },
+    { name: 'Batida de frutas (con leche)',     brand: null, serving: 350, cal100: 85,  p100: 2.5,  c100: 16.0, f100: 1.5  },
+    { name: 'Limber de coco',                   brand: null, serving: 100, cal100: 120, p100: 1.0,  c100: 20.0, f100: 4.0  },
+    { name: 'Piragua',                          brand: null, serving: 200, cal100: 78,  p100: 0.0,  c100: 20.0, f100: 0.0  },
+    { name: 'Coquito',                          brand: null, serving: 120, cal100: 220, p100: 2.5,  c100: 22.0, f100: 11.0 },
+    { name: 'Malta India',                      brand: null, serving: 355, cal100: 54,  p100: 0.5,  c100: 13.0, f100: 0.0  },
+    // ── Quesos, embutidos y proteínas adicionales ────────────────────────
+    { name: 'Queso americano (slice)',          brand: null, serving: 21,  cal100: 297, p100: 16.4, c100: 8.7,  f100: 22.0 },
+    { name: 'Queso suizo',                      brand: null, serving: 28,  cal100: 380, p100: 27.0, c100: 5.0,  f100: 28.0 },
+    { name: 'Queso crema / Cream cheese',       brand: null, serving: 30,  cal100: 342, p100: 6.0,  c100: 5.5,  f100: 34.0 },
+    { name: 'Tocineta de pavo / Turkey bacon',  brand: null, serving: 16,  cal100: 382, p100: 29.5, c100: 4.2,  f100: 28.0 },
+    { name: 'Pepperoni',                        brand: null, serving: 28,  cal100: 504, p100: 19.3, c100: 1.2,  f100: 46.0 },
+    { name: 'Salami',                           brand: null, serving: 28,  cal100: 336, p100: 21.8, c100: 2.4,  f100: 26.0 },
+    { name: 'Atún en aceite',                   brand: null, serving: 85,  cal100: 198, p100: 29.0, c100: 0.0,  f100: 8.2  },
+    { name: 'Surimi / Cangrejo imitación',      brand: null, serving: 85,  cal100: 95,  p100: 7.6,  c100: 15.0, f100: 0.4  },
+    // ── Bebidas adicionales ──────────────────────────────────────────────
+    { name: 'Leche 2%',                         brand: null, serving: 240, cal100: 50,  p100: 3.3,  c100: 4.8,  f100: 2.0  },
+    { name: 'Chocolate caliente',               brand: null, serving: 250, cal100: 77,  p100: 3.5,  c100: 10.5, f100: 2.3  },
 ];
 
 // Normalize: remove accents so "huevo" matches "Huevo", "proteína" matches "proteina", etc.
@@ -2605,6 +2880,115 @@ const FOOD_ALIASES = {
     'Leche de almendra':             ['almond milk','unsweetened almond milk','leche almendra'],
     'Leche de avena':                ['oat milk','oat drink','leche de avena','leche avena'],
     'Proteína shake (preparado)':    ['protein shake','shake','ready to drink protein','rtd protein'],
+    // Fast food / restaurante
+    'Hamburguesa sencilla (con pan)':   ['hamburguesa','burger','hamburger','plain burger'],
+    'Cheeseburger / Hamburguesa con queso': ['cheeseburger','hamburguesa con queso','burger con queso'],
+    'Hamburguesa doble con queso':      ['doble con queso','double cheeseburger','big mac','whopper','doble carne'],
+    'Papas fritas':                     ['french fries','fries','papitas fritas','papas','patatas fritas'],
+    'Nuggets de pollo':                 ['nuggets','chicken nuggets','nugets','mcnuggets'],
+    'Pizza de queso (slice)':           ['pizza','cheese pizza','pizza queso','slice de pizza','pedazo de pizza'],
+    'Pizza de pepperoni (slice)':       ['pepperoni pizza','pizza pepperoni'],
+    'Hot dog completo (con pan)':       ['hot dog','hotdog','perro caliente','perrito'],
+    'Taco de carne (crujiente)':        ['taco','tacos','crunchy taco','taco de carne'],
+    'Burrito de pollo':                 ['burrito','chicken burrito','burrito de pollo'],
+    'Quesadilla de pollo':              ['quesadilla','chicken quesadilla'],
+    'Alitas Buffalo':                   ['alitas','wings','buffalo wings','chicken wings','alitas de pollo'],
+    'Chicken tenders / Dedos de pollo': ['tenders','chicken tenders','chicken fingers','dedos de pollo','tiras de pollo'],
+    'Sandwich de pollo (fast food)':    ['chicken sandwich','sandwich de pollo','mcchicken'],
+    'Wrap de pollo':                    ['wrap','chicken wrap','wrap de pollo'],
+    'Sub de pavo (6 pulgadas)':         ['subway','sub de pavo','turkey sub','sub','sandwich de pavo'],
+    'Ensalada César con pollo':         ['caesar salad','ensalada cesar','ensalada con pollo','chicken caesar'],
+    'Aros de cebolla':                  ['onion rings','aros cebolla'],
+    // Comfort americano
+    'Mac and cheese':                   ['mac and cheese','macarrones con queso','mac n cheese','macaroni and cheese'],
+    'Lasaña de carne':                  ['lasagna','lasana','lasagna de carne'],
+    'Espagueti con carne':              ['spaghetti','espaguetis','pasta con carne','spaghetti with meat'],
+    'Puré de papa':                     ['mashed potatoes','pure de papa','majado de papa','mash'],
+    'Sopa de pollo con fideos':         ['chicken noodle soup','sopa de pollo','sopa de fideos'],
+    'Sopa de vegetales':                ['vegetable soup','sopa de verduras'],
+    'Chili con carne':                  ['chili','chilli con carne'],
+    'Meatloaf / Pastel de carne':       ['meatloaf','pastel de carne'],
+    'Pollo rostizado (rotisserie)':     ['rotisserie chicken','pollo asado','pollo rostizado','pollo al horno'],
+    'Grilled cheese / Sandwich de queso': ['grilled cheese','sandwich de queso','queso derretido'],
+    'Sandwich BLT':                     ['blt','sandwich de tocineta','bacon sandwich'],
+    'Sandwich PB&J':                    ['pbj','pb&j','peanut butter and jelly','sandwich de mantequilla de mani'],
+    'Ensalada de atún (con mayonesa)':  ['tuna salad','ensalada de atun'],
+    // Desayuno americano
+    'Pancakes / Panqueques':            ['pancakes','panqueques','hotcakes','panquecas'],
+    'Waffles':                          ['waffle','wafles','gofres'],
+    'Tostada francesa / French toast':  ['french toast','tostada francesa','pan frances dulce'],
+    'Bagel':                            ['bagel','bagels','rosca de pan'],
+    'Croissant':                        ['croissant','cruasan','media luna','cangrejito'],
+    'Donut glaseado':                   ['donut','dona','donas','doughnut','donut glaseado'],
+    'Muffin de arándanos':              ['muffin','blueberry muffin','panquecito','mantecado de arandanos'],
+    'Avena cocida (con agua)':          ['oatmeal cooked','avena cocida','avena hecha','avena preparada'],
+    'Cereal Cheerios':                  ['cheerios','cereal cheerios'],
+    'Granola':                          ['granola','musli','muesli'],
+    'Huevo frito':                      ['fried egg','huevo frito','huevo estrellado'],
+    'Hash browns / Papas doradas':      ['hash browns','hashbrown','papas doradas'],
+    'Salchicha de desayuno':            ['breakfast sausage','salchicha desayuno','sausage links'],
+    // Snacks y dulces
+    'Papitas / Potato chips':           ['chips','potato chips','papitas','lays','papas de bolsa'],
+    'Tortilla chips / Nachos (solos)':  ['tortilla chips','doritos','nachos solos','totopos'],
+    'Nachos con queso':                 ['nachos','nachos con queso','nacho cheese'],
+    'Pretzels':                         ['pretzel','pretzels'],
+    'Palomitas de maíz (con mantequilla)': ['popcorn','palomitas','pop corn','rositas de maiz'],
+    'Galletas saladas (soda crackers)': ['soda crackers','export soda','galletas de soda','saltines','crackers'],
+    'Galletas María':                   ['galletas maria','maria cookies'],
+    'Galleta de chocolate chip':        ['chocolate chip cookie','galleta de chocolate','cookie'],
+    'Brownie':                          ['brownie','brownies'],
+    'Cheesecake':                       ['cheesecake','pastel de queso','tarta de queso','flan de queso'],
+    'Pastel de manzana / Apple pie':    ['apple pie','pie de manzana','tarta de manzana'],
+    'Helado de chocolate':              ['chocolate ice cream','helado chocolate','mantecado de chocolate'],
+    'Chocolate con leche (barra)':      ['chocolate bar','barra de chocolate','hershey','milk chocolate'],
+    // Puerto Rico adicionales
+    'Arroz blanco con habichuelas':     ['arroz con habichuelas','arroz y habichuelas','rice and beans','arroz habichuelas'],
+    'Serenata de bacalao':              ['serenata','serenata de bacalao'],
+    'Bacalao guisado':                  ['bacalao guisado','codfish stew'],
+    'Ensalada de coditos':              ['coditos','ensalada de coditos','macaroni salad'],
+    'Ensalada de papa':                 ['potato salad','ensalada de papa'],
+    'Guineítos en escabeche':           ['guineitos','guineos en escabeche','green banana escabeche'],
+    'Pinchos de pollo':                 ['pincho de pollo','pinchos','chicken skewer','chicken kabob'],
+    'Pinchos de cerdo':                 ['pincho de cerdo','pork skewer','pork kabob'],
+    'Chicharrón de pollo':              ['chicharron de pollo','chicharrones de pollo','fried chicken chunks'],
+    'Chicharrón de cerdo':              ['chicharron','chicharrones','pork rinds','pork cracklings'],
+    'Carne frita de cerdo':             ['carne frita','masitas de cerdo','fried pork chunks'],
+    'Bistec empanizado':                ['bistec empanado','breaded steak','milanesa'],
+    'Churrasco (con chimichurri)':      ['churrasco','skirt steak','entrana'],
+    'Camarones al ajillo':              ['camarones al ajillo','garlic shrimp','camarones en ajo'],
+    'Arroz con calamares':              ['arroz con calamares','arroz negro','squid rice'],
+    'Arroz chino boricua (frito)':      ['arroz chino','arroz frito','fried rice','arroz frito con cerdo'],
+    'Salchichas guisadas (de lata)':    ['salchichas guisadas','salchichas de lata','vienna sausage','salchichas vienna'],
+    'Corned beef guisado':              ['corned beef','corn beef','carne bif'],
+    'Jamonilla / Spam (frita)':         ['spam','jamonilla','spam frito'],
+    'Morcilla':                         ['morcilla','blood sausage'],
+    'Longaniza':                        ['longaniza','longanisa'],
+    'Salchichón':                       ['salchichon','salami boricua'],
+    'Revoltillo con jamón':             ['revoltillo','revoltillo de huevo','scrambled eggs with ham'],
+    'Pan de agua':                      ['pan de agua','water bread','pan criollo'],
+    'Tostada con mantequilla (pan sobao)': ['tostada con mantequilla','tostada','toast with butter'],
+    'Sandwich de jamón y queso':        ['sandwich de jamon y queso','ham and cheese','sandwich de mezcla'],
+    'Sandwich cubano':                  ['cubano','cuban sandwich','sandwich cubano'],
+    'Arepas de coco':                   ['arepas','arepa de coco','coconut arepa'],
+    'Avena caliente (con leche y azúcar)': ['avena con leche','avena caliente','oatmeal with milk'],
+    'Farina (crema de trigo)':          ['farina','crema de trigo','cream of wheat'],
+    'Batida de frutas (con leche)':     ['batida','batido de frutas','smoothie','fruit shake','frappé de frutas'],
+    'Limber de coco':                   ['limber','limber de coco'],
+    'Piragua':                          ['piragua','snow cone','raspao'],
+    'Coquito':                          ['coquito','coquito navideno'],
+    'Malta India':                      ['malta','malta india','malt beverage'],
+    // Quesos, embutidos y proteínas
+    'Queso americano (slice)':          ['american cheese','queso americano','queso amarillo','cheese slice'],
+    'Queso suizo':                      ['swiss cheese','queso suizo'],
+    'Queso crema / Cream cheese':       ['cream cheese','queso crema','philadelphia'],
+    'Tocineta de pavo / Turkey bacon':  ['turkey bacon','tocineta de pavo','bacon de pavo'],
+    'Pepperoni':                        ['pepperoni','peperoni'],
+    'Salami':                           ['salami'],
+    'Atún en aceite':                   ['tuna in oil','atun en aceite'],
+    'Surimi / Cangrejo imitación':      ['surimi','imitation crab','carne de cangrejo','kanikama'],
+    // Bebidas adicionales
+    'Leche 2%':                         ['2 percent milk','leche 2','reduced fat milk','leche semidescremada'],
+    'Chocolate caliente':               ['hot chocolate','chocolate caliente','cocoa','hot cocoa'],
 };
 
 function searchLocalFoods(q) {
@@ -2814,6 +3198,32 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
         }
     };
 
+    // ─── Open Food Facts search (Search-a-licious API) ────────────────────────
+    // The legacy /cgi/search.pl endpoint now intermittently returns 503, so the
+    // server queries the modern search API instead. Note: `brands` is an array
+    // here (comma string on the legacy endpoint), and some hits only carry
+    // energy in kJ — converted at 4.184 kJ/kcal.
+    const searchOffProducts = async (pageSize) => {
+        const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=${pageSize}&fields=product_name,nutriments,brands,serving_quantity`;
+        const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
+        const data = await r.json();
+        return (data.hits || [])
+            .filter(p => p.product_name?.trim())
+            .map(p => {
+                const nu = p.nutriments || {};
+                return {
+                    name:    p.product_name.trim(),
+                    brand:   (Array.isArray(p.brands) ? p.brands[0] : p.brands?.split(',')[0])?.trim() || null,
+                    serving: parseFloat(p.serving_quantity) || 100,
+                    cal100:  Math.round(nu['energy-kcal_100g'] || nu['energy-kcal'] || (nu['energy-kj_100g'] ? nu['energy-kj_100g'] / 4.184 : 0)),
+                    p100:    parseFloat((nu.proteins_100g      || 0).toFixed(1)),
+                    c100:    parseFloat((nu.carbohydrates_100g || 0).toFixed(1)),
+                    f100:    parseFloat((nu.fat_100g           || 0).toFixed(1)),
+                };
+            })
+            .filter(f => f.cal100 > 0);
+    };
+
     // 3 ── Nutritionix  — industry-standard fitness nutrition database, same source
     //      used by Lose It!, Under Armour, and dozens of other fitness apps.
     //      Common foods use USDA-quality data; branded foods use manufacturer data.
@@ -2890,24 +3300,7 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
             if (combined.length >= 6) return res.json(combined.slice(0, 18));
 
             // Otherwise fall through to supplement with OFF
-            const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&fields=product_name,nutriments,brands&page_size=12&action=process`;
-            const offRes = await fetch(offUrl, { signal: AbortSignal.timeout(6000) });
-            const offData = await offRes.json();
-            const offItems = rankByNameRelevance(
-                (offData.products || [])
-                    .filter(p => p.product_name?.trim() && (p.nutriments?.['energy-kcal_100g'] || p.nutriments?.['energy-kcal']))
-                    .map(p => ({
-                        name:    p.product_name.trim(),
-                        brand:   p.brands?.split(',')[0]?.trim() || null,
-                        serving: 100,
-                        cal100:  Math.round(p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal'] || 0),
-                        p100:    parseFloat((p.nutriments.proteins_100g      || 0).toFixed(1)),
-                        c100:    parseFloat((p.nutriments.carbohydrates_100g || 0).toFixed(1)),
-                        f100:    parseFloat((p.nutriments.fat_100g           || 0).toFixed(1)),
-                    }))
-                    .filter(f => f.cal100 > 0),
-                q
-            );
+            const offItems = rankByNameRelevance(await searchOffProducts(12), q);
             addUnique(combined, offItems, 6);
 
             return res.json(combined.slice(0, 18));
@@ -2926,23 +3319,7 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
 
     const [offResult, usdaResult] = await Promise.allSettled([
         // ── Open Food Facts (always free, no key) ─────────────────────────────
-        (async () => {
-            const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&fields=product_name,nutriments,brands&page_size=18&action=process`;
-            const r = await fetch(offUrl, { signal: AbortSignal.timeout(7000) });
-            const data = await r.json();
-            return (data.products || [])
-                .filter(p => p.product_name?.trim() && (p.nutriments?.['energy-kcal_100g'] || p.nutriments?.['energy-kcal']))
-                .map(p => ({
-                    name:    p.product_name.trim(),
-                    brand:   p.brands?.split(',')[0]?.trim() || null,
-                    serving: 100,
-                    cal100:  Math.round(p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal'] || 0),
-                    p100:    parseFloat((p.nutriments.proteins_100g      || 0).toFixed(1)),
-                    c100:    parseFloat((p.nutriments.carbohydrates_100g || 0).toFixed(1)),
-                    f100:    parseFloat((p.nutriments.fat_100g           || 0).toFixed(1)),
-                }))
-                .filter(f => f.cal100 > 0);
-        })(),
+        searchOffProducts(18),
 
         // ── USDA FoodData Central (Foundation + SR Legacy = gold standard) ────
         (async () => {
@@ -3306,6 +3683,130 @@ REGLAS:
         const isTimeout = e?.name === 'APIConnectionTimeoutError' || /timeout|timed out/i.test(e?.message || '');
         res.status(isTimeout ? 504 : 500).json({
             message: isTimeout ? 'El análisis tardó demasiado. Intenta de nuevo.' : 'Error analizando la comida. Intenta de nuevo.',
+        });
+    }
+});
+
+// ==========================================================================
+// --- PROTECTED: Nutrition Label Scanner (client's "Escanear > Etiqueta") ---
+// Client photographs a Nutrition Facts panel; Claude vision extracts the
+// serving size and macros AS PRINTED. The client confirms or edits the values
+// before anything is logged — the AI result is a pre-fill, never a silent write.
+// ==========================================================================
+const LABEL_SCAN_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        found:        { type: 'boolean', description: 'true solo si la imagen contiene una tabla de información nutricional legible (Nutrition Facts / Datos de Nutrición)' },
+        name:         { type: 'string',  description: 'Nombre del producto si es visible en la foto; si no, un nombre corto descriptivo del alimento; vacío si found=false' },
+        servingText:  { type: 'string',  description: 'Tamaño de porción tal como aparece impreso, ej: "2/3 cup (55g)"; vacío si no visible' },
+        servingGrams: { type: 'number',  description: 'Equivalente en gramos (o ml) del tamaño de porción impreso; 0 si el peso no aparece' },
+        calories:     { type: 'number',  description: 'Calorías POR PORCIÓN tal como están impresas' },
+        protein:      { type: 'number',  description: 'Proteína en gramos POR PORCIÓN' },
+        carbs:        { type: 'number',  description: 'Carbohidratos totales (Total Carbohydrate) en gramos POR PORCIÓN' },
+        fat:          { type: 'number',  description: 'Grasa total (Total Fat) en gramos POR PORCIÓN. Si "Total Fat" no es legible pero hay subtipos (saturada, trans, poliinsaturada, monoinsaturada), devuelve la SUMA de los subtipos visibles' },
+    },
+    required: ['found', 'name', 'servingText', 'servingGrams', 'calories', 'protein', 'carbs', 'fat'],
+};
+
+const SCAN_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+app.post('/api/scan-label', authenticateToken, async (req, res) => {
+    if (!FOOD_SCAN_ENABLED) {
+        return res.status(503).json({ message: 'El escáner de etiquetas estará disponible pronto.' });
+    }
+    if (!anthropic) {
+        return res.status(503).json({ message: 'La función no está configurada. Agrega ANTHROPIC_API_KEY en .env.' });
+    }
+    try {
+        // Accept either a raw base64 string or a data URL; normalize to raw base64.
+        let image = (req.body.image || '');
+        let mediaType = (req.body.mediaType || 'image/jpeg');
+        const dataUrlMatch = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(image);
+        if (dataUrlMatch) { mediaType = dataUrlMatch[1].toLowerCase(); image = dataUrlMatch[2]; }
+        if (!SCAN_MEDIA_TYPES.includes(mediaType)) {
+            return res.status(400).json({ message: 'Formato de imagen no soportado. Usa JPG, PNG o WebP.' });
+        }
+        // Base64 sanity: non-empty and under the 2MB JSON body limit's practical ceiling.
+        if (typeof image !== 'string' || image.length < 100) {
+            return res.status(400).json({ message: 'No se recibió la imagen.' });
+        }
+        if (image.length > 1.9 * 1024 * 1024) {
+            return res.status(413).json({ message: 'La imagen es demasiado grande. Toma la foto de nuevo.' });
+        }
+
+        const targetId = req.user.id;
+
+        // Usage caps — shared global monthly $ cap + per-client daily scan cap.
+        const usageNow   = new Date();
+        const usageMonth = usageNow.toISOString().slice(0, 7);
+        const usageDay   = usageNow.toISOString().slice(0, 10);
+        const [globalUse, clientUse] = await Promise.all([
+            AiUsage.findOne({ scope: 'global',      clientId: null,     period: usageMonth }),
+            AiUsage.findOne({ scope: 'client_scan', clientId: targetId, period: usageDay   }),
+        ]);
+        if ((globalUse?.count || 0) >= MEAL_MONTHLY_LIMIT) {
+            return res.status(429).json({ message: 'El escáner de etiquetas alcanzó su límite de uso este mes.' });
+        }
+        if ((clientUse?.count || 0) >= FOOD_SCAN_DAILY_LIMIT) {
+            return res.status(429).json({ message: `Alcanzaste el máximo de ${FOOD_SCAN_DAILY_LIMIT} escaneos por hoy. Vuelve mañana.` });
+        }
+
+        const systemPrompt =
+`Lees fotos de tablas de información nutricional (Nutrition Facts de EE.UU./Puerto Rico o Datos de Nutrición en español) y extraes los valores impresos.
+REGLAS:
+- Devuelve los valores POR PORCIÓN exactamente como están impresos. NO los conviertas a 100g ni los escales.
+- Grasa: usa "Total Fat" / "Grasa Total". Si ese renglón NO aparece o no es legible, devuelve la SUMA de TODOS los subtipos de grasa visibles, INCLUYENDO la grasa trans (saturada + trans + poliinsaturada + monoinsaturada). Ejemplo: saturada 2g + trans 0.5g + poliinsaturada 1.5g + monoinsaturada 4g = 8.
+- Carbohidratos: usa "Total Carbohydrate" / "Carbohidrato Total" (no restes fibra ni azúcares).
+- servingGrams: el peso en gramos (o ml para líquidos) del tamaño de porción, ej: de "2/3 cup (55g)" devuelve 55. Si el peso no aparece impreso, devuelve 0 — NO lo estimes.
+- Si un valor no es legible, devuelve 0 para ese valor. No inventes números.
+- Si la imagen NO contiene una tabla nutricional legible, devuelve found=false con todos los valores en 0.`;
+
+        const aiResp = await anthropic.messages.create({
+            model: 'claude-haiku-4-5',
+            max_tokens: 500,
+            system: systemPrompt,
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'image', source: { type: 'base64', media_type: mediaType, data: image } },
+                    { type: 'text', text: 'Extrae los datos de esta etiqueta nutricional.' },
+                ],
+            }],
+            output_config: { format: { type: 'json_schema', schema: LABEL_SCAN_SCHEMA } },
+        }, { timeout: 30000, maxRetries: 1 });
+
+        const textBlock = aiResp.content.find(b => b.type === 'text');
+        let parsed;
+        try { parsed = JSON.parse(textBlock?.text || '{}'); }
+        catch { return res.status(502).json({ message: 'No se pudo leer la etiqueta. Intenta con una foto más clara.' }); }
+
+        // Count usage even for found=false — the vision call was made either way.
+        await Promise.all([
+            AiUsage.updateOne({ scope: 'global',      clientId: null,     period: usageMonth }, { $inc: { count: 1 } }, { upsert: true }),
+            AiUsage.updateOne({ scope: 'client_scan', clientId: targetId, period: usageDay   }, { $inc: { count: 1 } }, { upsert: true }),
+        ]);
+
+        if (!parsed.found) {
+            return res.json({ found: false });
+        }
+        // Sanitize numbers: no negatives, one decimal max.
+        const num = v => Math.max(0, Math.round((Number(v) || 0) * 10) / 10);
+        res.json({
+            found:        true,
+            name:         String(parsed.name || '').slice(0, 120).trim() || 'Producto escaneado',
+            servingText:  String(parsed.servingText || '').slice(0, 60).trim(),
+            servingGrams: num(parsed.servingGrams),
+            calories:     num(parsed.calories),
+            protein:      num(parsed.protein),
+            carbs:        num(parsed.carbs),
+            fat:          num(parsed.fat),
+        });
+    } catch (e) {
+        console.error('Label scan error:', e.message);
+        const isTimeout = e?.name === 'APIConnectionTimeoutError' || /timeout|timed out/i.test(e?.message || '');
+        res.status(isTimeout ? 504 : 500).json({
+            message: isTimeout ? 'El escaneo tardó demasiado. Intenta de nuevo.' : 'Error leyendo la etiqueta. Intenta de nuevo.',
         });
     }
 });
