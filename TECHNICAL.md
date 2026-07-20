@@ -268,9 +268,34 @@ When a trainer edits a program (e.g. turning a 3-day program into 4 days), the c
 
 The mapping/content helpers (`addDaysStr`, `dayHasContent`, `programDayToWorkout`) mirror the client-side `pushProgramToCalendar` so an assigned day and a re-synced day are byte-for-byte equivalent. The save UI shows a toast (`notifyProgramSync`) summarizing `{ clients, updated, created, removed }`.
 
+### Import a routine from text ("Importar rutina")
+
+A trainer can paste a plain-text routine (e.g. a ChatGPT/Gemini answer) and have it converted into program days. All client-side — no server changes, no AI call — because the format is deterministic enough to parse with regex.
+
+**Entry point:** the `#import-routine-btn` in the builder toolbar → `openImportRoutineModal()` (`app.js`). The modal has a textarea, an **Analizar** step (`renderImportPreview()`), a preview, and **Importar** (`importParsedRoutine()`).
+
+**Parser — `parseRoutineText(text)`** returns `{ programTitle, days: [{ dayNum, name, isRest, isActiveRest, exercises }] }`, where each exercise matches the builder's shape `{ name, stats, video, isSuperset, supersetHead }`. Parsing rules, in order:
+- **Day headers**: a line matching `Día N:` / `Day N -` / `## Día N` (flexible separators, optional `#`/`**`). `N` is the routine day number; rest/active-rest are detected by keywords in the title.
+- **Exercise lines**: numbered or bulleted (`1.`, `1)`, `-`, `*`, `+`).
+  - **Names = the `**bold**` segments.** This is the key trick: it keeps a name like `DB Man-Makers (Push-up + Row + Squat Clean + Press)` intact instead of splitting on the inner `+`. Only if there are no bold markers does it fall back to splitting the pre-parenthesis text on ` + `.
+  - Two or more names on one line → a **superset group**: the first is the head (`isSuperset:false`, `supersetHead:true`), the rest are `isSuperset:true`. This is exactly what `saveRoutine` expects and what the connector rows render from.
+  - **Stats** = the first `(...)` after bold names and italic `*(nota)*` annotations are stripped (so a trailing note like `*(Superset de fuerza superior)*` doesn't get mistaken for stats). A shared `N sets x` prefix is detected and, when the number of ` / `-separated parts equals the number of exercises, each exercise gets `prefix + itsPart` (so `4 sets x 12 reps / 12 reps lentas` → head `4 sets x 12 reps`, partner `4 sets x 12 reps lentas`).
+- Text before the first `Día N` header (intro paragraphs, bullet lists) is ignored; `---` rules and blank lines are skipped. The first `# H1` becomes a *suggested* `programTitle` shown in the preview but never auto-applied (the program keeps its name).
+
+**Import — `importParsedRoutine()`**: maps each `dayNum` → `{ weekIndex, daySlot }` via `dayNumToSlot` (7-day grid; `Día 8` wraps to week 2 day 1), creates weeks as needed, and writes each day. A checkbox controls whether occupied slots are overwritten or skipped; existing `nutrition` on a slot is always preserved. Then one `PUT /api/programs/:id` + `renderProgramBuilder`. Verified end-to-end (parse → preview → import → persisted superset flags) against the real API.
+
+### Copy a day to many days (multi-paste)
+
+The builder's per-day **Copiar/Pegar** was one-shot: copying a day set `copiedProgramDayData`, and the first paste cleared it. It's now a **persistent clipboard** so a day can be pasted into as many slots as needed:
+- Copy stores the day and shows a floating chip (`#program-clipboard-chip`, rendered by `renderProgramClipboardChip()` inside `syncCopyPasteButtons()`); every cell flips to **Pegar**.
+- Paste **no longer clears** the clipboard. `renderProgramBuilder()` calls `syncCopyPasteButtons()` at the end, so cells stay in Pegar mode across the post-save re-render.
+- The chip's **Terminar** button (`clearProgramClipboard()`) is the explicit exit; the clipboard also clears on leaving the builder (`back-to-program-list`) or opening a different program (`openProgramBuilder`).
+
 ### Key design decisions
 - `ClientWorkout` uses a `{ clientId, date }` unique index. Upserting with `findOneAndUpdate + upsert: true` means the trainer can overwrite a day without checking existence first.
 - Programs store days as `Map<String, Mixed>` to allow arbitrary day numbering without enforcing a fixed 7-day week.
+
+> ⚠️ **Mongoose Map serialization gotcha (fixed).** Because `days` is a `Map`, how a Program document is turned into JSON matters. Mongoose's `toJSON()` defaults to `flattenMaps: true` (Map → plain object), but `toObject()` defaults to `flattenMaps: false` (stays a `Map`). `res.json(doc)` calls `toJSON()` so it's fine — but the program **PUT** handler built its response with `{ ...program.toObject(), _sync }`. Spreading into a plain object hid the doc from Express's `toJSON` path, and `JSON.stringify` turns a raw `Map` into `{}`. Net effect: the DB saved correctly, but the PUT **response** came back with every day wiped. The client caches that response into `programsCache`, so reopening the editor showed an empty day, and the next save PUT the emptied cache back — erasing previously-saved days. Fix: `program.toObject({ flattenMaps: true })` in the PUT response (`server.js`, `PUT /api/programs/:id`). Lesson: when a response is built by spreading `.toObject()` rather than handing Express the raw document, you lose the `toJSON` transform — pass `flattenMaps: true` (and any other transform you rely on) explicitly.
 - The calendar is pre-rendered as static HTML; workouts are overlaid after a separate async fetch. This gives instant visual structure while data loads.
 - Autosave in the editor uses a dirty flag (`editorIsDirty`) to avoid unnecessary API calls on every keystroke.
 

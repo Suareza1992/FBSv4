@@ -5331,12 +5331,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const nameEl2   = document.getElementById('builder-program-name');
         if (renameBtn) renameBtn.onclick = startRename;
         if (nameEl2)   nameEl2.onclick   = startRename;
+
+        // Keep copy/paste state visible across re-renders (multi-paste): if a day is
+        // on the clipboard, every cell stays in "Pegar" mode and the chip shows.
+        syncCopyPasteButtons();
     };
 
     const openProgramBuilder = async (id) => {
         const prog = programsCache.find(p => (p.id == id) || (p._id == id));
         if (!prog) return;
         currentProgramId = id;
+        copiedProgramDayData = null; // fresh clipboard per program (chip handled by render)
         document.getElementById('programs-main-view').classList.add('hidden');
         document.getElementById('program-builder-view').classList.remove('hidden');
         if (clientsCache.length === 0) await fetchClientsFromDB();
@@ -5371,6 +5376,34 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             el.dataset.day = dayAttr; // preserve data-day through the swap
         });
+        renderProgramClipboardChip();
+    };
+
+    // Persistent floating chip while a day is on the clipboard, so the trainer can
+    // paste it into as many days as they want and clear it when done.
+    const renderProgramClipboardChip = () => {
+        let chip = document.getElementById('program-clipboard-chip');
+        if (!copiedProgramDayData) { chip?.remove(); return; }
+        const label = copiedProgramDayData.name || 'Día';
+        if (!chip) {
+            chip = document.createElement('div');
+            chip.id = 'program-clipboard-chip';
+            chip.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
+            document.body.appendChild(chip);
+        }
+        chip.innerHTML = `
+            <span class="flex items-center gap-2"><i class="fas fa-clipboard text-[#FFDB89]/60"></i>Copiado: <span class="text-white max-w-[10rem] truncate">${escHtml(label)}</span></span>
+            <span class="text-[11px] font-normal text-[#FFDB89]/40 hidden sm:inline">— pega en los días que quieras</span>
+            <button id="clear-program-clipboard" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400/70 hover:text-red-400 border border-red-400/30 hover:border-red-400/60 rounded-full px-2.5 py-1 transition">
+                <i class="fas fa-times text-[10px]"></i>Terminar
+            </button>`;
+    };
+
+    // Clear the copy/paste clipboard and revert every cell back to "Copiar"
+    const clearProgramClipboard = () => {
+        if (!copiedProgramDayData) return;
+        copiedProgramDayData = null;
+        syncCopyPasteButtons();
     };
 
     // Original Render Day Cell (For Program Builder)
@@ -7206,6 +7239,208 @@ document.addEventListener('DOMContentLoaded', () => {
             if (prog) renderProgramBuilder(prog);
         } else if (currentClientViewId) {
             openClientProfile(currentClientViewId);
+        }
+    };
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // IMPORT ROUTINE FROM TEXT (paste a routine from ChatGPT/Gemini/notes)
+    // Parses markdown-ish text into program days matching the builder's data model:
+    //   day = { name, exercises:[{name,stats,video,isSuperset,supersetHead}], ... }
+    // ══════════════════════════════════════════════════════════════════════════
+    const parseRoutineText = (text) => {
+        const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+        const dayHeaderRe   = /^\s*#{0,6}\s*\**\s*(?:d[ií]a|day)\s*#?\s*(\d+)\s*[:\-–.)]*\s*(.*?)\s*\**\s*$/i;
+        const bulletRe      = /^\s*(?:\d+[.)]|[-*+])\s+(.*\S)\s*$/;
+        const restRe        = /\b(descanso|rest day|d[ií]a de descanso|rest)\b/i;
+        const activeRestRe   = /\b(descanso activo|active rest|movilidad|cardio ligero)\b/i;
+
+        const days = [];
+        let current = null;
+        let programTitle = '';
+        const pushCurrent = () => { if (current) days.push(current); current = null; };
+
+        for (const raw of lines) {
+            const line = raw.trimEnd();
+            if (!line.trim()) continue;
+            if (/^\s*-{3,}\s*$/.test(line)) continue; // horizontal rule
+
+            // First H1 (before any day) becomes the suggested program title
+            const h1 = line.match(/^\s*#\s+(?!#)(.*\S)\s*$/);
+            if (h1 && !days.length && !current) { programTitle = h1[1].replace(/\*+/g, '').trim(); continue; }
+
+            const dh = line.match(dayHeaderRe);
+            if (dh) {
+                pushCurrent();
+                const dayNum = parseInt(dh[1], 10);
+                const name = (dh[2] || '').replace(/[*#]/g, '').trim();
+                const isActiveRest = activeRestRe.test(name);
+                const isRest = !isActiveRest && restRe.test(name);
+                current = { dayNum, name, isRest, isActiveRest, exercises: [] };
+                continue;
+            }
+            if (!current) continue; // ignore intro text before the first "Día N"
+
+            const b = line.match(bulletRe);
+            if (!b) continue;
+            const content = b[1];
+
+            // Exercise names = bold **...** segments (keeps names that contain " + " inside)
+            const boldNames = [...content.matchAll(/\*\*(.+?)\*\*/g)].map(m => m[1].trim()).filter(Boolean);
+
+            // Stats = first (...) after removing bold names and italic *(nota)* annotations
+            let remainder = content.replace(/\*\*(.+?)\*\*/g, ' ').replace(/\*\([^)]*\)\*/g, ' ');
+            const statsMatch = remainder.match(/\(([^)]*)\)/);
+            const statsRaw = statsMatch ? statsMatch[1].trim() : '';
+
+            // Fallback when no bold markers: split pre-parenthesis text by " + "
+            let names = boldNames;
+            if (!names.length) {
+                const beforeParen = content.replace(/\([^)]*\)\s*$/, '').replace(/\*/g, '').trim();
+                names = beforeParen.split(/\s+\+\s+/).map(s => s.trim()).filter(Boolean);
+            }
+            if (!names.length) continue;
+
+            // Distribute stats: shared "N sets x" prefix + per-exercise part split by " / "
+            const prefixMatch = statsRaw.match(/^\s*(\d+\s*(?:sets?|series?|rounds?|reps?)?\s*(?:x|×)?\s*)/i);
+            const prefix = prefixMatch ? prefixMatch[1].trim() : '';
+            const rest = prefixMatch ? statsRaw.slice(prefixMatch[0].length) : statsRaw;
+            const parts = rest.split(/\s*\/\s*/).map(s => s.trim()).filter(Boolean);
+
+            const exercises = names.map((nm, i) => {
+                let stats = '';
+                if (statsRaw) {
+                    if (parts.length === names.length) stats = [prefix, parts[i]].filter(Boolean).join(' ');
+                    else if (i === 0)                  stats = statsRaw;
+                    else                               stats = prefix;
+                }
+                return { name: nm, stats, video: '', isSuperset: i > 0, supersetHead: false };
+            });
+            exercises.forEach((ex, i) => { if (!ex.isSuperset && exercises[i + 1]?.isSuperset) ex.supersetHead = true; });
+            current.exercises.push(...exercises);
+        }
+        pushCurrent();
+        return { programTitle, days: days.filter(d => d.exercises.length || d.isRest || d.isActiveRest) };
+    };
+
+    // Map a 1-based routine day number → { weekIndex, daySlot } within the 7-day grid.
+    const dayNumToSlot = (dayNum) => {
+        const idx = Math.max(0, dayNum - 1);
+        return { weekIndex: Math.floor(idx / 7), daySlot: (idx % 7) + 1 };
+    };
+
+    let lastParsedRoutine = null; // holds the most recent parse for the confirm step
+
+    const openImportRoutineModal = () => {
+        const modal = document.getElementById('import-routine-modal');
+        if (!modal) return;
+        document.getElementById('import-routine-text').value = '';
+        document.getElementById('import-preview').innerHTML = '';
+        document.getElementById('confirm-import-routine').disabled = true;
+        const chk = document.getElementById('import-overwrite-chk');
+        if (chk) chk.checked = true;
+        lastParsedRoutine = null;
+        modal.classList.remove('hidden');
+        setTimeout(() => document.getElementById('import-routine-text')?.focus(), 80);
+    };
+
+    const renderImportPreview = () => {
+        const text = document.getElementById('import-routine-text').value;
+        const previewEl = document.getElementById('import-preview');
+        const confirmBtn = document.getElementById('confirm-import-routine');
+        const parsed = parseRoutineText(text);
+        lastParsedRoutine = parsed;
+
+        if (!parsed.days.length) {
+            previewEl.innerHTML = `<div class="text-center py-6 text-sm text-[#FFDB89]/40">
+                No se detectaron días. Asegúrate de que cada día empiece con "Día 1:", "Día 2:", etc.</div>`;
+            confirmBtn.disabled = true;
+            return;
+        }
+
+        const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+        const dayNames = ['Día 1','Día 2','Día 3','Día 4','Día 5','Día 6','Día 7'];
+        const rows = parsed.days.map(d => {
+            const { weekIndex, daySlot } = dayNumToSlot(d.dayNum);
+            const occupied = prog?.weeks?.[weekIndex]?.days?.[String(daySlot)];
+            const isOccupied = !!(occupied && (occupied.exercises?.length || occupied.isRest || occupied.isActiveRest));
+            const slotLabel = `Sem ${weekIndex + 1} · ${dayNames[daySlot - 1]}`;
+            const tag = d.isActiveRest ? '<span class="text-[9px] text-teal-300 border border-teal-300/30 rounded px-1.5 py-px">Descanso activo</span>'
+                : d.isRest ? '<span class="text-[9px] text-green-400 border border-green-400/30 rounded px-1.5 py-px">Descanso</span>'
+                : `<span class="text-[10px] text-[#FFDB89]/40">${d.exercises.length} ejercicios</span>`;
+            const conflict = isOccupied ? '<span class="text-[9px] text-amber-400 border border-amber-400/40 rounded px-1.5 py-px ml-1" title="Este día ya tiene contenido">⚠ ocupado</span>' : '';
+            const exList = d.exercises.map(ex => {
+                const chain = ex.isSuperset ? '<span class="text-[#FFDB89]/30 pl-3">↳</span> ' : '';
+                const stats = ex.stats ? `<span class="text-[#FFDB89]/35"> · ${escHtml(ex.stats)}</span>` : '';
+                return `<div class="text-[11px] text-[#FFDB89]/70 truncate">${chain}${escHtml(ex.name)}${stats}</div>`;
+            }).join('');
+            return `<div class="bg-[#111113] border border-[#FFDB89]/12 rounded-xl p-3">
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                    <div class="min-w-0">
+                        <p class="text-sm font-bold text-[#FFDB89] truncate">${escHtml(d.name || dayNames[daySlot - 1])}</p>
+                        <p class="text-[10px] text-sky-300/70">→ ${slotLabel}${conflict}</p>
+                    </div>
+                    ${tag}
+                </div>
+                <div class="space-y-0.5">${exList || '<span class="text-[11px] text-[#FFDB89]/30">—</span>'}</div>
+            </div>`;
+        }).join('');
+
+        const titleNote = parsed.programTitle
+            ? `<p class="text-[11px] text-[#FFDB89]/40 mb-1"><i class="fas fa-tag mr-1"></i>Rutina detectada: "${escHtml(parsed.programTitle)}" <span class="text-[#FFDB89]/25">(el nombre del programa no cambia)</span></p>` : '';
+        previewEl.innerHTML = `${titleNote}<p class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1">${parsed.days.length} día(s) · revisa antes de importar</p>${rows}`;
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = `<i class="fas fa-check mr-1.5"></i>Importar ${parsed.days.length} día(s)`;
+    };
+
+    const importParsedRoutine = async () => {
+        if (!lastParsedRoutine?.days?.length) return;
+        const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+        if (!prog) { showToast('Abre un programa primero.', 'error'); return; }
+        const overwrite = document.getElementById('import-overwrite-chk')?.checked;
+        if (!Array.isArray(prog.weeks)) prog.weeks = [];
+
+        let imported = 0, skipped = 0;
+        for (const d of lastParsedRoutine.days) {
+            const { weekIndex, daySlot } = dayNumToSlot(d.dayNum);
+            while (prog.weeks.length <= weekIndex) prog.weeks.push({ weekNumber: prog.weeks.length + 1, days: {} });
+            if (!prog.weeks[weekIndex].days) prog.weeks[weekIndex].days = {};
+            const key = String(daySlot);
+            const existing = prog.weeks[weekIndex].days[key];
+            const isOccupied = !!(existing && (existing.exercises?.length || existing.isRest || existing.isActiveRest));
+            if (isOccupied && !overwrite) { skipped++; continue; }
+
+            prog.weeks[weekIndex].days[key] = {
+                name:          d.name || `Día ${daySlot}`,
+                exercises:     d.isRest || d.isActiveRest ? [] : d.exercises,
+                warmup:        existing?.warmup || '',
+                cooldown:      existing?.cooldown || '',
+                warmupVideo:   existing?.warmupVideo || '',
+                cooldownVideo: existing?.cooldownVideo || '',
+                warmupItems:   existing?.warmupItems || [],
+                cooldownItems: existing?.cooldownItems || [],
+                isRest:        !!d.isRest,
+                isActiveRest:  !!d.isActiveRest,
+                nutrition:     existing?.nutrition,   // never clobber an existing meal plan
+            };
+            imported++;
+        }
+
+        const confirmBtn = document.getElementById('confirm-import-routine');
+        if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Importando...'; }
+        try {
+            const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
+            if (!res.ok) throw new Error();
+            const updated = await res.json();
+            notifyProgramSync(updated._sync);
+            delete updated._sync;
+            const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
+            if (idx > -1) programsCache[idx] = updated;
+            document.getElementById('import-routine-modal').classList.add('hidden');
+            renderProgramBuilder(updated);
+            showToast(`✓ ${imported} día(s) importado(s)${skipped ? ` · ${skipped} omitido(s)` : ''}.`, 'success');
+        } catch (e) {
+            showToast('Error al importar la rutina.', 'error');
+            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '<i class="fas fa-check mr-1.5"></i>Importar'; }
         }
     };
 
@@ -9276,8 +9511,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'open-create-program-modal') { document.getElementById('create-program-modal').classList.remove('hidden'); return; }
         if (target.id === 'save-and-add-workouts') { handleCreateProgram(); return; }
         if (target.id === 'cancel-create-program') { document.getElementById('create-program-modal').classList.add('hidden'); return; }
-        if (target.id === 'back-to-program-list') { document.getElementById('program-builder-view').classList.add('hidden'); document.getElementById('programs-main-view').classList.remove('hidden'); return; }
+        if (target.id === 'back-to-program-list') { clearProgramClipboard(); document.getElementById('program-builder-view').classList.add('hidden'); document.getElementById('programs-main-view').classList.remove('hidden'); return; }
         if (target.id === 'add-week-btn') { addWeekToCalendar(); return; }
+        // ── Import routine from text ──────────────────────────────────────────
+        if (target.id === 'import-routine-btn') { openImportRoutineModal(); return; }
+        if (target.id === 'close-import-routine' || target.id === 'cancel-import-routine') { document.getElementById('import-routine-modal').classList.add('hidden'); return; }
+        if (target.id === 'analyze-import-btn') { renderImportPreview(); return; }
+        if (target.id === 'confirm-import-routine') { importParsedRoutine(); return; }
         if (target.classList.contains('action-nutri')) {
             const weekBlocks = Array.from(document.querySelectorAll('.week-block'));
             const weekIndex = weekBlocks.indexOf(target.closest('.week-block'));
@@ -9337,11 +9577,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show brief toast
             const toast = document.createElement('div');
             toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-5 py-2.5 rounded-full shadow-xl pointer-events-none';
-            toast.innerHTML = '<i class="fas fa-check mr-2 text-green-400"></i>Día copiado — ahora haz clic en <strong>Pegar</strong> en otro día';
+            toast.innerHTML = '<i class="fas fa-check mr-2 text-green-400"></i>Día copiado — haz clic en <strong>Pegar</strong> en todos los días que quieras';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 2800);
             return;
         }
+        // Dismiss the persistent clipboard (multi-paste) chip
+        if (target.id === 'clear-program-clipboard') { clearProgramClipboard(); return; }
         if (target.classList.contains('action-paste')) {
             if (!copiedProgramDayData) return; // shouldn't happen — button only appears after copy
             const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
@@ -9363,8 +9605,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const updated = await res.json();
                     const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
                     if (idx > -1) programsCache[idx] = updated;
-                    copiedProgramDayData = null; // clear clipboard after paste
-                    renderProgramBuilder(updated); // re-renders cells as Copiar
+                    // Keep the clipboard so the trainer can paste the same day into
+                    // more days. renderProgramBuilder() calls syncCopyPasteButtons(),
+                    // which keeps every cell in "Pegar" mode until "Terminar" is clicked.
+                    renderProgramBuilder(updated);
+                    showToast('✓ Día pegado.', 'success');
                 } else { showToast('Error al pegar el día.', 'error'); }
             } catch(e) { showToast('Error de conexión.', 'error'); }
             return;

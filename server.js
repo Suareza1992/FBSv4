@@ -4139,7 +4139,12 @@ app.put('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin
             }
         }
 
-        res.json({ ...program.toObject(), _sync: sync });
+        // flattenMaps: true converts the `days` Map to a plain object. Without it,
+        // .toObject() leaves `days` as a JS Map, and spreading into a plain object
+        // hides it from Express's toJSON path, so JSON.stringify serializes each
+        // Map to `{}` — the response would come back with every day wiped, which
+        // then poisons the client's programsCache and erases days on the next save.
+        res.json({ ...program.toObject({ flattenMaps: true }), _sync: sync });
     } catch (error) {
         console.error('Error updating program:', error);
         res.status(500).json({ message: 'Error updating program', error });
