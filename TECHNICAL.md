@@ -284,6 +284,23 @@ A trainer can paste a plain-text routine (e.g. a ChatGPT/Gemini answer) and have
 
 **Import — `importParsedRoutine()`**: maps each `dayNum` → `{ weekIndex, daySlot }` via `dayNumToSlot` (7-day grid; `Día 8` wraps to week 2 day 1), creates weeks as needed, and writes each day. A checkbox controls whether occupied slots are overwritten or skipped; existing `nutrition` on a slot is always preserved. Then one `PUT /api/programs/:id` + `renderProgramBuilder`. Verified end-to-end (parse → preview → import → persisted superset flags) against the real API.
 
+### Why a program edit may not reach a client (auto-sync coverage)
+
+`syncProgramToClients` finds its targets with `User.find({ 'assignedProgram.programId': program._id })`. A client is therefore only auto-synced if they carry that **link**. Clients assigned before the link existed have only the legacy `User.program` **name string**, so every program edit silently skips them.
+
+Two things make that reachable rather than invisible:
+- **`GET /api/programs/:id/assignment-status`** (`server.js`) returns `{ linked[], unlinked[] }` — `linked` = clients whose `assignedProgram.programId` matches; `unlinked` = clients whose `User.program` equals the program *name* but who have no link.
+- **The builder banner** (`renderProgramSyncStatus`, rendered into `#program-sync-status` at the end of `renderProgramBuilder`) shows a green line when everyone is covered, or an amber warning naming the unlinked clients with a **Vincular ahora** button that opens the assign-program modal. `notifyProgramSync` also warns after a save — importantly it now fires *even when zero clients synced*, since a program whose clients are all unlinked previously saved in complete silence and looked broken.
+
+**Why re-assigning is the fix (and a backfill isn't).** Restoring only the link is not enough: the sync matches a client's existing days by `sourceProgramId`/`sourceWeek`/`sourceDayNum`, and it refuses to overwrite a date it didn't create. Legacy days have `sourceProgramId: null`, so a link-only backfill would match nothing *and* skip every occupied date — a no-op. Re-assigning via `pushProgramToCalendar` writes both the per-day provenance and the `assignedProgram` link (plus the `startDate`/`anchorOffset` anchor, which cannot be inferred from legacy data), which is why it's a one-time manual step per client rather than a migration script.
+
+### Copy a program day onto a client's calendar (cross-context paste)
+
+The copied-day clipboard is **app-wide**, so a day copied in the builder can be pasted onto a client's calendar:
+- `copiedProgramDayData` is no longer cleared when leaving the builder or opening another program — only by **Terminar**, or by copying something else. `copiedProgramDaySource` remembers `{weekIdx, dayNum}` for title fallbacks.
+- **One clipboard at a time:** copying a program day clears the calendar's own clipboards (`copiedWorkoutData` / `copiedMultiDayData` + their sessionStorage keys), and the calendar's copy handlers call `clearProgramClipboard()`. So the calendar's **Pegar** always pastes whatever was copied last.
+- The calendar paste handler (`handleCalendarAction`, `action === 'paste'`) checks `copiedProgramDayData` first and delegates to the existing **`pushSingleDay`** — which already maps the program-day shape to the workout shape (`stats`→`instructions`, `video`→`videoUrl`, superset flags preserved) and pushes the day's nutrition targets. It confirms before overwriting an occupied date, repaints the cell from the saved record, and **keeps the clipboard** so one routine can be dropped onto several dates.
+
 ### Copy a day to many days (multi-paste)
 
 The builder's per-day **Copiar/Pegar** was one-shot: copying a day set `copiedProgramDayData`, and the first paste cleared it. It's now a **persistent clipboard** so a day can be pasted into as many slots as needed:
@@ -1016,7 +1033,17 @@ Key module-level state in `app.js` (accessible to all closures within `DOMConten
 - `injectGlobalStyles()` (`app.js:726`) injects a `<style id="dynamic-styles">` tag once with calendar, editor, superset connector, and responsive CSS that cannot be expressed with Tailwind utility classes alone.
 
 ### Known limitations
-- No URL routing — the browser URL stays at `/` regardless of which module is active. Deep linking and browser back/forward navigation are not supported.
+- Deep linking is not supported (pasting `#/programa/<id>` into a fresh tab restores the last module, not that exact view) — but browser **Back/Forward now work**, see below.
+
+### Browser history (Back / Forward)
+
+Every view used to render at `/`, so the browser's Back button left the site entirely. The app now records one history entry per in-app navigation:
+
+- **State shapes:** `{view:'module', module}`, `{view:'client', clientId}`, `{view:'program', programId}`.
+- **Push points:** `loadAndInitModule()` (sidebar modules), `openClientProfile()`, `openProgramBuilder()`, and the builder's "Volver a programas". `pushAppState()` de-duplicates identical consecutive states, and the *first* view uses `replaceState` so entry 0 is a real view (Back from it correctly exits the site).
+- **Restore:** a `popstate` listener calls `restoreAppState(event.state)`, which re-renders the view. A `suppressHistoryPush` flag prevents the restore from pushing new entries (a program restore internally loads the programs module first).
+
+> ⚠️ **Why the URLs are hashes (`#/clientes`), not paths (`/clientes`).** Module loading uses a **relative** fetch — ``fetch(`${moduleToLoad}.html`)``. With a real path like `/programa/abc`, that relative URL resolves against `/programa/` and 404s. Hash URLs keep `location.pathname` at `/`, so every relative fetch in the app keeps resolving correctly. This is the kind of constraint that only shows up at runtime — worth remembering whenever you add routing to an app that fetches relative assets.
 - `MODULE_CACHE` has no TTL or size limit. In a long session, all visited modules remain in memory.
 - All global state is in a single closure — there is no state management library. Complex inter-module state is shared via `window.*` properties and module-level variables, making the dependency graph implicit.
 - `updateContent()` destroys and re-creates module HTML on every navigation, losing any unsaved form state in the replaced module.

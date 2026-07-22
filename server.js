@@ -4151,6 +4151,35 @@ app.put('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin
     }
 });
 
+// Which clients actually receive auto-sync for this program, and which ones carry
+// the program only as a legacy `program` NAME string with no assignedProgram link.
+// The unlinked ones silently miss every program edit — the builder surfaces them
+// so the trainer can re-assign once and turn auto-sync on for good.
+app.get('/api/programs/:id/assignment-status', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        const program = await Program.findById(req.params.id).select('name').lean();
+        if (!program) return res.status(404).json({ message: 'Program not found' });
+
+        const clients = await User.find({ role: 'client', isDeleted: { $ne: true } })
+            .select('name lastName program assignedProgram').lean();
+
+        const linked = [], unlinked = [];
+        for (const c of clients) {
+            const label = `${c.name || ''} ${c.lastName || ''}`.trim() || 'Cliente';
+            if (String(c.assignedProgram?.programId || '') === String(program._id)) {
+                linked.push({ _id: c._id, name: label, startDate: c.assignedProgram?.startDate || null });
+            } else if (!c.assignedProgram?.programId && c.program && c.program === program.name) {
+                // Same program by name, but no link → auto-sync cannot reach them.
+                unlinked.push({ _id: c._id, name: label });
+            }
+        }
+        res.json({ programName: program.name, linked, unlinked });
+    } catch (e) {
+        console.error('assignment-status error:', e.message);
+        res.status(500).json({ message: 'Error fetching assignment status' });
+    }
+});
+
 // Record (or clear) which program is assigned to a client. Drives the auto-sync
 // above: a client is only re-synced if assignedProgram.programId points here.
 app.put('/api/clients/:clientId/assigned-program', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {

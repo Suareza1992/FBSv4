@@ -148,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let dayNutritionState = { weekIndex: 0, dayNum: 0, targets: { cal: 2200, p: 160, c: 220, f: 65 }, meals: [] };
     let currentProgramId = null;
     let copiedProgramDayData = null; // stores a day's data for copy/paste in program builder
+    let copiedProgramDaySource = null; // { weekIdx, dayNum } of the copied day (for title fallbacks on calendar paste)
     let currentEditingDay = null; 
     let currentEditingWeekIndex = 0;
     let currentVideoExerciseBtn = null;
@@ -1548,6 +1549,60 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const RESTORABLE_MODULES = new Set(Object.keys(MODULE_TITLES));
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // BROWSER HISTORY (Back / Forward)
+    // The SPA renders every view at "/", so without this the browser's Back button
+    // leaves the site entirely (back to whatever page preceded it). We push one
+    // history entry per in-app navigation and restore the view from event.state.
+    //
+    // Why HASH urls (#/clientes) instead of real paths (/clientes): module loading
+    // uses RELATIVE fetches — fetch(`${moduleToLoad}.html`). A pathname like
+    // "/programa/abc" would make that resolve to "/programa/clientes_content.html"
+    // and 404. Keeping location.pathname at "/" makes every relative URL safe.
+    // ══════════════════════════════════════════════════════════════════════════
+    let suppressHistoryPush = false;  // true while restoring, so we don't re-push
+
+    const hashForState = (st) => {
+        if (!st) return '#/';
+        if (st.view === 'client')  return `#/cliente/${st.clientId}`;
+        if (st.view === 'program') return `#/programa/${st.programId}`;
+        return `#/${String(st.module || '').replace(/_content$/, '')}`;
+    };
+
+    const sameAppState = (a, b) => !!a && !!b && a.view === b.view
+        && a.module === b.module && a.clientId === b.clientId && a.programId === b.programId;
+
+    const pushAppState = (st) => {
+        if (suppressHistoryPush || !st) return;
+        if (sameAppState(history.state, st)) return;          // don't stack duplicates
+        // The very first in-app view replaces the blank boot entry, so entry 0 is a
+        // real view and Back from it exits the site (expected) rather than no-op'ing.
+        const replace = !history.state;
+        try { history[replace ? 'replaceState' : 'pushState'](st, '', hashForState(st)); }
+        catch { /* history unavailable — navigation still works, just no back/forward */ }
+    };
+
+    const restoreAppState = async (st) => {
+        if (!st) return;
+        suppressHistoryPush = true;
+        try {
+            if (st.view === 'client' && st.clientId) {
+                await window.openClientProfile(st.clientId);
+            } else if (st.view === 'program' && st.programId) {
+                await loadAndInitModule('programas_content');
+                await openProgramBuilder(st.programId);
+            } else if (st.module) {
+                await loadAndInitModule(st.module);
+            }
+        } catch (e) {
+            console.error('history restore failed:', e);
+        } finally {
+            suppressHistoryPush = false;
+        }
+    };
+
+    window.addEventListener('popstate', (e) => { restoreAppState(e.state); });
+
     const loadAndInitModule = async (moduleToLoad) => {
         if (!RESTORABLE_MODULES.has(moduleToLoad)) return false;
         try {
@@ -1602,6 +1657,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Persist last position so a refresh lands back here
             sessionStorage.setItem('fbs_last_module', moduleToLoad);
+            pushAppState({ view: 'module', module: moduleToLoad });   // browser Back/Forward
             return true;
         } catch (e) {
             console.error('loadAndInitModule:', e);
@@ -2343,8 +2399,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const client = clientsCache.find(c => (c._id == clientId) || (c.id == clientId));
         
         if (!client) return;
-        
+
         currentClientViewId = clientId;
+        pushAppState({ view: 'client', clientId: String(clientId) });   // browser Back/Forward
 
         // TRUECOACH STYLE CONTINUOUS CALENDAR (with tabs)
         updateContent(`Perfil: ${client.name} ${client.lastName}`, `
@@ -5073,6 +5130,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(response.ok) {
                 copiedWorkoutData = await response.json();
                 copiedMultiDayData = null; // Clear multi-day when single copy is used
+                clearProgramClipboard(); // a calendar copy supersedes a copied program day
                 sessionStorage.setItem('fbs_copiedWorkout', JSON.stringify(copiedWorkoutData));
                 sessionStorage.removeItem('fbs_copiedMultiDay');
                 showToast('Workout copiado. Usa el botón "Pegar" en cualquier otro día.', 'success');
@@ -5152,6 +5210,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         copiedMultiDayData = workoutsWithOffsets;
         copiedWorkoutData = null; // Clear single-day copy
+        clearProgramClipboard(); // a calendar copy supersedes a copied program day
         sessionStorage.setItem('fbs_copiedMultiDay', JSON.stringify(copiedMultiDayData));
         sessionStorage.removeItem('fbs_copiedWorkout');
         window.clearCopySelection();
@@ -5335,13 +5394,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // Keep copy/paste state visible across re-renders (multi-paste): if a day is
         // on the clipboard, every cell stays in "Pegar" mode and the chip shows.
         syncCopyPasteButtons();
+
+        // Show who actually receives this program's edits (auto-sync coverage).
+        renderProgramSyncStatus(prog._id || prog.id);
     };
 
     const openProgramBuilder = async (id) => {
         const prog = programsCache.find(p => (p.id == id) || (p._id == id));
         if (!prog) return;
         currentProgramId = id;
-        copiedProgramDayData = null; // fresh clipboard per program (chip handled by render)
+        pushAppState({ view: 'program', programId: String(id) });   // browser Back/Forward
+        // Clipboard is app-wide (a copied day can be pasted into another program or
+        // onto a client's calendar), so it is NOT reset when opening a program.
         document.getElementById('programs-main-view').classList.add('hidden');
         document.getElementById('program-builder-view').classList.remove('hidden');
         if (clientsCache.length === 0) await fetchClientsFromDB();
@@ -5393,7 +5457,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         chip.innerHTML = `
             <span class="flex items-center gap-2"><i class="fas fa-clipboard text-[#FFDB89]/60"></i>Copiado: <span class="text-white max-w-[10rem] truncate">${escHtml(label)}</span></span>
-            <span class="text-[11px] font-normal text-[#FFDB89]/40 hidden sm:inline">— pega en los días que quieras</span>
+            <span class="text-[11px] font-normal text-[#FFDB89]/40 hidden sm:inline">— pega en el programa o en el calendario de un cliente</span>
             <button id="clear-program-clipboard" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400/70 hover:text-red-400 border border-red-400/30 hover:border-red-400/60 rounded-full px-2.5 py-1 transition">
                 <i class="fas fa-times text-[10px]"></i>Terminar
             </button>`;
@@ -5403,6 +5467,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearProgramClipboard = () => {
         if (!copiedProgramDayData) return;
         copiedProgramDayData = null;
+        copiedProgramDaySource = null;
         syncCopyPasteButtons();
     };
 
@@ -6476,13 +6541,65 @@ document.addEventListener('DOMContentLoaded', () => {
     // Toast feedback after a program save that re-synced assigned clients.
     // `s` is the server's _sync summary: { clients, updated, created, removed }.
     const notifyProgramSync = (s) => {
-        if (!s || !s.clients) return;
-        const parts = [];
-        if (s.updated) parts.push(`${s.updated} actualizado${s.updated !== 1 ? 's' : ''}`);
-        if (s.created) parts.push(`${s.created} añadido${s.created !== 1 ? 's' : ''}`);
-        if (s.removed) parts.push(`${s.removed} removido${s.removed !== 1 ? 's' : ''}`);
-        const who = `${s.clients} cliente${s.clients !== 1 ? 's' : ''}`;
-        showToast(`Calendario sincronizado · ${who}${parts.length ? ' (' + parts.join(', ') + ')' : ''}`, 'success', 4000);
+        if (s && s.clients) {
+            const parts = [];
+            if (s.updated) parts.push(`${s.updated} actualizado${s.updated !== 1 ? 's' : ''}`);
+            if (s.created) parts.push(`${s.created} añadido${s.created !== 1 ? 's' : ''}`);
+            if (s.removed) parts.push(`${s.removed} removido${s.removed !== 1 ? 's' : ''}`);
+            const who = `${s.clients} cliente${s.clients !== 1 ? 's' : ''}`;
+            showToast(`Calendario sincronizado · ${who}${parts.length ? ' (' + parts.join(', ') + ')' : ''}`, 'success', 4000);
+        }
+        // Warn even when zero clients synced — otherwise a program whose clients are
+        // all unlinked saves in total silence and looks like the sync is broken.
+        const unlinked = lastSyncStatus?.unlinked?.length || 0;
+        if (unlinked) {
+            showToast(`⚠ ${unlinked} cliente(s) con este programa NO se actualizaron — no están vinculados. Usa "Vincular ahora".`, 'info', 7000);
+        }
+    };
+
+    // ── Auto-sync status banner ───────────────────────────────────────────────
+    // Program edits only reach clients that carry an `assignedProgram` LINK. Clients
+    // who have the program by NAME only (assigned before that link existed) are
+    // silently skipped, so we surface them with a one-click way to re-assign.
+    let lastSyncStatus = null;
+    const renderProgramSyncStatus = async (progId) => {
+        const box = document.getElementById('program-sync-status');
+        if (!box || !progId) return;
+        box.innerHTML = '';
+        try {
+            const res = await apiFetch(`/api/programs/${progId}/assignment-status`);
+            if (!res.ok) return;
+            const st = await res.json();
+            lastSyncStatus = st;
+            if (!st.unlinked?.length && !st.linked?.length) return; // nobody has it — no banner
+
+            if (!st.unlinked?.length) {
+                box.innerHTML = `
+                    <div class="flex items-center gap-2 text-[11px] text-green-400/80 bg-green-400/5 border border-green-400/20 rounded-lg px-3 py-2">
+                        <i class="fas fa-circle-check"></i>
+                        <span><strong>${st.linked.length}</strong> cliente(s) reciben los cambios de este programa automáticamente al guardar.</span>
+                    </div>`;
+                return;
+            }
+            const names = st.unlinked.map(c => escHtml(c.name)).join(', ');
+            box.innerHTML = `
+                <div class="bg-amber-400/8 border border-amber-400/30 rounded-xl px-4 py-3">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-triangle-exclamation text-amber-400 mt-0.5 shrink-0"></i>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-bold text-amber-300">${st.unlinked.length} cliente(s) NO reciben los cambios de este programa</p>
+                            <p class="text-[11px] text-[#FFDB89]/50 mt-0.5 leading-relaxed">
+                                ${names} — tienen este programa por nombre, pero fueron asignados antes de que existiera la sincronización automática.
+                                Vuelve a asignarles el programa <strong>una vez</strong> y a partir de ahí cada edición se copiará sola a su calendario.
+                            </p>
+                            ${st.linked.length ? `<p class="text-[10px] text-green-400/60 mt-1"><i class="fas fa-circle-check mr-1"></i>${st.linked.length} cliente(s) sí están sincronizados.</p>` : ''}
+                        </div>
+                        <button id="fix-unlinked-clients" class="shrink-0 px-3 py-1.5 rounded-lg bg-amber-400/15 border border-amber-400/40 text-amber-300 text-xs font-bold hover:bg-amber-400/25 transition">
+                            <i class="fas fa-link mr-1"></i>Vincular ahora
+                        </button>
+                    </div>
+                </div>`;
+        } catch { /* non-blocking */ }
     };
 
     const pushProgramToCalendar = async (prog, clientId, startDateStr, opts = {}) => {
@@ -7947,8 +8064,63 @@ document.addEventListener('DOMContentLoaded', () => {
             if (nutriTab) nutriTab.click();
             
         } else if (action === 'paste') {
-            // PASTE - supports both single-day and multi-day
-            if(copiedMultiDayData && copiedMultiDayData.length > 0) {
+            // PASTE — a program day copied from the builder takes precedence; then
+            // the calendar's own multi-day / single-day clipboards.
+            if (copiedProgramDayData) {
+                if (!currentClientViewId) { showToast('Abre el calendario de un cliente para pegar aquí.', 'info'); return; }
+                const dayData = copiedProgramDayData;
+                // Confirm before overwriting an existing routine on that date
+                const existingW = window._calendarWorkouts?.[dateStr];
+                if (existingW && (existingW.exercises?.length > 0 || existingW.isRest)) {
+                    const ok = await showConfirm(`Este día ya tiene contenido. ¿Reemplazarlo con "${dayData.name || 'la rutina copiada'}"?`, { confirmLabel: 'Reemplazar', cancelLabel: 'Cancelar', danger: true });
+                    if (!ok) return;
+                }
+                const srcW = copiedProgramDaySource?.weekIdx ?? 0;
+                const srcD = copiedProgramDaySource?.dayNum ?? 1;
+                const ok = await pushSingleDay(dayData, currentClientViewId, dateStr, srcW, srcD);
+                if (!ok) { showToast('No se pudo pegar la rutina.', 'error'); return; }
+                // Re-fetch the canonical saved workout and paint the calendar cell
+                let saved = null;
+                try {
+                    const r = await apiFetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`);
+                    if (r.ok) saved = await r.json();
+                } catch { /* paint best-effort */ }
+                if (saved) {
+                    window._calendarWorkouts = window._calendarWorkouts || {};
+                    window._calendarWorkouts[dateStr] = saved;
+                    const cell = document.getElementById(dateId);
+                    const area = cell?.querySelector('.content-area');
+                    if (area) {
+                        if (saved.isRest) {
+                            const isActive = saved.restType === 'active_rest';
+                            const icon = isActive ? 'fa-person-walking' : 'fa-moon';
+                            const color = isActive ? '#6EE7B7' : '#93C5FD';
+                            const label = saved.title || (isActive ? 'Descanso Activo' : 'Descanso');
+                            area.innerHTML = `
+                                <div class="flex items-center gap-2 py-0.5">
+                                    <div class="w-1 h-6 rounded-full shrink-0" style="background:${color}"></div>
+                                    <i class="fas ${icon} text-xs shrink-0" style="color:${color}"></i>
+                                    <span class="text-xs font-semibold" style="color:${color}">${escHtml(label)}</span>
+                                </div>`;
+                        } else {
+                            area.innerHTML = `
+                                <div class="workout-card flex items-center gap-3 cursor-pointer group/wk" onclick="window.loadWorkoutForEditing('${dateStr}', '${currentClientViewId}')">
+                                    <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="text-sm font-bold text-[#FFDB89] truncate">${escHtml(saved.title || '')}</div>
+                                        <div class="text-xs text-[#FFDB89]/50">${saved.exercises.length} ejercicio${saved.exercises.length !== 1 ? 's' : ''}</div>
+                                    </div>
+                                    <i class="fas fa-chevron-right text-[#FFDB89]/30 text-xs group-hover/wk:text-[#FFDB89] transition-colors shrink-0"></i>
+                                </div>`;
+                        }
+                        const cb = cell.querySelector('.copy-day-checkbox');
+                        if (cb) cb.classList.remove('hidden');
+                    }
+                }
+                // Keep the clipboard active so the same routine can be pasted onto more dates.
+                showToast(`✓ "${dayData.name || 'Rutina'}" pegada el ${dateStr}.`, 'success');
+
+            } else if(copiedMultiDayData && copiedMultiDayData.length > 0) {
                 // MULTI-DAY PASTE: preserve spacing from original
                 const pasteStartDate = new Date(dateStr + 'T00:00:00');
                 let successCount = 0;
@@ -9511,9 +9683,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'open-create-program-modal') { document.getElementById('create-program-modal').classList.remove('hidden'); return; }
         if (target.id === 'save-and-add-workouts') { handleCreateProgram(); return; }
         if (target.id === 'cancel-create-program') { document.getElementById('create-program-modal').classList.add('hidden'); return; }
-        if (target.id === 'back-to-program-list') { clearProgramClipboard(); document.getElementById('program-builder-view').classList.add('hidden'); document.getElementById('programs-main-view').classList.remove('hidden'); return; }
+        if (target.id === 'back-to-program-list') { document.getElementById('program-builder-view').classList.add('hidden'); document.getElementById('programs-main-view').classList.remove('hidden'); pushAppState({ view: 'module', module: 'programas_content' }); return; }
         if (target.id === 'add-week-btn') { addWeekToCalendar(); return; }
         // ── Import routine from text ──────────────────────────────────────────
+        if (target.id === 'fix-unlinked-clients') { openAssignProgramModal(); return; }
         if (target.id === 'import-routine-btn') { openImportRoutineModal(); return; }
         if (target.id === 'close-import-routine' || target.id === 'cancel-import-routine') { document.getElementById('import-routine-modal').classList.add('hidden'); return; }
         if (target.id === 'analyze-import-btn') { renderImportPreview(); return; }
@@ -9567,6 +9740,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             copiedProgramDayData = JSON.parse(JSON.stringify(dayData)); // deep clone
+            copiedProgramDaySource = { weekIdx: weekIndex, dayNum: parseInt(dayNum) };
+            // One clipboard at a time: copying a program day supersedes any copied
+            // calendar workout, so the calendar's "Pegar" pastes THIS program day.
+            copiedWorkoutData = null; copiedMultiDayData = null;
+            sessionStorage.removeItem('fbs_copiedWorkout'); sessionStorage.removeItem('fbs_copiedMultiDay');
             syncCopyPasteButtons(); // all cells → Pegar
             // Flash the cell to confirm copy
             const cell = target.closest('.relative.bg-\\[\\#1C1C1E\\]') || target.closest('[class*="h-40"]');
@@ -9577,9 +9755,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show brief toast
             const toast = document.createElement('div');
             toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-5 py-2.5 rounded-full shadow-xl pointer-events-none';
-            toast.innerHTML = '<i class="fas fa-check mr-2 text-green-400"></i>Día copiado — haz clic en <strong>Pegar</strong> en todos los días que quieras';
+            toast.innerHTML = '<i class="fas fa-check mr-2 text-green-400"></i>Día copiado — pégalo en otros días o en el <strong>calendario</strong> de un cliente';
             document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 2800);
+            setTimeout(() => toast.remove(), 3200);
             return;
         }
         // Dismiss the persistent clipboard (multi-paste) chip
