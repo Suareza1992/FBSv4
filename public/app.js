@@ -8410,6 +8410,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 </button>
                 <textarea oninput="window.updateExInstructions(${ex.id}, this.value); window.markEditorDirty(); this.style.height='auto'; this.style.height=this.scrollHeight+'px';" class="w-full bg-transparent text-[#FFDB89]/60 text-xs resize-none outline-none placeholder-[#FFDB89]/30 mb-2" placeholder="Sets, Reps, Tempo, Rest etc." rows="2" autocorrect="off" autocapitalize="none" spellcheck="false">${ex.instructions || ''}</textarea>
                 <textarea oninput="window.updateExResults(${ex.id}, this.value); window.markEditorDirty(); this.style.height='auto'; this.style.height=this.scrollHeight+'px';" class="w-full bg-black/30 border border-[#FFDB89]/10 rounded-lg text-[#FFDB89]/80 text-xs resize-none outline-none placeholder-[#FFDB89]/25 p-2.5 focus:border-[#FFDB89]/30 transition" placeholder="Agregar resultados..." rows="2" autocorrect="off" autocapitalize="none" spellcheck="false">${ex.results || ''}</textarea>
+                ${ex.rpe ? `<div class="mt-1.5 flex items-center gap-1.5">
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-[#FFDB89]/35">RPE del cliente</span>
+                    <span class="text-[10px] font-black px-1.5 py-0.5 rounded border ${ex.rpe<=3?'text-green-400 border-green-400/40 bg-green-400/10':ex.rpe<=6?'text-yellow-400 border-yellow-400/40 bg-yellow-400/10':ex.rpe<=8?'text-orange-400 border-orange-400/40 bg-orange-400/10':'text-red-400 border-red-400/40 bg-red-400/10'}">${ex.rpe}/10</span>
+                </div>` : ''}
             </div>
             ${supersetBtnHtml}
             `;
@@ -9008,9 +9012,13 @@ document.addEventListener('DOMContentLoaded', () => {
             cooldown: editorCooldown,
             cooldownVideoUrl: editorCooldownVideoUrl,
             cooldownItems: editorCooldownItems.map(i => ({ id: i.id, name: i.name || '', videoUrl: i.videoUrl || '' })),
+            // Carry the client's own fields through untouched — this POST replaces the
+            // whole exercises array, so anything omitted here is destroyed. `rpe` and
+            // `isComplete` are logged by the client, never edited by the trainer.
             exercises: editorExercises.map(ex => ({
                 id: ex.id, name: ex.name, instructions: ex.instructions || '',
-                results: ex.results || '', videoUrl: ex.videoUrl || '', isSuperset: ex.isSuperset || false, supersetHead: ex.supersetHead || false
+                results: ex.results || '', videoUrl: ex.videoUrl || '', isSuperset: ex.isSuperset || false, supersetHead: ex.supersetHead || false,
+                isComplete: ex.isComplete || false, rpe: ex.rpe ?? null
             }))
         };
         try {
@@ -14443,6 +14451,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 800);
         };
 
+        // Shared by the per-exercise RPE control and the day-level RPE footer below.
+        const rpeLabels = { 1:'Muy fácil',2:'Fácil',3:'Moderado-bajo',4:'Moderado',5:'Algo difícil',6:'Difícil',7:'Muy difícil',8:'Muy duro',9:'Casi al máximo',10:'Máximo esfuerzo' };
+        const rpeTone = (n, on) => on
+            ? (n<=3?'bg-green-400/25 border-green-400/70 text-green-300':n<=6?'bg-yellow-400/25 border-yellow-400/70 text-yellow-300':n<=8?'bg-orange-400/25 border-orange-400/70 text-orange-300':'bg-red-400/25 border-red-400/70 text-red-300')
+            : (n<=3?'border-green-400/25 text-green-400/70':n<=6?'border-yellow-400/25 text-yellow-400/70':n<=8?'border-orange-400/25 text-orange-400/70':'border-red-400/25 text-red-400/70');
+
         const exercisesHtml = clientExercises.map((ex, i) => {
             const hasVideo   = !!ex.videoUrl;
             const safeUrl    = (ex.videoUrl || '').replace(/'/g, "\\'");
@@ -14477,6 +14491,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     <textarea data-ex-index="${i}" rows="2"
                         class="client-result-input w-full bg-[#0D0D0D] border border-[#FFDB89]/10 focus:border-[#FFDB89]/30 rounded-lg px-3 py-2 text-sm text-[#FFDB89]/80 placeholder-[#FFDB89]/20 outline-none resize-none transition"
                         placeholder="Sets, reps, peso... ej: 3×12 @ 60kg" autocorrect="off" autocapitalize="none" spellcheck="false">${safeResults}</textarea>
+
+                    <!-- Per-exercise RPE (1-10). Grid so the 10 buttons always fit the width. -->
+                    <div class="mt-2.5">
+                        <div class="flex items-center justify-between mb-1">
+                            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider">Esfuerzo (RPE)</p>
+                            <span class="ex-rpe-label text-[10px] text-[#FFDB89]/45" data-rpe-label="${i}">${ex.rpe ? `${ex.rpe}/10 · ${rpeLabels[ex.rpe]}` : ''}</span>
+                        </div>
+                        <!-- Inline grid: the Tailwind CDN doesn't reliably JIT
+                             grid-cols-10 for dynamically injected markup, which
+                             collapsed this to one full-width column. -->
+                        <div style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px" data-rpe-row="${i}">
+                            ${Array.from({length:10},(_,k)=>{
+                                const n = k+1;
+                                return `<button type="button" style="aspect-ratio:1" class="ex-rpe-btn rounded-md border text-[11px] font-black leading-none transition ${rpeTone(n, ex.rpe === n)}"
+                                    data-ex-index="${i}" data-rpe="${n}" title="${rpeLabels[n]}">${n}</button>`;
+                            }).join('')}
+                        </div>
+                    </div>
                 </div>
             </div>`;
         }).join('');
@@ -14503,8 +14535,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
         }).join('');
 
-        const savedRpe = workout.rpe || null;
-        const rpeLabels = { 1:'Muy fácil',2:'Fácil',3:'Moderado-bajo',4:'Moderado',5:'Algo difícil',6:'Difícil',7:'Muy difícil',8:'Muy duro',9:'Casi al máximo',10:'Máximo esfuerzo' };
+        const savedRpe = workout.rpe || null;   // rpeLabels/rpeTone are defined above (shared with per-exercise RPE)
 
         const rpeButtons = Array.from({length:10},(_,i)=>{
             const n = i+1;
@@ -14641,6 +14672,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     clientExercises[idx].results = textarea.value;
                     scheduleResultsSave();
                 }
+            });
+        });
+
+        // ── Per-exercise RPE buttons ─────────────────────────────────────────
+        // Saved through the same debounced PATCH as results (both live on the
+        // exercises array). Clicking the active number again clears the rating.
+        document.querySelectorAll('.ex-rpe-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.dataset.exIndex);
+                const val = parseInt(btn.dataset.rpe);
+                if (isNaN(idx) || !clientExercises[idx]) return;
+                const next = clientExercises[idx].rpe === val ? null : val;   // toggle off
+                clientExercises[idx].rpe = next;
+                // Repaint just this exercise's row
+                document.querySelectorAll(`[data-rpe-row="${idx}"] .ex-rpe-btn`).forEach(b => {
+                    const n = parseInt(b.dataset.rpe);
+                    // aspect-ratio lives in the inline style attribute, untouched here
+                    b.className = `ex-rpe-btn rounded-md border text-[11px] font-black leading-none transition ${rpeTone(n, next === n)}`;
+                });
+                const lbl = document.querySelector(`[data-rpe-label="${idx}"]`);
+                if (lbl) lbl.textContent = next ? `${next}/10 · ${rpeLabels[next]}` : '';
+                scheduleResultsSave();
             });
         });
 

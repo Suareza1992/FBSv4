@@ -388,6 +388,9 @@ const ClientWorkoutSchema = new mongoose.Schema({
         isSuperset:   { type: Boolean, default: false },
         supersetHead: { type: Boolean, default: false },
         isComplete:   { type: Boolean, default: false }, // per-exercise completion by client
+        // Per-exercise effort rating logged by the client alongside their results.
+        // Independent of the day-level `rpe` below (which rates the whole session).
+        rpe:          { type: Number, min: 1, max: 10, default: null },
     }],
 
     // ── Cooldown ───────────────────────────────────────────────────────────────

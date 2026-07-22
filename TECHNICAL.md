@@ -160,8 +160,8 @@ The trainer views a continuous infinite-scroll calendar for each client. They ca
 | `warmup` | String | text instructions |
 | `warmupVideoUrl` | String | YouTube/Vimeo URL |
 | `cooldown` | String | text instructions |
-| `exercises` | Array | `{ id: Number, name, instructions, videoUrl, isSuperset: Boolean, isComplete: Boolean, results: String }` |
-| `rpe` | Number (1–10) | Rate of Perceived Exertion, submitted by client |
+| `exercises` | Array | `{ id: Number, name, instructions, videoUrl, isSuperset: Boolean, isComplete: Boolean, results: String, rpe: Number(1–10) }` |
+| `rpe` | Number (1–10) | Session-level Rate of Perceived Exertion (whole workout), submitted by client |
 | `isComplete` | Boolean | |
 | `isMissed` | Boolean | |
 | `sourceProgramId` | ObjectId (ref: Program) | **Provenance**: the program this day was pushed from. `null` = a manually-added standalone day, which auto-sync never touches. |
@@ -251,6 +251,19 @@ Notification transitions use a "read before write" pattern: the PATCH handler fe
 **`pushProgramToCalendar(prog, clientId, startDateStr, opts)`** (`app.js`) — iterates the program's weeks/days grid and POSTs each content day to `/api/client-workouts`, mapping grid slot → date (`startDate + globalIndex - anchorOffset`). Each POST carries `sourceProgramId`/`sourceWeek`/`sourceDayNum` for provenance. After pushing, it records the live link via `PUT /api/clients/:clientId/assigned-program` so future program edits auto-sync. `opts.selectedKeys` supports partial assignment (start a client mid-program). `pushSingleDay` assigns one day to a chosen date and is intentionally left unlinked (manual).
 
 **Program builder** (`programas_content.html`) — separate module loaded into `mainContentArea`. The builder mutates `currentProgramId` and `mockProgramsDb[idx]`. On save it calls `PUT /api/programs/:id` with the full weeks array.
+
+### Per-exercise RPE
+
+Alongside the session-level `rpe`, each entry in `exercises[]` carries its own `rpe` (1–10), logged by the client next to that exercise's results.
+
+- **Client UI (web):** in the workout detail modal, under each exercise's "Mis resultados" there's an "Esfuerzo (RPE)" row of 10 colour-coded buttons (green 1–3 → red 9–10) plus a live `7/10 · Muy difícil` label. Tapping the active number clears it. It saves through the **same debounced PATCH as results** (`scheduleResultsSave`), since both live on the `exercises` array — no extra endpoint.
+- **Client UI (mobile):** the same control in `hoy.tsx` under each exercise's results, saved optimistically via `saveExerciseRpe` (reverts with `load()` if the PATCH fails).
+- **Trainer UI:** the client's rating shows as a read-only colour-coded `N/10` badge under that exercise's results box in the workout editor.
+- **No notification.** Only the session-level `rpe` fires `rpe_submitted`; per-exercise ratings would flood the feed.
+
+> ⚠️ **Two traps this feature exposed — both worth remembering.**
+> 1. **Mongoose strips unknown sub-schema fields.** The PATCH `$set`s the whole `exercises` array, so `rpe` silently vanished until it was added to the `exercises` sub-schema in `ClientWorkoutSchema`. Adding a field to a nested array requires a schema change, not just a client change.
+> 2. **A save that rebuilds an array destroys everything it doesn't copy.** `performWorkoutSave` maps `editorExercises` into a fresh object list, and it omitted `rpe` *and* `isComplete` — so a trainer saving a day wiped the client's per-exercise ratings and completion ticks (a pre-existing bug for `isComplete`). Both are now carried through explicitly. Whenever a whole array is replaced on save, audit every field that some *other* actor writes.
 
 ### Program → Client Calendar Sync
 When a trainer edits a program (e.g. turning a 3-day program into 4 days), the change propagates automatically to every client who has that program assigned. Implemented server-side in `syncProgramToClients(program, todayStr)` (`server.js`), called from `PUT /api/programs/:id` only when `weeks` is part of the update (a rename never moves days, so it skips the sync).
