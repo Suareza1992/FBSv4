@@ -2644,6 +2644,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Load saved workouts onto the calendar
         loadClientWorkoutsToCalendar(clientId);
 
+        // If days are still on the clipboard (e.g. after a refresh, restored from
+        // sessionStorage), re-show the persistent chip so paste is discoverable.
+        renderCalendarClipboardChip();
+
         // Delegated expand-header listener (avoids CSP script-src-attr blocking inline onclick)
         const calScroll = document.getElementById('infinite-calendar-scroll');
         if (calScroll && !calScroll.dataset.expandListenerAttached) {
@@ -4102,9 +4106,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const client = clientsCache.find(c => (c._id == clientId) || (c.id == clientId));
         let muscleState = (client && client.injuredMuscles) ? { ...client.injuredMuscles } : {};
+        let allowCustomRoutines = (client && client.allowCustomRoutines) ? true : false;
 
         container.innerHTML = `
             <div class="max-w-2xl mx-auto space-y-6">
+                <!-- Custom routines toggle -->
+                <div class="bg-[#2C2C2E] border border-[#FFDB89]/20 rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-[#FFDB89]">Rutinas personalizadas</p>
+                            <p class="text-xs text-[#FFDB89]/60 mt-1">Permitir que ${client ? client.name : 'este cliente'} cree rutinas personalizadas desde su calendario</p>
+                        </div>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="tr-allow-custom-routines" ${allowCustomRoutines ? 'checked' : ''} class="w-4 h-4">
+                            <span class="text-xs text-[#FFDB89]/60">${allowCustomRoutines ? 'Activo' : 'Inactivo'}</span>
+                        </label>
+                    </div>
+                </div>
+
                 <div>
                     <h3 class="text-xl font-bold text-[#FFDB89]">Grupos musculares</h3>
                     <p class="text-sm text-[#FFDB89]/60 mt-1">Marca los grupos que requieren atención especial al armar la rutina de ${client ? client.name : 'este cliente'}.</p>
@@ -4143,12 +4162,18 @@ document.addEventListener('DOMContentLoaded', () => {
             initMuscleCards('tr-muscle-cards-grid', muscleState, 'tr-injury-flags-list');
         });
 
+        document.getElementById('tr-allow-custom-routines').addEventListener('change', (e) => {
+            allowCustomRoutines = e.target.checked;
+            const label = e.target.parentElement.querySelector('span');
+            if (label) label.textContent = allowCustomRoutines ? 'Activo' : 'Inactivo';
+        });
+
         document.getElementById('tr-save-muscle-btn').addEventListener('click', async () => {
             try {
                 const res = await apiFetch(`/api/clients/${clientId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ injuredMuscles: muscleState })
+                    body: JSON.stringify({ injuredMuscles: muscleState, allowCustomRoutines: allowCustomRoutines })
                 });
                 if (res.ok) {
                     const idx = clientsCache.findIndex(c => (c._id == clientId) || (c.id == clientId));
@@ -5133,6 +5158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearProgramClipboard(); // a calendar copy supersedes a copied program day
                 sessionStorage.setItem('fbs_copiedWorkout', JSON.stringify(copiedWorkoutData));
                 sessionStorage.removeItem('fbs_copiedMultiDay');
+                renderCalendarClipboardChip(); // multi-day clipboard gone → hide its chip
                 showToast('Workout copiado. Usa el botón "Pegar" en cualquier otro día.', 'success');
             } else {
                 showToast('No hay workout en este día para copiar.', 'info');
@@ -5180,6 +5206,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // Persistent floating chip shown while calendar days sit on the clipboard, so the
+    // trainer can paste them onto as many start-dates as they want and dismiss it when
+    // done. Mirrors the program builder's clipboard chip (renderProgramClipboardChip).
+    const renderCalendarClipboardChip = () => {
+        let chip = document.getElementById('calendar-clipboard-chip');
+        const count = copiedMultiDayData?.length || 0;
+        if (!count) { chip?.remove(); return; }
+        if (!chip) {
+            chip = document.createElement('div');
+            chip.id = 'calendar-clipboard-chip';
+            chip.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
+            document.body.appendChild(chip);
+        }
+        chip.innerHTML = `
+            <span class="flex items-center gap-2"><i class="fas fa-clipboard text-[#FFDB89]/60"></i>Copiado: <span class="text-white">${count} día${count > 1 ? 's' : ''}</span></span>
+            <span class="text-[11px] font-normal text-[#FFDB89]/40 hidden sm:inline">— usa "Pegar" en el día donde quieres que inicie</span>
+            <button onclick="window.clearCalendarClipboard()" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400/70 hover:text-red-400 border border-red-400/30 hover:border-red-400/60 rounded-full px-2.5 py-1 transition">
+                <i class="fas fa-times text-[10px]"></i>Terminar
+            </button>`;
+    };
+
+    // "Terminar" — clear the calendar clipboard and remove the chip. Called when the
+    // trainer is done pasting (the copy stays alive until they click this).
+    window.clearCalendarClipboard = () => {
+        copiedMultiDayData = null;
+        copiedWorkoutData  = null;
+        sessionStorage.removeItem('fbs_copiedMultiDay');
+        sessionStorage.removeItem('fbs_copiedWorkout');
+        renderCalendarClipboardChip();
+    };
+
     window.copySelectedDays = async () => {
         if(selectedCopyDays.size === 0 || !currentClientViewId) return;
 
@@ -5214,6 +5271,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sessionStorage.setItem('fbs_copiedMultiDay', JSON.stringify(copiedMultiDayData));
         sessionStorage.removeItem('fbs_copiedWorkout');
         window.clearCopySelection();
+        renderCalendarClipboardChip(); // persistent chip: stays until "Terminar"
         showToast(`${workoutsWithOffsets.length} día${workoutsWithOffsets.length > 1 ? 's' : ''} copiado${workoutsWithOffsets.length > 1 ? 's' : ''}. Usa el botón "Pegar" en el día donde quieres que inicie.`, 'success');
     };
 
@@ -8145,23 +8203,40 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         if(response.ok) {
                             successCount++;
+                            window._calendarWorkouts[targetDateStr] = pastedWorkout;
                             const targetCellId = `day-${targetDateStr}`;
                             const cell = document.getElementById(targetCellId);
                             if(cell) {
                                 const area = cell.querySelector('.content-area');
-                                area.innerHTML = `
-                                    <div class="workout-card-wrapper">${window._calendarWorkouts[targetDateStr] = pastedWorkout, ''}
-                                        <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk">
-                                            <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
-                                            <div class="min-w-0 flex-1">
-                                                <div class="text-sm font-bold text-[#FFDB89] truncate">${pastedWorkout.title}</div>
-                                                <div class="text-xs text-[#FFDB89]/50">${pastedWorkout.exercises.length} ejercicios</div>
+                                if (pastedWorkout.isRest) {
+                                    // Rest / active-rest: keep the standard blue (or emerald)
+                                    // badge — never the gold routine card. (Bug fix: copied
+                                    // "Descanso" days used to paste as a gold routine.)
+                                    const isActive = pastedWorkout.restType === 'active_rest';
+                                    const icon  = isActive ? 'fa-person-walking' : 'fa-moon';
+                                    const color = isActive ? '#6EE7B7' : '#93C5FD';
+                                    const label = pastedWorkout.title || (isActive ? 'Descanso Activo' : 'Descanso');
+                                    area.innerHTML = `
+                                        <div class="flex items-center gap-2 py-0.5">
+                                            <div class="w-1 h-6 rounded-full shrink-0" style="background:${color}"></div>
+                                            <i class="fas ${icon} text-xs shrink-0" style="color:${color}"></i>
+                                            <span class="text-xs font-semibold" style="color:${color}">${escHtml(label)}</span>
+                                        </div>`;
+                                } else {
+                                    const exCount = (pastedWorkout.exercises || []).length;
+                                    area.innerHTML = `
+                                        <div class="workout-card-wrapper">
+                                            <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk">
+                                                <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="text-sm font-bold text-[#FFDB89] truncate">${escHtml(pastedWorkout.title || '')}</div>
+                                                    <div class="text-xs text-[#FFDB89]/50">${exCount} ejercicio${exCount !== 1 ? 's' : ''}</div>
+                                                </div>
+                                                <i class="fas fa-chevron-right text-[#FFDB89]/40 text-xs shrink-0 workout-chevron transition-transform duration-200"></i>
                                             </div>
-                                            <i class="fas fa-chevron-right text-[#FFDB89]/40 text-xs shrink-0 workout-chevron transition-transform duration-200"></i>
-                                        </div>
-                                        <div class="workout-expand-content hidden mt-1 border-t border-[#FFDB89]/10"></div>
-                                    </div>
-                                `;
+                                            <div class="workout-expand-content hidden mt-1 border-t border-[#FFDB89]/10"></div>
+                                        </div>`;
+                                }
                                 const cb = cell.querySelector('.copy-day-checkbox');
                                 if(cb) cb.classList.remove('hidden');
                             }
@@ -8171,10 +8246,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 showToast(`${successCount} workout${successCount > 1 ? 's' : ''} pegado${successCount > 1 ? 's' : ''} exitosamente.`, 'success');
-                if(successCount > 0) {
-                    copiedMultiDayData = null;
-                    sessionStorage.removeItem('fbs_copiedMultiDay');
-                }
+                // Keep the clipboard active so the same days can be pasted onto more
+                // start-dates. The trainer dismisses it with "Terminar" on the chip.
 
             } else if(copiedWorkoutData) {
                 // SINGLE-DAY PASTE (legacy behavior)
@@ -9753,6 +9826,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // calendar workout, so the calendar's "Pegar" pastes THIS program day.
             copiedWorkoutData = null; copiedMultiDayData = null;
             sessionStorage.removeItem('fbs_copiedWorkout'); sessionStorage.removeItem('fbs_copiedMultiDay');
+            renderCalendarClipboardChip(); // multi-day clipboard superseded → hide its chip
             syncCopyPasteButtons(); // all cells → Pegar
             // Flash the cell to confirm copy
             const cell = target.closest('.relative.bg-\\[\\#1C1C1E\\]') || target.closest('[class*="h-40"]');
@@ -14295,6 +14369,36 @@ document.addEventListener('DOMContentLoaded', () => {
             buildClientCalendar(workoutMap);
             buildUpcomingView(workoutMap);
             buildHistoryView(workoutMap);
+
+            // Add custom routine button to today if enabled
+            try {
+                const meRes = await apiFetch(`/api/me`);
+                if (meRes.ok) {
+                    const me = await meRes.json();
+                    if (me.allowCustomRoutines) {
+                        const today = getTodayStr();
+                        const todayCell = document.getElementById(`client-day-${today}`);
+                        if (todayCell) {
+                            const contentArea = todayCell.querySelector('div.flex-1');
+                            if (contentArea) {
+                                const btnWrapper = document.createElement('div');
+                                btnWrapper.className = 'ml-auto pl-4';
+                                btnWrapper.innerHTML = `
+                                    <button id="custom-routine-btn" class="px-4 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] text-sm font-semibold rounded-lg transition whitespace-nowrap" title="Crear rutina personalizada">
+                                        <i class="fas fa-plus mr-2"></i> ¿Qué propones?
+                                    </button>`;
+                                contentArea.appendChild(btnWrapper);
+                                document.getElementById('custom-routine-btn').addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    window.showCustomRoutineModal(today);
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error checking custom routine permission:', e);
+            }
         } catch (e) {
             console.error('Error loading client calendar:', e);
             const container = document.getElementById('client-calendar-container');
@@ -15199,6 +15303,252 @@ document.addEventListener('DOMContentLoaded', () => {
         await renderBlogList();
     };
     // ────────────────────────────────────────────────────────────────────────────
+
+    // Custom Routine Modal - for clients to create personalized workouts
+    window.showCustomRoutineModal = function(dateStr) {
+        const modalHtml = `
+            <div id="custom-routine-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                <div class="bg-[#2C2C2E] rounded-2xl border border-[#FFDB89]/20 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <div class="sticky top-0 bg-[#2C2C2E] border-b border-[#FFDB89]/10 p-6 flex items-center justify-between">
+                        <h2 class="text-2xl font-black text-[#FFDB89]">¿Qué propones para hoy entonces?</h2>
+                        <button onclick="document.getElementById('custom-routine-modal')?.remove()" class="text-[#FFDB89]/60 hover:text-[#FFDB89] text-2xl">✕</button>
+                    </div>
+
+                    <div class="p-6 space-y-6">
+                        <!-- Mechanic Selector -->
+                        <div>
+                            <p class="text-sm font-bold text-[#FFDB89] mb-3">Mecanismo</p>
+                            <div class="flex gap-3">
+                                <button class="mechanic-btn flex-1 py-3 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] font-semibold hover:bg-[#FFDB89]/20 transition" data-mechanic="Push">Push</button>
+                                <button class="mechanic-btn flex-1 py-3 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] font-semibold hover:bg-[#FFDB89]/20 transition" data-mechanic="Pull">Pull</button>
+                            </div>
+                        </div>
+
+                        <!-- Body Part Type Selector -->
+                        <div>
+                            <p class="text-sm font-bold text-[#FFDB89] mb-3">Tipo</p>
+                            <div class="flex gap-3">
+                                <button class="bodytype-btn flex-1 py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-semibold hover:bg-[#FFDB89]/20 transition" data-type="Upper">Upper</button>
+                                <button class="bodytype-btn flex-1 py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-semibold hover:bg-[#FFDB89]/20 transition" data-type="Lower">Lower</button>
+                                <button class="bodytype-btn flex-1 py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-semibold hover:bg-[#FFDB89]/20 transition" data-type="Full Body">Full Body</button>
+                            </div>
+                        </div>
+
+                        <!-- Specific Muscle Groups -->
+                        <div>
+                            <p class="text-sm font-bold text-[#FFDB89] mb-3">Grupo muscular específico</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Pecho">Pecho</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Espalda">Espalda</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Core">Core</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Hombros">Hombros</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Biceps">Biceps</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Triceps">Triceps</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Quads">Quads</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Hamstrings">Hamstrings</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Pantorrillas">Pantorrillas</button>
+                                <button class="muscle-btn py-2 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-semibold hover:bg-[#FFDB89]/20 transition" data-muscle="Glúteos">Glúteos</button>
+                            </div>
+                        </div>
+
+                        <!-- Exercise Search & Selection -->
+                        <div id="exercise-section" class="hidden">
+                            <p class="text-sm font-bold text-[#FFDB89] mb-3">Ejercicios disponibles</p>
+                            <input type="text" id="exercise-search" placeholder="Buscar ejercicio..." class="w-full p-3 rounded-lg bg-[#1a1a1c] border border-[#FFDB89]/30 text-[#FFDB89] placeholder:text-[#FFDB89]/40 text-sm mb-4">
+                            <div id="exercises-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
+                        </div>
+
+                        <!-- Selected Exercises -->
+                        <div id="selected-section" class="hidden">
+                            <p class="text-sm font-bold text-[#FFDB89] mb-3">Ejercicios seleccionados</p>
+                            <div id="selected-exercises" class="space-y-3 max-h-60 overflow-y-auto"></div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex gap-3 pt-4 border-t border-[#FFDB89]/10">
+                            <button onclick="document.getElementById('custom-routine-modal')?.remove()" class="flex-1 py-3 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] font-semibold hover:bg-[#FFDB89]/10 transition">Cancelar</button>
+                            <button id="save-routine-btn" class="flex-1 py-3 rounded-lg bg-[#FFDB89] text-[#030303] font-semibold hover:bg-[#FFDB89]/90 transition" disabled>Guardar rutina</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Track selections
+        let selections = { mechanic: null, bodyType: null, muscles: [], exercises: [] };
+        let allExercises = [];
+
+        // Fetch exercises library
+        (async () => {
+            try {
+                const res = await apiFetch('/api/exercises');
+                if (res.ok) allExercises = await res.json();
+            } catch (e) {
+                console.error('Error loading exercises:', e);
+            }
+        })();
+
+        // Mechanic buttons
+        document.querySelectorAll('.mechanic-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mechanic-btn').forEach(b => b.classList.remove('bg-[#FFDB89]/20', 'border-[#FFDB89]'));
+                btn.classList.add('bg-[#FFDB89]/20', 'border-[#FFDB89]');
+                selections.mechanic = btn.dataset.mechanic;
+                updateExerciseList();
+            });
+        });
+
+        // Body type buttons
+        document.querySelectorAll('.bodytype-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.bodytype-btn').forEach(b => b.classList.remove('bg-[#FFDB89]/20', 'border-[#FFDB89]'));
+                btn.classList.add('bg-[#FFDB89]/20', 'border-[#FFDB89]');
+                selections.bodyType = btn.dataset.type;
+                updateExerciseList();
+            });
+        });
+
+        // Muscle buttons (multi-select)
+        document.querySelectorAll('.muscle-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                btn.classList.toggle('bg-[#FFDB89]/20');
+                btn.classList.toggle('border-[#FFDB89]');
+                const muscle = btn.dataset.muscle;
+                if (selections.muscles.includes(muscle)) {
+                    selections.muscles = selections.muscles.filter(m => m !== muscle);
+                } else {
+                    selections.muscles.push(muscle);
+                }
+                updateExerciseList();
+            });
+        });
+
+        // Update exercise list based on selections
+        const updateExerciseList = () => {
+            if (selections.muscles.length === 0) {
+                document.getElementById('exercise-section').classList.add('hidden');
+                return;
+            }
+            document.getElementById('exercise-section').classList.remove('hidden');
+
+            const filtered = allExercises.filter(ex =>
+                selections.muscles.some(m => ex.bodyPart?.toLowerCase().includes(m.toLowerCase()))
+            );
+
+            renderExercises(filtered);
+        };
+
+        const renderExercises = (exercises) => {
+            const list = document.getElementById('exercises-list');
+            list.innerHTML = exercises.map(ex => `
+                <div class="flex items-center justify-between p-3 bg-[#1a1a1c] rounded-lg border border-[#FFDB89]/10">
+                    <span class="text-sm text-[#FFDB89]">${ex.name}</span>
+                    <button class="add-exercise-btn px-3 py-1 bg-[#FFDB89]/20 border border-[#FFDB89]/30 text-[#FFDB89] rounded text-xs font-bold hover:bg-[#FFDB89]/30 transition" data-id="${ex._id}" data-name="${ex.name}">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>`).join('');
+
+            document.querySelectorAll('.add-exercise-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.id;
+                    const name = btn.dataset.name;
+                    if (!selections.exercises.find(e => e.id === id)) {
+                        selections.exercises.push({ id, name, sets: 3, reps: 10 });
+                        renderSelectedExercises();
+                    }
+                });
+            });
+        };
+
+        const renderSelectedExercises = () => {
+            if (selections.exercises.length === 0) {
+                document.getElementById('selected-section').classList.add('hidden');
+                document.getElementById('save-routine-btn').disabled = true;
+                return;
+            }
+            document.getElementById('selected-section').classList.remove('hidden');
+            document.getElementById('save-routine-btn').disabled = false;
+
+            const selected = document.getElementById('selected-exercises');
+            selected.innerHTML = selections.exercises.map((ex, idx) => `
+                <div class="flex items-center gap-3 p-3 bg-[#1a1a1c] rounded-lg border border-[#FFDB89]/10">
+                    <span class="flex-1 text-sm text-[#FFDB89]">${ex.name}</span>
+                    <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1">
+                            <label class="text-xs text-[#FFDB89]/60">Sets:</label>
+                            <input type="number" min="1" max="10" value="${ex.sets}" class="sets-input w-12 px-2 py-1 bg-[#030303] border border-[#FFDB89]/20 rounded text-[#FFDB89] text-xs" data-idx="${idx}">
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <label class="text-xs text-[#FFDB89]/60">Reps:</label>
+                            <input type="number" min="1" max="50" value="${ex.reps}" class="reps-input w-12 px-2 py-1 bg-[#030303] border border-[#FFDB89]/20 rounded text-[#FFDB89] text-xs" data-idx="${idx}">
+                        </div>
+                        <button class="remove-exercise-btn px-2 py-1 text-red-400 hover:text-red-300 text-xs" data-idx="${idx}">✕</button>
+                    </div>
+                </div>`).join('');
+
+            // Update values on input change
+            document.querySelectorAll('.sets-input').forEach(inp => {
+                inp.addEventListener('change', (e) => {
+                    const idx = parseInt(e.target.dataset.idx);
+                    selections.exercises[idx].sets = parseInt(e.target.value) || 1;
+                });
+            });
+            document.querySelectorAll('.reps-input').forEach(inp => {
+                inp.addEventListener('change', (e) => {
+                    const idx = parseInt(e.target.dataset.idx);
+                    selections.exercises[idx].reps = parseInt(e.target.value) || 10;
+                });
+            });
+
+            // Remove exercise
+            document.querySelectorAll('.remove-exercise-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(e.target.dataset.idx);
+                    selections.exercises.splice(idx, 1);
+                    renderSelectedExercises();
+                });
+            });
+        };
+
+        // Save routine
+        document.getElementById('save-routine-btn').addEventListener('click', async () => {
+            if (selections.exercises.length === 0) return;
+
+            try {
+                // Create workout document
+                const workout = {
+                    date: dateStr,
+                    title: `Rutina personalizada - ${new Date(dateStr).toLocaleDateString('es-ES', {weekday: 'long'})}`,
+                    isRest: false,
+                    exercises: selections.exercises.map(ex => ({
+                        name: ex.name,
+                        stats: `${ex.sets}x${ex.reps}`,
+                        isComplete: false,
+                        rpe: null
+                    }))
+                };
+
+                const res = await apiFetch(`/api/client-workouts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(workout)
+                });
+
+                if (res.ok) {
+                    showToast('Rutina personalizada creada', 'success');
+                    document.getElementById('custom-routine-modal')?.remove();
+                    // Reload calendar
+                    window.location.reload();
+                } else {
+                    showToast('Error al crear la rutina', 'error');
+                }
+            } catch (e) {
+                console.error('Error saving routine:', e);
+                showToast('Error al guardar', 'error');
+            }
+        });
+    };
 
     // FIX: initAuthListeners was called OUTSIDE this closure before — moved inside
     initAuthListeners();

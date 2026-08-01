@@ -1091,3 +1091,164 @@ Client entries and uploads are **durable** — there is no mechanism that erases
 - **No TTL** on any client-data collection (only `PendingSignup`, an ephemeral 24 h signup-redirect record). **No cron / scheduled cleanup.** All deletes are explicit/user-initiated.
 - The one automated deletion — program → calendar **re-sync** — only removes *future, untouched, program-derived* days; `isProtectedWorkout` blocks deletion of anything completed, missed, RPE'd, with logged results, or manually edited (see section 3).
 - Nutrition saves are **partial** (`$set` of only provided fields), so saving water never wipes meals, and logging exercise never wipes either.
+
+---
+
+## 14. Public Landing Page & Bilingual Content
+
+Everything before login lives in `public/index.html` inside `#auth-screen`. It is **not** part of the
+SPA module system — it is static markup that ships with the page, so it renders instantly and is
+visible to search engines. `#dashboard-container` (the SPA) is the sibling that takes over after auth.
+
+### 14.1 Section order, and why it's ordered that way
+
+A landing page is an argument, and each section answers the objection the previous one raises:
+
+| Order | Section | Anchor | The job it does |
+|---|---|---|---|
+| 1 | Hero + login card | — | Says what this is, and lets existing clients in without scrolling |
+| 2 | Daily tip bar | — | Movement / life; proves the platform is active |
+| 3 | **¿Por qué unirte?** | `#por-que-unirte` | Answers *"what do I actually get?"* |
+| 4 | Funcionalidades | — | Proves the previous claim with concrete tooling |
+| 5 | **Planes** | `#planes` | Answers *"what does it cost?"* — placed **after** value, never before |
+| 6 | **Sobre mí** | `#sobre-mi` | Answers *"who is this person?"* |
+| 7 | **¿Qué me diferencia?** | `#que-me-diferencia` | Answers *"why not a cheaper app?"* |
+| 8 | Testimonios | `#testimonios` | Third-party proof of everything above |
+| 9 | CTA de cierre | — | Catches the reader who scrolled the whole way |
+| 10 | Blog | `#blog-section` | Free value / SEO surface |
+| 11 | Contacto | `#contact-section` | The low-commitment alternative to paying |
+| 12 | Footer | — | Logo, social, legal, copyright |
+
+**Multiple CTAs, deliberately staged.** A visitor converts at different moments, so there are five
+entry points: the nav "Empezar" button, the CTA under *¿Por qué unirte?*, the two plan buttons, the
+"Hablemos de tus metas" button under *Sobre mí*, and the closing CTA. Buying CTAs go to
+`/signup.html`; hesitant-visitor CTAs scroll to `#contact-section`.
+
+### 14.2 Pricing has exactly one source of truth
+
+The plan cards are **hand-written HTML**, but the prices they show ($95/mes, $260) mirror
+`SIGNUP_PLANS` in `server.js`. That array is what `/api/signup/plans` serves and what Stripe
+actually charges.
+
+> ⚠️ **If you change a price, change it in `SIGNUP_PLANS` first**, then update the two figures in the
+> `#planes` section. The landing page is marketing copy; the server is the authority. They are not
+> wired together, so they can drift — and a landing page advertising a price the checkout doesn't
+> honor is the worst kind of bug.
+
+Each plan button links with a query param that preselects that plan at checkout:
+
+```html
+<a href="/signup.html?plan=monthly">        <!-- id de SIGNUP_PLANS -->
+<a href="/signup.html?plan=progressions3">
+```
+
+`signup.html` reads it defensively — `findIndex` on the plan id, falling back to index `0` when the
+param is missing or unknown, so a stale or hand-edited link can never render a checkout with **no**
+plan selected.
+
+### 14.3 The i18n system (`data-key`)
+
+Spanish is the default; English is a toggle. There is no i18n library — the whole mechanism is ~40
+lines and worth understanding because **every new section must participate in it or it will simply
+stay Spanish when a visitor switches to English.**
+
+**How it works.** A `translations` object holds two parallel dictionaries (`es` and `en`). Any element
+carrying `data-key="someKey"` gets its text replaced from the active dictionary; `data-key-ph` does
+the same for `placeholder` attributes.
+
+```html
+<h2 data-key="whyTitle">¿Por qué unirte a mi programa?</h2>
+```
+
+```js
+translations.es.whyTitle = "¿Por qué unirte a mi programa?";
+translations.en.whyTitle = "Why join my program?";
+```
+
+**The subtlety worth knowing.** `applyLanguage()` does not blindly set `textContent` — that would
+delete child elements. When an element is an `<a>`/`<button>` or contains an `<i>`, `<span>`,
+`<strong>`, `<em>` or `<b>`, it walks `childNodes` and rewrites only the **text nodes**, leaving the
+Font Awesome `<i>` icon intact. This is why a button can be written as:
+
+```html
+<a ... data-key="whyCta"><i class="fas fa-bolt"></i> Empezar ahora</a>
+```
+
+…and still keep its icon after switching languages. If you nest text inside a `<span>` for styling,
+put the `data-key` on the **span**, not the ancestor — otherwise the ancestor's text-node walk will
+skip it. (`plan1Period` is exactly this case: the `/mes` suffix is a styled span inside the price
+`<p>`, so it carries its own key.)
+
+**Checking your work.** Both dictionaries must stay at equal length with identical key sets. A key
+present in `es` but missing from `en` silently leaves the Spanish string on screen. This one-liner
+audits parity and catches duplicate keys (which JS object literals silently overwrite):
+
+```bash
+node -e "const s=require('fs').readFileSync('public/index.html','utf8');const b=s.slice(s.indexOf('const translations = {'));const es=b.slice(b.indexOf('es: {'),b.indexOf('en: {')),en=b.slice(b.indexOf('en: {'));const k=x=>[...x.matchAll(/^\s{6}([A-Za-z]\w*):/gm)].map(m=>m[1]);const E=k(es),N=k(en);console.log('es',E.length,'en',N.length,'| solo ES:',E.filter(x=>!N.includes(x)),'| solo EN:',N.filter(x=>!E.includes(x)))"
+```
+
+### 14.4 Two language keys, and why there are two
+
+| Key | Storage | Meaning |
+|---|---|---|
+| `fbs_lang` | `localStorage` | The **saved default**. Only written when the visitor accepts the "¿Hacer X tu idioma predeterminado?" prompt. |
+| `fbs_lang_session` | `sessionStorage` | The language being viewed **right now**, saved or not. |
+
+This split exists because of a real bug: a visitor toggling to English *without* saving a default,
+then clicking "Terms & Conditions", used to land on a Spanish page — because the legal page only read
+`localStorage`, which was still `null`. Both the landing page and the legal pages now resolve
+language as:
+
+```js
+sessionStorage.getItem('fbs_lang_session') || localStorage.getItem('fbs_lang') || 'es'
+```
+
+…so the language follows the visitor across pages within a tab, while "default language" keeps its
+original, deliberate meaning. Both reads/writes are wrapped in `try/catch` because Safari private
+mode throws on storage access.
+
+### 14.5 Legal pages (`terminos.html`, `privacidad.html`)
+
+Standalone pages served straight off `express.static('public')` — not SPA modules, so they are
+linkable, shareable and crawlable.
+
+**They use a different translation strategy on purpose.** The landing page swaps ~150 short strings,
+so per-string `data-key` is right. Legal pages are long prose, where 60 keys of paragraph-length text
+would be miserable to maintain and easy to desynchronize. Instead each page holds two complete
+content blocks — `#content-es` and `#content-en` — and the toggle just flips `.hidden` between them.
+Only the page *chrome* (nav "Volver", footer links, `document.title`) uses a small key map.
+
+> **The trade-off, stated honestly:** whole-block swapping means both language versions ship in every
+> page load, and a change to a clause must be made in **two** places. That's accepted because legal
+> text changes rarely and must stay coherent per language — a half-translated contract is worse than
+> a slightly larger page.
+
+Both pages are **starter drafts, not lawyer-reviewed.** They cover the Stripe billing terms, the
+cancellation/refund rules, the health disclaimer (the clause that matters most for a training
+business), and — in the privacy policy — the actual subprocessors this app uses: Stripe, MongoDB
+Atlas, Cloudinary and Anthropic (the nutrition-label scanner). If a subprocessor is ever added or
+removed, **that table in `privacidad.html` is the thing to update.**
+
+### 14.6 The build step you must not forget
+
+`index.html` loads **`/output.css`**, a prebuilt Tailwind file — **not** the Tailwind CDN.
+
+> ⚠️ Any utility class you add to the landing page **does not exist** until you rebuild:
+>
+> ```bash
+> npm run build:css
+> ```
+>
+> This is a cousin of the CDN-JIT trap in section 3. The failure mode is identical and just as quiet:
+> the markup looks correct, no error appears in the console, and the element simply renders unstyled
+> or with a collapsed layout. **Rebuild, then look at the page in a browser** — a type-check cannot
+> catch this class of bug.
+
+### 14.7 Content placeholders still to fill
+
+The *Sobre mí* section ships with `[EDITA: ...]` markers where personal claims belong (years of
+experience, certifications) plus a photo placeholder. Grep before launching:
+
+```bash
+grep -rn "EDITA:\|EDIT:" public/index.html
+```

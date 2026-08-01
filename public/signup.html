@@ -139,8 +139,15 @@
         plans = await res.json();
       } catch { plans = []; }
       const wrap = document.getElementById('plans');
+
+      // La landing enlaza aquí con ?plan=<id> (ej. /signup.html?plan=progressions3).
+      // Si el id existe lo preseleccionamos; si no, cae al primer plan de la lista.
+      const requested = new URLSearchParams(location.search).get('plan');
+      const preIdx = plans.findIndex(p => p.id === requested);
+      const initialIdx = preIdx >= 0 ? preIdx : 0;
+
       wrap.innerHTML = plans.map((p, i) => `
-        <div class="plan${i === 0 ? ' selected' : ''}" data-id="${p.id}">
+        <div class="plan${i === initialIdx ? ' selected' : ''}" data-id="${p.id}">
           <div class="name">${esc(p.label)}</div>
           <div class="price">${fmtPrice(p)}</div>
           <div class="blurb">${esc(p.blurb)}</div>
@@ -148,7 +155,7 @@
             <button class="more" data-toggle="${p.id}" type="button">Más información <span data-arrow="${p.id}">▾</span></button>
             <div class="moreText" id="more-${p.id}" style="display:none">${esc(p.moreInfo)}</div>` : ''}
         </div>`).join('');
-      selected = plans[0]?.id || null;
+      selected = plans[initialIdx]?.id || null;
 
       // Select a plan (ignores clicks that originate on the "Más información" toggle).
       wrap.querySelectorAll('.plan').forEach(el => el.addEventListener('click', () => {

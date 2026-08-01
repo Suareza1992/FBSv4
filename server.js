@@ -4450,9 +4450,9 @@ const getOrCreateStripeCustomer = async (clientUser) => {
 // EDIT these to match your real offering. `mode` is 'subscription' (recurring
 // monthly) or 'payment' (one-time). Amounts are in USD.
 const SIGNUP_PLANS = [
-    { id: 'monthly',       label: 'Coaching Mensual',  amount: 99,  mode: 'subscription', blurb: 'Entrenamiento + nutrición personalizados, con ajustes cada semana. Se renueva cada mes.' },
+    { id: 'monthly',       label: 'Coaching mensual',  amount: 95,  mode: 'subscription', blurb: 'Entrenamiento + nutrición personalizados, con ajustes cada semana. Se renueva cada mes.' },
     {
-        id: 'progressions3', label: '3 Progresiones', amount: 250, mode: 'payment',
+        id: 'progressions3', label: '3 Progresiones', amount: 260, mode: 'payment',
         blurb: 'Tres progresiones de programa completas en un solo pago. Sin renovación.',
         // ─────────────────────────────────────────────────────────────────────────────
         //  EDITA AQUÍ ↓  — Este texto aparece al pulsar "Más información" en el plan $250.

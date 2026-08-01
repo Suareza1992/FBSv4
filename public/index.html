@@ -87,10 +87,25 @@
               <i class="fas fa-dumbbell text-lg sm:text-2xl text-fbs-gold flex-shrink-0"></i>
               <span class="font-black text-base sm:text-xl tracking-tight text-white truncate">FitbySuárez</span>
             </div>
-            <button onclick="toggleLanguage()" class="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-fbs-gold/30 text-fbs-gold hover:border-fbs-gold hover:text-fbs-gold transition text-sm font-bold flex-shrink-0">
-              <i class="fas fa-globe text-xs"></i>
-              <span id="lang-btn-text">EN</span>
-            </button>
+
+            <!-- Enlaces de sección — solo en pantallas grandes -->
+            <div class="hidden lg:flex items-center gap-7 text-sm font-bold">
+              <a href="#por-que-unirte" class="text-fbs-gold/60 hover:text-fbs-gold transition" data-key="navWhy">Por qué unirte</a>
+              <a href="#planes" class="text-fbs-gold/60 hover:text-fbs-gold transition" data-key="navPlans">Planes</a>
+              <a href="#sobre-mi" class="text-fbs-gold/60 hover:text-fbs-gold transition" data-key="navAbout">Sobre mí</a>
+              <a href="#testimonios" class="text-fbs-gold/60 hover:text-fbs-gold transition" data-key="navTesti">Testimonios</a>
+              <a href="#contact-section" class="text-fbs-gold/60 hover:text-fbs-gold transition" data-key="navContact">Contacto</a>
+            </div>
+
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <a href="/signup.html" class="inline-flex btn-gold px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm items-center gap-1.5 sm:gap-2 whitespace-nowrap" data-key="navStart">
+                <i class="fas fa-bolt text-xs"></i> Empezar
+              </a>
+              <button onclick="toggleLanguage()" class="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-fbs-gold/30 text-fbs-gold hover:border-fbs-gold hover:text-fbs-gold transition text-sm font-bold flex-shrink-0">
+                <i class="fas fa-globe text-xs"></i>
+                <span id="lang-btn-text">EN</span>
+              </button>
+            </div>
           </div>
         </div>
       </nav>
@@ -139,36 +154,49 @@
             <div id="login-card" class="login-glass border border-fbs-gold/25 rounded-2xl shadow-2xl overflow-hidden">
               <div class="h-1 w-full bg-gradient-to-r from-fbs-gold via-fbs-gold/50 to-fbs-gold"></div>
               <div class="p-8">
-                <h2 class="text-2xl font-black text-white mb-1" data-key="signIn">Iniciar sesión</h2>
-                <p class="text-sm text-fbs-gold/50 mb-7" data-key="accessDash">Accede a tu panel</p>
+                <!-- Header — click anywhere on it to expand/collapse the form -->
+                <button type="button" id="login-header-toggle" onclick="window.toggleLoginCard()"
+                  class="w-full flex items-center justify-between gap-3 text-left" aria-expanded="false" aria-controls="login-collapse">
+                  <h2 class="text-2xl font-black text-white" data-key="signIn">Accede a tu perfil</h2>
+                  <i id="login-chevron" class="fas fa-chevron-down text-fbs-gold/60 shrink-0" style="transition:transform .25s ease"></i>
+                </button>
 
-                <form id="login-form" onsubmit="event.preventDefault();">
-                  <div class="mb-4">
-                    <input type="email" id="login-email" placeholder="Correo electrónico"
-                      class="fbs-input w-full p-4 rounded-xl text-sm" data-key-ph="emailPh">
-                  </div>
-                  <div class="mb-4 relative">
-                    <input type="password" id="login-password" placeholder="Contraseña"
-                      class="fbs-input w-full p-4 rounded-xl text-sm pr-12" data-key-ph="passwordPh">
-                    <button type="button" id="toggle-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
-                      <i class="fas fa-eye text-sm"></i>
-                    </button>
-                  </div>
-                  <div class="flex items-center justify-between mb-6">
-                    <label class="flex items-center gap-2 text-sm text-fbs-gold/50 cursor-pointer select-none">
-                      <input type="checkbox" id="remember-me" class="rounded border-fbs-gold/40 accent-fbs-gold">
-                      <span data-key="rememberMe">Recordarme</span>
-                    </label>
-                    <button type="button" id="forgot-password-link" class="text-sm text-fbs-gold/70 hover:text-fbs-gold font-semibold transition" data-key="forgotPassLink">
-                      Olvidé mi contraseña
-                    </button>
-                  </div>
-                  <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base" data-key="startTraining">
-                    Comenzar
-                  </button>
-                </form>
+                <!-- Collapsed state CTA: the golden button that opens the card -->
+                <button type="button" id="login-open-btn" onclick="window.toggleLoginCard(true)"
+                  class="btn-gold w-full p-4 rounded-xl text-base mt-6" data-key="startTraining">
+                  Iniciar sesión
+                </button>
 
-                <p id="auth-message" class="text-center mt-4 text-sm font-bold hidden"></p>
+                <!-- Collapsible login form — hidden by default -->
+                <div id="login-collapse" class="hidden mt-6">
+                  <form id="login-form" onsubmit="event.preventDefault();">
+                    <div class="mb-4">
+                      <input type="email" id="login-email" placeholder="Correo electrónico"
+                        class="fbs-input w-full p-4 rounded-xl text-sm" data-key-ph="emailPh">
+                    </div>
+                    <div class="mb-4 relative">
+                      <input type="password" id="login-password" placeholder="Contraseña"
+                        class="fbs-input w-full p-4 rounded-xl text-sm pr-12" data-key-ph="passwordPh">
+                      <button type="button" id="toggle-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-fbs-gold/50 hover:text-fbs-gold transition">
+                        <i class="fas fa-eye text-sm"></i>
+                      </button>
+                    </div>
+                    <div class="flex items-center justify-between mb-6">
+                      <label class="flex items-center gap-2 text-sm text-fbs-gold/50 cursor-pointer select-none">
+                        <input type="checkbox" id="remember-me" class="rounded border-fbs-gold/40 accent-fbs-gold">
+                        <span data-key="rememberMe">Recordarme</span>
+                      </label>
+                      <button type="button" id="forgot-password-link" class="text-sm text-fbs-gold/70 hover:text-fbs-gold font-semibold transition" data-key="forgotPassLink">
+                        Olvidé mi contraseña
+                      </button>
+                    </div>
+                    <button type="submit" class="btn-gold w-full p-4 rounded-xl text-base" data-key="startTraining">
+                      Iniciar sesión
+                    </button>
+                  </form>
+
+                  <p id="auth-message" class="text-center mt-4 text-sm font-bold hidden"></p>
+                </div>
               </div>
             </div>
 
@@ -276,16 +304,61 @@
         </div>
       </div>
 
-      <!-- CTA -->
-      <section class="section-dark py-20 border-t border-fbs-gold/15">
-        <div class="max-w-4xl mx-auto px-4 text-center">
-          <h2 class="text-4xl md:text-5xl font-black text-white mb-4" data-key="ctaTitle">¿Listo para subir de nivel?</h2>
-          <p class="text-fbs-gold/70 text-lg mb-10 max-w-xl mx-auto" data-key="ctaSub">Únete a la plataforma usada por atletas de alto rendimiento.</p>
-          <a href="#contact-section"
-            onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;"
-            class="btn-gold px-10 py-4 rounded-full text-lg inline-flex items-center gap-3" data-key="ctaBtn">
-            <i class="fas fa-envelope"></i> Contáctame
-          </a>
+      <!-- ═══════════════════ ¿POR QUÉ UNIRTE A MI PROGRAMA? ═══════════════════ -->
+      <section id="por-que-unirte" class="section-dark py-24 border-t border-fbs-gold/15">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div class="text-center max-w-3xl mx-auto mb-14">
+            <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3" data-key="whyLabel">Empieza aquí</p>
+            <h2 class="text-3xl md:text-5xl font-black text-white" data-key="whyTitle">¿Por qué unirte a mi programa?</h2>
+            <p class="mt-5 text-fbs-gold/70 text-base md:text-lg leading-relaxed" data-key="whyIntro">
+              Porque no vas a recibir una rutina genérica sacada de una plantilla. Vas a recibir un plan
+              construido para tu cuerpo, tu horario y tu meta — y ajustado cada semana según lo que
+              realmente estés logrando.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-14">
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 mb-5 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                <i class="fas fa-user-check"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-3" data-key="why1Title">Hecho para ti, no para "todos"</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="why1Desc">
+                Tu programa parte de tu nivel actual, tu equipo disponible y los días que de verdad
+                puedes entrenar. Si tienes una lesión o una limitación, el plan se construye alrededor de eso.
+              </p>
+            </div>
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 mb-5 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                <i class="fas fa-arrows-rotate"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-3" data-key="why2Title">Ajustes constantes</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="why2Desc">
+                Registras tus pesos, repeticiones y tu esfuerzo percibido (RPE) después de cada sesión.
+                Yo lo reviso y ajusto el siguiente bloque. Nada de repetir la misma rutina durante meses.
+              </p>
+            </div>
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 mb-5 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                <i class="fas fa-utensils"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-3" data-key="why3Title">Nutrición que sí puedes sostener</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="why3Desc">
+                Con comidas reales de aquí — arroz, habichuelas, plátano, pollo del colmado de la esquina.
+                Puedes escanear una etiqueta con la cámara y registrarla en segundos.
+              </p>
+            </div>
+          </div>
+
+          <div class="text-center">
+            <a href="/signup.html"
+              class="btn-gold px-10 py-4 rounded-full text-lg inline-flex items-center gap-3" data-key="whyCta">
+              <i class="fas fa-bolt"></i> ¡Empieza ahora!
+            </a>
+            <p class="mt-4 text-fbs-gold/40 text-sm" data-key="whyCtaNote">Sin contratos. Cancelas cuando quieras.</p>
+          </div>
+
         </div>
       </section>
 
@@ -299,27 +372,27 @@
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="feat-card section-card p-8 rounded-2xl">
+            <div class="feat-card section-card p-8 rounded-2xl text-center">
               <h3 class="text-xl font-black text-white mb-4" data-key="f1Title">Calendario inteligente</h3>
-              <div class="flex items-start gap-4">
+              <div class="flex flex-col items-center gap-4">
                 <div class="w-12 h-12 shrink-0 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
                   <i class="fas fa-calendar-alt"></i>
                 </div>
                 <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f1Desc">Organiza tus semanas de entrenamiento de manera eficiente.</p>
               </div>
             </div>
-            <div class="feat-card section-card p-8 rounded-2xl">
+            <div class="feat-card section-card p-8 rounded-2xl text-center">
               <h3 class="text-xl font-black text-white mb-4" data-key="f2Title">Análisis de video</h3>
-              <div class="flex items-start gap-4">
+              <div class="flex flex-col items-center gap-4">
                 <div class="w-12 h-12 shrink-0 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
                   <i class="fas fa-video"></i>
                 </div>
                 <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="f2Desc">Sube videos de tu técnica y recibe feedback instantáneo.</p>
               </div>
             </div>
-            <div class="feat-card section-card p-8 rounded-2xl">
+            <div class="feat-card section-card p-8 rounded-2xl text-center">
               <h3 class="text-xl font-black text-white mb-4" data-key="f3Title">Métricas de progreso</h3>
-              <div class="flex items-start gap-4">
+              <div class="flex flex-col items-center gap-4">
                 <div class="w-12 h-12 shrink-0 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
                   <i class="fas fa-chart-line"></i>
                 </div>
@@ -330,8 +403,197 @@
         </div>
       </section>
 
+      <!-- ═══════════════════════════ PLANES ═══════════════════════════ -->
+      <section id="planes" class="section-dim py-24 border-t border-fbs-gold/10">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div class="text-center max-w-2xl mx-auto mb-14">
+            <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3" data-key="plansLabel">Planes</p>
+            <h2 class="text-3xl md:text-5xl font-black text-white" data-key="plansTitle">Escoge cómo quieres trabajar conmigo</h2>
+            <p class="mt-5 text-fbs-gold/70 text-base leading-relaxed" data-key="plansSub">
+              Dos formas de empezar. Ambas incluyen acceso completo a la plataforma, en web y en tu teléfono.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+
+            <!-- Plan: Coaching mensual ($99 / mes) — id 'monthly' en SIGNUP_PLANS -->
+            <!-- flex flex-col + mt-auto on the button keeps both cards the same height. -->
+            <div class="feat-card section-card rounded-2xl p-8 relative flex flex-col" style="border-color: rgba(255,219,137,0.45);">
+              <span class="absolute -top-3 left-8 bg-fbs-gold text-fbs-dark text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full" data-key="planPopular">Más elegido</span>
+              <h3 class="text-2xl font-black text-fbs-gold mb-1" data-key="plan1Name">Coaching mensual</h3>
+              <p class="text-fbs-gold/50 text-sm mb-5" data-key="plan1Tag">Acompañamiento continuo</p>
+              <p class="text-5xl font-black text-white mb-1">$95<span class="text-base font-bold text-fbs-gold/50" data-key="plan1Period">/mes</span></p>
+              <p class="text-fbs-gold/40 text-xs mb-7" data-key="plan1Renew">Se renueva cada mes. Cancelas cuando quieras.</p>
+
+              <ul class="space-y-3 mb-8">
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan1F1">Programa de entrenamiento personalizado</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan1F2">Plan de nutrición ajustado a tus metas</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan1F3">Ajustes cada semana según tu progreso</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan1F4">Videos demostrativos de cada ejercicio</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan1F5">Registro de entrenamiento con RPE</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan1F6">Escáner de etiquetas nutricionales</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan1F7">Métricas, medidas y fotos de progreso</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan1F8">Comunicación directa conmigo</span></li>
+              </ul>
+
+              <a href="/signup.html?plan=monthly" class="btn-gold w-full py-4 rounded-xl text-base flex items-center justify-center gap-2 mt-auto" data-key="plan1Btn">
+                <i class="fas fa-arrow-right"></i> Empezar ahora
+              </a>
+            </div>
+
+            <!-- Plan: Bloque de entrenamiento ($260 pago único) — id 'progressions3' en SIGNUP_PLANS -->
+            <div class="feat-card section-card rounded-2xl p-8 flex flex-col">
+              <h3 class="text-2xl font-black text-fbs-gold mb-1" data-key="plan2Name">Bloque de entrenamiento</h3>
+              <p class="text-fbs-gold/50 text-sm mb-5" data-key="plan2Tag">Pago único, sin renovación</p>
+              <p class="text-5xl font-black text-white mb-1">$260</p>
+              <p class="text-fbs-gold/40 text-xs mb-7" data-key="plan2Renew">Un solo pago. No se renueva automáticamente.</p>
+
+              <ul class="space-y-3 mb-8">
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan2Intro">Todos los beneficios del Coaching mensual, en un bloque de tres meses</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan2F1">Una progresión separada en fases</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan2F2">Entre 9 y 12 semanas de entrenamiento</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan2F3">Dificultad que sube de forma planificada</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan2F4">Videos demostrativos de cada ejercicio</span></li>
+                <li class="flex items-start gap-3 text-fbs-gold/70 text-sm"><i class="fas fa-check text-fbs-gold mt-1 shrink-0"></i><span data-key="plan2F5">Registro de entrenamiento con RPE</span></li>
+              </ul>
+
+              <a href="/signup.html?plan=progressions3" class="w-full py-4 rounded-xl text-base font-black flex items-center justify-center gap-2 border border-fbs-gold/40 text-fbs-gold hover:bg-fbs-gold/10 hover:border-fbs-gold transition mt-auto" data-key="plan2Btn">
+                <i class="fas fa-arrow-right"></i> Comprar progresiones
+              </a>
+            </div>
+
+          </div>
+
+          <p class="text-center text-fbs-gold/40 text-sm mt-10" data-key="plansHelp">
+            ¿No sabes cuál te conviene? Escríbeme y lo hablamos antes de que pagues nada.
+          </p>
+
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════ SOBRE MÍ ═══════════════════════════ -->
+      <section id="sobre-mi" class="section-dark py-24 border-t border-fbs-gold/10">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex flex-col md:flex-row gap-12 items-stretch">
+
+            <div class="md:w-2/5 w-full">
+              <div class="rounded-2xl overflow-hidden border border-fbs-gold/20 bg-fbs-charcoal flex items-center justify-center">
+                <!-- EDITA: sustituye este bloque por tu foto -> <img src="/tu-foto.jpg" class="w-full h-full object-cover" alt="Ángel Suárez"> -->
+                <div class="text-center px-6">
+                  <i class="fas fa-camera text-fbs-gold/25 text-5xl mb-3"></i>
+                  <p class="text-fbs-gold/30 text-xs">EDITA: tu foto aquí</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="md:w-3/5 w-full">
+              <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3" data-key="aboutLabel">Sobre mí</p>
+              <h2 class="text-3xl md:text-5xl font-black text-white mb-2" data-key="aboutName">Ángel Suárez</h2>
+              <p class="text-fbs-gold font-bold mb-6" data-key="aboutRole">Entrenador personal · Puerto Rico</p>
+
+              <div class="space-y-4 text-fbs-gold/70 text-base leading-relaxed">
+                <p data-key="aboutP1">
+                  Llevo 17 años entrenando personas. En todo ese tiempo aprendí algo que no cambia:
+                  el mejor programa no es el más complicado, es el que la persona puede sostener.
+                </p>
+                <p data-key="aboutP2">
+                  Trabajo con gente que ya intentó hacerlo sola — rutinas de internet, videos, aplicaciones que
+                  escupen un plan genérico. Casi siempre el problema no fue la falta de ganas, fue que nadie
+                  estaba mirando y corrigiendo el rumbo. Eso es exactamente lo que yo hago.
+                </p>
+                <p data-key="aboutP3">
+                  Certificado por el Departamento de Recreación y Deportes y formación en disciplinas de alto impacto como Gunex.
+                  Entreno tanto a personas que empiezan de cero como a quienes ya llevan años en el gimnasio y
+                  quieren salir del estancamiento.
+                </p>
+                <p data-key="aboutP4">
+                  Y como también soy quien construyó esta plataforma, todo lo que ves aquí existe porque me
+                  hacía falta para entrenarte mejor — no porque venía en un paquete que compré.
+                </p>
+              </div>
+
+              <a href="#contact-section"
+                onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;"
+                class="btn-gold px-8 py-3.5 rounded-full text-base inline-flex items-center gap-3 mt-8" data-key="aboutCta">
+                <i class="fas fa-comments"></i> Hablemos de tus metas
+              </a>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ ¿POR QUÉ MIS PROGRAMAS SON DIFERENTES? ═══════════ -->
+      <section id="que-me-diferencia" class="section-dim py-24 border-t border-fbs-gold/10">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div class="text-center max-w-3xl mx-auto mb-14">
+            <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3" data-key="diffLabel">La diferencia</p>
+            <h2 class="text-3xl md:text-5xl font-black text-white" data-key="diffTitle">¿Por qué mis programas son diferentes?</h2>
+            <p class="mt-5 text-fbs-gold/70 text-base md:text-lg leading-relaxed" data-key="diffIntro">
+              Hoy casi todos los planes de entrenamiento salen de una aplicación. Escribes tu peso y tu meta,
+              y un algoritmo te devuelve una plantilla que le tocó también a otras mil personas. Funciona
+              unas semanas y después se cae. Aquí no trabajamos así.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 mb-5 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                <i class="fas fa-pen-ruler"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-3" data-key="diff1Title">Lo escribe una persona</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="diff1Desc">
+                Cada semana, cada ejercicio y cada progresión de peso los decido yo mirando tu registro.
+                No hay un generador automático detrás — hay un entrenador que sabe cómo vas.
+              </p>
+            </div>
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 mb-5 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                <i class="fas fa-eye"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-3" data-key="diff2Title">Veo lo que haces, no lo que dices</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="diff2Desc">
+                Tus pesos, tus repeticiones, tu RPE y tus videos de técnica llegan directo a mí. Si algo
+                no está cuadrando, lo veo antes de que se convierta en un mes perdido.
+              </p>
+            </div>
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 mb-5 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                <i class="fas fa-comment-dots"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-3" data-key="diff3Title">Me puedes escribir</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="diff3Desc">
+                Si te lesionas, si te cambia el horario o si el gimnasio no tiene la máquina, me avisas y
+                cambiamos el plan. Una aplicación no te va a contestar eso.
+              </p>
+            </div>
+            <div class="feat-card section-card p-8 rounded-2xl">
+              <div class="w-12 h-12 mb-5 bg-fbs-gold/15 border border-fbs-gold/25 rounded-xl flex items-center justify-center text-fbs-gold text-xl">
+                <i class="fas fa-people-group"></i>
+              </div>
+              <h3 class="text-xl font-black text-white mb-3" data-key="diff4Title">Pocos clientes a la vez</h3>
+              <p class="text-fbs-gold/60 text-sm leading-relaxed" data-key="diff4Desc">
+                No acepto cientos de personas. Acepto las que puedo atender de verdad, para que tu programa
+                reciba el tiempo que necesita cada semana.
+              </p>
+            </div>
+          </div>
+
+          <div class="section-card rounded-2xl p-8 md:p-10 border border-fbs-gold/20 text-center">
+            <i class="fas fa-quote-left text-fbs-gold/30 text-2xl mb-4"></i>
+            <p class="text-white text-lg md:text-xl font-bold leading-relaxed max-w-3xl mx-auto" data-key="diffQuote">
+              Una aplicación te da un plan. Un entrenador te da un plan, se da cuenta cuando no está
+              funcionando, y lo cambia. Eso es lo que estás pagando aquí.
+            </p>
+          </div>
+
+        </div>
+      </section>
+
       <!-- TESTIMONIALS -->
-      <section class="section-dim py-24">
+      <section id="testimonios" class="section-dark py-24 border-t border-fbs-gold/10">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest text-center mb-3" data-key="testiLabel">Clientes</p>
           <h2 class="text-3xl md:text-4xl font-black text-center text-white mb-14" data-key="testTitle">Historias de éxito</h2>
@@ -433,6 +695,25 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             }
           </style>
 
+        </div>
+      </section>
+
+      <!-- CTA DE CIERRE -->
+      <section class="section-dim py-20 border-t border-fbs-gold/15">
+        <div class="max-w-4xl mx-auto px-4 text-center">
+          <h2 class="text-4xl md:text-5xl font-black text-white mb-4" data-key="ctaTitle">¿Listo para subir de nivel?</h2>
+          <p class="text-fbs-gold/70 text-lg mb-10 max-w-xl mx-auto" data-key="ctaSub">Únete a la plataforma usada por atletas de alto rendimiento.</p>
+          <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <a href="/signup.html"
+              class="btn-gold px-10 py-4 rounded-full text-lg inline-flex items-center gap-3" data-key="ctaBtnPrimary">
+              <i class="fas fa-bolt"></i> Empezar ahora
+            </a>
+            <a href="#contact-section"
+              onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;"
+              class="px-10 py-4 rounded-full text-lg font-black inline-flex items-center gap-3 border border-fbs-gold/40 text-fbs-gold hover:bg-fbs-gold/10 hover:border-fbs-gold transition" data-key="ctaBtn">
+              <i class="fas fa-envelope"></i> Contáctame
+            </a>
+          </div>
         </div>
       </section>
 
@@ -940,17 +1221,23 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
       <!-- FOOTER -->
       <footer class="bg-fbs-dark border-t border-fbs-gold/10 py-14">
         <div class="max-w-7xl mx-auto px-4">
-          <div class="flex flex-col md:flex-row justify-between items-start gap-10">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-10 items-center text-center">
 
-            <div>
-              <div class="flex items-center gap-2 mb-3">
-                <i class="fas fa-dumbbell text-fbs-gold"></i>
-                <span class="font-black text-white">FitbySuárez</span>
-              </div>
+            <div class="flex flex-col items-center">
+              <img src="/logos/FbS-logo-Macro-white.png" alt="FitbySuárez" class="h-12 w-auto mb-4">
               <p class="text-fbs-gold/50 text-sm max-w-xs" data-key="footerTagline">La plataforma profesional para fitness serio y entrenamiento de alto rendimiento.</p>
             </div>
 
-            <div>
+            <div class="flex flex-col items-center">
+              <p class="text-xs font-bold text-fbs-gold/70 uppercase tracking-widest mb-4" data-key="footerLegal">Legal</p>
+              <ul class="space-y-2.5">
+                <li><a href="/terminos.html" class="text-fbs-gold/50 hover:text-fbs-gold transition text-sm" data-key="footerTerms">Términos y Condiciones</a></li>
+                <li><a href="/privacidad.html" class="text-fbs-gold/50 hover:text-fbs-gold transition text-sm" data-key="footerPrivacy">Política de Privacidad</a></li>
+                <li><a href="#contact-section" onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;" class="text-fbs-gold/50 hover:text-fbs-gold transition text-sm" data-key="footerContact">Contacto</a></li>
+              </ul>
+            </div>
+
+            <div class="flex flex-col items-center">
               <p class="text-xs font-bold text-fbs-gold/70 uppercase tracking-widest mb-4" data-key="footerFollow">Sígueme</p>
               <div class="flex gap-3">
                 <a href="https://www.facebook.com/profile.php?id=61585882957439" target="_blank" rel="noopener"
@@ -1016,13 +1303,13 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
       heroPersonalized: "Personalizado",
       heroAccess:       "Acceso",
       // Auth
-      signIn:           "Iniciar sesión",
+      signIn:           "Accede a tu perfil",
       accessDash:       "Accede a tu panel",
       emailPh:          "Correo electrónico",
       passwordPh:       "Contraseña",
       rememberMe:       "Recordarme",
       forgotPassLink:   "Olvidé mi contraseña",
-      startTraining:    "Comenzar",
+      startTraining:    "Iniciar sesión",
       recoverTitle:     "Recuperar Contraseña",
       recoverSub:       "Ingresa tu email y te enviaremos un enlace para restablecerla.",
       sendLink:         "Enviar Enlace",
@@ -1085,9 +1372,85 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
       contactNamePh:    "Ángel Suárez",
       contactMsgPh:     "Cuéntame sobre tus metas de entrenamiento, experiencia previa, disponibilidad...",
       contactBtn:       "Enviar mensaje",
+      // Nav
+      navWhy:           "Por qué unirte",
+      navPlans:         "Planes",
+      navAbout:         "Sobre mí",
+      navTesti:         "Testimonios",
+      navContact:       "Contacto",
+      navStart:         "Empezar",
+      // ¿Por qué unirte?
+      whyLabel:         "Empieza aquí",
+      whyTitle:         "¿Por qué unirte a mi programa?",
+      whyIntro:         "Porque no vas a recibir una rutina genérica sacada de una plantilla. Vas a recibir un plan construido para tu cuerpo, tu horario y tu meta — y ajustado cada semana según lo que realmente estés logrando.",
+      why1Title:        "Hecho para ti, no para \"todos\"",
+      why1Desc:         "Tu programa parte de tu nivel actual, tu equipo disponible y los días que de verdad puedes entrenar. Si tienes una lesión o una limitación, el plan se construye alrededor de eso.",
+      why2Title:        "Ajustes constantes",
+      why2Desc:         "Registras tus pesos, repeticiones y tu esfuerzo percibido (RPE) después de cada sesión. Yo lo reviso y ajusto el siguiente bloque. Nada de repetir la misma rutina durante meses.",
+      why3Title:        "Nutrición que sí puedes sostener",
+      why3Desc:         "Con comidas reales de aquí — arroz, habichuelas, plátano, pollo del colmado de la esquina. Puedes escanear una etiqueta con la cámara y registrarla en segundos.",
+      whyCta:           "¡Empieza ahora!",
+      whyCtaNote:       "Sin contratos. Cancelas cuando quieras.",
+      // Planes
+      plansLabel:       "Planes",
+      plansTitle:       "Escoge cómo quieres trabajar conmigo",
+      plansSub:         "Dos formas de empezar. Ambas incluyen acceso completo a la plataforma, en web y en tu teléfono.",
+      planPopular:      "Más elegido",
+      plan1Name:        "Coaching mensual",
+      plan1Tag:         "Acompañamiento continuo",
+      plan1Period:      "/mes",
+      plan1Renew:       "Se renueva cada mes. Cancelas cuando quieras.",
+      plan1F1:          "Programa de entrenamiento personalizado",
+      plan1F2:          "Plan de nutrición ajustado a tus metas",
+      plan1F3:          "Ajustes cada semana según tu progreso",
+      plan1F4:          "Videos demostrativos de cada ejercicio",
+      plan1F5:          "Registro de entrenamiento con RPE",
+      plan1F6:          "Escáner de etiquetas nutricionales",
+      plan1F7:          "Métricas, medidas y fotos de progreso",
+      plan1F8:          "Comunicación directa conmigo",
+      plan1Btn:         "Empezar ahora",
+      plan2Name:        "Bloque de entrenamiento",
+      plan2Tag:         "Pago único, sin renovación",
+      plan2Renew:       "Un solo pago. No se renueva automáticamente.",
+      plan2Intro:       "Todos los beneficios del Coaching mensual, en un bloque de tres meses",
+      plan2F1:          "Una progresión separada en fases",
+      plan2F2:          "Entre 9 y 12 semanas de entrenamiento",
+      plan2F3:          "Dificultad que sube de forma planificada",
+      plan2F4:          "Videos demostrativos de cada ejercicio",
+      plan2F5:          "Registro de entrenamiento con RPE",
+      plan2Btn:         "Comprar progresiones",
+      plansHelp:        "¿No sabes cuál te conviene? Escríbeme y lo hablamos antes de que pagues nada.",
+      // Sobre mí
+      aboutLabel:       "Sobre mí",
+      aboutName:        "Ángel Suárez",
+      aboutRole:        "Entrenador personal · Puerto Rico",
+      aboutP1:          "Llevo [EDITA: X años] entrenando personas, y en todo ese tiempo aprendí algo que no cambia: el mejor programa no es el más complicado, es el que la persona puede sostener.",
+      aboutP2:          "Trabajo con gente que ya intentó hacerlo sola — rutinas de internet, videos, aplicaciones que escupen un plan genérico. Casi siempre el problema no fue la falta de ganas, fue que nadie estaba mirando y corrigiendo el rumbo. Eso es exactamente lo que yo hago.",
+      aboutP3:          "[EDITA: aquí va tu certificación o formación — ej. \"Soy entrenador certificado por ...\"]. Entreno tanto a personas que empiezan de cero como a quienes ya llevan años en el gimnasio y quieren dejar de estancarse.",
+      aboutP4:          "Y como también soy quien construyó esta plataforma, todo lo que ves aquí existe porque me hacía falta para entrenarte mejor — no porque venía en un paquete que compré.",
+      aboutCta:         "Hablemos de tus metas",
+      // ¿Por qué mis programas son diferentes?
+      diffLabel:        "La diferencia",
+      diffTitle:        "¿Por qué mis programas son diferentes?",
+      diffIntro:        "Hoy casi todos los planes de entrenamiento salen de una aplicación. Escribes tu peso y tu meta, y un algoritmo te devuelve una plantilla que le tocó también a otras mil personas. Funciona unas semanas y después se cae. Aquí no trabajamos así.",
+      diff1Title:       "Lo escribe una persona",
+      diff1Desc:        "Cada semana, cada ejercicio y cada progresión de peso los decido yo mirando tu registro. No hay un generador automático detrás — hay un entrenador que sabe cómo vas.",
+      diff2Title:       "Veo lo que haces, no lo que dices",
+      diff2Desc:        "Tus pesos, tus repeticiones, tu RPE y tus videos de técnica llegan directo a mí. Si algo no está cuadrando, lo veo antes de que se convierta en un mes perdido.",
+      diff3Title:       "Me puedes escribir",
+      diff3Desc:        "Si te lesionas, si te cambia el horario o si el gimnasio no tiene la máquina, me avisas y cambiamos el plan. Una aplicación no te va a contestar eso.",
+      diff4Title:       "Pocos clientes a la vez",
+      diff4Desc:        "No acepto cientos de personas. Acepto las que puedo atender de verdad, para que tu programa reciba el tiempo que necesita cada semana.",
+      diffQuote:        "Una aplicación te da un plan. Un entrenador te da un plan, se da cuenta cuando no está funcionando, y lo cambia. Eso es lo que estás pagando aquí.",
+      // CTA de cierre
+      ctaBtnPrimary:    "Empezar ahora",
       // Footer
       footerTagline:    "La plataforma profesional para fitness serio y entrenamiento de alto rendimiento.",
       footerFollow:     "Sígueme",
+      footerLegal:      "Legal",
+      footerTerms:      "Términos y Condiciones",
+      footerPrivacy:    "Política de Privacidad",
+      footerContact:    "Contacto",
       footerCopy:       "© 2026 FitbySuárez. Todos los derechos reservados.",
       // Default prompt
       defaultPromptMsg: "¿Hacer <strong>Español</strong> tu idioma predeterminado?",
@@ -1105,13 +1468,13 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
       heroPersonalized: "Personalized",
       heroAccess:       "Access",
       // Auth
-      signIn:           "Sign In",
+      signIn:           "Access your profile",
       accessDash:       "Access your dashboard",
       emailPh:          "Email address",
       passwordPh:       "Password",
       rememberMe:       "Remember me",
       forgotPassLink:   "Forgot my password",
-      startTraining:    "Get Started",
+      startTraining:    "Sign In",
       recoverTitle:     "Recover Password",
       recoverSub:       "Enter your email and we'll send you a reset link.",
       sendLink:         "Send Link",
@@ -1174,9 +1537,85 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
       contactNamePh:    "Your name",
       contactMsgPh:     "Tell me about your training goals, prior experience, availability...",
       contactBtn:       "Send message",
+      // Nav
+      navWhy:           "Why join",
+      navPlans:         "Plans",
+      navAbout:         "About me",
+      navTesti:         "Testimonials",
+      navContact:       "Contact",
+      navStart:         "Get Started",
+      // Why join?
+      whyLabel:         "Start here",
+      whyTitle:         "Why join my program?",
+      whyIntro:         "Because you won't get a generic routine pulled from a template. You'll get a plan built for your body, your schedule and your goal — adjusted every week based on what you're actually achieving.",
+      why1Title:        "Built for you, not for \"everyone\"",
+      why1Desc:         "Your program starts from your current level, the equipment you have and the days you can realistically train. If you have an injury or a limitation, the plan is built around it.",
+      why2Title:        "Constant adjustments",
+      why2Desc:         "You log your weights, reps and perceived effort (RPE) after every session. I review it and adjust the next block. No repeating the same routine for months.",
+      why3Title:        "Nutrition you can actually sustain",
+      why3Desc:         "Built around real local food — rice, beans, plantain, chicken from the corner store. You can scan a nutrition label with your camera and log it in seconds.",
+      whyCta:           "Get started now",
+      whyCtaNote:       "No contracts. Cancel whenever you want.",
+      // Plans
+      plansLabel:       "Plans",
+      plansTitle:       "Choose how you want to work with me",
+      plansSub:         "Two ways to start. Both include full access to the platform, on web and on your phone.",
+      planPopular:      "Most chosen",
+      plan1Name:        "Monthly Coaching",
+      plan1Tag:         "Ongoing support",
+      plan1Period:      "/mo",
+      plan1Renew:       "Renews every month. Cancel whenever you want.",
+      plan1F1:          "Personalized training program",
+      plan1F2:          "Nutrition plan matched to your goals",
+      plan1F3:          "Weekly adjustments based on your progress",
+      plan1F4:          "Demonstration videos for every exercise",
+      plan1F5:          "Workout log with RPE",
+      plan1F6:          "Nutrition label scanner",
+      plan1F7:          "Metrics, measurements and progress photos",
+      plan1F8:          "Direct communication with me",
+      plan1Btn:         "Get started now",
+      plan2Name:        "Training Block",
+      plan2Tag:         "One-time payment, no renewal",
+      plan2Renew:       "A single payment. Does not auto-renew.",
+      plan2Intro:       "All the benefits of Monthly Coaching, in a three-month block",
+      plan2F1:          "One progression split into phases",
+      plan2F2:          "Between 9 and 12 weeks of training",
+      plan2F3:          "Difficulty that increases as planned",
+      plan2F4:          "Demonstration videos for every exercise",
+      plan2F5:          "Workout log with RPE",
+      plan2Btn:         "Buy progressions",
+      plansHelp:        "Not sure which one fits? Message me and we'll talk it through before you pay anything.",
+      // About me
+      aboutLabel:       "About me",
+      aboutName:        "Ángel Suárez",
+      aboutRole:        "Personal trainer · Puerto Rico",
+      aboutP1:          "I've spent [EDIT: X years] training people, and in all that time I learned one thing that never changes: the best program isn't the most complicated one, it's the one a person can actually sustain.",
+      aboutP2:          "I work with people who already tried doing it alone — routines off the internet, videos, apps that spit out a generic plan. The problem was almost never a lack of effort; it was that nobody was watching and correcting the course. That's exactly what I do.",
+      aboutP3:          "[EDIT: your certification or training goes here — e.g. \"I'm a trainer certified by ...\"]. I train people starting from zero as well as those who've been in the gym for years and want to stop plateauing.",
+      aboutP4:          "And since I'm also the one who built this platform, everything you see here exists because I needed it to train you better — not because it came in a package I bought.",
+      aboutCta:         "Let's talk about your goals",
+      // Why my programs are different
+      diffLabel:        "The difference",
+      diffTitle:        "Why are my programs different?",
+      diffIntro:        "These days almost every training plan comes out of an app. You type in your weight and your goal, and an algorithm hands you a template that a thousand other people also got. It works for a few weeks and then falls apart. That's not how we work here.",
+      diff1Title:       "A person writes it",
+      diff1Desc:        "Every week, every exercise and every weight progression is decided by me, looking at your log. There's no automatic generator behind it — there's a coach who knows how you're doing.",
+      diff2Title:       "I see what you do, not what you say",
+      diff2Desc:        "Your weights, your reps, your RPE and your technique videos come straight to me. If something isn't adding up, I see it before it becomes a wasted month.",
+      diff3Title:       "You can message me",
+      diff3Desc:        "If you get injured, your schedule changes, or the gym doesn't have the machine, you tell me and we change the plan. An app isn't going to answer that.",
+      diff4Title:       "Few clients at a time",
+      diff4Desc:        "I don't take on hundreds of people. I take on the ones I can genuinely look after, so your program gets the time it needs every week.",
+      diffQuote:        "An app gives you a plan. A coach gives you a plan, notices when it isn't working, and changes it. That's what you're paying for here.",
+      // Closing CTA
+      ctaBtnPrimary:    "Get started now",
       // Footer
       footerTagline:    "The professional platform for serious fitness and high-performance training.",
       footerFollow:     "Follow Me",
+      footerLegal:      "Legal",
+      footerTerms:      "Terms & Conditions",
+      footerPrivacy:    "Privacy Policy",
+      footerContact:    "Contact",
       footerCopy:       "© 2026 FitbySuárez. All rights reserved.",
       // Default prompt
       defaultPromptMsg: "Make <strong>English</strong> your default language?",
@@ -1186,12 +1625,17 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
     }
   };
 
-  let currentLang = localStorage.getItem('fbs_lang') || 'es';
+  // `fbs_lang` (localStorage) solo se escribe cuando el visitante acepta el prompt de
+  // "idioma predeterminado". `fbs_lang_session` refleja el idioma que está viendo AHORA,
+  // aunque no lo haya guardado — así las páginas legales (términos / privacidad) se abren
+  // en el mismo idioma en vez de volver a español.
+  let currentLang = sessionStorage.getItem('fbs_lang_session') || localStorage.getItem('fbs_lang') || 'es';
 
   function applyLanguage(lang, skipPrompt) {
     currentLang = lang;
     window.__fbsLang = lang;
     document.documentElement.lang = lang;
+    try { sessionStorage.setItem('fbs_lang_session', lang); } catch { /* modo privado */ }
 
     const t = translations[lang];
 
@@ -1300,6 +1744,23 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
     // Count text — re-trigger blog filter to regenerate the count string
     if (window.__blogApplyFilters) window.__blogApplyFilters();
   }
+
+  // Collapsible login card. Closed by default: the golden "Iniciar sesión" button
+  // (#login-open-btn) opens it; clicking the header chevron toggles it closed again.
+  window.toggleLoginCard = function(forceOpen) {
+    const collapse = document.getElementById('login-collapse');
+    const openBtn  = document.getElementById('login-open-btn');
+    const chevron  = document.getElementById('login-chevron');
+    const header   = document.getElementById('login-header-toggle');
+    if (!collapse) return;
+    const isOpen   = !collapse.classList.contains('hidden');
+    const willOpen = (typeof forceOpen === 'boolean') ? forceOpen : !isOpen;
+    collapse.classList.toggle('hidden', !willOpen);
+    if (openBtn)  openBtn.classList.toggle('hidden', willOpen); // hide golden CTA while open
+    if (chevron)  chevron.style.transform = willOpen ? 'rotate(180deg)' : '';
+    if (header)   header.setAttribute('aria-expanded', String(willOpen));
+    if (willOpen) setTimeout(() => document.getElementById('login-email')?.focus(), 60);
+  };
 
   function toggleLanguage() {
     const newLang = currentLang === 'es' ? 'en' : 'es';
