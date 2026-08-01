@@ -1244,7 +1244,41 @@ removed, **that table in `privacidad.html` is the thing to update.**
 > or with a collapsed layout. **Rebuild, then look at the page in a browser** — a type-check cannot
 > catch this class of bug.
 
-### 14.7 Content placeholders still to fill
+### 14.7 Collapsible Login Card (polished UX)
+
+The login card on the hero section is now **collapsible by default**, reducing visual clutter while keeping login accessible:
+
+**UI behavior:**
+- **Closed state** (default on page load): Shows only the header "Accede a tu perfil" with a chevron icon (`▼`) and a golden "Iniciar sesión" button. Clicking either toggles open.
+- **Open state**: Full login form reveals with email, password, "Recordarme", forgot-password link, and submit button. The golden button hides. Chevron rotates 180°.
+- **Focus management**: Email field auto-focuses when card opens.
+- **Integrations**: Forgot password, password reset, and setup-account flows all work seamlessly with the collapsible mechanism.
+
+**Code:**
+- `toggleLoginCard(forceOpen)` function in `index.html` (line ~1750) handles all toggle logic.
+- `#login-header-toggle` clicks the header to toggle; `#login-open-btn` (the golden button) opens with `toggleLoginCard(true)`.
+- `#login-collapse` wraps the form and is toggled `.hidden`.
+- Chevron (`#login-chevron`) CSS-transforms: `180deg` on open, `0deg` on close.
+
+**Header text update**: "Iniciar sesión" → "Accede a tu perfil" (warmer, less transactional).
+
+### 14.8 Feature Cards & Footer Centering
+
+Visual balance improvements made to the hero section and footer:
+
+**Feature cards** (Calendario inteligente, Análisis de video, Métricas de progreso):
+- Changed from left-aligned (`items-start`) to fully centered layout.
+- Each card's title, icons, and description are now centered horizontally and vertically within their column.
+- Improves visual hierarchy and makes each feature equally prominent.
+
+**Footer 3-column grid** (logo/tagline, LEGAL links, SÍGUEME social):
+- Changed from spread row (`items-start`) to centered-column grid layout with `items-stretch`.
+- All three sections are horizontally centered within their columns and vertically aligned to the same height.
+- Responsive: stacks to single column on mobile, maintains centering at all breakpoints.
+
+**Code changes**: `public/index.html` lines ~374–401 (feature cards) and ~1223–1256 (footer).
+
+### 14.9 Content placeholders still to fill
 
 The *Sobre mí* section ships with `[EDITA: ...]` markers where personal claims belong (years of
 experience, certifications) plus a photo placeholder. Grep before launching:
@@ -1252,3 +1286,161 @@ experience, certifications) plus a photo placeholder. Grep before launching:
 ```bash
 grep -rn "EDITA:\|EDIT:" public/index.html
 ```
+
+---
+
+## 15. Custom Routine Builder (Client-Gated Feature)
+
+A trainer can enable clients to propose their own workouts from the calendar. This is a guided **mechanic → body part → muscle group → exercise selection → sets/reps** flow that results in a saved workout.
+
+### 15.1 Trainer-side toggle
+
+**Location:** Client profile → Restricciones tab → "Rutinas personalizadas" toggle.
+
+**Database field:** `User.allowCustomRoutines` (Boolean, default `false`). Stored per client so each trainer can grant the feature on a per-client basis.
+
+**API route:**
+- `PUT /api/clients/:clientId` now accepts `{ allowCustomRoutines: boolean }` in the body. Trainer must be authenticated.
+
+**UI rendering** (`app.js`, lines ~4107–4126):
+- Toggle label: *"Permitir que [cliente] cree rutinas personalizadas desde su calendario"*
+- Toggle state is reflected in a label showing "Activo" or "Inactivo".
+- Save persists the flag along with other client settings (injured muscles, etc.).
+
+### 15.2 Client-side trigger
+
+**Location:** Client calendar → today's date cell (only today's cell).
+
+**Button:** "¿Qué propones?" with a `+` icon. Appears **only if**:
+1. The user is a **client** (not trainer viewing a client).
+2. Today's date matches the current day.
+3. Trainer has set `allowCustomRoutines: true` for that client.
+
+**Flow:**
+1. Client clicks "¿Qué propones?"
+2. The modal opens with `window.showCustomRoutineModal(today)` (app.js, lines ~15307–15590).
+3. Modal closes automatically after successful save; calendar re-renders the saved workout.
+
+**Code:** Calendar cell rendering (`app.js`, lines ~14383–14406).
+
+### 15.3 Modal workflow
+
+**Step 1: Mechanic** — Single-select buttons: Push / Pull
+- Determines exercise type bias; affects filtering in step 3.
+
+**Step 2: Body Type** — Single-select buttons: Upper / Lower / Full Body
+- Narrows the scope of exercises to suggest.
+
+**Step 3: Specific Muscle Groups** — Multi-select grid (10 options):
+- Pecho, Espalda, Core, Hombros, Biceps, Triceps, Quads, Hamstrings, Pantorrillas, Glúteos
+- User selects one or more; unchecking a muscle removes its exercises from the list.
+
+**Step 4: Exercise Selection** — Searchable list filtered by selected muscles.
+- Fetches from `/api/exercises` endpoint (must exist; the feature assumes an exercise library is populated).
+- Each exercise has a "+" button to add it to the selected set.
+- Search is real-time; matches exercise names.
+
+**Step 5: Configure Sets & Reps** — Table showing selected exercises.
+- Each row: exercise name, input fields for Sets (number) and Reps (number or range), remove (✕) button.
+- Modifying Sets/Reps updates the corresponding row immediately.
+- Remove button deletes that exercise from the selection.
+
+**Step 6: Save** — "Guardar rutina" button (disabled until at least one exercise is selected).
+- POSTs to `/api/client-workouts` with the workout structure.
+- Carries the client's ID from session and today's date.
+- On success, clears modal and reloads the calendar so the new workout appears.
+- On error, shows a toast with the error message.
+
+**Modal state variables** (`app.js`, lines ~15378–15379):
+- `selections: { mechanic, bodyType, muscles: [], exercises: [] }`
+- `allExercises: []` — loaded from `/api/exercises` on modal init.
+- Exercise filtering is recomputed whenever selections change.
+
+**Code:** Full modal template and event handlers (`app.js`, lines ~15308–15590).
+
+### 15.4 Endpoints required
+
+| Method | Path | Auth | Body/Query | Response |
+|---|---|---|---|---|
+| `GET` | `/api/exercises` | any | — | All exercises as JSON array `[{ name, category, videoUrl, instructions }, ...]` |
+| `POST` | `/api/client-workouts` | any | `{ clientId, date, title, exercises: [...], warmup?, cooldown?, isRest? }` | Created/upserted `ClientWorkout` document |
+| `GET` | `/api/me` | any | — | Logged-in user profile, **must include `allowCustomRoutines` flag** |
+
+**Note:** `/api/exercises` must exist for the modal's exercise search to work. If it returns an empty array, the modal will render with no exercises to select.
+
+### 15.5 Key design decisions
+
+- **Permission is per-client, not global.** A trainer can enable the feature for some clients but not others, giving fine-grained control.
+- **The modal is fully client-side.** No server-side parsing or AI — just exercise library lookups and a standard workout save.
+- **One day at a time.** The button only appears on today's cell, forcing an intentional one-day-at-a-time proposal flow (no bulk "propose a week").
+- **Mechanic + body type + muscle groups cascade** to filter exercises, but the client can still select any exercise manually (no hard validation).
+- **Sets/reps are text inputs**, not numbers, to allow ranges like "8–12" or freeform notes like "AMRAP".
+
+### 15.6 Known limitations
+
+- Exercise library (`/api/exercises`) must be seeded or populated before the modal is useful; an empty library renders an empty exercise list.
+- No validation that the client's selection makes biomechanical sense (e.g., can't prevent a "Pull + Chest" combination).
+- Sets/reps inputs are free-form text; no parsing of ranges or validation of numeric input. A client could enter "foo" and it would save.
+- The feature has no analytics or history — the trainer doesn't see what proposals the client made, only the final saved workout.
+- No real-time conflict detection (e.g., client proposes a workout while trainer is editing the same day).
+
+---
+
+## 16. Calendar Copy/Paste Improvements
+
+### 16.1 Persistent Multi-Day Clipboard Chip
+
+When a trainer copies multiple calendar days (single-day copy persists separately), a floating chip appears showing:
+- Count of copied days
+- Instruction: "usa 'Pegar'… · Terminar"
+- **Terminar** button to explicitly clear the clipboard
+
+**Behavior:**
+- Survives page refresh via `sessionStorage.fbs_copiedMultiDay` (JSON stringified array of copied workouts with relative date offsets).
+- Multiple pastes reuse the clipboard; the trainer can drop the same set of days onto as many start-dates as needed.
+- Clicking "Terminar" clears the sessionStorage key and hides the chip.
+- Copying **single day** clears the multi-day clipboard (one clipboard at a time).
+
+**Code:**
+- `renderCalendarClipboardChip()` (`app.js`, lines ~5206–5220) — renders the chip if `copiedMultiDayData.length > 0`.
+- `clearCalendarClipboard()` — removes sessionStorage entry and hides chip.
+- `copiedMultiDayData` stores relative offsets so paste on a different start-date shifts all days proportionally.
+
+**UI:** Fixed-position chip at bottom of calendar area, styled to match program builder's clipboard chip for consistency.
+
+### 16.2 Rest Day Color Fix on Paste
+
+**Bug fixed:** When pasting a day containing "Descanso" (rest) or "Descanso Activo" (active rest), it was rendering as a gold workout card instead of the correct rest color.
+
+**Root cause:** Paste handler wasn't checking the `isRest` flag before rendering the card.
+
+**Fix** (`app.js`, lines ~8152–8200):
+- **Descanso** now renders blue (`#93C5FD`) — distinct from workouts.
+- **Descanso Activo** renders emerald (`#6EE7B7`) — matches the original design.
+- Logic: before rendering a pasted day, check `if (pastedWorkout.isRest) { /* use rest colors */ }`.
+
+**Visual impact:** Rest days are now visually distinct from workouts after pasting, matching the trainer's mental model.
+
+---
+
+## 17. Pricing & Nomenclature Updates
+
+### Plan names (Spanish grammar)
+
+**Change:** "Coaching Mensual" → "Coaching mensual" (lowercase `m` for adjective).
+
+**Files updated:**
+- `server.js` line ~4453 — `SIGNUP_PLANS[0].name`
+- `public/index.html` lines ~420–424 — landing page plan card
+- Translation keys `plan1Name` and `plan2Name` — both ES and EN
+- `public/terminos.html` line ~91 — legal/terms reference
+
+**Why:** Spanish style guide: adjectives are lowercase unless they begin a sentence. "Coaching" is a noun, "mensual" is the adjective modifying it, so it should be lowercase.
+
+### About Me image height
+
+**Change:** Removed fixed `aspect-[4/5]` ratio constraint; changed grid alignment from `items-start` to `items-stretch`.
+
+**Effect:** The image in the Sobre mí section now scales to match the text column's height (both ~602px), creating visual balance without forcing an unnatural aspect ratio.
+
+**Code:** `public/index.html` line ~478.

@@ -44,7 +44,9 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Constructor de programas multi-semana** — rutinas reutilizables con semanas y entrenamientos diarios, asignables a cada cliente.
 - **Sincronización automática de programas** — al editar un programa (p. ej. convertir uno de 3 días en uno de 4), el cambio se propaga solo a los calendarios de **todos los clientes con ese programa asignado**. Solo afecta días futuros; nunca toca días ya completados, perdidos, con RPE/resultados del cliente, ni los que editaste manualmente para ese cliente. Los días que agregas a mano sobreviven a la sincronización.
 - **Editor de entrenamientos por cliente** — asignar entrenamientos por fecha; calentamiento/enfriamiento, supersets, videos de ejercicios y días de descanso (activo o total).
+- **Mejoras de copiar/pegar en calendario** — copiar entrenamientos individuales o rangos multi-día; el portapapeles de multi-día persiste entre pegues (un solo "Terminar" para limpiar); días de descanso se renderizan en colores correctos al pegar.
 - **Asignación flexible de programas** — asignar un programa a **varios clientes a la vez**, con fecha de inicio y selección opcional de qué días cargar (p. ej. empezar desde el Día 3); también asignar **un solo día** suelto al calendario de un cliente.
+- **Constructor de rutinas personalizadas (gated por entrenador)** — permite a clientes proponer entrenamientos propios a través de un modal guiado: seleccionar mecanismo (Push/Pull) → tipo corporal (Upper/Lower/Full Body) → grupos musculares (10 opciones) → buscar ejercicios → configurar series/reps. El entrenador puede habilitar/deshabilitar por cliente en la pestaña de Restricciones.
 - **Blog** — redactar y publicar artículos con formato Markdown (enlaces, negrita, cursiva, listas); se muestran en el sitio público con fecha de publicación y, si se editan, de actualización.
 - **Biblioteca de ejercicios** — base de datos por grupo muscular, con video e instrucciones; agregar y editar ejercicios.
 - **Equipo del cliente** — pestaña de solo lectura con el inventario y los pesos que el cliente marcó como disponibles; recibes una notificación cuando el cliente lo actualiza.
@@ -55,6 +57,7 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 
 ### Panel del Cliente
 - **Entrenamiento del día** — ver la rutina asignada con instrucciones y videos; marcar ejercicios y la sesión como completados o perdidos; enviar RPE (esfuerzo percibido).
+- **Propuesta de rutina personalizada** — si el entrenador lo habilita, puedes hacer clic en "¿Qué propones?" en la celda de hoy para proponer tu propio entrenamiento a través de un constructor guiado (mecanismo → tipo corporal → grupos musculares → búsqueda de ejercicios → series/reps).
 - **Historial de entrenamientos** — revisar y editar sesiones pasadas con su estado.
 - **Seguimiento de nutrición** — registrar calorías, macros (proteína, carbos, grasas) y agua por comida (desayuno, almuerzo, merienda, cena).
 - **Búsqueda de alimentos** — base local en español (incluye comida criolla puertorriqueña) más USDA / Nutritionix / Open Food Facts; entrada manual con unidad obligatoria.
@@ -108,7 +111,9 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Multi-week program builder** — create reusable training programs with named weeks and daily workouts; assign programs to clients
 - **Automatic program sync** — editing a program (e.g. turning a 3-day program into 4) auto-propagates to the calendars of **every client who has it assigned**. Future days only; it never overwrites days the client already completed/missed/logged, or days you hand-edited for that client. Manually-added days always survive
 - **Client workout editor** — assign workouts directly to individual clients by calendar date; supports warmup/cooldown sections, superset grouping, exercise video links, and rest/active-rest days
+- **Calendar copy/paste improvements** — copy individual workouts or multi-day ranges; multi-day clipboard persists across pastes (one "Terminar" to clear); rest days render in correct colors on paste
 - **Flexible program assignment** — assign a program to **multiple clients at once**, with a start date and an optional day picker (assign only specific days, e.g. start from Day 3); also assign a **single program day** to one client's calendar
+- **Custom routine builder (trainer-gated)** — enable clients to propose their own workouts via a guided modal: select mechanic (Push/Pull) → body type (Upper/Lower/Full Body) → muscle groups (10 options) → search exercises → configure sets/reps. Trainer can enable/disable per client via the Restricciones tab
 - **Blog editor** — write and publish articles with Markdown formatting (links, bold, italic, bullet/numbered lists); they render on the public marketing site with a publish date (and an "updated" date if edited later)
 - **Exercise library** — curated database of exercises categorized by muscle group, each with an optional video URL and instructions; trainer can add/update exercises
 - **Client equipment view** — read-only tab showing the equipment and weights a client has marked as available; the trainer receives a notification (throttled) whenever a client updates their inventory
@@ -119,6 +124,7 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 
 ### Client Dashboard
 - **Workout view** — see today's assigned workout with exercise instructions, video demos, warmup, and cooldown; mark individual exercises complete; mark session complete or missed; submit RPE (Rate of Perceived Exertion) rating after each session
+- **Custom routine proposal** — if enabled by trainer, click "¿Qué propones?" on today's cell to propose your own workout via a guided builder (mechanic → body type → muscle groups → exercise search → sets/reps)
 - **Workout history** — browse past sessions by week with completion status
 - **Nutrition tracker** — log daily calories, macros (protein, carbs, fat), and water by meal slot (desayuno, almuerzo, merienda, cena, snacks); food search backed by a curated local Spanish database (incl. Puerto Rican criollo dishes) plus USDA FoodData Central, Nutritionix, and Open Food Facts; manual entry requires a unit
 - **AI meal recommender ("¿Qué como?")** 🤖 — suggests meals to close the day's remaining macros, respecting the client's allergies and preferences; every macro is verified against the food database
