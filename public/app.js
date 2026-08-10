@@ -7567,6 +7567,26 @@ document.addEventListener('DOMContentLoaded', () => {
         confirmBtn.innerHTML = `<i class="fas fa-check mr-1.5"></i>Importar ${parsed.days.length} día(s)`;
     };
 
+    // Lookup helper: find a library exercise by name (case-insensitive)
+    const findExerciseInLibrary = (name) => {
+        if (!name) return null;
+        const lc = name.toLowerCase().trim();
+        return globalExerciseLibrary.find(ex => ex.name.toLowerCase().trim() === lc);
+    };
+
+    // Auto-assign video URLs to imported exercises by matching against the library
+    const enrichImportedExercises = (exercises) => {
+        if (!Array.isArray(exercises)) return exercises;
+        return exercises.map(ex => {
+            if (ex.video || ex.videoUrl) return ex; // skip if already has video
+            const libraryEx = findExerciseInLibrary(ex.name);
+            if (libraryEx?.videoUrl) {
+                return { ...ex, video: libraryEx.videoUrl, videoUrl: libraryEx.videoUrl };
+            }
+            return ex;
+        });
+    };
+
     const importParsedRoutine = async () => {
         if (!lastParsedRoutine?.days?.length) return;
         const prog = programsCache.find(p => (p._id == currentProgramId) || (p.id == currentProgramId));
@@ -7586,7 +7606,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             prog.weeks[weekIndex].days[key] = {
                 name:          d.name || `Día ${daySlot}`,
-                exercises:     d.isRest || d.isActiveRest ? [] : d.exercises,
+                exercises:     d.isRest || d.isActiveRest ? [] : enrichImportedExercises(d.exercises),
                 warmup:        existing?.warmup || '',
                 cooldown:      existing?.cooldown || '',
                 warmupVideo:   existing?.warmupVideo || '',
