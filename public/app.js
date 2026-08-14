@@ -5219,13 +5219,20 @@ document.addEventListener('DOMContentLoaded', () => {
             chip.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
             document.body.appendChild(chip);
         }
+        const hasUndo = lastPastedWorkouts && lastPastedWorkouts.length > 0;
         chip.innerHTML = `
             <span class="flex items-center gap-2"><i class="fas fa-clipboard text-[#FFDB89]/60"></i>Copiado: <span class="text-white">${count} día${count > 1 ? 's' : ''}</span></span>
             <span class="text-[11px] font-normal text-[#FFDB89]/40 hidden sm:inline">— usa "Pegar" en el día donde quieres que inicie</span>
+            ${hasUndo ? `<button onclick="window.undoLastPaste()" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-amber-400/70 hover:text-amber-400 border border-amber-400/30 hover:border-amber-400/60 rounded-full px-2.5 py-1 transition" title="Deshacer último pegue">
+                <i class="fas fa-undo text-[10px]"></i>Deshacer
+            </button>` : ''}
             <button onclick="window.clearCalendarClipboard()" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400/70 hover:text-red-400 border border-red-400/30 hover:border-red-400/60 rounded-full px-2.5 py-1 transition">
                 <i class="fas fa-times text-[10px]"></i>Terminar
             </button>`;
     };
+
+    // Track last paste for undo functionality
+    let lastPastedWorkouts = []; // { dateStr, originalWorkout } — dates we just pasted to
 
     // "Terminar" — clear the calendar clipboard and remove the chip. Called when the
     // trainer is done pasting (the copy stays alive until they click this).
@@ -5234,7 +5241,50 @@ document.addEventListener('DOMContentLoaded', () => {
         copiedWorkoutData  = null;
         sessionStorage.removeItem('fbs_copiedMultiDay');
         sessionStorage.removeItem('fbs_copiedWorkout');
+        lastPastedWorkouts = []; // clear undo history when clearing clipboard
         renderCalendarClipboardChip();
+    };
+
+    // Undo the last paste action
+    window.undoLastPaste = async () => {
+        if (!lastPastedWorkouts || lastPastedWorkouts.length === 0) {
+            showToast('No hay nada que deshacer.', 'info');
+            return;
+        }
+
+        const confirmOk = await showConfirm(`¿Deshacer el último pegue de ${lastPastedWorkouts.length} día(s)?`, {
+            confirmLabel: 'Deshacer',
+            cancelLabel: 'Cancelar'
+        });
+        if (!confirmOk) return;
+
+        let undoCount = 0;
+        for (const item of lastPastedWorkouts) {
+            try {
+                const res = await apiFetch(`/api/client-workouts/${currentClientViewId}/${item.dateStr}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    undoCount++;
+                    delete window._calendarWorkouts?.[item.dateStr];
+                    const cellId = `day-${item.dateStr}`;
+                    const cell = document.getElementById(cellId);
+                    if (cell) {
+                        const area = cell.querySelector('.content-area');
+                        if (area) {
+                            area.innerHTML = `<div class="text-center text-[#FFDB89]/15"><i class="fas fa-plus text-xl"></i></div>`;
+                        }
+                        const cb = cell.querySelector('.copy-day-checkbox');
+                        if (cb) cb.classList.add('hidden');
+                    }
+                }
+            } catch (e) {
+                console.error('Error undoing paste:', e);
+            }
+        }
+        lastPastedWorkouts = []; // clear undo history after undo
+        renderCalendarClipboardChip();
+        showToast(`✓ ${undoCount} día(s) deshecho${undoCount > 1 ? 's' : ''}.`, 'success');
     };
 
     window.copySelectedDays = async () => {
@@ -8202,6 +8252,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // MULTI-DAY PASTE: preserve spacing from original
                 const pasteStartDate = new Date(dateStr + 'T00:00:00');
                 let successCount = 0;
+                lastPastedWorkouts = []; // reset undo history for this new paste
 
                 for(const item of copiedMultiDayData) {
                     const targetDate = new Date(pasteStartDate);
@@ -8223,6 +8274,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         if(response.ok) {
                             successCount++;
+                            lastPastedWorkouts.push({ dateStr: targetDateStr, originalWorkout: item.workout }); // track for undo
                             window._calendarWorkouts[targetDateStr] = pastedWorkout;
                             const targetCellId = `day-${targetDateStr}`;
                             const cell = document.getElementById(targetCellId);
@@ -8266,6 +8318,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 showToast(`${successCount} workout${successCount > 1 ? 's' : ''} pegado${successCount > 1 ? 's' : ''} exitosamente.`, 'success');
+                renderCalendarClipboardChip(); // update chip to show Undo button
                 // Keep the clipboard active so the same days can be pasted onto more
                 // start-dates. The trainer dismisses it with "Terminar" on the chip.
 
@@ -8285,6 +8338,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         body: JSON.stringify(pastedWorkout)
                     });
                     if(response.ok) {
+                        lastPastedWorkouts = [{ dateStr, originalWorkout: copiedWorkoutData }]; // track for undo
                         const cell = document.getElementById(dateId);
                         if(cell) {
                             const area = cell.querySelector('.content-area');
@@ -8302,6 +8356,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if(cb) cb.classList.remove('hidden');
                         }
                         showToast('Workout pegado exitosamente.', 'success');
+                        renderCalendarClipboardChip(); // update chip to show Undo button
                         copiedWorkoutData = null;
                         sessionStorage.removeItem('fbs_copiedWorkout');
                     }
