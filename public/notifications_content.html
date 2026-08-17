@@ -1,24 +1,26 @@
-<div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4 border-b border-[#FFDB89]/20 pb-3">
-    <h2 class="text-2xl sm:text-3xl font-semibold text-[#FFDB89]">Actividad de clientes</h2>
-    <button id="mark-all-read-btn" class="self-start sm:self-auto text-sm text-[#FFDB89] hover:underline font-medium">
-        Marcar todo como leído
-    </button>
-</div>
+<div class="flex flex-col h-full">
+    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4 border-b border-[#FFDB89]/20 pb-3 shrink-0">
+        <h2 class="text-2xl sm:text-3xl font-semibold text-[#FFDB89]">Actividad de clientes</h2>
+        <button id="mark-all-read-btn" class="self-start sm:self-auto text-sm text-[#FFDB89] hover:underline font-medium">
+            Marcar todo como leído
+        </button>
+    </div>
 
-<div class="flex gap-2 mb-5">
-    <button id="notif-filter-7days" class="px-4 py-1.5 rounded-full text-sm font-bold bg-[#FFDB89] text-[#2C2C2E] shadow transition">
-        Últimos 7 días
-    </button>
-    <button id="notif-filter-unread" class="px-4 py-1.5 rounded-full text-sm font-bold bg-[#030303]/60 text-[#FFDB89] border border-[#FFDB89]/30 transition">
-        No leídas
-    </button>
-</div>
+    <div class="flex gap-2 mb-5 shrink-0">
+        <button id="notif-filter-7days" class="px-4 py-1.5 rounded-full text-sm font-bold bg-[#FFDB89] text-[#2C2C2E] shadow transition">
+            Últimos 7 días
+        </button>
+        <button id="notif-filter-unread" class="px-4 py-1.5 rounded-full text-sm font-bold bg-[#030303]/60 text-[#FFDB89] border border-[#FFDB89]/30 transition">
+            No leídas
+        </button>
+    </div>
 
-<div id="activity-feed" class="space-y-4">
-    <p id="notifications-loading" class="text-sm text-center text-[#FFDB89]/70 py-8">
-        <i class="fas fa-spinner fa-spin mr-2"></i>Cargando notificaciones...
-    </p>
-    <p id="notifications-empty" class="text-sm text-center text-[#FFDB89]/30 py-8 hidden">
-        No hay notificaciones en este período.
-    </p>
+    <div id="activity-feed" class="space-y-4 overflow-y-auto flex-1">
+        <p id="notifications-loading" class="text-sm text-center text-[#FFDB89]/70 py-8">
+            <i class="fas fa-spinner fa-spin mr-2"></i>Cargando notificaciones...
+        </p>
+        <p id="notifications-empty" class="text-sm text-center text-[#FFDB89]/30 py-8 hidden">
+            No hay notificaciones en este período.
+        </p>
+    </div>
 </div>
