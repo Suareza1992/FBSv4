@@ -951,6 +951,46 @@ app.post('/api/auth/update-password', authenticateToken, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error updating password' }); }
 });
 
+// Admin: Update user role (superadmin only, or bootstrap first superadmin)
+app.post('/api/admin/update-role', authenticateToken, async (req, res) => {
+    try {
+        const { targetEmail, newRole } = req.body;
+
+        // Check if requesting user is superadmin
+        const isSuperadmin = req.user.role === 'superadmin';
+
+        // Allow bootstrap: if no superadmins exist yet, allow any logged-in user to create the first one
+        const superadminCount = await User.countDocuments({ role: 'superadmin' });
+        const isBootstrap = superadminCount === 0 && req.user.email === 'fitbysuarez@gmail.com';
+
+        if (!isSuperadmin && !isBootstrap) {
+            return res.status(403).json({ message: 'Only superadmin can update roles' });
+        }
+
+        // Validate new role
+        if (!['client', 'trainer', 'superadmin'].includes(newRole)) {
+            return res.status(400).json({ message: 'Invalid role' });
+        }
+
+        const targetUser = await User.findOne({ email: targetEmail });
+        if (!targetUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Update the role
+        await User.findByIdAndUpdate(targetUser._id, { role: newRole });
+
+        res.json({
+            message: `User role updated to ${newRole}`,
+            email: targetEmail,
+            newRole: newRole
+        });
+    } catch (error) {
+        console.error('Error updating role:', error);
+        res.status(500).json({ message: 'Error updating role' });
+    }
+});
+
 // ==========================================================================
 // --- PROTECTED: Send Welcome Email (Trainer only) ---
 // ==========================================================================
