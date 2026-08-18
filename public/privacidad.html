@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Política de Privacidad · FitbySuárez</title>
+  <link rel="stylesheet" href="/output.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #030303; }
+    .legal h2 { color: #fff; font-weight: 900; font-size: 1.35rem; margin: 2.5rem 0 0.9rem; }
+    .legal h3 { color: #FFDB89; font-weight: 800; font-size: 1rem; margin: 1.6rem 0 0.5rem; }
+    .legal p  { color: rgba(255,219,137,0.72); line-height: 1.75; margin-bottom: 1rem; font-size: 0.95rem; }
+    .legal ul { margin: 0 0 1.15rem 0; padding-left: 1.3rem; list-style: disc; }
+    .legal li { color: rgba(255,219,137,0.72); line-height: 1.75; margin-bottom: 0.5rem; font-size: 0.95rem; }
+    .legal strong { color: #fff; font-weight: 700; }
+    .legal a { color: #FFDB89; text-decoration: underline; }
+    .legal table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; font-size: 0.88rem; }
+    .legal th { text-align: left; color: #FFDB89; font-weight: 800; padding: 0.6rem 0.7rem; border-bottom: 1px solid rgba(255,219,137,0.25); }
+    .legal td { color: rgba(255,219,137,0.72); padding: 0.6rem 0.7rem; border-bottom: 1px solid rgba(255,219,137,0.08); vertical-align: top; line-height: 1.6; }
+    .table-scroll { overflow-x: auto; }
+  </style>
+</head>
+<body class="text-white">
+
+  <!-- NAV -->
+  <nav class="sticky top-0 z-50 bg-fbs-dark/90 backdrop-blur-md border-b border-fbs-gold/15">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6">
+      <div class="flex justify-between items-center py-4 gap-3">
+        <a href="/" class="flex items-center gap-2 min-w-0">
+          <i class="fas fa-dumbbell text-xl text-fbs-gold shrink-0"></i>
+          <span class="font-black text-lg tracking-tight text-white truncate">FitbySuárez</span>
+        </a>
+        <div class="flex items-center gap-2 shrink-0">
+          <a href="/" class="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-full border border-fbs-gold/30 text-fbs-gold hover:border-fbs-gold transition text-sm font-bold">
+            <i class="fas fa-arrow-left text-xs"></i> <span data-back>Volver</span>
+          </a>
+          <button onclick="toggleLang()" class="flex items-center gap-1.5 px-4 py-2 rounded-full border border-fbs-gold/30 text-fbs-gold hover:border-fbs-gold transition text-sm font-bold">
+            <i class="fas fa-globe text-xs"></i><span id="lang-btn-text">EN</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 py-14 legal">
+
+    <!-- ══════════════════════════ ESPAÑOL ══════════════════════════ -->
+    <div id="content-es">
+      <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3">Legal</p>
+      <h1 class="text-4xl md:text-5xl font-black text-white mb-3">Política de Privacidad</h1>
+      <p class="text-fbs-gold/40 text-sm mb-10">Última actualización: 22 de julio de 2026</p>
+
+      <div class="bg-fbs-gold/10 border border-fbs-gold/25 rounded-xl p-5 mb-10">
+        <p class="text-fbs-gold/90 text-sm mb-0">
+          <i class="fas fa-shield-halved mr-2"></i>
+          <strong>En corto:</strong> guardo la información que necesito para entrenarte — tus medidas, tu peso, tus
+          entrenamientos, tu nutrición y las fotos que tú decidas subir. No vendo tus datos a nadie, y puedes pedirme
+          que los borre cuando quieras.
+        </p>
+      </div>
+
+      <h2>1. Quién trata tus datos</h2>
+      <p>
+        El responsable del tratamiento es Ángel Suárez (FitbySuárez), entrenador personal en Puerto Rico. Puedes
+        contactarme en <a href="mailto:suarezangel.se@gmail.com">suarezangel.se@gmail.com</a> para cualquier asunto
+        relacionado con tus datos.
+      </p>
+
+      <h2>2. Qué información recojo</h2>
+
+      <h3>Datos de cuenta</h3>
+      <ul>
+        <li>Nombre y apellidos.</li>
+        <li>Correo electrónico y, opcionalmente, teléfono.</li>
+        <li>Contraseña, guardada siempre <strong>cifrada</strong> (hash bcrypt). Nunca veo tu contraseña real.</li>
+      </ul>
+
+      <h3>Datos de salud y acondicionamiento físico</h3>
+      <p>
+        Esta es información sensible y la trato como tal. Según lo que registres, puede incluir:
+      </p>
+      <ul>
+        <li>Peso corporal y su histórico.</li>
+        <li>Medidas corporales (cintura, brazos, piernas, etc.).</li>
+        <li>Fotos de progreso que <strong>tú decidas</strong> subir.</li>
+        <li>Registros de entrenamiento: ejercicios, series, repeticiones, peso levantado y esfuerzo percibido (RPE).</li>
+        <li>Videos de técnica que subas para recibir corrección.</li>
+        <li>Registros de nutrición: alimentos, porciones, calorías y macronutrientes.</li>
+        <li>Lesiones, limitaciones físicas, alergias o condiciones que me comuniques para diseñar tu programa.</li>
+      </ul>
+
+      <h3>Datos de pago</h3>
+      <p>
+        <strong>No almaceno números de tarjeta.</strong> Los pagos se procesan íntegramente por Stripe. Yo solo
+        conservo el estado de tu plan (activo, cancelado), las fechas de cobro y un identificador de cliente de
+        Stripe.
+      </p>
+
+      <h2>3. Para qué uso tu información</h2>
+      <ul>
+        <li><strong>Diseñar y ajustar tu programa.</strong> Es el uso principal: sin tus registros no puedo entrenarte bien.</li>
+        <li><strong>Mostrarte tu progreso</strong> en gráficas e historiales dentro de la plataforma.</li>
+        <li><strong>Gestionar tu cuenta y tu suscripción</strong> (acceso, cobros, renovaciones, cancelaciones).</li>
+        <li><strong>Comunicarme contigo</strong> sobre tu entrenamiento o sobre cambios en el servicio.</li>
+      </ul>
+      <p>
+        <strong>No uso tus datos para publicidad, no los vendo y no los comparto con anunciantes.</strong> No
+        publicaré tus fotos ni tus resultados en redes sociales ni en esta web sin tu autorización expresa y
+        específica para ello.
+      </p>
+
+      <h2>4. Con quién se comparte</h2>
+      <p>
+        Utilizo proveedores externos para operar el servicio. Cada uno recibe únicamente lo necesario para su
+        función:
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Proveedor</th><th>Para qué</th><th>Qué recibe</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Stripe</strong></td><td>Procesar pagos y suscripciones</td><td>Nombre, correo y datos de tarjeta (directamente, sin pasar por mis servidores)</td></tr>
+            <tr><td><strong>MongoDB Atlas</strong></td><td>Base de datos donde vive tu información</td><td>Todos los datos de tu cuenta y de tu entrenamiento, cifrados en tránsito y en reposo</td></tr>
+            <tr><td><strong>Cloudinary</strong></td><td>Almacenamiento de imágenes y videos</td><td>Tus fotos de progreso y videos de técnica</td></tr>
+            <tr><td><strong>Anthropic (Claude)</strong></td><td>Lectura automática de etiquetas nutricionales</td><td>Únicamente la foto de la etiqueta que escanees — no se envía ningún dato tuyo con ella</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Cuando usas la búsqueda de alimentos "Buscar en internet", la consulta se hace <strong>desde tu propio
+        dispositivo</strong> a bases de datos públicas (OpenFoodFacts y USDA). Esa consulta no pasa por mis
+        servidores y no lleva información que te identifique.
+      </p>
+      <p>
+        También podría divulgar información si una autoridad competente lo exigiera legalmente.
+      </p>
+
+      <h2>5. Tus fotos de progreso</h2>
+      <p>
+        Sé que son lo más delicado que se guarda aquí, así que lo digo aparte y claro:
+      </p>
+      <ul>
+        <li>Subirlas es <strong>totalmente opcional</strong>. Puedes usar todo el servicio sin subir ni una.</li>
+        <li>Solo tú y yo (como tu entrenador) podemos verlas. Ningún otro cliente tiene acceso.</li>
+        <li>Nunca las publicaré ni las usaré como material promocional sin pedirte permiso explícito por escrito, caso por caso.</li>
+        <li>Puedes borrarlas en cualquier momento desde la plataforma, o pedirme que las elimine.</li>
+      </ul>
+
+      <h2>6. Cuánto tiempo conservo los datos</h2>
+      <ul>
+        <li>Mientras tu cuenta esté activa, conservo tu información para poder darte seguimiento y comparar tu progreso a lo largo del tiempo.</li>
+        <li>Si cancelas, conservo tu historial <strong>hasta 12 meses</strong> por si decides volver — así no empiezas de cero. Puedes pedir la eliminación inmediata.</li>
+        <li>Los registros de facturación se conservan el tiempo que exija la normativa fiscal aplicable.</li>
+      </ul>
+
+      <h2>7. Tus derechos</h2>
+      <p>En cualquier momento puedes pedirme:</p>
+      <ul>
+        <li><strong>Acceso:</strong> una copia de todos los datos que tengo sobre ti.</li>
+        <li><strong>Rectificación:</strong> corregir cualquier dato incorrecto.</li>
+        <li><strong>Eliminación:</strong> borrar tu cuenta y tu información.</li>
+        <li><strong>Portabilidad:</strong> recibir tus datos en un formato legible para llevártelos.</li>
+        <li><strong>Oposición:</strong> dejar de recibir comunicaciones no esenciales.</li>
+      </ul>
+      <p>
+        Escríbeme a <a href="mailto:suarezangel.se@gmail.com">suarezangel.se@gmail.com</a> y responderé en un plazo
+        máximo de 30 días.
+      </p>
+
+      <h2>8. Seguridad</h2>
+      <ul>
+        <li>Las contraseñas se guardan cifradas con bcrypt; no son reversibles.</li>
+        <li>La sesión se mantiene con un <strong>token en una cookie HttpOnly</strong>, que no es accesible desde JavaScript, lo que reduce el riesgo de robo de sesión.</li>
+        <li>Toda la comunicación con la plataforma viaja cifrada por HTTPS.</li>
+        <li>El acceso a los datos está limitado por rol: un cliente solo puede ver su propia información.</li>
+      </ul>
+      <p>
+        Ningún sistema es infalible. Si ocurriera una brecha que afecte tus datos, te lo notificaré sin demora
+        indebida.
+      </p>
+
+      <h2>9. Cookies</h2>
+      <p>
+        Uso las cookies mínimas necesarias para que la plataforma funcione: la cookie de sesión que te mantiene
+        conectado y tu preferencia de idioma. <strong>No uso cookies de publicidad ni de seguimiento de terceros.</strong>
+      </p>
+
+      <h2>10. Menores de edad</h2>
+      <p>
+        El servicio está dirigido a personas mayores de 18 años. No recojo datos de menores de forma consciente. Si
+        un menor va a entrenar conmigo, necesito el consentimiento previo de su padre, madre o tutor legal.
+      </p>
+
+      <h2>11. Cambios a esta política</h2>
+      <p>
+        Si actualizo esta política, cambiaré la fecha del encabezado y, si el cambio es sustancial, te lo notificaré
+        por correo antes de que entre en vigor.
+      </p>
+
+      <h2>12. Contacto</h2>
+      <p>
+        Para cualquier duda sobre privacidad:
+        <a href="mailto:suarezangel.se@gmail.com">suarezangel.se@gmail.com</a>.
+      </p>
+    </div>
+
+    <!-- ══════════════════════════ ENGLISH ══════════════════════════ -->
+    <div id="content-en" class="hidden">
+      <p class="text-fbs-gold/60 text-xs font-bold uppercase tracking-widest mb-3">Legal</p>
+      <h1 class="text-4xl md:text-5xl font-black text-white mb-3">Privacy Policy</h1>
+      <p class="text-fbs-gold/40 text-sm mb-10">Last updated: July 22, 2026</p>
+
+      <div class="bg-fbs-gold/10 border border-fbs-gold/25 rounded-xl p-5 mb-10">
+        <p class="text-fbs-gold/90 text-sm mb-0">
+          <i class="fas fa-shield-halved mr-2"></i>
+          <strong>In short:</strong> I store the information I need in order to train you — your measurements, your
+          weight, your workouts, your nutrition and any photos you choose to upload. I don't sell your data to
+          anyone, and you can ask me to delete it at any time.
+        </p>
+      </div>
+
+      <h2>1. Who processes your data</h2>
+      <p>
+        The data controller is Ángel Suárez (FitbySuárez), a personal trainer based in Puerto Rico. You can reach me
+        at <a href="mailto:suarezangel.se@gmail.com">suarezangel.se@gmail.com</a> for anything related to your data.
+      </p>
+
+      <h2>2. What information I collect</h2>
+
+      <h3>Account data</h3>
+      <ul>
+        <li>First and last name.</li>
+        <li>Email address and, optionally, phone number.</li>
+        <li>Password, always stored <strong>encrypted</strong> (bcrypt hash). I never see your actual password.</li>
+      </ul>
+
+      <h3>Health and fitness data</h3>
+      <p>This is sensitive information and I treat it as such. Depending on what you log, it may include:</p>
+      <ul>
+        <li>Body weight and its history.</li>
+        <li>Body measurements (waist, arms, legs, etc.).</li>
+        <li>Progress photos that <strong>you choose</strong> to upload.</li>
+        <li>Workout logs: exercises, sets, reps, weight lifted and perceived effort (RPE).</li>
+        <li>Technique videos you upload for form correction.</li>
+        <li>Nutrition logs: foods, portions, calories and macronutrients.</li>
+        <li>Injuries, physical limitations, allergies or conditions you tell me about so I can design your program.</li>
+      </ul>
+
+      <h3>Payment data</h3>
+      <p>
+        <strong>I do not store card numbers.</strong> Payments are processed entirely by Stripe. I only keep your
+        plan status (active, cancelled), billing dates and a Stripe customer identifier.
+      </p>
+
+      <h2>3. What I use your information for</h2>
+      <ul>
+        <li><strong>Designing and adjusting your program.</strong> This is the main use: without your logs I can't train you well.</li>
+        <li><strong>Showing you your progress</strong> in charts and history within the platform.</li>
+        <li><strong>Managing your account and subscription</strong> (access, billing, renewals, cancellations).</li>
+        <li><strong>Communicating with you</strong> about your training or about changes to the service.</li>
+      </ul>
+      <p>
+        <strong>I do not use your data for advertising, I do not sell it, and I do not share it with advertisers.</strong>
+        I will not publish your photos or your results on social media or on this site without your express,
+        specific authorization.
+      </p>
+
+      <h2>4. Who it is shared with</h2>
+      <p>I use third-party providers to operate the service. Each receives only what it needs to do its job:</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Provider</th><th>Purpose</th><th>What it receives</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Stripe</strong></td><td>Processing payments and subscriptions</td><td>Name, email and card details (directly, never passing through my servers)</td></tr>
+            <tr><td><strong>MongoDB Atlas</strong></td><td>Database where your information lives</td><td>All your account and training data, encrypted in transit and at rest</td></tr>
+            <tr><td><strong>Cloudinary</strong></td><td>Image and video storage</td><td>Your progress photos and technique videos</td></tr>
+            <tr><td><strong>Anthropic (Claude)</strong></td><td>Automatic reading of nutrition labels</td><td>Only the photo of the label you scan — no personal data is sent with it</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        When you use the "Search the internet" food lookup, the query runs <strong>from your own device</strong>
+        against public databases (OpenFoodFacts and USDA). That query does not pass through my servers and carries no
+        information identifying you.
+      </p>
+      <p>I may also disclose information if legally required to do so by a competent authority.</p>
+
+      <h2>5. Your progress photos</h2>
+      <p>I know these are the most sensitive thing stored here, so I'll say it separately and plainly:</p>
+      <ul>
+        <li>Uploading them is <strong>entirely optional</strong>. You can use the whole service without uploading a single one.</li>
+        <li>Only you and I (as your trainer) can see them. No other client has access.</li>
+        <li>I will never publish them or use them as promotional material without asking your explicit written permission, case by case.</li>
+        <li>You can delete them at any time from the platform, or ask me to remove them.</li>
+      </ul>
+
+      <h2>6. How long I keep data</h2>
+      <ul>
+        <li>While your account is active, I keep your information so I can follow up and compare your progress over time.</li>
+        <li>If you cancel, I keep your history for <strong>up to 12 months</strong> in case you come back — so you don't start from zero. You can request immediate deletion.</li>
+        <li>Billing records are kept for as long as applicable tax regulations require.</li>
+      </ul>
+
+      <h2>7. Your rights</h2>
+      <p>At any time you can ask me for:</p>
+      <ul>
+        <li><strong>Access:</strong> a copy of all the data I hold about you.</li>
+        <li><strong>Rectification:</strong> correction of any incorrect data.</li>
+        <li><strong>Erasure:</strong> deletion of your account and your information.</li>
+        <li><strong>Portability:</strong> your data in a readable format so you can take it with you.</li>
+        <li><strong>Objection:</strong> stopping non-essential communications.</li>
+      </ul>
+      <p>
+        Email me at <a href="mailto:suarezangel.se@gmail.com">suarezangel.se@gmail.com</a> and I'll respond within 30
+        days at most.
+      </p>
+
+      <h2>8. Security</h2>
+      <ul>
+        <li>Passwords are stored encrypted with bcrypt; they are not reversible.</li>
+        <li>Your session is maintained with a <strong>token in an HttpOnly cookie</strong>, which is not accessible from JavaScript, reducing the risk of session theft.</li>
+        <li>All communication with the platform travels encrypted over HTTPS.</li>
+        <li>Data access is restricted by role: a client can only see their own information.</li>
+      </ul>
+      <p>
+        No system is infallible. Should a breach affecting your data occur, I will notify you without undue delay.
+      </p>
+
+      <h2>9. Cookies</h2>
+      <p>
+        I use the minimum cookies needed for the platform to work: the session cookie that keeps you logged in, and
+        your language preference. <strong>I do not use advertising or third-party tracking cookies.</strong>
+      </p>
+
+      <h2>10. Minors</h2>
+      <p>
+        The service is intended for people aged 18 and over. I do not knowingly collect data from minors. If a minor
+        is going to train with me, I require prior consent from their parent or legal guardian.
+      </p>
+
+      <h2>11. Changes to this policy</h2>
+      <p>
+        If I update this policy, I'll change the date in the header and, if the change is material, notify you by
+        email before it takes effect.
+      </p>
+
+      <h2>12. Contact</h2>
+      <p>
+        For any privacy question:
+        <a href="mailto:suarezangel.se@gmail.com">suarezangel.se@gmail.com</a>.
+      </p>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-fbs-gold/10 py-10 mt-10">
+    <div class="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-5">
+      <img src="/logos/FbS-logo-Macro-white.png" alt="FitbySuárez" class="h-9 w-auto">
+      <div class="flex gap-5 text-sm">
+        <a href="/terminos.html" class="text-fbs-gold/50 hover:text-fbs-gold transition" data-terms>Términos y Condiciones</a>
+        <a href="/" class="text-fbs-gold/50 hover:text-fbs-gold transition" data-home>Inicio</a>
+      </div>
+    </div>
+    <p class="text-center text-xs text-fbs-gold/30 mt-7" data-copy>© 2026 FitbySuárez. Todos los derechos reservados.</p>
+  </footer>
+
+  <script>
+    // Comparte la misma preferencia de idioma que la página principal (clave `fbs_lang`).
+    const LEGAL_CHROME = {
+      es: { back: 'Volver', terms: 'Términos y Condiciones', home: 'Inicio',
+            copy: '© 2026 FitbySuárez. Todos los derechos reservados.',
+            title: 'Política de Privacidad · FitbySuárez' },
+      en: { back: 'Back', terms: 'Terms & Conditions', home: 'Home',
+            copy: '© 2026 FitbySuárez. All rights reserved.',
+            title: 'Privacy Policy · FitbySuárez' }
+    };
+
+    function applyLang(lang) {
+      const t = LEGAL_CHROME[lang];
+      document.documentElement.lang = lang;
+      document.title = t.title;
+      document.getElementById('content-es').classList.toggle('hidden', lang !== 'es');
+      document.getElementById('content-en').classList.toggle('hidden', lang !== 'en');
+      // El botón muestra el idioma al que puedes cambiar, igual que en index.html
+      document.getElementById('lang-btn-text').textContent = lang === 'es' ? 'EN' : 'ES';
+      document.querySelector('[data-back]').textContent  = t.back;
+      document.querySelector('[data-terms]').textContent = t.terms;
+      document.querySelector('[data-home]').textContent  = t.home;
+      document.querySelector('[data-copy]').textContent  = t.copy;
+    }
+
+    // `fbs_lang_session` = idioma que el visitante está viendo ahora (aunque no lo haya
+    // guardado como predeterminado). `fbs_lang` = predeterminado guardado desde la portada.
+    function currentLang() {
+      try { return sessionStorage.getItem('fbs_lang_session') || localStorage.getItem('fbs_lang') || 'es'; }
+      catch { return 'es'; }
+    }
+
+    function toggleLang() {
+      const next = currentLang() === 'es' ? 'en' : 'es';
+      try { sessionStorage.setItem('fbs_lang_session', next); } catch { /* modo privado */ }
+      applyLang(next);
+    }
+
+    applyLang(currentLang());
+  </script>
+
+</body>
+</html>
