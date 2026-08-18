@@ -1,0 +1,114 @@
+<div class="space-y-8 pb-10">
+
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <h2 class="text-3xl font-bold text-[#FFDB89]">Entrenadores</h2>
+            <p class="text-[#FFDB89]/50">Crea entrenadores y supervisa sus clientes. Cada uno ve solo los suyos.</p>
+        </div>
+        <div class="flex flex-wrap gap-3 mr-4">
+            <button id="open-add-trainer-modal" class="px-4 py-2 bg-[#1C1C1E] text-[#FFDB89] font-semibold rounded-lg border border-[#FFDB89]/30 hover:bg-[#FFDB89]/10 transition">
+                <i class="fas fa-user-plus mr-2"></i> Añadir entrenador
+            </button>
+        </div>
+    </div>
+
+    <!-- Resumen -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div class="bg-[#1C1C1E] border border-[#FFDB89]/10 rounded-2xl p-4 sm:p-5">
+            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-1">Entrenadores</p>
+            <p id="sa-stat-trainers" class="text-2xl sm:text-3xl font-bold text-[#FFDB89] tabular-nums">—</p>
+        </div>
+        <div class="bg-[#1C1C1E] border border-[#FFDB89]/10 rounded-2xl p-4 sm:p-5">
+            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-1">Clientes totales</p>
+            <p id="sa-stat-clients" class="text-2xl sm:text-3xl font-bold text-[#FFDB89] tabular-nums">—</p>
+        </div>
+        <div class="bg-[#1C1C1E] border border-[#FFDB89]/10 rounded-2xl p-4 sm:p-5">
+            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-1">Tus clientes</p>
+            <p id="sa-stat-mine" class="text-2xl sm:text-3xl font-bold text-[#FFDB89] tabular-nums">—</p>
+        </div>
+        <div class="bg-[#1C1C1E] border border-[#FFDB89]/10 rounded-2xl p-4 sm:p-5">
+            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-1">Sin entrenador</p>
+            <p id="sa-stat-orphans" class="text-2xl sm:text-3xl font-bold text-[#FFDB89] tabular-nums">—</p>
+        </div>
+    </div>
+
+    <div class="overflow-visible">
+        <div class="py-3 px-px border-b border-[#FFDB89]/15 flex flex-wrap gap-3">
+            <input type="text" id="trainer-search-input" placeholder="Buscar por nombre..." class="flex-1 min-w-[180px] md:w-64 h-10 px-3 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-sm text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50">
+            <select id="trainer-status-filter" class="min-w-[130px] h-10 pl-4 pr-10 bg-[#1C1C1E] border border-[#FFDB89]/30 rounded-xl text-sm text-[#FFDB89] focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50 appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;">
+                <option value="all" selected>Todos</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Inactivos</option>
+            </select>
+        </div>
+        <div class="overflow-x-auto rounded-2xl overflow-hidden border border-[#FFDB89]/10">
+            <table class="min-w-full divide-y divide-[#FFDB89]/10">
+                <thead class="bg-[#1C1C1E]">
+                    <tr>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider whitespace-nowrap">Entrenador</th>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider whitespace-nowrap">Correo</th>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider whitespace-nowrap">Clientes</th>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-bold text-[#FFDB89] uppercase tracking-wider whitespace-nowrap">Estatus</th>
+                        <th class="px-3 sm:px-6 py-3 text-right text-xs font-bold text-[#FFDB89] uppercase tracking-wider whitespace-nowrap">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="trainers-table-body" class="divide-y divide-[#FFDB89]/10">
+                    <tr><td colspan="5" class="p-8 text-center text-[#FFDB89]/60"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add Trainer Modal -->
+    <div id="add-trainer-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm">
+        <div class="bg-[#111113] border border-[#FFDB89]/15 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col" style="max-height:90vh;max-height:90dvh">
+
+            <div class="p-6 border-b border-[#FFDB89]/15 flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-[#FFDB89]">Nuevo entrenador</h2>
+                <button id="close-add-trainer-modal" class="text-[#FFDB89]/40 hover:text-[#FFDB89] transition"><i class="fas fa-times text-xl"></i></button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-6">
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">Nombre *</label>
+                        <input type="text" id="new-trainer-name" class="w-full p-3 bg-white/5 border border-[#FFDB89]/20 rounded-lg text-white outline-none focus:ring-2 focus:ring-[#FFDB89]/50 focus:border-[#FFDB89]/50 placeholder-[#FFDB89]/20 transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">Apellido</label>
+                        <input type="text" id="new-trainer-lastname" class="w-full p-3 bg-white/5 border border-[#FFDB89]/20 rounded-lg text-white outline-none focus:ring-2 focus:ring-[#FFDB89]/50 focus:border-[#FFDB89]/50 placeholder-[#FFDB89]/20 transition">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-[#FFDB89]/50 mb-1 uppercase font-bold tracking-wider">Email *</label>
+                    <input type="email" id="new-trainer-email" class="w-full p-3 bg-white/5 border border-[#FFDB89]/20 rounded-lg text-white outline-none focus:ring-2 focus:ring-[#FFDB89]/50 focus:border-[#FFDB89]/50 placeholder-[#FFDB89]/20 transition">
+                </div>
+
+                <div class="border-t border-[#FFDB89]/10 pt-5 space-y-3">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-shield-halved text-[#FFDB89]/50 mt-0.5"></i>
+                        <p class="text-sm text-[#FFDB89]/60 leading-relaxed">
+                            Empezará sin clientes. Los que cree serán suyos y <strong class="text-[#FFDB89]/80">ningún otro entrenador podrá verlos</strong> — solo tú.
+                        </p>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-envelope text-[#FFDB89]/50 mt-0.5"></i>
+                        <p class="text-sm text-[#FFDB89]/60 leading-relaxed">
+                            Recibirá un correo para activar su cuenta y crear su contraseña. El enlace expira en 7 días.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="p-6 border-t border-[#FFDB89]/15 flex justify-end gap-3">
+                <button id="cancel-add-trainer" class="px-6 py-3 rounded-lg text-[#FFDB89]/60 font-bold hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition">Cancelar</button>
+                <button id="save-new-trainer-btn" class="px-6 py-3 rounded-lg bg-[#FFDB89] hover:bg-[#ffe9a8] text-[#030303] font-bold shadow-lg transition">Guardar entrenador</button>
+            </div>
+
+        </div>
+    </div>
+
+</div>

@@ -260,7 +260,11 @@ const UserSchema = new mongoose.Schema({
     lastName: { type: String, default: "" },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, default: 'client' }, // 'client' | 'trainer' | 'superadmin'
+    role: { type: String, default: 'client' }, // 'client' | 'trainer'
+    // Superadmin is an ADDITIVE capability, not a replacement role. The account keeps
+    // role:'trainer' (so every existing trainer check keeps working and it can carry its
+    // own clients) and this flag grants oversight on top: manage trainers, see all clients.
+    isSuperadmin: { type: Boolean, default: false },
     trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // trainer who manages this client
     program: { type: String, default: "Sin Asignar" },
     // Live link to the assigned program so edits to it can re-sync this client's
@@ -330,6 +334,48 @@ const UserSchema = new mongoose.Schema({
     stripeCustomerId: { type: String, default: null },  // Stripe customer ID for this client
 });
 const User = mongoose.model('User', UserSchema);
+
+// Resolve the acting user's full record once per request (JWT only carries
+// { id, email, role } — isSuperadmin lives in the DB).
+const getActor = async (req) => {
+    if (!req._actor) req._actor = await User.findById(req.user.id).select('role isSuperadmin');
+    return req._actor;
+};
+
+// Superadmin = trainer powers PLUS oversight. Checked from the DB flag, never
+// from the role string, so the account keeps role:'trainer' and nothing that
+// gates on 'trainer' can ever lock it out.
+const isSuperadmin = async (req) => !!(await getActor(req))?.isSuperadmin;
+
+const requireSuperadmin = async (req, res, next) => {
+    if (await isSuperadmin(req)) return next();
+    res.status(403).json({ message: 'Solo el superadmin puede hacer esto.' });
+};
+
+const assertOwnership = (req, res, clientId) => {
+    if (req.user.role === 'client' && String(req.user.id) !== String(clientId)) {
+        res.status(403).json({ message: 'Forbidden' });
+        return false;
+    }
+    return true;
+};
+
+// May the acting user touch this client's data?
+//   superadmin -> always
+//   client     -> only their own record
+//   trainer    -> their own record, clients assigned to them, and legacy clients
+//                 with no trainerId recorded. A MISSING owner must never produce a
+//                 403: every client predating the trainerId field has none, and
+//                 treating that as "not yours" locks trainers out of their own roster.
+const canTouchClient = async (req, clientId) => {
+    if (req.user.role === 'client') return String(req.user.id) === String(clientId);
+    if (await isSuperadmin(req)) return true;
+    if (String(req.user.id) === String(clientId)) return true;
+    const client = await User.findById(clientId).select('trainerId');
+    if (!client) return false;
+    if (client.trainerId == null) return true;          // legacy / unassigned
+    return String(client.trainerId) === String(req.user.id);
+};
 
 const ExerciseSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
@@ -752,6 +798,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
                 lastName: user.lastName,
                 email: user.email,
                 role: user.role,
+                isSuperadmin: !!user.isSuperadmin,
                 isFirstLogin: user.isFirstLogin,
                 profilePicture: user.profilePicture || ''
             }
@@ -951,40 +998,46 @@ app.post('/api/auth/update-password', authenticateToken, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error updating password' }); }
 });
 
-// Admin: Update user role (superadmin only, or bootstrap first superadmin)
+// Admin: grant/revoke superadmin, or change a user's role.
+// Superadmin is a FLAG layered on top of role — granting it never changes or
+// removes the account's role, so a trainer who becomes superadmin stays a fully
+// working trainer with their own clients.
+const BOOTSTRAP_SUPERADMIN_EMAIL = 'fitbysuarez@gmail.com';
+
 app.post('/api/admin/update-role', authenticateToken, async (req, res) => {
     try {
-        const { targetEmail, newRole } = req.body;
+        const { targetEmail, newRole, superadmin } = req.body;
 
-        // Check if requesting user is superadmin
-        const isSuperadmin = req.user.role === 'superadmin';
+        // Normally superadmin-only. Bootstrap exception: while NO superadmin exists
+        // yet, the designated owner account may promote itself once.
+        const existing = await User.countDocuments({ isSuperadmin: true });
+        const allowed = (await isSuperadmin(req))
+            || (existing === 0 && req.user.email === BOOTSTRAP_SUPERADMIN_EMAIL);
+        if (!allowed) return res.status(403).json({ message: 'Solo el superadmin puede hacer esto.' });
 
-        // Allow bootstrap: if no superadmins exist yet, allow any logged-in user to create the first one
-        const superadminCount = await User.countDocuments({ role: 'superadmin' });
-        const isBootstrap = superadminCount === 0 && req.user.email === 'fitbysuarez@gmail.com';
+        const target = await User.findOne({ email: String(targetEmail || '').toLowerCase().trim() });
+        if (!target) return res.status(404).json({ message: 'Usuario no encontrado.' });
 
-        if (!isSuperadmin && !isBootstrap) {
-            return res.status(403).json({ message: 'Only superadmin can update roles' });
+        const updates = {};
+        if (superadmin !== undefined) updates.isSuperadmin = !!superadmin;
+        if (newRole !== undefined) {
+            if (!['client', 'trainer'].includes(newRole)) {
+                return res.status(400).json({ message: "role debe ser 'client' o 'trainer'." });
+            }
+            updates.role = newRole;
+        }
+        if (!Object.keys(updates).length) {
+            return res.status(400).json({ message: 'Nada que actualizar.' });
         }
 
-        // Validate new role
-        if (!['client', 'trainer', 'superadmin'].includes(newRole)) {
-            return res.status(400).json({ message: 'Invalid role' });
+        // Never strip the last superadmin — that would lock everyone out of oversight.
+        if (updates.isSuperadmin === false && target.isSuperadmin && existing <= 1) {
+            return res.status(400).json({ message: 'No puedes quitar el último superadmin.' });
         }
 
-        const targetUser = await User.findOne({ email: targetEmail });
-        if (!targetUser) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        // Update the role
-        await User.findByIdAndUpdate(targetUser._id, { role: newRole });
-
-        res.json({
-            message: `User role updated to ${newRole}`,
-            email: targetEmail,
-            newRole: newRole
-        });
+        const saved = await User.findByIdAndUpdate(target._id, updates, { new: true })
+            .select('email role isSuperadmin');
+        res.json({ message: 'Actualizado', user: saved });
     } catch (error) {
         console.error('Error updating role:', error);
         res.status(500).json({ message: 'Error updating role' });
@@ -1158,7 +1211,7 @@ app.post('/api/me/profile-picture', authenticateToken, photoUpload.single('photo
 const CLIENT_SAFE_SELECT = '-password -resetPasswordToken -resetPasswordExpires -inviteToken -inviteExpires';
 
 // Get all trainers (superadmin only)
-app.get('/api/trainers', authenticateToken, authorizeRoles('superadmin', 'admin'), async (req, res) => {
+app.get('/api/trainers', authenticateToken, requireSuperadmin, async (req, res) => {
     try {
         const trainers = await User.find({ role: 'trainer', isDeleted: { $ne: true } })
             .select('_id name lastName email createdAt isActive')
@@ -1188,11 +1241,19 @@ app.get('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', 's
     try {
         let query = { role: 'client', isDeleted: { $ne: true } };
 
-        // Trainers only see their own clients
-        if (req.user.role === 'trainer') {
-            query.trainerId = req.user.id;
+        // Superadmin sees every client. A plain trainer sees the ones assigned to them
+        // PLUS any legacy client with no trainerId recorded — filtering on trainerId
+        // alone hid every client created before the field existed.
+        if (await isSuperadmin(req)) {
+            // Superadmin may scope the list to one trainer: /api/clients?trainerId=…
+            if (req.query.trainerId) query.trainerId = req.query.trainerId;
+        } else {
+            query.$or = [
+                { trainerId: req.user.id },
+                { trainerId: null },
+                { trainerId: { $exists: false } },
+            ];
         }
-        // Superadmin sees all clients
 
         const clients = await User.find(query)
             .select(CLIENT_SAFE_SELECT)
@@ -1210,23 +1271,17 @@ app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', '
         const existing = await User.findOne({ email: accountData.email });
         if (existing) return res.status(400).json({ message: 'El email ya existe' });
 
-        // Determine the role of the account to create
-        let accountRole = 'client'; // Default
+        // Only a superadmin may create another TRAINER; everyone else creates clients.
+        const superadmin = await isSuperadmin(req);
+        const accountRole = (superadmin && requestedRole === 'trainer') ? 'trainer' : 'client';
+
+        // Ownership of a new client defaults to whoever created it. A superadmin may
+        // hand it to a different trainer by passing trainerId explicitly — but never
+        // REQUIRE that, because the superadmin is also a working trainer with their
+        // own roster and the common case is "this one is mine".
         let trainerId = null;
-
-        if (req.user.role === 'superadmin') {
-            // Superadmin can create trainers or clients
-            accountRole = requestedRole === 'trainer' ? 'trainer' : 'client';
-
-            // If creating a client, superadmin must specify which trainer manages them
-            if (accountRole === 'client' && !specifiedTrainerId) {
-                return res.status(400).json({ message: 'Superadmin must specify trainerId when creating a client' });
-            }
-            trainerId = specifiedTrainerId || null;
-        } else if (req.user.role === 'trainer') {
-            // Trainers can only create clients, and they automatically manage them
-            accountRole = 'client';
-            trainerId = req.user.id;
+        if (accountRole === 'client') {
+            trainerId = (superadmin && specifiedTrainerId) ? specifiedTrainerId : req.user.id;
         }
 
         // Generate a secure one-time invite token (7-day expiry)
@@ -1483,48 +1538,12 @@ app.post('/api/log', authenticateToken, async (req, res) => {
 });
 
 // C-3: Ownership guard — clients can only access their own data; trainers pass through
-const assertOwnership = (req, res, clientId) => {
-    // Superadmin can access any user
-    if (req.user.role === 'superadmin') return true;
 
-    // Client can only access their own data
-    if (req.user.role === 'client' && String(req.user.id) !== String(clientId)) {
-        res.status(403).json({ message: 'Forbidden' });
-        return false;
-    }
-
-    // Trainer can access their own data or clients they manage
-    // (actual client-trainer check happens in canAccessClient which queries the DB)
-    return true;
-};
-
-// Async check for trainer accessing client data
-const canAccessClient = async (req, clientId) => {
-    // Superadmin can access anyone
-    if (req.user.role === 'superadmin') return true;
-
-    // Client can only access their own data
-    if (req.user.role === 'client') {
-        return String(req.user.id) === String(clientId);
-    }
-
-    // Trainer can access clients they manage
-    if (req.user.role === 'trainer') {
-        const client = await User.findById(clientId);
-        return client && (String(client.trainerId) === String(req.user.id) || String(client._id) === String(req.user.id));
-    }
-
-    return false;
-};
 
 app.get('/api/log/:clientId', authenticateToken, async (req, res) => {
     if (!assertOwnership(req, res, req.params.clientId)) return;
-    // Trainers can only access their own clients' data
-    if (req.user.role === 'trainer') {
-        const client = await User.findById(req.params.clientId);
-        if (!client || String(client.trainerId) !== String(req.user.id)) {
-            return res.status(403).json({ message: 'Forbidden: This client is not under your management' });
-        }
+    if (!(await canTouchClient(req, req.params.clientId))) {
+        return res.status(403).json({ message: 'Forbidden: This client is not under your management' });
     }
     try { const logs = await WorkoutLog.find({ clientId: req.params.clientId }); res.json(logs); }
     catch (e) { res.status(500).json({ message: 'Error fetching logs' }); }

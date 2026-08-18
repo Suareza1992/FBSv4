@@ -211,6 +211,131 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchGroupsFromDB();
     };
 
+    // ── Superadmin: trainers oversight ────────────────────────────────────────
+    // Only reachable when the account carries isSuperadmin. Mirrors the Clientes
+    // table so the two sections read as one product.
+    let trainersCache = [];
+
+    const renderTrainersTable = () => {
+        const tbody = document.getElementById('trainers-table-body');
+        if (!tbody) return;
+
+        const term   = (document.getElementById('trainer-search-input')?.value || '').toLowerCase().trim();
+        const status = document.getElementById('trainer-status-filter')?.value || 'all';
+
+        let filtered = trainersCache;
+        if (term) filtered = filtered.filter(t => `${t.name || ''} ${t.lastName || ''}`.toLowerCase().includes(term));
+        if (status === 'active')   filtered = filtered.filter(t => t.isActive);
+        if (status === 'inactive') filtered = filtered.filter(t => !t.isActive);
+
+        if (!filtered.length) {
+            tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[#FFDB89]/60">${
+                trainersCache.length ? 'Ningún entrenador coincide.' : 'Aún no has añadido entrenadores.'
+            }</td></tr>`;
+            return;
+        }
+
+        const meId = loadSession()?.id;
+        tbody.innerHTML = filtered.map(t => {
+            const first    = (t.name || '?').charAt(0);
+            const last     = t.lastName ? t.lastName.charAt(0) : '';
+            const initials = (first + last).toUpperCase();
+            const full     = `${t.name || ''} ${t.lastName || ''}`.trim() || 'Sin nombre';
+            const isMe     = String(t._id) === String(meId);
+            const count    = t.clientCount ?? 0;
+            return `
+            <tr class="hover:bg-[#FFDB89]/5 transition">
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <div class="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-[#FFDB89]/30 text-[#FFDB89] flex items-center justify-center font-bold mr-2 sm:mr-3 text-sm shrink-0">${escHtml(initials)}</div>
+                        <div class="text-sm font-medium text-[#FFDB89]">${escHtml(full)}${isMe ? ' <span class="ml-1 bg-[#FFDB89]/15 text-[#FFDB89] px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Tú</span>' : ''}</div>
+                    </div>
+                </td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-[#FFDB89]/80">${escHtml(t.email || '—')}</td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <span class="bg-[#FFDB89]/10 text-[#FFDB89] px-2 py-1 rounded text-xs font-bold tabular-nums">${count} ${count === 1 ? 'cliente' : 'clientes'}</span>
+                </td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${t.isActive ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}">
+                        ${t.isActive ? 'Activo' : 'Inactivo'}
+                    </span>
+                </td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onclick="window.viewTrainerClients('${t._id}')" class="text-[#FFDB89]/70 hover:text-[#FFDB89] transition text-xs font-bold">
+                        <i class="fas fa-users mr-1.5"></i>Ver clientes
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    };
+
+    const renderTrainerStats = () => {
+        const meId    = loadSession()?.id;
+        const total   = trainersCache.reduce((n, t) => n + (t.clientCount ?? 0), 0);
+        const mine    = trainersCache.find(t => String(t._id) === String(meId))?.clientCount ?? 0;
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        set('sa-stat-trainers', trainersCache.length);
+        set('sa-stat-clients',  total);
+        set('sa-stat-mine',     mine);
+        // Clients with no trainer recorded — the gap between every client the
+        // superadmin can see and the ones actually attributed to a trainer.
+        apiFetch('/api/clients').then(r => r.ok ? r.json() : []).then(all => {
+            set('sa-stat-orphans', Math.max(0, (Array.isArray(all) ? all.length : 0) - total));
+        }).catch(() => set('sa-stat-orphans', '—'));
+    };
+
+    const fetchAndRenderTrainers = async () => {
+        const tbody = document.getElementById('trainers-table-body');
+        try {
+            const res = await apiFetch('/api/trainers');
+            if (!res.ok) {
+                if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[#FFDB89]/60">
+                    <i class="fas fa-triangle-exclamation text-2xl mb-2 block"></i>No se pudieron cargar los entrenadores.</td></tr>`;
+                return;
+            }
+            trainersCache = await res.json();
+            renderTrainersTable();
+            renderTrainerStats();
+        } catch {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[#FFDB89]/60">Error de conexión.</td></tr>`;
+        }
+    };
+
+    const attachTrainerFilterListeners = () => {
+        document.getElementById('trainer-search-input')?.addEventListener('input', renderTrainersTable);
+        document.getElementById('trainer-status-filter')?.addEventListener('change', renderTrainersTable);
+    };
+
+    // Open Clientes scoped to one trainer's roster.
+    window.viewTrainerClients = async (trainerId) => {
+        const t = trainersCache.find(x => String(x._id) === String(trainerId));
+        try {
+            const res = await apiFetch(`/api/clients?trainerId=${encodeURIComponent(trainerId)}`);
+            if (!res.ok) { showToast('No se pudieron cargar los clientes.', 'error'); return; }
+            clientsCache = await res.json();
+            const html = await (await fetch('clientes_content.html')).text();
+            updateContent('', html);
+            renderClientsTable();
+            attachClientFilterListeners();
+
+            const name = `${t?.name || ''} ${t?.lastName || ''}`.trim() || 'este entrenador';
+            document.querySelector('#content-area .space-y-8, #content-area > div')
+                ?.insertAdjacentHTML('afterbegin', `
+                <div class="flex flex-col sm:flex-row sm:items-center gap-3 bg-[#1C1C1E] border border-[#FFDB89]/20 rounded-2xl px-5 py-4">
+                    <i class="fas fa-user-tie text-[#FFDB89]/60"></i>
+                    <p class="text-sm text-[#FFDB89]/70 flex-1">Viendo los clientes de <strong class="text-[#FFDB89] font-bold">${escHtml(name)}</strong></p>
+                    <button onclick="window.backToTrainers()" class="self-start sm:self-auto px-4 py-2 bg-[#1C1C1E] text-[#FFDB89] font-semibold rounded-lg border border-[#FFDB89]/30 hover:bg-[#FFDB89]/10 transition text-sm">
+                        <i class="fas fa-arrow-left mr-2"></i>Entrenadores
+                    </button>
+                </div>`);
+        } catch { showToast('Error de conexión.', 'error'); }
+    };
+
+    window.backToTrainers = async () => {
+        await fetchClientsFromDB();               // restore the unscoped cache
+        await loadAndInitModule('entrenadores_content');
+    };
+
     const fetchClientsFromDB = async () => {
         try {
             // On success the new list replaces the cache; on failure we keep the
@@ -1344,6 +1469,24 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.error('Error loading settings:', e); }
     };
 
+    // Show superadmin-only navigation. Reads /api/me (authoritative) and falls back
+    // to the cached session so the link appears immediately on a warm load.
+    const revealSuperadminNav = async () => {
+        const show = () => document.getElementById('nav-entrenadores')?.classList.replace('hidden', 'flex');
+        if (loadSession()?.isSuperadmin) show();
+        try {
+            const me = await apiGetJSON('/api/me');
+            if (me?.isSuperadmin) {
+                show();
+                // keep the cached session in sync for the next warm load
+                const cached = loadSession();
+                if (cached && !cached.isSuperadmin) {
+                    localStorage.setItem('auth_user', JSON.stringify({ ...cached, isSuperadmin: true }));
+                }
+            }
+        } catch { /* non-critical — the section is additive */ }
+    };
+
     const loadSession = () => { try { return JSON.parse(localStorage.getItem('auth_user')); } catch (e) { return null; } };
 
 
@@ -1532,6 +1675,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // that a page refresh can restore wherever the user was.
     const MODULE_TITLES = {
         trainer_home:           '',
+        entrenadores_content:   '',
         client_inicio:          '',
         clientes_content:       '',
         pagos_content:          '',
@@ -1611,6 +1755,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const html = await res.text();
             updateContent(MODULE_TITLES[moduleToLoad] ?? '', html);
 
+            if (moduleToLoad === 'entrenadores_content') {
+                attachTrainerFilterListeners();
+                fetchAndRenderTrainers();
+                document.getElementById('open-add-trainer-modal')?.addEventListener('click', () => document.getElementById('add-trainer-modal')?.classList.remove('hidden'));
+                const closeTrainerModal = () => document.getElementById('add-trainer-modal')?.classList.add('hidden');
+                document.getElementById('close-add-trainer-modal')?.addEventListener('click', closeTrainerModal);
+                document.getElementById('cancel-add-trainer')?.addEventListener('click', closeTrainerModal);
+                document.getElementById('save-new-trainer-btn')?.addEventListener('click', window.handleSaveTrainer);
+            }
             if (moduleToLoad === 'clientes_content') {
                 renderClientsTable();          // instant paint from cache
                 attachClientFilterListeners();
@@ -1791,6 +1944,11 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebarPlaceholder.innerHTML = dashHtml;
 
         if (user.role === 'trainer') {
+            // Superadmin is additive: the account is a normal trainer that ALSO gets
+            // the Entrenadores section. Ask /api/me rather than trusting the cached
+            // session blob, so sessions created before the flag existed still resolve.
+            revealSuperadminNav();
+
             const homeHtml = await loadModule('trainer_home');
             updateContent('', homeHtml);
             renderTrainerHome(user.name);
@@ -4418,6 +4576,38 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('Error al reenviar invitación. Intenta de nuevo.', 'error');
         } finally {
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Reenviar'; }
+        }
+    };
+
+    // Superadmin-only: create a TRAINER account. Same invite flow as a client —
+    // the server decides the role, we just ask for it.
+    window.handleSaveTrainer = async () => {
+        const name     = document.getElementById('new-trainer-name')?.value.trim();
+        const lastName = document.getElementById('new-trainer-lastname')?.value.trim() || '';
+        const email    = document.getElementById('new-trainer-email')?.value.trim().toLowerCase();
+        if (!name || !email) { showToast('Nombre y email son requeridos.', 'error'); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('Email inválido.', 'error'); return; }
+
+        const btn = document.getElementById('save-new-trainer-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Creando...'; }
+        try {
+            const res = await apiFetch('/api/clients', {
+                method: 'POST',
+                body: JSON.stringify({ name, lastName, email, role: 'trainer', sendInvite: true, isActive: true }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { showToast(data.message || 'No se pudo crear el entrenador.', 'error'); return; }
+            document.getElementById('add-trainer-modal')?.classList.add('hidden');
+            ['new-trainer-name', 'new-trainer-lastname', 'new-trainer-email'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = '';
+            });
+            showToast(data._emailFailed ? 'Entrenador creado, pero el correo falló.' : `Entrenador creado. Invitación enviada a ${email}.`,
+                      data._emailFailed ? 'info' : 'success');
+            fetchAndRenderTrainers();
+        } catch {
+            showToast('Error de conexión.', 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Crear entrenador'; }
         }
     };
 
@@ -9749,6 +9939,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 moduleToLoad = (session?.role === 'client') ? 'client_inicio' : 'trainer_home';
             }
             else if (linkText === 'Clientes') moduleToLoad = 'clientes_content';
+            else if (linkText === 'Entrenadores') moduleToLoad = 'entrenadores_content';
             else if (linkText === 'Programas') moduleToLoad = 'programas_content';
             else if (linkText === 'Ajustes') { moduleToLoad = 'ajustes_content'; } 
             else if (linkText === 'Pagos') moduleToLoad = 'pagos_content';
