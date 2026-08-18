@@ -3001,6 +3001,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const existing = document.getElementById('add-measurement-modal');
         if (existing) existing.remove();
         const today = getTodayStr();
+        const session = loadSession();
+        const isTrainer = session?.role === 'trainer';
+        const dateInputAttrs = isTrainer ? '' : `max="${today}"`; // Clients can only add measurements for today
         const inputCls = 'w-full p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89] placeholder-[#FFDB89]/30';
         const labelCls = 'block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1';
         document.body.insertAdjacentHTML('beforeend', `
@@ -3015,7 +3018,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                         <div class="md:col-span-1">
                             <label class="${labelCls}">Fecha</label>
-                            <input type="date" id="m-date" value="${today}" class="${inputCls}">
+                            <input type="date" id="m-date" value="${today}" ${dateInputAttrs} class="${inputCls}">
                         </div>
                         <div>
                             <label class="${labelCls}">Peso (lbs)</label>
@@ -3711,6 +3714,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const existing = document.getElementById('add-nutrition-modal');
         if (existing) existing.remove();
         const today = getTodayStr();
+        const session = loadSession();
+        const isTrainer = session?.role === 'trainer';
+        const dateInputAttrs = isTrainer ? '' : `max="${today}"`; // Clients can only log today
         document.body.insertAdjacentHTML('beforeend', `
             <div id="add-nutrition-modal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4">
                 <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
@@ -3718,7 +3724,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="space-y-4">
                         <div>
                             <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Fecha</label>
-                            <input type="date" id="nutri-date" value="${today}" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
+                            <input type="date" id="nutri-date" value="${today}" ${dateInputAttrs} class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
@@ -3905,6 +3911,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const existing = document.getElementById('add-photo-modal');
         if (existing) existing.remove();
         const today = getTodayStr();
+        const session = loadSession();
+        const isTrainer = session?.role === 'trainer';
+        const dateInputAttrs = isTrainer ? '' : `max="${today}"`; // Clients can only upload today
         document.body.insertAdjacentHTML('beforeend', `
             <div id="add-photo-modal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4">
                 <div class="bg-[#030303]/95 backdrop-blur-2xl border border-[#FFDB89]/20 rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-y-auto" style="max-height:90vh;max-height:90dvh">
@@ -3912,7 +3921,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="space-y-4">
                         <div>
                             <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Fecha</label>
-                            <input type="date" id="photo-date" value="${today}" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
+                            <input type="date" id="photo-date" value="${today}" ${dateInputAttrs} class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-[#FFDB89]/70 uppercase mb-1">Foto</label>
@@ -6910,6 +6919,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div>
                         <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Fecha</label>
                         <input type="date" id="assign-day-date" value="${getTodayStr()}" style="color-scheme:dark" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:border-[#FFDB89]/50 transition">
+                        <p class="text-[11px] text-[#FFDB89]/50 mt-1.5">Los entrenadores pueden asignar a cualquier fecha; otras personas solo a hoy.</p>
                     </div>
                     <p class="text-[11px] text-[#FFDB89]/40 leading-relaxed"><i class="fas fa-circle-info mr-1"></i>Se carga solo este día en la fecha elegida. Si el cliente ya tiene una rutina ese día, te avisaremos antes de reemplazarla.</p>
                 </div>
