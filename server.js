@@ -260,7 +260,8 @@ const UserSchema = new mongoose.Schema({
     lastName: { type: String, default: "" },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, default: 'client' },
+    role: { type: String, default: 'client' }, // 'client' | 'trainer' | 'superadmin'
+    trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // trainer who manages this client
     program: { type: String, default: "Sin Asignar" },
     // Live link to the assigned program so edits to it can re-sync this client's
     // calendar. Set when a program is pushed to the calendar; cleared on unassign.
@@ -954,7 +955,7 @@ app.post('/api/auth/update-password', authenticateToken, async (req, res) => {
 // --- PROTECTED: Send Welcome Email (Trainer only) ---
 // ==========================================================================
 
-app.post('/api/send-welcome', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/send-welcome', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     const { email, name, password } = req.body;
     const mailOptions = {
         from: 'FitBySuárez <noreply@fitbysuarez.com>',
@@ -1116,57 +1117,116 @@ app.post('/api/me/profile-picture', authenticateToken, photoUpload.single('photo
 // Sensitive fields never sent to the browser — not even as hashed values
 const CLIENT_SAFE_SELECT = '-password -resetPasswordToken -resetPasswordExpires -inviteToken -inviteExpires';
 
-app.get('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+// Get all trainers (superadmin only)
+app.get('/api/trainers', authenticateToken, authorizeRoles('superadmin', 'admin'), async (req, res) => {
     try {
-        const clients = await User.find({ role: 'client', isDeleted: { $ne: true } })
+        const trainers = await User.find({ role: 'trainer', isDeleted: { $ne: true } })
+            .select('_id name lastName email createdAt isActive')
+            .sort({ createdAt: -1 });
+
+        // For each trainer, get the count of their clients
+        const trainersWithClientCount = await Promise.all(trainers.map(async (trainer) => {
+            const clientCount = await User.countDocuments({
+                role: 'client',
+                trainerId: trainer._id,
+                isDeleted: { $ne: true }
+            });
+            return {
+                ...trainer.toObject(),
+                clientCount
+            };
+        }));
+
+        res.json(trainersWithClientCount);
+    } catch (error) {
+        console.error('Error fetching trainers:', error);
+        res.status(500).json({ message: 'Error fetching trainers' });
+    }
+});
+
+app.get('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
+    try {
+        let query = { role: 'client', isDeleted: { $ne: true } };
+
+        // Trainers only see their own clients
+        if (req.user.role === 'trainer') {
+            query.trainerId = req.user.id;
+        }
+        // Superadmin sees all clients
+
+        const clients = await User.find(query)
             .select(CLIENT_SAFE_SELECT)
             .sort({ createdAt: -1 });
         res.json(clients);
     } catch (error) { res.status(500).json({ message: 'Error fetching clients' }); }
 });
 
-// Option B: Create client with invite token — no plaintext password ever leaves the server
-app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+// Option B: Create account with invite token — no plaintext password ever leaves the server
+// Trainers can create clients; superadmin can create trainers or clients
+app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
-        const { sendInvite, ...clientData } = req.body;
+        const { sendInvite, role: requestedRole, trainerId: specifiedTrainerId, ...accountData } = req.body;
 
-        const existing = await User.findOne({ email: clientData.email });
+        const existing = await User.findOne({ email: accountData.email });
         if (existing) return res.status(400).json({ message: 'El email ya existe' });
+
+        // Determine the role of the account to create
+        let accountRole = 'client'; // Default
+        let trainerId = null;
+
+        if (req.user.role === 'superadmin') {
+            // Superadmin can create trainers or clients
+            accountRole = requestedRole === 'trainer' ? 'trainer' : 'client';
+
+            // If creating a client, superadmin must specify which trainer manages them
+            if (accountRole === 'client' && !specifiedTrainerId) {
+                return res.status(400).json({ message: 'Superadmin must specify trainerId when creating a client' });
+            }
+            trainerId = specifiedTrainerId || null;
+        } else if (req.user.role === 'trainer') {
+            // Trainers can only create clients, and they automatically manage them
+            accountRole = 'client';
+            trainerId = req.user.id;
+        }
 
         // Generate a secure one-time invite token (7-day expiry)
         const rawToken = crypto.randomBytes(32).toString('hex');
         const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
         const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-        // Client account gets a random placeholder password — they set their own via the invite link
+        // Account gets a random placeholder password — they set their own via the invite link
         const placeholderPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
 
-        const newClient = new User({
-            ...clientData,
+        const newAccount = new User({
+            ...accountData,
             password: placeholderPassword,
             isFirstLogin: true,
-            role: 'client',
+            role: accountRole,
+            trainerId: trainerId,
             inviteToken: hashedToken,
             inviteExpires
         });
-        await newClient.save();
+        await newAccount.save();
 
-        // Notify trainer that a new client was created
-        const clientFullName = `${clientData.name} ${clientData.lastName || ''}`.trim();
-        await createNotification({
-            clientId: newClient._id,
-            clientName: clientFullName,
-            type: 'client_created',
-            title: 'fue añadido como cliente',
-            message: `${clientData.email}${clientData.program && clientData.program !== 'Sin Asignar' ? ` · Programa: ${clientData.program}` : ''}`
-        });
+        // Create notification (for clients, notify their trainer; for trainers, notify superadmin)
+        const accountFullName = `${accountData.name} ${accountData.lastName || ''}`.trim();
+        if (accountRole === 'client' && trainerId) {
+            await createNotification({
+                clientId: newAccount._id,
+                clientName: accountFullName,
+                type: 'client_created',
+                title: 'fue añadido como cliente',
+                message: `${accountData.email}${accountData.program && accountData.program !== 'Sin Asignar' ? ` · Programa: ${accountData.program}` : ''}`
+            });
+        }
 
         // Send invite email automatically if requested (default: true)
         if (sendInvite !== false) {
             const inviteLink = `${APP_URL}/?invite=${rawToken}`;
+            const accountType = accountRole === 'trainer' ? 'entrenador' : 'cliente';
             const mailOptions = {
                 from: 'FitBySuárez <noreply@fitbysuarez.com>',
-                to: clientData.email,
+                to: accountData.email,
                 subject: 'Tu acceso a FitBySuárez — Activa tu cuenta',
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0a0a0a; color: #f5f5f5;">
@@ -1174,8 +1234,8 @@ app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), 
                             <h1 style="color: #FFDB89; margin: 0; font-size: 28px; letter-spacing: 2px;">FitBySuárez</h1>
                         </div>
                         <div style="background: #1c1c1e; border: 1px solid #FFDB8930; border-radius: 12px; padding: 30px;">
-                            <h2 style="color: #FFDB89; margin-top: 0;">¡Hola, ${clientData.name}!</h2>
-                            <p style="color: #ccc; line-height: 1.7;">Tu entrenador ha creado tu cuenta en <strong style="color: #FFDB89;">FitBySuárez</strong>. Haz clic en el botón de abajo para activarla y crear tu contraseña personal.</p>
+                            <h2 style="color: #FFDB89; margin-top: 0;">¡Hola, ${accountData.name}!</h2>
+                            <p style="color: #ccc; line-height: 1.7;">Has sido ${accountRole === 'trainer' ? 'designado como entrenador' : 'añadido como cliente'} en <strong style="color: #FFDB89;">FitBySuárez</strong>. Haz clic en el botón de abajo para activar tu cuenta y crear tu contraseña personal.</p>
                             <div style="text-align: center; margin: 30px 0;">
                                 <a href="${inviteLink}" style="display: inline-block; background: #FFDB89; color: #030303; padding: 16px 36px; text-decoration: none; border-radius: 10px; font-weight: 900; font-size: 16px; letter-spacing: 0.5px;">Activar mi cuenta</a>
                             </div>
@@ -1194,24 +1254,34 @@ app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin'), 
             };
             try {
                 await sendEmail(mailOptions);
-                return res.json({ ...newClient.toObject(), _inviteLink: inviteLink });
+                return res.json({ ...newAccount.toObject(), _inviteLink: inviteLink });
             } catch (emailErr) {
-                // Don't fail the whole request — client was created, trainer can resend later
+                // Don't fail the whole request — account was created, creator can resend later
                 console.error('Failed to send invite email:', emailErr.message);
-                return res.json({ ...newClient.toObject(), _emailFailed: true, _inviteLink: inviteLink });
+                return res.json({ ...newAccount.toObject(), _emailFailed: true, _inviteLink: inviteLink });
             }
         }
 
-        res.json(newClient.toObject());
+        res.json(newAccount.toObject());
     } catch (error) {
         console.error('Error creating client:', error);
         res.status(500).json({ message: 'Error creating client' });
     }
 });
 
-app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { id } = req.params;
+
+        const prevClient = await User.findById(id);
+        if (!prevClient) {
+            return res.status(404).json({ message: 'Client not found' });
+        }
+
+        // Authorization check: trainers can only update their own clients
+        if (req.user.role === 'trainer' && String(prevClient.trainerId) !== String(req.user.id)) {
+            return res.status(403).json({ message: 'You can only manage your own clients' });
+        }
 
         // C-2: Explicit allowlist — prevents role escalation and token overwrites
         const ALLOWED = ['name','lastName','email','program','group','type','dueDate','isActive',
@@ -1222,8 +1292,6 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
         for (const key of ALLOWED) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
         }
-
-        const prevClient = await User.findById(id);
         const updatedClient = await User.findByIdAndUpdate(id, updates, { new: true })
             .select(CLIENT_SAFE_SELECT);
 
@@ -1245,7 +1313,7 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
 });
 
 // Resend (or generate fresh) invite link for an existing client
-app.post('/api/clients/:id/resend-invite', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/clients/:id/resend-invite', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const client = await User.findById(req.params.id);
         if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
@@ -1294,11 +1362,18 @@ app.post('/api/clients/:id/resend-invite', authenticateToken, authorizeRoles('tr
     }
 });
 
-app.delete('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.delete('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { id } = req.params;
+        const client = await User.findById(id);
+        if(!client) return res.status(404).json({ message: "Client not found" });
+
+        // Authorization check: trainers can only delete their own clients
+        if (req.user.role === 'trainer' && String(client.trainerId) !== String(req.user.id)) {
+            return res.status(403).json({ message: 'You can only manage your own clients' });
+        }
+
         const deleted = await User.findByIdAndUpdate(id, { isDeleted: true });
-        if(!deleted) return res.status(404).json({ message: "Client not found" });
         res.json({ message: "Client deleted successfully" });
     } catch (e) {
         console.error(e);
@@ -1315,7 +1390,7 @@ app.get('/api/library', authenticateToken, async (req, res) => {
     catch (error) { res.status(500).json({ message: 'Error fetching library' }); }
 });
 
-app.post('/api/library', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/library', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { name, videoUrl, category, muscleGroupId, origin, insertion, pushPull } = req.body;
         // H-3: Escape regex metacharacters to prevent ReDoS
@@ -1329,7 +1404,7 @@ app.post('/api/library', authenticateToken, authorizeRoles('trainer', 'admin'), 
     } catch (error) { res.status(500).json({ message: 'Error saving exercise' }); }
 });
 
-app.put('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.put('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { name, videoUrl, category, muscleGroupId, origin, insertion, pushPull } = req.body;
         const exercise = await Exercise.findByIdAndUpdate(
@@ -1342,7 +1417,7 @@ app.put('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin'
     } catch (error) { res.status(500).json({ message: 'Error updating exercise' }); }
 });
 
-app.delete('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.delete('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const exercise = await Exercise.findByIdAndDelete(req.params.id);
         if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
@@ -1369,15 +1444,48 @@ app.post('/api/log', authenticateToken, async (req, res) => {
 
 // C-3: Ownership guard — clients can only access their own data; trainers pass through
 const assertOwnership = (req, res, clientId) => {
+    // Superadmin can access any user
+    if (req.user.role === 'superadmin') return true;
+
+    // Client can only access their own data
     if (req.user.role === 'client' && String(req.user.id) !== String(clientId)) {
         res.status(403).json({ message: 'Forbidden' });
         return false;
     }
+
+    // Trainer can access their own data or clients they manage
+    // (actual client-trainer check happens in canAccessClient which queries the DB)
     return true;
+};
+
+// Async check for trainer accessing client data
+const canAccessClient = async (req, clientId) => {
+    // Superadmin can access anyone
+    if (req.user.role === 'superadmin') return true;
+
+    // Client can only access their own data
+    if (req.user.role === 'client') {
+        return String(req.user.id) === String(clientId);
+    }
+
+    // Trainer can access clients they manage
+    if (req.user.role === 'trainer') {
+        const client = await User.findById(clientId);
+        return client && (String(client.trainerId) === String(req.user.id) || String(client._id) === String(req.user.id));
+    }
+
+    return false;
 };
 
 app.get('/api/log/:clientId', authenticateToken, async (req, res) => {
     if (!assertOwnership(req, res, req.params.clientId)) return;
+    // Trainers can only access their own clients' data
+    if (req.user.role === 'trainer') {
+        const client = await User.findById(req.params.clientId);
+        if (!client || String(client.trainerId) !== String(req.user.id)) {
+            return res.status(403).json({ message: 'Forbidden: This client is not under your management' });
+        }
+    }
     try { const logs = await WorkoutLog.find({ clientId: req.params.clientId }); res.json(logs); }
     catch (e) { res.status(500).json({ message: 'Error fetching logs' }); }
 });
@@ -1635,7 +1743,7 @@ app.patch('/api/client-workouts/:clientId/:date', authenticateToken, async (req,
     }
 });
 
-app.delete('/api/client-workouts/:clientId/:date', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.delete('/api/client-workouts/:clientId/:date', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { clientId, date } = req.params;
         await ClientWorkout.findOneAndDelete({ clientId, date });
@@ -2009,7 +2117,7 @@ app.post('/api/personal-foods/:id/submit-community', authenticateToken, async (r
 // ==========================================================================
 
 // GET all payments for the trainer (with client name populated)
-app.get('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.get('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const payments = await Payment.find({ trainerId: req.user.id })
             .sort({ dueDate: -1 })
@@ -2025,7 +2133,7 @@ app.get('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin'), 
 });
 
 // GET payments for a specific client
-app.get('/api/payments/client/:clientId', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.get('/api/payments/client/:clientId', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const payments = await Payment.find({ clientId: req.params.clientId, trainerId: req.user.id })
             .sort({ dueDate: -1 }).lean();
@@ -2042,7 +2150,7 @@ app.get('/api/payments/mine', authenticateToken, async (req, res) => {
 });
 
 // POST create a new invoice
-app.post('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { clientId, amount, periodLabel, dueDate, notes } = req.body;
         if (!clientId || !amount || !dueDate) return res.status(400).json({ message: 'clientId, amount y dueDate son requeridos' });
@@ -2056,7 +2164,7 @@ app.post('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin'),
 });
 
 // PATCH update a payment (mark paid, change status, record method)
-app.patch('/api/payments/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.patch('/api/payments/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const allowed = ['status', 'method', 'paidDate', 'amount', 'dueDate', 'periodLabel', 'notes'];
         const updates = {};
@@ -2079,7 +2187,7 @@ app.patch('/api/payments/:id', authenticateToken, authorizeRoles('trainer', 'adm
 });
 
 // DELETE a payment record
-app.delete('/api/payments/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.delete('/api/payments/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const deleted = await Payment.findOneAndDelete({ _id: req.params.id, trainerId: req.user.id });
         if (!deleted) return res.status(404).json({ message: 'Payment not found' });
@@ -2088,7 +2196,7 @@ app.delete('/api/payments/:id', authenticateToken, authorizeRoles('trainer', 'ad
 });
 
 // POST send invoice email to client
-app.post('/api/payments/:id/invoice', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/payments/:id/invoice', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const payment = await Payment.findOne({ _id: req.params.id, trainerId: req.user.id });
         if (!payment) return res.status(404).json({ message: 'Payment not found' });
@@ -3860,7 +3968,7 @@ function describeEquipment(eq) {
     return lines.join('\n');
 }
 
-app.post('/api/equipment-check', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/equipment-check', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     if (!EQUIPMENT_CHECK_ENABLED) {
         return res.status(503).json({ message: 'La revisión de equipo estará disponible pronto.' });
     }
@@ -4087,7 +4195,7 @@ app.get('/api/programs', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/programs', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/programs', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { name, description, tags, weeks } = req.body;
         const program = new Program({
@@ -4105,7 +4213,7 @@ app.post('/api/programs', authenticateToken, authorizeRoles('trainer', 'admin'),
     }
 });
 
-app.put('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.put('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { id } = req.params;
         const program = await Program.findById(id);
@@ -4158,7 +4266,7 @@ app.put('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin
 // the program only as a legacy `program` NAME string with no assignedProgram link.
 // The unlinked ones silently miss every program edit — the builder surfaces them
 // so the trainer can re-assign once and turn auto-sync on for good.
-app.get('/api/programs/:id/assignment-status', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.get('/api/programs/:id/assignment-status', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const program = await Program.findById(req.params.id).select('name').lean();
         if (!program) return res.status(404).json({ message: 'Program not found' });
@@ -4185,7 +4293,7 @@ app.get('/api/programs/:id/assignment-status', authenticateToken, authorizeRoles
 
 // Record (or clear) which program is assigned to a client. Drives the auto-sync
 // above: a client is only re-synced if assignedProgram.programId points here.
-app.put('/api/clients/:clientId/assigned-program', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.put('/api/clients/:clientId/assigned-program', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { clientId } = req.params;
         const { programId, startDate, anchorOffset } = req.body;
@@ -4201,7 +4309,7 @@ app.put('/api/clients/:clientId/assigned-program', authenticateToken, authorizeR
     }
 });
 
-app.delete('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.delete('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { id } = req.params;
         await Program.findByIdAndDelete(id);
@@ -4223,7 +4331,7 @@ app.get('/api/groups', authenticateToken, async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Error fetching groups' }); }
 });
 
-app.post('/api/groups', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/groups', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { name } = req.body;
         const existing = await Group.findOne({ name });
@@ -4234,7 +4342,7 @@ app.post('/api/groups', authenticateToken, authorizeRoles('trainer', 'admin'), a
     } catch (e) { res.status(500).json({ message: 'Error creating group' }); }
 });
 
-app.delete('/api/groups/:id', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.delete('/api/groups/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         await Group.findByIdAndDelete(req.params.id);
         res.json({ message: 'Group deleted' });
@@ -4824,7 +4932,7 @@ app.post('/api/paypal/webhook', async (req, res) => {
 
 // POST /api/stripe/checkout — create a Stripe Checkout Session or Invoice
 // Body: { clientId, amount, periodLabel, dueDate, notes, type, planLabel, trialDays }
-app.post('/api/stripe/checkout', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/stripe/checkout', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     if (!stripeReady(res)) return;
     try {
         const { clientId, amount, periodLabel, dueDate, notes, type, planLabel, trialDays } = req.body;
@@ -5007,7 +5115,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 });
 
 // POST /api/stripe/portal — open Stripe Billing Portal for a client
-app.post('/api/stripe/portal', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/stripe/portal', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     if (!stripeReady(res)) return;
     try {
         const { clientId } = req.body;
@@ -5025,7 +5133,7 @@ app.post('/api/stripe/portal', authenticateToken, authorizeRoles('trainer', 'adm
 });
 
 // POST /api/stripe/subscription/cancel — cancel subscription at period end
-app.post('/api/stripe/subscription/cancel', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+app.post('/api/stripe/subscription/cancel', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     if (!stripeReady(res)) return;
     try {
         const { paymentId } = req.body;
