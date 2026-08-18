@@ -479,6 +479,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const clickHandler = !n.isRead ? `onclick="window.markNotificationRead('${safeId}')"` : '';
         const readOpacity = n.isRead ? 'opacity-50' : 'cursor-pointer hover:border-[#FFDB89]/30';
 
+        // The superadmin's feed spans every trainer, so say which one this came from.
+        // The server only sends trainerName to a superadmin, so this stays empty for
+        // a normal trainer and the row renders exactly as before.
+        const trainerTag = n.trainerName
+            ? ` · <span class="text-[#FFDB89]/45 font-semibold">${escHtml(n.trainerName)}</span>`
+            : '';
+
         // contact_inquiry has no linked client profile — render name as plain text
         const isContact = n.type === 'contact_inquiry';
         const nameHtml = isContact
@@ -497,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="font-normal text-[#FFDB89]/70"> ${escHtml(n.title)}</span>
                     </p>
                     <p class="text-xs text-[#FFDB89]/50 mt-0.5 truncate">${escHtml(n.message)}</p>
-                    <p class="text-[11px] text-[#FFDB89]/30 mt-1">${timeAgo}</p>
+                    <p class="text-[11px] text-[#FFDB89]/30 mt-1">${timeAgo}${trainerTag}</p>
                 </div>
                 ${unreadDot}
             </div>
@@ -15327,6 +15334,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     feedItems.push({
                         clientId: client._id,
                         clientName,
+                        trainerName: client.trainerName || '',   // superadmin only
                         initials,
                         dueDate,
                         hasWorkout: true,
@@ -15344,6 +15352,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     feedItems.push({
                         clientId: client._id,
                         clientName,
+                        trainerName: client.trainerName || '',   // superadmin only
                         initials,
                         dueDate,
                         hasWorkout: false
@@ -15376,7 +15385,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="w-10 h-10 rounded-full bg-[#FFDB89]/15 text-[#FFDB89] flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FFDB89]/25 transition" onclick="window.openClientProfile('${item.clientId}')">${item.initials}</div>
                         <div>
                             <h3 class="font-bold text-[#FFDB89] leading-tight cursor-pointer hover:text-[#FFDB89]/80 transition" onclick="window.openClientProfile('${item.clientId}')">${item.clientName}</h3>
-                            <p class="text-xs text-[#FFDB89]/40">Vence: ${item.dueDate}</p>
+                            <p class="text-xs text-[#FFDB89]/40">Vence: ${item.dueDate}${item.trainerName ? ` · <span class="text-[#FFDB89]/55 font-semibold">${escHtml(item.trainerName)}</span>` : ''}</p>
                         </div>
                     </div>
                     <div class="px-5 py-5 flex items-center gap-3">
@@ -15393,7 +15402,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="w-10 h-10 rounded-full bg-[#FFDB89]/15 text-[#FFDB89] flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FFDB89]/25 transition shrink-0" onclick="window.openClientProfile('${item.clientId}')">${item.initials}</div>
                     <div>
                         <h3 class="font-bold text-[#FFDB89] leading-tight cursor-pointer hover:text-[#FFDB89]/80 transition" onclick="window.openClientProfile('${item.clientId}')">${item.clientName}</h3>
-                        <p class="text-xs text-[#FFDB89]/40">Vence: ${item.dueDate}</p>
+                        <p class="text-xs text-[#FFDB89]/40">Vence: ${item.dueDate}${item.trainerName ? ` · <span class="text-[#FFDB89]/55 font-semibold">${escHtml(item.trainerName)}</span>` : ''}</p>
                     </div>
                 </div>
                 <!-- Workout title + warmup -->

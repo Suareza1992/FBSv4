@@ -740,11 +740,20 @@ const generateTempPassword = () => {
 // --- Helper: Create a notification for the trainer ---
 const createNotification = async ({ clientId, clientName, type, title, message, data }) => {
     try {
-        const trainer = await User.findOne({ role: 'trainer' });
-        if (!trainer) { console.warn('No trainer found for notification'); return; }
+        // Route to the client's OWN trainer. Picking the first trainer in the
+        // collection sent every notification to one arbitrary account — with more
+        // than one trainer that both misdelivers and leaks other trainers' client
+        // names. Fall back to any trainer only when the client has no owner.
+        let ownerId = null;
+        if (clientId) ownerId = (await User.findById(clientId).select('trainerId'))?.trainerId || null;
+        if (!ownerId) {
+            const fallback = await User.findOne({ role: 'trainer' }).select('_id');
+            if (!fallback) { console.warn('No trainer found for notification'); return; }
+            ownerId = fallback._id;
+        }
 
         await Notification.create({
-            trainerId: trainer._id,
+            trainerId: ownerId,
             clientId,
             clientName,
             type,
@@ -1255,9 +1264,21 @@ app.get('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', 's
             ];
         }
 
-        const clients = await User.find(query)
+        let clients = await User.find(query)
             .select(CLIENT_SAFE_SELECT)
             .sort({ createdAt: -1 });
+
+        // A superadmin's list spans every trainer, so each client carries the name of
+        // the trainer who owns it (one extra query, not one per client). Normal
+        // trainers get the payload unchanged.
+        if (await isSuperadmin(req)) {
+            const ids = [...new Set(clients.map(c => String(c.trainerId)).filter(id => id && id !== 'null'))];
+            const trainers = await User.find({ _id: { $in: ids } }).select('name lastName');
+            const nameById = Object.fromEntries(
+                trainers.map(t => [String(t._id), `${t.name || ''} ${t.lastName || ''}`.trim()])
+            );
+            clients = clients.map(c => ({ ...c.toObject(), trainerName: nameById[String(c.trainerId)] || '' }));
+        }
         res.json(clients);
     } catch (error) { res.status(500).json({ message: 'Error fetching clients' }); }
 });
@@ -4413,9 +4434,13 @@ app.delete('/api/groups/:id', authenticateToken, authorizeRoles('trainer', 'admi
 // ==========================================================================
 
 // GET unread count (MUST be before :id route)
+// Notification scope: a trainer sees their own; the superadmin sees every
+// trainer's, so oversight includes activity from the whole roster.
+const notifScope = async (req) => (await isSuperadmin(req)) ? {} : { trainerId: req.user.id };
+
 app.get('/api/notifications/unread-count', authenticateToken, async (req, res) => {
     try {
-        const count = await Notification.countDocuments({ trainerId: req.user.id, isRead: false });
+        const count = await Notification.countDocuments({ ...(await notifScope(req)), isRead: false });
         res.json({ count });
     } catch (error) {
         console.error('Error fetching unread count:', error);
@@ -4426,7 +4451,7 @@ app.get('/api/notifications/unread-count', authenticateToken, async (req, res) =
 // Mark ALL as read
 app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
     try {
-        await Notification.updateMany({ trainerId: req.user.id, isRead: false }, { isRead: true });
+        await Notification.updateMany({ ...(await notifScope(req)), isRead: false }, { isRead: true });
         res.json({ message: 'All marked as read' });
     } catch (error) {
         console.error('Error marking all as read:', error);
@@ -4441,7 +4466,7 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
         const skip  = Math.max(parseInt(req.query.skip, 10) || 0, 0);
         const filter = req.query.filter;
 
-        const query = { trainerId: req.user.id };
+        const query = { ...(await notifScope(req)) };
         if (filter === 'unread') {
             query.isRead = false;
         } else if (filter === '7days') {
@@ -4456,7 +4481,22 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
             .skip(skip)
             .limit(limit + 1);
         const hasMore = docs.length > limit;
-        res.json({ notifications: hasMore ? docs.slice(0, limit) : docs, hasMore });
+        let notifications = hasMore ? docs.slice(0, limit) : docs;
+
+        // For the superadmin the feed spans every trainer, so each row needs to say
+        // whose client it came from. Resolved in one query, not per notification.
+        if (await isSuperadmin(req)) {
+            const ids = [...new Set(notifications.map(n => String(n.trainerId)).filter(Boolean))];
+            const trainers = await User.find({ _id: { $in: ids } }).select('name lastName');
+            const nameById = Object.fromEntries(
+                trainers.map(t => [String(t._id), `${t.name || ''} ${t.lastName || ''}`.trim()])
+            );
+            notifications = notifications.map(n => ({
+                ...n.toObject(),
+                trainerName: nameById[String(n.trainerId)] || '',
+            }));
+        }
+        res.json({ notifications, hasMore });
     } catch (error) {
         console.error('Error fetching notifications:', error);
         res.status(500).json({ message: 'Error fetching notifications' });
@@ -4467,8 +4507,9 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
 app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
     try {
         // H-6: Only mark read if this notification belongs to the requesting trainer
+        // (the superadmin may mark any, since they receive every trainer's feed).
         const updated = await Notification.findOneAndUpdate(
-            { _id: req.params.id, trainerId: req.user.id },
+            { _id: req.params.id, ...(await notifScope(req)) },
             { isRead: true }
         );
         if (!updated) return res.status(404).json({ message: 'Notification not found' });
