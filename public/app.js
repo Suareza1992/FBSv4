@@ -5429,7 +5429,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chip.innerHTML = `
             <span class="flex items-center gap-2"><i class="fas fa-clipboard text-[#FFDB89]/60"></i>Copiado: <span class="text-white">${count} día${count > 1 ? 's' : ''}</span></span>
             <span class="text-[11px] font-normal text-[#FFDB89]/40 hidden sm:inline">— usa "Pegar" en el día donde quieres que inicie</span>
-            ${hasUndo ? `<button onclick="window.undoLastPaste()" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-amber-400/70 hover:text-amber-400 border border-amber-400/30 hover:border-amber-400/60 rounded-full px-2.5 py-1 transition" title="Deshacer último pegue">
+            ${hasUndo ? `<button onclick="window.undoLastCalendarChange()" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-amber-400/70 hover:text-amber-400 border border-amber-400/30 hover:border-amber-400/60 rounded-full px-2.5 py-1 transition" title="Deshacer último cambio">
                 <i class="fas fa-undo text-[10px]"></i>Deshacer
             </button>` : ''}
             <button onclick="window.clearCalendarClipboard()" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400/70 hover:text-red-400 border border-red-400/30 hover:border-red-400/60 rounded-full px-2.5 py-1 transition">
@@ -5437,8 +5437,98 @@ document.addEventListener('DOMContentLoaded', () => {
             </button>`;
     };
 
-    // Track last paste for undo functionality
-    let lastPastedWorkouts = []; // { dateStr, originalWorkout } — dates we just pasted to
+    // Also shown as a small floating "Deshacer" pill on its own — not every calendar
+    // change involves the clipboard chip (a manual day edit or a single delete has
+    // no copy/paste in flight), so undo needs a UI surface independent of it.
+    const renderCalendarUndoPill = () => {
+        let pill = document.getElementById('calendar-undo-pill');
+        const hasUndo = lastPastedWorkouts && lastPastedWorkouts.length > 0;
+        // The clipboard chip already renders its own Deshacer button when the
+        // clipboard is active — don't show a second one on top of it.
+        const clipboardActive = (copiedMultiDayData?.length || 0) > 0 || !!copiedWorkoutData;
+        if (!hasUndo || clipboardActive) { pill?.remove(); return; }
+        if (!pill) {
+            pill = document.createElement('div');
+            pill.id = 'calendar-undo-pill';
+            pill.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-2 bg-[#1C1C1E] border border-amber-400/30 text-amber-400 text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
+            document.body.appendChild(pill);
+        }
+        const n = lastPastedWorkouts.length;
+        pill.innerHTML = `
+            <button onclick="window.undoLastCalendarChange()" class="flex items-center gap-2" title="Deshacer último cambio">
+                <i class="fas fa-undo text-[11px]"></i>Deshacer ${n > 1 ? `(${n} día${n > 1 ? 's' : ''})` : ''}
+            </button>
+            <button onclick="lastPastedWorkouts=[]; renderCalendarUndoPill();" class="text-amber-400/50 hover:text-amber-400 transition" title="Descartar">
+                <i class="fas fa-times text-[10px]"></i>
+            </button>`;
+    };
+
+    // Track the most recent calendar change(s) for undo. { dateStr, originalWorkout }
+    // — originalWorkout is the server's real content for that date BEFORE the change
+    // (or null if the day was empty), captured by snapshotDayForUndo below.
+    let lastPastedWorkouts = [];
+
+    // Ask the server what's really on `dateStr` right now and record it for undo,
+    // BEFORE the caller mutates it. Always reads from the server rather than the
+    // local cache, so undo restores the true prior state even if the UI cache is
+    // stale. `reset:true` starts a fresh undo batch (single-day actions); omit it
+    // to append to an in-progress batch (bulk delete, multi-day paste).
+    const snapshotDayForUndo = async (dateStr, { reset = false } = {}) => {
+        if (!currentClientViewId) return;
+        if (reset) lastPastedWorkouts = [];
+        let originalWorkout = null;
+        try {
+            const res = await apiFetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`);
+            if (res.ok) originalWorkout = await res.json();
+        } catch { /* best-effort — restore falls back to "day was empty" */ }
+        lastPastedWorkouts.push({ dateStr, originalWorkout });
+        renderCalendarClipboardChip();
+        renderCalendarUndoPill();
+    };
+
+    // Paint one calendar cell from a workout object (or clear it if null) — shared
+    // by undo-restore so a restored rest day / routine / empty day all render
+    // exactly like the rest of the calendar does.
+    const paintCalendarCellFromWorkout = (dateStr, workout) => {
+        if (window._calendarWorkouts) {
+            if (workout) window._calendarWorkouts[dateStr] = workout; else delete window._calendarWorkouts[dateStr];
+        }
+        const cell = document.getElementById(`day-${dateStr}`);
+        if (!cell) return;
+        const area = cell.querySelector('.content-area');
+        const cb = cell.querySelector('.copy-day-checkbox');
+        if (!workout) {
+            if (area) area.innerHTML = `<div class="text-center text-[#FFDB89]/15"><i class="fas fa-plus text-xl"></i></div>`;
+            if (cb) cb.classList.add('hidden');
+            return;
+        }
+        if (area) {
+            if (workout.isRest) {
+                const isActive = workout.restType === 'active_rest';
+                const icon  = isActive ? 'fa-person-walking' : 'fa-moon';
+                const color = isActive ? '#6EE7B7' : '#93C5FD';
+                const label = workout.title || (isActive ? 'Descanso Activo' : 'Descanso');
+                area.innerHTML = `
+                    <div class="flex items-center gap-2 py-0.5">
+                        <div class="w-1 h-6 rounded-full shrink-0" style="background:${color}"></div>
+                        <i class="fas ${icon} text-xs shrink-0" style="color:${color}"></i>
+                        <span class="text-xs font-semibold" style="color:${color}">${escHtml(label)}</span>
+                    </div>`;
+            } else {
+                const exCount = (workout.exercises || []).length;
+                area.innerHTML = `
+                    <div class="workout-card flex items-center gap-3 cursor-pointer group/wk" onclick="window.loadWorkoutForEditing('${dateStr}', '${currentClientViewId}')">
+                        <div class="w-1 h-8 bg-[#FFDB89] rounded-full shrink-0"></div>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-sm font-bold text-[#FFDB89] truncate">${escHtml(workout.title || '')}</div>
+                            <div class="text-xs text-[#FFDB89]/50">${exCount} ejercicio${exCount !== 1 ? 's' : ''}</div>
+                        </div>
+                        <i class="fas fa-chevron-right text-[#FFDB89]/30 text-xs group-hover/wk:text-[#FFDB89] transition-colors shrink-0"></i>
+                    </div>`;
+            }
+        }
+        if (cb) cb.classList.remove('hidden');
+    };
 
     // "Terminar" — clear the calendar clipboard and remove the chip. Called when the
     // trainer is done pasting (the copy stays alive until they click this).
@@ -5447,18 +5537,21 @@ document.addEventListener('DOMContentLoaded', () => {
         copiedWorkoutData  = null;
         sessionStorage.removeItem('fbs_copiedMultiDay');
         sessionStorage.removeItem('fbs_copiedWorkout');
-        lastPastedWorkouts = []; // clear undo history when clearing clipboard
         renderCalendarClipboardChip();
+        renderCalendarUndoPill();
     };
 
-    // Undo the last paste action
-    window.undoLastPaste = async () => {
+    // Undo the last recorded calendar change(s) — paste, manual edit, rest-day
+    // toggle, or delete. Restores each affected date to exactly what the server
+    // had before the change (or clears the day if it was genuinely empty).
+    window.undoLastCalendarChange = async () => {
         if (!lastPastedWorkouts || lastPastedWorkouts.length === 0) {
             showToast('No hay nada que deshacer.', 'info');
             return;
         }
+        if (!currentClientViewId) return;
 
-        const confirmOk = await showConfirm(`¿Deshacer el último pegue de ${lastPastedWorkouts.length} día(s)?`, {
+        const confirmOk = await showConfirm(`¿Deshacer ${lastPastedWorkouts.length > 1 ? `el último cambio en ${lastPastedWorkouts.length} días` : 'el último cambio'}?`, {
             confirmLabel: 'Deshacer',
             cancelLabel: 'Cancelar'
         });
@@ -5467,29 +5560,31 @@ document.addEventListener('DOMContentLoaded', () => {
         let undoCount = 0;
         for (const item of lastPastedWorkouts) {
             try {
-                const res = await apiFetch(`/api/client-workouts/${currentClientViewId}/${item.dateStr}`, {
-                    method: 'DELETE'
-                });
-                if (res.ok) {
+                let ok;
+                if (item.originalWorkout) {
+                    // Restore exactly what was there — POST is an upsert, so this
+                    // works whether the day currently exists or was deleted since.
+                    const res = await apiFetch('/api/client-workouts', {
+                        method: 'POST',
+                        body: JSON.stringify({ ...item.originalWorkout, clientId: currentClientViewId, date: item.dateStr }),
+                    });
+                    ok = res.ok;
+                } else {
+                    // The day was genuinely empty before — undo means empty again.
+                    const res = await apiFetch(`/api/client-workouts/${currentClientViewId}/${item.dateStr}`, { method: 'DELETE' });
+                    ok = res.ok || res.status === 404; // already-empty is a successful outcome here
+                }
+                if (ok) {
                     undoCount++;
-                    delete window._calendarWorkouts?.[item.dateStr];
-                    const cellId = `day-${item.dateStr}`;
-                    const cell = document.getElementById(cellId);
-                    if (cell) {
-                        const area = cell.querySelector('.content-area');
-                        if (area) {
-                            area.innerHTML = `<div class="text-center text-[#FFDB89]/15"><i class="fas fa-plus text-xl"></i></div>`;
-                        }
-                        const cb = cell.querySelector('.copy-day-checkbox');
-                        if (cb) cb.classList.add('hidden');
-                    }
+                    paintCalendarCellFromWorkout(item.dateStr, item.originalWorkout);
                 }
             } catch (e) {
-                console.error('Error undoing paste:', e);
+                console.error('Error undoing calendar change:', e);
             }
         }
-        lastPastedWorkouts = []; // clear undo history after undo
+        lastPastedWorkouts = []; // clear undo history after undo — the restored state is the new baseline
         renderCalendarClipboardChip();
+        renderCalendarUndoPill();
         showToast(`✓ ${undoCount} día(s) deshecho${undoCount > 1 ? 's' : ''}.`, 'success');
     };
 
@@ -5541,14 +5636,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedCopyDays.size === 0 || !currentClientViewId) return;
         const count = selectedCopyDays.size;
         const yes = await showConfirm(
-            `¿Borrar el workout de ${count} día${count > 1 ? 's' : ''} seleccionado${count > 1 ? 's' : ''}? Esta acción no se puede deshacer.`,
+            `¿Borrar el workout de ${count} día${count > 1 ? 's' : ''} seleccionado${count > 1 ? 's' : ''}?`,
             { confirmLabel: 'Borrar', danger: true }
         );
         if (!yes) return;
 
         const datesToDelete = [...selectedCopyDays];
         let deleted = 0;
+        lastPastedWorkouts = []; // start a fresh undo batch covering this whole bulk delete
         for (const dateStr of datesToDelete) {
+            await snapshotDayForUndo(dateStr);
             try {
                 const res = await apiFetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`, { method: 'DELETE' });
                 if (res.ok) {
@@ -6812,7 +6909,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ok = await showConfirm(`Este día ya tiene ${existing.exercises.length} ejercicio(s) asignado(s). ¿Deseas convertirlo a Descanso y eliminar los ejercicios?`, { confirmLabel: 'Convertir a Descanso', cancelLabel: 'Cancelar', danger: true });
             if (!ok) return;
         }
-        snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
+        const restSnap = snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
         prog.weeks[weekIndex].days[String(dayNum)] = { ...existing, name: 'Descanso', isRest: true, isActiveRest: false, exercises: [] };
         try {
             const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
@@ -6821,6 +6918,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
                 if (idx > -1) programsCache[idx] = updated;
                 renderProgramBuilder(updated);
+                if (restSnap) {
+                    showToast(`✓ Día convertido a Descanso. <a href="#" onclick="event.preventDefault(); window.undoProgramDaySnapshot('${restSnap.id}')" class="underline decoration-dotted hover:text-white">Deshacer</a>`, 'success', 6000);
+                }
             } else { showToast('Error guardando día de descanso.', 'error'); }
         } catch (e) { showToast('Error de conexión.', 'error'); }
     };
@@ -6837,7 +6937,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ok = await showConfirm(`Este día ya tiene ${existing.exercises.length} ejercicio(s) asignado(s). ¿Deseas convertirlo a Descanso Activo y eliminar los ejercicios?`, { confirmLabel: 'Convertir a Descanso Activo', cancelLabel: 'Cancelar', danger: true });
             if (!ok) return;
         }
-        snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
+        const activeRestSnap = snapshotDayToHistory(prog, weekIndex, dayNum); // ── snapshot before overwrite
         prog.weeks[weekIndex].days[String(dayNum)] = { ...existing, name: 'Descanso Activo', isRest: true, isActiveRest: true, exercises: [] };
         try {
             const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
@@ -6846,6 +6946,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
                 if (idx > -1) programsCache[idx] = updated;
                 renderProgramBuilder(updated);
+                if (activeRestSnap) {
+                    showToast(`✓ Día convertido a Descanso Activo. <a href="#" onclick="event.preventDefault(); window.undoProgramDaySnapshot('${activeRestSnap.id}')" class="underline decoration-dotted hover:text-white">Deshacer</a>`, 'success', 6000);
+                }
             } else { showToast('Error guardando día de descanso activo.', 'error'); }
         } catch (e) { showToast('Error de conexión.', 'error'); }
     };
@@ -7411,17 +7514,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const HISTORY_MAX = 30;                   // max entries kept
 
     // Call this BEFORE any destructive write to a day (save, rest, active-rest).
-    // Only snapshots if the day has actual content worth preserving.
+    // Only snapshots if the day has actual content worth preserving. Returns the
+    // snapshot (so a caller can offer instant "Deshacer" without reopening the
+    // editor), or null if there was nothing worth snapshotting.
     const snapshotDayToHistory = (prog, weekIndex, dayNum) => {
         const existing = prog?.weeks?.[weekIndex]?.days?.[String(dayNum)];
-        if (!existing) return;
+        if (!existing) return null;
         const hasContent = existing.exercises?.length > 0
             || existing.warmup?.trim()
             || existing.cooldown?.trim()
             || existing.warmupItems?.length > 0
             || existing.cooldownItems?.length > 0
             || existing.isRest;
-        if (!hasContent) return;
+        if (!hasContent) return null;
 
         const now  = Date.now();
         const snap = {
@@ -7448,6 +7553,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // localStorage full: halve the list and retry
             try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, Math.floor(HISTORY_MAX / 2)))); } catch (_2) {}
         }
+        return snap;
     };
 
     // Open/toggle the history panel inside the builder modal
@@ -7558,6 +7664,34 @@ document.addEventListener('DOMContentLoaded', () => {
         // Close panel
         document.getElementById('routine-history-panel')?.classList.add('hidden');
         showToast('Versión restaurada. Revisa y guarda cuando estés listo.', 'success');
+    };
+
+    // One-click "Deshacer" for a mistaken paste/import — restores AND saves
+    // immediately, unlike restoreSnapshot (which only repopulates the open
+    // editor's fields and waits for the trainer to hit Guardar). This is for the
+    // "oh no, wrong day" moment right after the action, without opening anything.
+    window.undoProgramDaySnapshot = async (snapId) => {
+        let history = [];
+        try { history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) {}
+        const snap = history.find(s => s.id === snapId);
+        if (!snap) { showToast('Ya no se puede deshacer ese cambio.', 'info'); return; }
+
+        const prog = programsCache.find(p => (p._id == snap.programId) || (p.id == snap.programId));
+        if (!prog) { showToast('Programa no encontrado.', 'error'); return; }
+        if (!prog.weeks[snap.weekIndex]) prog.weeks[snap.weekIndex] = { weekNumber: snap.weekIndex + 1, days: {} };
+        if (!prog.weeks[snap.weekIndex].days) prog.weeks[snap.weekIndex].days = {};
+        prog.weeks[snap.weekIndex].days[String(snap.dayNum)] = JSON.parse(JSON.stringify(snap.dayData));
+
+        try {
+            const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
+            if (res.ok) {
+                const updated = await res.json();
+                const idx = programsCache.findIndex(p => (p._id == snap.programId) || (p.id == snap.programId));
+                if (idx > -1) programsCache[idx] = updated;
+                if (String(currentProgramId) === String(snap.programId)) renderProgramBuilder(updated);
+                showToast('✓ Deshecho.', 'success');
+            } else { showToast('Error al deshacer.', 'error'); }
+        } catch (e) { showToast('Error de conexión.', 'error'); }
     };
 
     window.clearRoutineHistory = async () => {
@@ -7860,6 +7994,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const existing = prog.weeks[weekIndex].days[key];
             const isOccupied = !!(existing && (existing.exercises?.length || existing.isRest || existing.isActiveRest));
             if (isOccupied && !overwrite) { skipped++; continue; }
+            // Overwriting an occupied day here — snapshot it first (no-ops if empty).
+            snapshotDayToHistory(prog, weekIndex, daySlot);
 
             prog.weeks[weekIndex].days[key] = {
                 name:          d.name || `Día ${daySlot}`,
@@ -8344,14 +8480,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const dateStr = dateId.replace('day-', '');
         
         if (action === 'add') {
+            // Snapshot before opening the editor (not on every autosave inside it) —
+            // one "Deshacer" reverts the whole editing session, not just the last save.
+            await snapshotDayForUndo(dateStr, { reset: true });
             editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
             editorDateStr = dateStr;
             editorWarmup = "";
             editorWarmupVideoUrl = "";
             editorCooldown = "";
             editorWorkoutTitle = dateStr;
-            openWorkoutEditor(dateStr); 
-            
+            openWorkoutEditor(dateStr);
+
         } else if (action === 'rest') {
             // Guard: confirm if this date already has a workout with exercises
             const existingW = window._calendarWorkouts?.[dateStr];
@@ -8359,6 +8498,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ok = await showConfirm(`Este día ya tiene una rutina con ${existingW.exercises.length} ejercicio(s). ¿Deseas reemplazarla con un día de Descanso?`, { confirmLabel: 'Reemplazar con Descanso', cancelLabel: 'Cancelar', danger: true });
                 if (!ok) return;
             }
+            await snapshotDayForUndo(dateStr, { reset: true });
             try {
                 const res = await apiFetch('/api/client-workouts', {
                     method: 'POST',
@@ -8412,6 +8552,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const srcW = copiedProgramDaySource?.weekIdx ?? 0;
                 const srcD = copiedProgramDaySource?.dayNum ?? 1;
+                await snapshotDayForUndo(dateStr, { reset: true });
                 const ok = await pushSingleDay(dayData, currentClientViewId, dateStr, srcW, srcD);
                 if (!ok) { showToast('No se pudo pegar la rutina.', 'error'); return; }
                 // Re-fetch the canonical saved workout and paint the calendar cell
@@ -8474,6 +8615,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                     delete pastedWorkout._id;
 
+                    // Snapshot what's REALLY on targetDateStr right now (not the
+                    // copied source — that's what we're pasting IN, not what we'd
+                    // be undoing back to) before overwriting it.
+                    await snapshotDayForUndo(targetDateStr);
+
                     try {
                         const response = await apiFetch('/api/client-workouts', {
                             method: 'POST',
@@ -8481,7 +8627,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         if(response.ok) {
                             successCount++;
-                            lastPastedWorkouts.push({ dateStr: targetDateStr, originalWorkout: item.workout }); // track for undo
                             window._calendarWorkouts[targetDateStr] = pastedWorkout;
                             const targetCellId = `day-${targetDateStr}`;
                             const cell = document.getElementById(targetCellId);
@@ -8539,13 +8684,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 delete pastedWorkout._id;
 
+                await snapshotDayForUndo(dateStr, { reset: true });
+
                 try {
                     const response = await apiFetch('/api/client-workouts', {
                         method: 'POST',
                         body: JSON.stringify(pastedWorkout)
                     });
                     if(response.ok) {
-                        lastPastedWorkouts = [{ dateStr, originalWorkout: copiedWorkoutData }]; // track for undo
                         const cell = document.getElementById(dateId);
                         if(cell) {
                             const area = cell.querySelector('.content-area');
@@ -9809,7 +9955,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await apiFetch(`/api/client-workouts/${clientId}/${dateStr}`);
             if(response.ok) {
                 const workout = await response.json();
-                
+
+                // Snapshot the pre-edit state for undo — we already have it fetched,
+                // no need for a second round-trip. Everything the trainer does inside
+                // this editing session (including autosaves) reverts to this in one
+                // "Deshacer", instead of stacking one undo entry per autosave.
+                lastPastedWorkouts = [{ dateStr, originalWorkout: workout }];
+                renderCalendarClipboardChip();
+                renderCalendarUndoPill();
+
                 // Populate editor state
                 editorDateStr = dateStr;
                 editorWarmup = workout.warmup || '';
@@ -10137,6 +10291,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!prog.weeks[weekIndex]) prog.weeks[weekIndex] = { weekNumber: weekIndex + 1, days: {} };
             if (!prog.weeks[weekIndex].days) prog.weeks[weekIndex].days = {};
             const existing = prog.weeks[weekIndex].days[String(dayNum)] || {};
+            // Snapshot whatever's on this day BEFORE the paste overwrites it — this is
+            // the exact mistake pasting into the wrong day causes, and until now
+            // nothing captured it, so there was nothing "Historial" could restore.
+            const pasteSnap = snapshotDayToHistory(prog, weekIndex, dayNum);
             // Paste the copied day but preserve any existing nutrition
             prog.weeks[weekIndex].days[String(dayNum)] = {
                 ...JSON.parse(JSON.stringify(copiedProgramDayData)),
@@ -10152,7 +10310,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     // more days. renderProgramBuilder() calls syncCopyPasteButtons(),
                     // which keeps every cell in "Pegar" mode until "Terminar" is clicked.
                     renderProgramBuilder(updated);
-                    showToast('✓ Día pegado.', 'success');
+                    // If the destination day had content, offer instant undo right in
+                    // the toast — no need to open the day and hunt for "Historial".
+                    showToast(
+                        pasteSnap
+                            ? `✓ Día pegado. <a href="#" onclick="event.preventDefault(); window.undoProgramDaySnapshot('${pasteSnap.id}')" class="underline decoration-dotted hover:text-white">Deshacer</a>`
+                            : '✓ Día pegado.',
+                        'success',
+                        pasteSnap ? 6000 : 3500
+                    );
                 } else { showToast('Error al pegar el día.', 'error'); }
             } catch(e) { showToast('Error de conexión.', 'error'); }
             return;

@@ -4204,6 +4204,20 @@ const programDayToWorkout = (dd, programId, wIdx, dayNum) => {
     };
 };
 
+// `week.days` is a Mongoose Map (schema: `days: { type: Map, of: Mixed }`), so
+// bracket access (week.days["1"]) silently returns undefined — a real Map only
+// exposes its entries through .get(). Reading it with brackets made every day
+// look empty, which made syncProgramToClients (below) believe every day had
+// been dropped from the program and delete them all from every assigned
+// client's calendar on every save. Support both Map and plain-object shapes
+// since the same helper doubles for pre-save plain payloads.
+const getProgramDay = (week, dayNum) => {
+    const days = week?.days;
+    if (!days) return undefined;
+    if (typeof days.get === 'function') return days.get(String(dayNum)) ?? days.get(dayNum);
+    return days[String(dayNum)] ?? days[dayNum];
+};
+
 // Re-sync one program to every client that has it assigned. `todayStr` is the
 // trainer's local date (passed from the browser) used as the "future" cutoff.
 const syncProgramToClients = async (program, todayStr) => {
@@ -4220,7 +4234,7 @@ const syncProgramToClients = async (program, todayStr) => {
         for (let wIdx = 0; wIdx < (program.weeks?.length || 0); wIdx++) {
             const week = program.weeks[wIdx];
             for (let dayNum = 1; dayNum <= 7; dayNum++) {
-                const dd = week?.days?.[String(dayNum)] ?? week?.days?.[dayNum];
+                const dd = getProgramDay(week, dayNum);
                 const globalIndex = wIdx * 7 + (dayNum - 1);
                 const dateStr = addDaysStr(startDate, globalIndex - anchorOffset);
                 slots.set(`${wIdx}-${dayNum}`, { dd, wIdx, dayNum, dateStr, hasContent: dayHasContent(dd) });
