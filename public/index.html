@@ -475,7 +475,7 @@
           <div class="flex flex-col md:flex-row gap-12 items-stretch">
 
             <div class="md:w-2/5 w-full">
-              <div class="rounded-2xl overflow-hidden border border-fbs-gold/20 bg-[#030303]">
+              <div class="h-full rounded-2xl overflow-hidden bg-[#030303]">
                 <img src="/profile/About me FBS.png" class="w-full h-full object-contain scale-[1.35]" alt="Ángel Suárez">
               </div>
             </div>
@@ -506,11 +506,13 @@
                 </p>
               </div>
 
-              <a href="#contact-section"
-                onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;"
-                class="btn-gold px-8 py-3.5 rounded-full text-base inline-flex items-center gap-3 mt-8" data-key="aboutCta">
-                <i class="fas fa-comments"></i> Hablemos de tus metas
-              </a>
+              <div class="flex justify-center mt-8">
+                <a href="#contact-section"
+                  onclick="document.getElementById('contact-section').scrollIntoView({behavior:'smooth'}); return false;"
+                  class="btn-gold px-8 py-3.5 rounded-full text-base inline-flex items-center gap-3" data-key="aboutCta">
+                  <i class="fas fa-comments"></i> Hablemos de tus metas
+                </a>
+              </div>
             </div>
 
           </div>
