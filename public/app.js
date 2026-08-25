@@ -5455,12 +5455,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const n = lastPastedWorkouts.length;
         pill.innerHTML = `
-            <button onclick="window.undoLastCalendarChange()" class="flex items-center gap-2" title="Deshacer último cambio">
+            <button data-undo-action class="flex items-center gap-2" title="Deshacer último cambio">
                 <i class="fas fa-undo text-[11px]"></i>Deshacer ${n > 1 ? `(${n} día${n > 1 ? 's' : ''})` : ''}
             </button>
-            <button onclick="lastPastedWorkouts=[]; renderCalendarUndoPill();" class="text-amber-400/50 hover:text-amber-400 transition" title="Descartar">
+            <button data-undo-dismiss class="text-amber-400/50 hover:text-amber-400 transition" title="Descartar">
                 <i class="fas fa-times text-[10px]"></i>
             </button>`;
+        // Wire with real listeners, NOT inline onclick. Inline handlers execute in
+        // global scope, and everything here lives inside the DOMContentLoaded
+        // closure — so `onclick="lastPastedWorkouts=[]"` threw a ReferenceError and
+        // the dismiss button silently did nothing.
+        pill.querySelector('[data-undo-action]')?.addEventListener('click', () => window.undoLastCalendarChange());
+        pill.querySelector('[data-undo-dismiss]')?.addEventListener('click', () => {
+            lastPastedWorkouts = [];
+            renderCalendarUndoPill();
+            renderCalendarClipboardChip();
+        });
     };
 
     // Track the most recent calendar change(s) for undo. { dateStr, originalWorkout }
@@ -5479,9 +5489,20 @@ document.addEventListener('DOMContentLoaded', () => {
         let originalWorkout = null;
         try {
             const res = await apiFetch(`/api/client-workouts/${currentClientViewId}/${dateStr}`);
-            if (res.ok) originalWorkout = await res.json();
+            if (res.ok) originalWorkout = await res.json();   // 404 => stays null => "day was empty"
         } catch { /* best-effort — restore falls back to "day was empty" */ }
         lastPastedWorkouts.push({ dateStr, originalWorkout });
+        // NOTE: deliberately does NOT show the undo UI. Taking a snapshot only means
+        // "we might be about to change this day" — opening the editor snapshots too.
+        // The pill appears in commitUndoPoint(), after a write actually succeeds,
+        // so "Deshacer" never offers to undo something that hasn't happened.
+    };
+
+    // Call after a calendar write actually succeeds — this is what reveals the
+    // undo affordance. Safe to call once per action (bulk actions call it once
+    // at the end, not per day).
+    const commitUndoPoint = () => {
+        if (!lastPastedWorkouts.length) return;
         renderCalendarClipboardChip();
         renderCalendarUndoPill();
     };
@@ -5549,7 +5570,12 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('No hay nada que deshacer.', 'info');
             return;
         }
-        if (!currentClientViewId) return;
+        // Undo writes to a specific client's calendar. If that context is gone
+        // (navigated away), say so instead of silently doing nothing.
+        if (!currentClientViewId) {
+            showToast('Abre el calendario del cliente para deshacer este cambio.', 'info');
+            return;
+        }
 
         const confirmOk = await showConfirm(`¿Deshacer ${lastPastedWorkouts.length > 1 ? `el último cambio en ${lastPastedWorkouts.length} días` : 'el último cambio'}?`, {
             confirmLabel: 'Deshacer',
@@ -5667,6 +5693,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         window.clearCopySelection();
+        if (deleted > 0) commitUndoPoint();   // deletions landed — offer "Deshacer"
         showToast(`${deleted} día${deleted > 1 ? 's' : ''} borrado${deleted > 1 ? 's' : ''} exitosamente.`, 'success');
     };
 
@@ -6186,6 +6213,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modal)   modal.classList.remove('hidden');
     };
 
+    // ── Exercise-name normalization ───────────────────────────────────────────
+    // Markdown routines write exercise names as "**Incline Dumbbell Press:**", so
+    // the parsed name keeps a trailing colon. That made every library lookup miss
+    // ("incline dumbbell press:" !== "incline dumbbell press"), which is why
+    // imported routines came in with no videos and no autocomplete matches.
+    // Normalizing both sides of every comparison fixes new imports AND the
+    // already-imported routines that still carry the stray punctuation.
+    const normalizeExerciseName = (name) => String(name || '')
+        .replace(/[\s:;,.\-–—*]+$/g, '')   // trailing colon / dash / period / asterisk
+        .replace(/^[\s:;,.\-–—*]+/g, '')   // and the same at the start
+        .replace(/\s+/g, ' ')              // collapse internal whitespace
+        .trim();
+
+    const exerciseNameKey = (name) => normalizeExerciseName(name).toLowerCase();
+
     // ── Exercise-name autocomplete portal ────────────────────────────────────
     // Attached to <body> so it's never clipped by overflow-y:auto ancestors.
 
@@ -6193,16 +6235,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // used in any program (so names typed in routines show up even if the library
     // section is empty).
     const getAllKnownExercises = () => {
-        const seen = new Set();
-        const all  = [];
-        const add  = (name, videoUrl) => {
-            if (!name) return;
-            const k = name.toLowerCase().trim();
-            if (seen.has(k)) return;
-            seen.add(k);
-            all.push({ name: name.trim(), videoUrl: videoUrl || '' });
+        const byKey = new Map();
+        // `libraryId` is set only for entries that exist as real library records —
+        // those are the only ones a "Borrar" action can actually delete. Names that
+        // appear solely inside a program have no library row to remove.
+        const add = (name, videoUrl, libraryId) => {
+            const clean = normalizeExerciseName(name);
+            if (!clean) return;
+            const k = clean.toLowerCase();
+            const existing = byKey.get(k);
+            if (existing) {
+                // Enrich an already-seen name rather than dropping the duplicate:
+                // the library copy may carry the video or the id the first one lacked.
+                if (!existing.videoUrl && videoUrl) existing.videoUrl = videoUrl;
+                if (!existing.libraryId && libraryId) existing.libraryId = libraryId;
+                return;
+            }
+            byKey.set(k, { name: clean, videoUrl: videoUrl || '', libraryId: libraryId || null });
         };
-        globalExerciseLibrary.forEach(ex => add(ex.name, ex.videoUrl));
+        globalExerciseLibrary.forEach(ex => add(ex.name, ex.videoUrl, ex._id || ex.id));
         programsCache.forEach(prog => {
             prog.weeks?.forEach(week => {
                 Object.values(week.days || {}).forEach(day => {
@@ -6212,7 +6263,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
         });
-        return all;
+        return [...byKey.values()];
     };
 
     let _exAcPortal = null;
@@ -7851,7 +7902,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const content = b[1];
 
             // Exercise names = bold **...** segments (keeps names that contain " + " inside)
-            const boldNames = [...content.matchAll(/\*\*(.+?)\*\*/g)].map(m => m[1].trim()).filter(Boolean);
+            const boldNames = [...content.matchAll(/\*\*(.+?)\*\*/g)].map(m => normalizeExerciseName(m[1])).filter(Boolean);
 
             // Stats = first (...) after removing bold names and italic *(nota)* annotations
             let remainder = content.replace(/\*\*(.+?)\*\*/g, ' ').replace(/\*\([^)]*\)\*/g, ' ');
@@ -7862,7 +7913,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let names = boldNames;
             if (!names.length) {
                 const beforeParen = content.replace(/\([^)]*\)\s*$/, '').replace(/\*/g, '').trim();
-                names = beforeParen.split(/\s+\+\s+/).map(s => s.trim()).filter(Boolean);
+                names = beforeParen.split(/\s+\+\s+/).map(s => normalizeExerciseName(s)).filter(Boolean);
             }
             if (!names.length) continue;
 
@@ -7961,8 +8012,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Lookup helper: find a library exercise by name (case-insensitive)
     const findExerciseInLibrary = (name) => {
         if (!name) return null;
-        const lc = name.toLowerCase().trim();
-        return globalExerciseLibrary.find(ex => ex.name.toLowerCase().trim() === lc);
+        // Normalize BOTH sides: the imported name may carry a trailing colon from
+        // markdown, and a library entry may have been saved with one too.
+        const key = exerciseNameKey(name);
+        if (!key) return null;
+        return globalExerciseLibrary.find(ex => exerciseNameKey(ex.name) === key);
     };
 
     // Auto-assign video URLs to imported exercises by matching against the library
@@ -8512,6 +8566,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                 });
                 if (res.ok) {
+                    commitUndoPoint();   // rest day written — offer "Deshacer"
                     window._calendarWorkouts = window._calendarWorkouts || {};
                     window._calendarWorkouts[dateStr] = { isRest: true, restType: 'rest', title: 'Descanso', exercises: [] };
                     const cell = document.getElementById(dateId);
@@ -8555,6 +8610,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 await snapshotDayForUndo(dateStr, { reset: true });
                 const ok = await pushSingleDay(dayData, currentClientViewId, dateStr, srcW, srcD);
                 if (!ok) { showToast('No se pudo pegar la rutina.', 'error'); return; }
+                commitUndoPoint();   // program day written to the calendar — offer "Deshacer"
                 // Re-fetch the canonical saved workout and paint the calendar cell
                 let saved = null;
                 try {
@@ -8670,7 +8726,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 showToast(`${successCount} workout${successCount > 1 ? 's' : ''} pegado${successCount > 1 ? 's' : ''} exitosamente.`, 'success');
-                renderCalendarClipboardChip(); // update chip to show Undo button
+                if (successCount > 0) commitUndoPoint(); // pastes landed — offer "Deshacer"
                 // Keep the clipboard active so the same days can be pasted onto more
                 // start-dates. The trainer dismisses it with "Terminar" on the chip.
 
@@ -8709,7 +8765,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if(cb) cb.classList.remove('hidden');
                         }
                         showToast('Workout pegado exitosamente.', 'success');
-                        renderCalendarClipboardChip(); // update chip to show Undo button
+                        commitUndoPoint(); // paste landed — offer "Deshacer"
                         copiedWorkoutData = null;
                         sessionStorage.removeItem('fbs_copiedWorkout');
                     }
@@ -9527,6 +9583,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 const savedWorkout = await response.json();
                 editorIsDirty = false;
+                commitUndoPoint();   // a real write landed — now offer "Deshacer"
                 const cell = document.getElementById(`day-${editorDateStr}`);
                 if (cell) {
                     const area = cell.querySelector('.content-area');
@@ -9960,9 +10017,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // no need for a second round-trip. Everything the trainer does inside
                 // this editing session (including autosaves) reverts to this in one
                 // "Deshacer", instead of stacking one undo entry per autosave.
+                // No commitUndoPoint() here: merely opening a day isn't a change, so
+                // the pill stays hidden until an actual save happens.
                 lastPastedWorkouts = [{ dateStr, originalWorkout: workout }];
-                renderCalendarClipboardChip();
-                renderCalendarUndoPill();
 
                 // Populate editor state
                 editorDateStr = dateStr;
