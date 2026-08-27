@@ -701,6 +701,17 @@ const AppSetting = mongoose.model('AppSetting', AppSettingSchema);
 // =============================================================================
 
 // --- Helper: Send email via Resend API ---
+// Escape untrusted text before interpolating it into an email's HTML body.
+// The contact form is public and unauthenticated, so anything a stranger types
+// would otherwise be injected as live markup into the inbox that receives it —
+// most usefully by an attacker as a disguised link.
+const escapeEmailHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const sendEmail = async ({ from, to, subject, html, text, replyTo }) => {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) throw new Error('RESEND_API_KEY is not set in environment variables.');
@@ -4607,30 +4618,21 @@ app.post('/api/contact', contactLimiter, async (req, res) => {
         return res.status(400).json({ message: 'El mensaje no puede superar 1000 caracteres.' });
     }
 
+    // Order matters: PERSIST FIRST, then email. Emailing first meant a transient
+    // Resend failure threw before the notification was written — the prospect saw
+    // an error and the lead vanished with no record anywhere. The notification is
+    // the durable copy (it carries the full message in `data`), so it must land
+    // even when mail delivery is broken.
     try {
-        // 1) Send email to trainer
-        await sendEmail({
-            from: 'FitBySuárez <noreply@fitbysuarez.com>',
-            to: process.env.GMAIL_USER,
-            subject: `Nuevo interesado: ${name}`,
-            html: `
-                <div style="font-family:sans-serif;max-width:560px;margin:auto;background:#1C1C1E;padding:32px;border-radius:12px;color:#fff;">
-                    <h2 style="color:#FFDB89;margin-top:0;">📩 Nuevo mensaje de interés</h2>
-                    <table style="width:100%;border-collapse:collapse;">
-                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;width:110px;">Nombre</td><td style="padding:8px 0;">${name}</td></tr>
-                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;">Email</td><td style="padding:8px 0;"><a href="mailto:${email}" style="color:#FFDB89;">${email}</a></td></tr>
-                        ${phone ? `<tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;">Teléfono</td><td style="padding:8px 0;">${phone}</td></tr>` : ''}
-                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;vertical-align:top;">Mensaje</td><td style="padding:8px 0;white-space:pre-wrap;">${message}</td></tr>
-                    </table>
-                </div>
-            `
-        });
+        // Route to the site owner (superadmin) rather than whichever trainer Mongo
+        // happens to return first — a landing-page inquiry belongs to the owner,
+        // not to an arbitrary staff account.
+        const owner = await User.findOne({ isSuperadmin: true }).select('_id').lean()
+                   || await User.findOne({ role: 'trainer' }).select('_id').lean();
 
-        // 2) Create trainer notification
-        const trainer = await User.findOne({ role: 'trainer' }).select('_id').lean();
-        if (trainer) {
+        if (owner) {
             await Notification.create({
-                trainerId:  trainer._id,
+                trainerId:  owner._id,
                 clientId:   null,
                 clientName: name,
                 type:       'contact_inquiry',
@@ -4638,13 +4640,52 @@ app.post('/api/contact', contactLimiter, async (req, res) => {
                 message:    `${email}${phone ? ' · ' + phone : ''} — ${message.slice(0, 120)}${message.length > 120 ? '…' : ''}`,
                 data:       { name, email, phone: phone || '', message }
             });
+        } else {
+            console.error('Contact form: no superadmin or trainer to notify.');
         }
-
-        res.json({ message: 'Mensaje enviado correctamente.' });
     } catch (err) {
-        console.error('Contact form error:', err);
-        res.status(500).json({ message: 'Error enviando el mensaje. Intenta más tarde.' });
+        // Nothing persisted — this is the only real failure, so surface it.
+        console.error('Contact form: could not save inquiry:', err);
+        return res.status(500).json({ message: 'Error enviando el mensaje. Intenta más tarde.' });
     }
+
+    // Email is best-effort. A delivery failure must not lose the lead or show the
+    // sender an error, because the inquiry is already safely recorded above.
+    let emailSent = true;
+    try {
+        const safe = {
+            name:    escapeEmailHtml(name),
+            email:   escapeEmailHtml(email),
+            phone:   escapeEmailHtml(phone),
+            message: escapeEmailHtml(message),
+        };
+        await sendEmail({
+            from: 'FitBySuárez <noreply@fitbysuarez.com>',
+            to: process.env.GMAIL_USER,
+            // Lets you hit Reply and actually reach the prospect. Without this,
+            // replies went to the unmonitored noreply@ mailbox.
+            replyTo: email,
+            subject: `Nuevo interesado: ${name}`,
+            html: `
+                <div style="font-family:sans-serif;max-width:560px;margin:auto;background:#1C1C1E;padding:32px;border-radius:12px;color:#fff;">
+                    <h2 style="color:#FFDB89;margin-top:0;">📩 Nuevo mensaje de interés</h2>
+                    <table style="width:100%;border-collapse:collapse;">
+                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;width:110px;">Nombre</td><td style="padding:8px 0;">${safe.name}</td></tr>
+                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;">Email</td><td style="padding:8px 0;"><a href="mailto:${safe.email}" style="color:#FFDB89;">${safe.email}</a></td></tr>
+                        ${phone ? `<tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;">Teléfono</td><td style="padding:8px 0;">${safe.phone}</td></tr>` : ''}
+                        <tr><td style="padding:8px 0;color:#FFDB89;font-weight:bold;vertical-align:top;">Mensaje</td><td style="padding:8px 0;white-space:pre-wrap;">${safe.message}</td></tr>
+                    </table>
+                </div>
+            `
+        });
+    } catch (err) {
+        emailSent = false;
+        console.error('Contact form: email delivery failed (inquiry still saved):', err.message);
+    }
+
+    // `_emailFailed` is diagnostic only — the sender always sees success because
+    // their message really was received.
+    res.json({ message: 'Mensaje enviado correctamente.', ...(emailSent ? {} : { _emailFailed: true }) });
 });
 
 // ==========================================================================
