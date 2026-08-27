@@ -204,12 +204,15 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.error('Error fetching groups:', e); }
     };
 
-    const loadData = () => {
-        fetchLibraryFromDB();
-        fetchClientsFromDB();
-        fetchProgramsFromDB();
-        fetchGroupsFromDB();
-    };
+    // Returns a promise so callers that render immediately afterwards (the login
+    // path) can await the caches instead of racing them. Kicks all four off in
+    // parallel; never rejects, so one bad endpoint can't block sign-in.
+    const loadData = () => Promise.allSettled([
+        fetchLibraryFromDB(),
+        fetchClientsFromDB(),
+        fetchProgramsFromDB(),
+        fetchGroupsFromDB(),
+    ]);
 
     // ── Superadmin: trainers oversight ────────────────────────────────────────
     // Only reachable when the account carries isSuperadmin. Mirrors the Clientes
@@ -2095,7 +2098,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 showMessage('auth-message', 'Inicio de sesion exitoso', 'success');
-                
+
+                // Prime the caches before routing. loadData() otherwise only runs at
+                // page load for an already-existing session, so a fresh sign-in landed
+                // on a dashboard with empty clients/programs/library.
+                loadData();
+
+                // A stale "last section" from a previous session in this tab would
+                // bounce the new sign-in away from Inicio (sessionStorage survives the
+                // logout reload). Start every sign-in on the home page.
+                sessionStorage.removeItem('fbs_last_module');
+
                 setTimeout(() => {
                     router(userSession);
                 }, 500);
@@ -10111,6 +10124,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // H-2: Tell server to clear the HttpOnly cookie, then wipe local state
             fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).finally(() => {
                 localStorage.removeItem('auth_user');
+                // sessionStorage survives this reload, so the next sign-in in this tab
+                // would otherwise be redirected to whatever section was open before.
+                sessionStorage.removeItem('fbs_last_module');
                 location.reload();
             });
             return;
@@ -15535,6 +15551,15 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         // Show loading state
         feedContainer.innerHTML = '<p class="text-center text-[#FFDB89]/50 py-8"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando actividad...</p>';
+
+        // The feed is built from clientsCache. On a fresh sign-in that cache is still
+        // empty — loadData() only runs at page load for an EXISTING session, and the
+        // login path calls router() directly — so this used to render an empty feed
+        // until you refreshed or navigated away and back. Fetch on demand instead of
+        // depending on whoever called us having primed the cache.
+        if (!clientsCache.length) {
+            try { await fetchClientsFromDB(); } catch { /* fall through to the empty state below */ }
+        }
 
         const todayStr = getTodayStr();
 
