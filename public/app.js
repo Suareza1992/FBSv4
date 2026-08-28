@@ -181,11 +181,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let editorHistory = []; // undo stack — snapshots of editor state
 
     // MUSCLE GROUPS DEFINITION
-    const muscleGroups = [
-        "Pecho", "Espalda", "Piernas", "Quadriceps", "Femorales", "Tibiales", 
-        "Pantorrillas", "Glúteos", "Triceps", "Biceps", "Hombros", "Antebrazos", 
-        "Empuje", "Halón", "Abdomen", "Espalda Baja", "Calentamientos", "Cardio"
+    // Exercise tags. Stored on the exercise's `category` array (an existing field —
+    // no separate "tags" column, so nothing to migrate and every place that already
+    // reads `category` keeps working). Grouped only for display in the pill picker.
+    const TAG_GROUPS = [
+        { label: 'Torso',      tags: ['Pecho', 'Espalda', 'Espalda Baja', 'Dorsales', 'Trapecio', 'Hombros'] },
+        { label: 'Brazos',     tags: ['Biceps', 'Triceps', 'Antebrazos', 'Agarre'] },
+        { label: 'Core',       tags: ['Core', 'Abdomen', 'Oblicuos', 'Suelo pélvico'] },
+        { label: 'Piernas',    tags: ['Piernas', 'Quadriceps', 'Femorales', 'Glúteos', 'Cadera',
+                                      'Aductores', 'Abductores', 'Pantorrillas', 'Tibiales'] },
+        { label: 'Modalidad',  tags: ['Cardio', 'HIIT', 'Calistenia', 'Movilidad', 'Calentamientos',
+                                      'Estiramiento', 'Empuje', 'Halón'] },
     ];
+
+    // Flat list — kept as `muscleGroups` because the pill renderers and save
+    // handlers already iterate it under that name.
+    const muscleGroups = TAG_GROUPS.flatMap(g => g.tags);
 
     // =============================================================================
     // 2. PERSISTENCE & SESSION
@@ -5180,22 +5191,37 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // ── Populate edit modal category pills ───────────────────────────────────
-    const populateEditCategoryPills = (selectedCategories = []) => {
-        const container = document.getElementById('edit-category-selection-container');
+    // Shared tag-pill renderer for the add AND edit modals. Renders TAG_GROUPS with
+    // a small header per group — a flat run of 30+ pills is unreadable.
+    const renderTagPills = (container, selectedTags = []) => {
         if (!container) return;
         container.innerHTML = '';
-        muscleGroups.forEach(muscle => {
-            const btn = document.createElement('button');
-            btn.className = "category-pill px-3 py-1 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-full text-xs text-[#FFDB89]/60 hover:text-[#FFDB89] hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/10 transition m-1";
-            btn.textContent = muscle;
-            btn.onclick = () => btn.classList.toggle('selected');
-            if (selectedCategories.includes(muscle)) {
-                btn.classList.add('selected');
-                btn.classList.replace('text-[#FFDB89]/60', 'text-[#FFDB89]');
-            }
-            container.appendChild(btn);
+        const selected = new Set((selectedTags || []).filter(t => t && t !== 'General'));
+        TAG_GROUPS.forEach(group => {
+            const wrap = document.createElement('div');
+            wrap.className = 'w-full mb-2';
+            const head = document.createElement('p');
+            head.className = 'text-[10px] font-bold text-[#FFDB89]/35 uppercase tracking-widest mb-1';
+            head.textContent = group.label;
+            wrap.appendChild(head);
+            const row = document.createElement('div');
+            row.className = 'flex flex-wrap gap-1';
+            group.tags.forEach(tag => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = "category-pill px-3 py-1 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-full text-xs text-[#FFDB89]/60 hover:text-[#FFDB89] hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/10 transition";
+                btn.textContent = tag;
+                btn.onclick = () => btn.classList.toggle('selected');
+                if (selected.has(tag)) btn.classList.add('selected');
+                row.appendChild(btn);
+            });
+            wrap.appendChild(row);
+            container.appendChild(wrap);
         });
     };
+
+    const populateEditCategoryPills = (selectedCategories = []) =>
+        renderTagPills(document.getElementById('edit-category-selection-container'), selectedCategories);
 
     // ── Open edit modal ───────────────────────────────────────────────────────
     const openEditExerciseModal = (ex) => {
@@ -5214,6 +5240,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('edit-exercise-modal').classList.remove('hidden');
     };
 
+    // Active tag filter in the library list ('' = show all).
+    let libraryTagFilter = '';
+
     window.renderExerciseLibrary = () => {
         const listContainer = document.getElementById('exercise-library-list');
         const searchInput = document.getElementById('library-search-input');
@@ -5221,28 +5250,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
         populateExerciseMuscleDropdowns();
 
-        // Render Pills for Add modal
-        const catContainer = document.getElementById('category-selection-container');
-        if (catContainer && catContainer.innerHTML.trim() === '') {
-            catContainer.innerHTML = '';
-            muscleGroups.forEach(muscle => {
-                const btn = document.createElement('button');
-                btn.className = "category-pill px-3 py-1 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-full text-xs text-[#FFDB89]/60 hover:text-[#FFDB89] hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/10 transition m-1";
-                btn.textContent = muscle;
-                btn.onclick = () => btn.classList.toggle('selected');
-                catContainer.appendChild(btn);
+        // ── Tag filter chips ──────────────────────────────────────────────────
+        // Only offers tags that are actually in use, with counts, so the row stays
+        // short and never advertises an empty filter.
+        (() => {
+            let bar = document.getElementById('library-tag-filter');
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.id = 'library-tag-filter';
+                bar.className = 'flex flex-wrap gap-1.5 px-4 pb-3';
+                listContainer.parentNode?.insertBefore(bar, listContainer);
+            }
+            const counts = new Map();
+            globalExerciseLibrary.forEach(ex => {
+                (Array.isArray(ex.category) ? ex.category : [ex.category].filter(Boolean))
+                    .forEach(t => { if (t && t !== 'General') counts.set(t, (counts.get(t) || 0) + 1); });
             });
-        }
+            const inUse = muscleGroups.filter(t => counts.has(t));
+            if (!inUse.length) { bar.innerHTML = ''; return; }
+            const chip = (label, value, count) => {
+                const active = libraryTagFilter === value;
+                return `<button data-tag-filter="${escHtml(value)}" class="px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${
+                    active ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
+                           : 'bg-[#FFDB89]/5 text-[#FFDB89]/60 border-[#FFDB89]/20 hover:text-[#FFDB89] hover:border-[#FFDB89]/40'
+                }">${escHtml(label)}${count != null ? ` <span class="opacity-50">${count}</span>` : ''}</button>`;
+            };
+            bar.innerHTML = chip('Todos', '', null) + inUse.map(t => chip(t, t, counts.get(t))).join('');
+            bar.querySelectorAll('[data-tag-filter]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    libraryTagFilter = btn.dataset.tagFilter;
+                    window.renderExerciseLibrary();
+                });
+            });
+        })();
+
+        // Render tag pills for the Add modal (grouped, same renderer as Edit)
+        const catContainer = document.getElementById('category-selection-container');
+        if (catContainer && catContainer.innerHTML.trim() === '') renderTagPills(catContainer, []);
 
         const pushPullLabel = { push: 'Push', pull: 'Pull', both: 'Push/Pull' };
 
         const renderList = (filterText = '') => {
             listContainer.innerHTML = '';
-            const filtered = globalExerciseLibrary.filter(ex => ex.name.toLowerCase().includes(filterText.toLowerCase()));
-            if(filtered.length === 0) { listContainer.innerHTML = `<div class="p-8 text-center text-[#FFDB89]/30">No hay ejercicios. ¡Añade uno!</div>`; return; }
+            const q = filterText.toLowerCase().trim();
+            // Search matches the name OR any tag, so typing "glúteos" finds every
+            // tagged exercise — otherwise tags would be write-only.
+            const filtered = globalExerciseLibrary.filter(ex => {
+                const tags = Array.isArray(ex.category) ? ex.category : [ex.category].filter(Boolean);
+                if (libraryTagFilter && !tags.includes(libraryTagFilter)) return false;
+                if (!q) return true;
+                return ex.name.toLowerCase().includes(q)
+                    || tags.some(t => String(t).toLowerCase().includes(q));
+            });
+            if(filtered.length === 0) {
+                listContainer.innerHTML = `<div class="p-8 text-center text-[#FFDB89]/30">${
+                    libraryTagFilter ? `Sin ejercicios con la etiqueta "${escHtml(libraryTagFilter)}".` : 'No hay ejercicios. ¡Añade uno!'
+                }</div>`;
+                return;
+            }
 
             filtered.forEach(ex => {
-                const catDisplay = Array.isArray(ex.category) ? ex.category.join(", ") : ex.category;
+                // Render each tag as its own badge (skip the meaningless "General"
+                // placeholder every untagged exercise carries).
+                const exTags = (Array.isArray(ex.category) ? ex.category : [ex.category].filter(Boolean))
+                    .filter(t => t && t !== 'General');
+                const tagBadges = exTags.length
+                    ? exTags.map(t => `<span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15">${escHtml(t)}</span>`).join('')
+                    : `<span class="px-2 py-0.5 rounded border border-dashed border-[#FFDB89]/15 text-[#FFDB89]/25">Sin etiquetas</span>`;
                 const muscleName = ex.muscleGroupId ? (MUSCLES.find(m => m.id === ex.muscleGroupId)?.name || '') : '';
                 const ppBadge = ex.pushPull ? `<span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15 text-[#FFDB89]/50">${pushPullLabel[ex.pushPull] || ex.pushPull}</span>` : '';
                 const muscleBadge = muscleName ? `<span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15 text-[#FFDB89]/50"><i class="fas fa-dumbbell text-[9px] mr-1"></i>${muscleName}</span>` : '';
@@ -5254,7 +5328,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div>
                             <h4 class="font-bold text-[#FFDB89]">${ex.name}</h4>
                             <div class="flex flex-wrap gap-2 text-xs text-[#FFDB89]/40 mt-0.5">
-                                <span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15">${catDisplay}</span>
+                                ${tagBadges}
                                 ${muscleBadge}${ppBadge}
                                 ${ex.videoUrl ? `<span class="text-[#FFDB89]/60 flex items-center gap-1"><i class="fas fa-video text-[10px]"></i> Video</span>` : ''}
                             </div>
@@ -6279,6 +6353,121 @@ document.addEventListener('DOMContentLoaded', () => {
         return [...byKey.values()];
     };
 
+    // ── Swap an exercise for another that trains the same muscles ─────────────
+    // Alternatives come from the library's tags (the `category` array). Tags are
+    // matched case-insensitively and "General" is ignored, since it's the
+    // placeholder every untagged exercise carries and would otherwise match
+    // everything against everything.
+    const tagsForExerciseName = (name) => {
+        const lib = findExerciseInLibrary(name);
+        if (!lib) return [];
+        const raw = Array.isArray(lib.category) ? lib.category : [lib.category].filter(Boolean);
+        return raw.filter(t => t && String(t).toLowerCase() !== 'general').map(String);
+    };
+
+    // Other library exercises sharing at least one tag, best match first
+    // (most tags in common, then alphabetical).
+    const findSameMuscleAlternatives = (name) => {
+        const myTags = tagsForExerciseName(name).map(t => t.toLowerCase());
+        if (!myTags.length) return [];
+        const myKey = exerciseNameKey(name);
+        return globalExerciseLibrary
+            .map(ex => {
+                if (exerciseNameKey(ex.name) === myKey) return null;   // skip itself
+                const raw = Array.isArray(ex.category) ? ex.category : [ex.category].filter(Boolean);
+                const tags = raw.filter(t => t && String(t).toLowerCase() !== 'general').map(String);
+                const shared = tags.filter(t => myTags.includes(t.toLowerCase()));
+                return shared.length ? { ex, shared, score: shared.length } : null;
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.score - a.score || a.ex.name.localeCompare(b.ex.name));
+    };
+
+    let _swapPortal = null;
+    const getSwapPortal = () => {
+        if (!_swapPortal) {
+            _swapPortal = document.createElement('div');
+            _swapPortal.className = 'hidden';
+            // Fixed + high z-index so it escapes the routine modal's overflow.
+            _swapPortal.style.cssText = 'position:fixed;z-index:10000;background:#111113;border:1px solid rgba(255,219,137,0.25);border-radius:0.75rem;box-shadow:0 12px 40px rgba(0,0,0,0.6);overflow:hidden;';
+            document.body.appendChild(_swapPortal);
+        }
+        return _swapPortal;
+    };
+    const hideSwapPortal = () => getSwapPortal().classList.add('hidden');
+    window._hideSwapPortal = hideSwapPortal;
+
+    document.addEventListener('click', (e) => {
+        const p = _swapPortal;
+        if (!p || p.classList.contains('hidden')) return;
+        if (p.contains(e.target) || e.target.closest('.swap-exercise-btn')) return;
+        hideSwapPortal();
+    });
+
+    // Opens the alternatives list anchored to an exercise row. `apply` receives the
+    // chosen library exercise so each caller can write it back its own way (the
+    // program builder and the calendar editor store exercises differently).
+    const openSwapList = (anchorEl, currentName, apply) => {
+        const portal = getSwapPortal();
+        const name = (currentName || '').trim();
+        const myTags = tagsForExerciseName(name);
+        const alts = findSameMuscleAlternatives(name);
+
+        const header = (msg, sub) => `
+            <div class="px-4 py-3 border-b border-[#FFDB89]/12">
+                <p class="text-sm font-bold text-[#FFDB89]">${msg}</p>
+                ${sub ? `<p class="text-[11px] text-[#FFDB89]/45 mt-0.5 leading-snug">${sub}</p>` : ''}
+            </div>`;
+
+        if (!name) {
+            portal.innerHTML = header('Escribe un ejercicio primero', 'Necesito saber cuál cambiar para buscar alternativas.');
+        } else if (!myTags.length) {
+            portal.innerHTML = header(
+                `"${escHtml(name)}" no tiene etiquetas`,
+                findExerciseInLibrary(name)
+                    ? 'Asígnale etiquetas en Biblioteca para poder sugerir alternativas del mismo grupo muscular.'
+                    : 'Este ejercicio no está en tu biblioteca, así que no sé qué músculos trabaja.');
+        } else if (!alts.length) {
+            portal.innerHTML = header(
+                'Sin alternativas',
+                `Ningún otro ejercicio comparte etiquetas con "${escHtml(name)}" (${myTags.map(escHtml).join(', ')}).`);
+        } else {
+            portal.innerHTML = `
+                ${header(`Cambiar "${escHtml(name)}"`, `Mismo grupo muscular · ${myTags.map(escHtml).join(', ')}`)}
+                <div class="max-h-72 overflow-y-auto divide-y divide-[#FFDB89]/8">
+                    ${alts.slice(0, 40).map((a, i) => `
+                        <button type="button" data-swap-idx="${i}" class="w-full text-left px-4 py-2.5 hover:bg-[#FFDB89]/8 transition flex items-center gap-3">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm text-[#FFDB89] truncate">${escHtml(a.ex.name)}</p>
+                                <p class="text-[10px] text-[#FFDB89]/40 truncate">${a.shared.map(escHtml).join(' · ')}</p>
+                            </div>
+                            ${a.ex.videoUrl ? '<i class="fas fa-video text-[10px] text-green-400/60 shrink-0"></i>' : ''}
+                        </button>`).join('')}
+                </div>`;
+            portal.querySelectorAll('[data-swap-idx]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    apply(alts[Number(btn.dataset.swapIdx)].ex);
+                    hideSwapPortal();
+                });
+            });
+        }
+
+        // Position under the anchor, flipping up when there's no room below.
+        portal.classList.remove('hidden');
+        const r = anchorEl.getBoundingClientRect();
+        const w = Math.min(380, Math.max(260, window.innerWidth - 24));
+        portal.style.width = w + 'px';
+        portal.style.left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12)) + 'px';
+        const below = window.innerHeight - r.bottom - 12;
+        if (below >= 220 || below >= r.top) {
+            portal.style.top = (r.bottom + 6) + 'px';
+            portal.style.bottom = 'auto';
+        } else {
+            portal.style.top = 'auto';
+            portal.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+        }
+    };
+
     let _exAcPortal = null;
     const getExAcPortal = () => {
         if (!_exAcPortal) {
@@ -6392,6 +6581,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="text" class="exercise-name-input flex-1 min-w-0 p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
                         <button class="play-video-btn inline-flex items-center justify-center w-11 h-11 bg-green-500/10 border border-green-500/20 ${data?.video ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video"><i class="fas fa-play text-xs"></i></button>
                         <button class="inline-flex items-center justify-center w-11 h-11 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0 open-video-modal" data-video="${data?.video || ''}"><i class="fas fa-video text-xs"></i></button>
+                        <button type="button" class="swap-exercise-btn inline-flex items-center justify-center w-11 h-11 bg-[#FFDB89]/5 border border-[#FFDB89]/20 text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0" title="Cambiar por otro del mismo grupo muscular"><i class="fas fa-right-left text-xs"></i></button>
                     </div>
                     <textarea class="exercise-stats-input w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89]/80 placeholder:text-[#FFDB89]/25 text-sm resize-none focus:border-[#FFDB89]/40 focus:ring-2 focus:ring-[#FFDB89]/20 outline-none transition" rows="3" placeholder="Sets x Reps — Ej: 4x10 @ 70%, descanso 90s...">${data ? data.stats : ''}</textarea>
                 </div>
@@ -6410,6 +6600,24 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 videoBtn.click();
             }
+        });
+
+        // Swap: list library exercises sharing this one's muscle tags, then write the
+        // chosen one back into this row (name + video together, so the row stays consistent).
+        item.querySelector('.swap-exercise-btn')?.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            hideExAc();
+            openSwapList(input, input.value, (chosen) => {
+                input.value = chosen.name;
+                videoBtn.dataset.video = chosen.videoUrl || '';
+                const hasVid = !!chosen.videoUrl;
+                videoBtn.classList.toggle('text-[#FFDB89]', hasVid);
+                videoBtn.classList.toggle('text-[#FFDB89]/40', !hasVid);
+                playBtn.classList.toggle('text-green-400', hasVid);
+                playBtn.classList.toggle('text-green-400/35', !hasVid);
+                checkExerciseRestriction(chosen, item);
+                showToast(`Cambiado a "${chosen.name}".`, 'success');
+            });
         });
 
         input.addEventListener('input', (e) => {
@@ -8972,6 +9180,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${ex._selected ? `<button onclick="window.deleteEditorExercise(${ex.id})" class="text-red-400/80 hover:text-red-400 transition" title="Eliminar ejercicio"><i class="fas fa-trash-alt text-sm"></i></button>` : ''}
                         ${ex.videoUrl ? `<button onclick="window.previewExerciseVideo('${ex.videoUrl.replace(/'/g,"\\'")}','${(ex.name||'').replace(/'/g,"\\'")}',this); event.stopPropagation();" class="text-green-400/70 hover:text-green-400 transition text-sm" title="Ver video"><i class="fas fa-play-circle"></i></button>` : ''}
                         <i class="fas fa-video ${ex.videoUrl ? 'text-[#FFDB89]' : 'text-[#FFDB89]/30'} cursor-pointer hover:text-[#FFDB89] mt-0.5" onclick="window.openVideoModalForEditor(${ex.id})" title="Editar URL del video"></i>
+                        <i class="fas fa-right-left swap-exercise-btn text-[#FFDB89]/30 cursor-pointer hover:text-[#FFDB89] mt-0.5 text-sm" onclick="event.stopPropagation(); window.openEditorSwapList(${ex.id}, this)" title="Cambiar por otro del mismo grupo muscular"></i>
                     </div>
                 </div>
 
@@ -9211,6 +9420,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEditorExercise = () => { captureEditorSnapshot(); editorExercises.push({ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }); renderWorkoutEditorUI(); window.markEditorDirty(); };
     window.updateExName = (id, val) => { const ex = editorExercises.find(e => e.id === id); if(ex) ex.name = val; };
+
+    // Calendar editor: swap an exercise for another training the same muscles.
+    // Snapshots first so the change is covered by the editor's own undo.
+    window.openEditorSwapList = (id, anchorEl) => {
+        const ex = editorExercises.find(e => e.id === id);
+        if (!ex) return;
+        openSwapList(anchorEl, ex.name, (chosen) => {
+            captureEditorSnapshot();
+            ex.name = chosen.name;
+            ex.videoUrl = chosen.videoUrl || '';
+            renderWorkoutEditorUI();
+            window.markEditorDirty();
+            showToast(`Cambiado a "${chosen.name}".`, 'success');
+        });
+    };
     window.updateExInstructions = (id, val) => {
         const ex = editorExercises.find(e => e.id === id);
         if(ex) ex.instructions = val;
