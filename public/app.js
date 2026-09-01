@@ -6381,7 +6381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // `libraryId` is set only for entries that exist as real library records —
         // those are the only ones a "Borrar" action can actually delete. Names that
         // appear solely inside a program have no library row to remove.
-        const add = (name, videoUrl, libraryId) => {
+        const add = (name, videoUrl, libraryId, trainerId) => {
             const clean = normalizeExerciseName(name);
             if (!clean) return;
             const k = clean.toLowerCase();
@@ -6391,11 +6391,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 // the library copy may carry the video or the id the first one lacked.
                 if (!existing.videoUrl && videoUrl) existing.videoUrl = videoUrl;
                 if (!existing.libraryId && libraryId) existing.libraryId = libraryId;
+                if (!existing.trainerId && trainerId) existing.trainerId = trainerId;
                 return;
             }
-            byKey.set(k, { name: clean, videoUrl: videoUrl || '', libraryId: libraryId || null });
+            byKey.set(k, { name: clean, videoUrl: videoUrl || '', libraryId: libraryId || null, trainerId: trainerId || null });
         };
-        globalExerciseLibrary.forEach(ex => add(ex.name, ex.videoUrl, ex._id || ex.id));
+        globalExerciseLibrary.forEach(ex => add(ex.name, ex.videoUrl, ex._id || ex.id, ex.trainerId));
         programsCache.forEach(prog => {
             prog.weeks?.forEach(week => {
                 Object.values(week.days || {}).forEach(day => {
@@ -6521,6 +6522,72 @@ document.addEventListener('DOMContentLoaded', () => {
             portal.style.top = 'auto';
             portal.style.bottom = (window.innerHeight - r.top + 6) + 'px';
         }
+    };
+
+    // Build one autocomplete suggestion row. Shared by all three suggestion lists
+    // (routine builder, warmup/cooldown items, calendar workout editor) so the
+    // delete affordance and the ownership rule live in exactly one place.
+    //
+    // The delete button only appears when the suggestion is backed by a real
+    // library record AND the current user may modify it — a name that only exists
+    // inside a program has nothing to delete, and another trainer's exercise is
+    // off limits.
+    const buildSuggestionRow = (match, typedValue, onPick) => {
+        const div = document.createElement('div');
+        div.className = 'autocomplete-item group/sg';
+
+        const lc = typedValue.toLowerCase();
+        const idx = match.name.toLowerCase().indexOf(lc);
+        const before  = idx >= 0 ? match.name.slice(0, idx) : match.name;
+        const matched = idx >= 0 ? match.name.slice(idx, idx + typedValue.length) : '';
+        const after   = idx >= 0 ? match.name.slice(idx + typedValue.length) : '';
+
+        const sess = loadSession();
+        const canDelete = !!match.libraryId
+            && (!!sess?.isSuperadmin || (!!match.trainerId && String(match.trainerId) === String(sess?.id)));
+
+        div.innerHTML = `
+            <span class="flex-1 min-w-0 truncate">${escHtml(before)}<mark>${escHtml(matched)}</mark>${escHtml(after)}</span>
+            ${match.videoUrl ? '<i class="fas fa-video text-[9px] text-green-400/60 shrink-0"></i>' : ''}
+            ${canDelete ? `<button type="button" class="sg-del shrink-0 opacity-0 group-hover/sg:opacity-100 transition text-red-400/50 hover:text-red-400 px-1" title="Borrar de la biblioteca">
+                <i class="fas fa-times text-[10px]"></i>
+            </button>` : ''}`;
+
+        // mousedown (not click) on the row: the input's blur would close the portal first.
+        div.addEventListener('mousedown', (ev) => {
+            if (ev.target.closest('.sg-del')) return;   // let the delete handler run instead
+            ev.preventDefault();
+            onPick(match);
+        });
+
+        div.querySelector('.sg-del')?.addEventListener('mousedown', async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const ok = await showConfirm(
+                `¿Borrar "<strong>${escHtml(match.name)}</strong>" de la biblioteca?<br>` +
+                `<span class="text-xs opacity-60">Desaparece de las sugerencias. Las rutinas que ya lo usan no cambian.</span>`,
+                { confirmLabel: 'Borrar', cancelLabel: 'Cancelar', danger: true }
+            );
+            if (!ok) return;
+            try {
+                const res = await apiFetch(`/api/library/${match.libraryId}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const d = await res.json().catch(() => ({}));
+                    showToast(d.message || 'No se pudo borrar el ejercicio.', 'error');
+                    return;
+                }
+                // Drop it from the in-memory library so it stops being suggested
+                // immediately, without a refetch.
+                globalExerciseLibrary = globalExerciseLibrary.filter(e => String(e._id) !== String(match.libraryId));
+                div.remove();
+                if (!getExAcPortal().children.length) hideExAc();
+                showToast(`"${match.name}" borrado de la biblioteca.`, 'success');
+            } catch {
+                showToast('Error de conexión.', 'error');
+            }
+        });
+
+        return div;
     };
 
     let _exAcPortal = null;
@@ -6689,28 +6756,18 @@ document.addEventListener('DOMContentLoaded', () => {
             positionExAc(input);
             portal.classList.remove('hidden');
             matches.forEach(match => {
-                const div = document.createElement('div');
-                div.className = 'autocomplete-item';
-                const idx     = match.name.toLowerCase().indexOf(lc);
-                const before  = match.name.slice(0, idx);
-                const matched = match.name.slice(idx, idx + val.length);
-                const after   = match.name.slice(idx + val.length);
-                div.innerHTML = `
-                    <span class="flex-1 min-w-0 truncate">${before}<mark>${matched}</mark>${after}</span>
-                    ${match.videoUrl ? '<i class="fas fa-video text-[9px] text-green-400/60 shrink-0"></i>' : ''}`;
-                div.addEventListener('mousedown', (ev) => {
-                    ev.preventDefault(); // keep focus on input
-                    input.value = match.name;
+                const div = buildSuggestionRow(match, val, (picked) => {
+                    input.value = picked.name;
                     hideExAc();
-                    if (match.videoUrl) {
-                        videoBtn.dataset.video = match.videoUrl;
+                    if (picked.videoUrl) {
+                        videoBtn.dataset.video = picked.videoUrl;
                         videoBtn.classList.remove('text-[#FFDB89]/40');
                         videoBtn.classList.add('text-[#FFDB89]');
                         playBtn.classList.remove('text-green-400/35');
                         playBtn.classList.add('text-green-400');
                     }
                     // ── Restriction check ─────────────────────────────────
-                    checkExerciseRestriction(match, item);
+                    checkExerciseRestriction(picked, item);
                 });
                 portal.appendChild(div);
             });
@@ -6860,30 +6917,20 @@ document.addEventListener('DOMContentLoaded', () => {
         positionExAc(inputEl);
         portal.classList.remove('hidden');
         matches.forEach(match => {
-            const div = document.createElement('div');
-            div.className = 'autocomplete-item';
-            const idx     = match.name.toLowerCase().indexOf(lc);
-            const before  = match.name.slice(0, idx);
-            const matched = match.name.slice(idx, idx + val.length);
-            const after   = match.name.slice(idx + val.length);
-            div.innerHTML = `
-                <span class="flex-1 min-w-0 truncate">${before}<mark>${matched}</mark>${after}</span>
-                ${match.videoUrl ? '<i class="fas fa-video text-[9px] text-green-400/60 shrink-0"></i>' : ''}`;
-            div.addEventListener('mousedown', (ev) => {
-                ev.preventDefault();
-                inputEl.value = match.name;
+            const div = buildSuggestionRow(match, val, (picked) => {
+                inputEl.value = picked.name;
                 hideExAc();
                 if (type === 'warmup') {
-                    window.updateRoutineWarmupItem(itemId, match.name);
-                    if (match.videoUrl) {
+                    window.updateRoutineWarmupItem(itemId, picked.name);
+                    if (picked.videoUrl) {
                         const it = routineWarmupItems.find(i => i.id === itemId);
-                        if (it) { it.videoUrl = match.videoUrl; renderRoutineItems(); }
+                        if (it) { it.videoUrl = picked.videoUrl; renderRoutineItems(); }
                     }
                 } else {
-                    window.updateRoutineCooldownItem(itemId, match.name);
-                    if (match.videoUrl) {
+                    window.updateRoutineCooldownItem(itemId, picked.name);
+                    if (picked.videoUrl) {
                         const it = routineCooldownItems.find(i => i.id === itemId);
-                        if (it) { it.videoUrl = match.videoUrl; renderRoutineItems(); }
+                        if (it) { it.videoUrl = picked.videoUrl; renderRoutineItems(); }
                     }
                 }
             });
@@ -9166,16 +9213,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 positionExAc(input);
                 portal.classList.remove('hidden');
                 matches.forEach(match => {
-                    const div = document.createElement('div');
-                    div.className = 'autocomplete-item';
-                    const idx    = match.name.toLowerCase().indexOf(lc);
-                    const before = match.name.slice(0, idx);
-                    const hi     = match.name.slice(idx, idx + val.length);
-                    const after  = match.name.slice(idx + val.length);
-                    div.innerHTML = `<span class="flex-1 min-w-0 truncate">${before}<mark>${hi}</mark>${after}</span>${match.videoUrl ? '<i class="fas fa-video text-[9px] text-green-400/60 shrink-0"></i>' : ''}`;
-                    div.addEventListener('mousedown', ev => {
-                        ev.preventDefault();
-                        input.value = match.name;
+                    const div = buildSuggestionRow(match, val, (picked) => {
+                        input.value = picked.name;
                         // Dispatch input event so the oninput handler (updateExName / updateWarmupItem etc.) fires
                         input.dispatchEvent(new Event('input', { bubbles: true }));
                         hideExAc();
