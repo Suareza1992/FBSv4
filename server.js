@@ -379,6 +379,10 @@ const canTouchClient = async (req, clientId) => {
 
 const ExerciseSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
+    // Trainer who created this exercise. The library is SHARED for reading — any
+    // trainer may use any exercise — but only the creator (or the superadmin) may
+    // edit or delete it. Null means "unowned" (predates this field): superadmin-only.
+    trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     videoUrl: { type: String, default: "" },
     category: { type: [String], default: ["General"] },
     instructions: { type: String, default: "" },
@@ -471,6 +475,10 @@ const ProgramSchema = new mongoose.Schema({
         days: { type: Map, of: mongoose.Schema.Types.Mixed }
     }],
     clientCount: { type: Number, default: 0 },
+    // Owning trainer. Programs are PRIVATE to their creator; the superadmin sees
+    // every trainer's. Null means "unowned" — only the superadmin can see those,
+    // so a missing value can never leak one trainer's programs to another.
+    trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     createdBy: { type: String, default: "trainer" },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
@@ -1396,6 +1404,58 @@ app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', '
     }
 });
 
+// Reassign a client to a different trainer. Superadmin-only: a trainer must not
+// be able to take a client from — or dump one on — a colleague. `trainerId` is
+// deliberately absent from the PUT /api/clients/:id allowlist so ownership can
+// only ever change through this route.
+app.put('/api/clients/:id/trainer', authenticateToken, requireSuperadmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { trainerId } = req.body;
+
+        const client = await User.findById(id).select('name lastName role trainerId');
+        if (!client || client.role !== 'client') {
+            return res.status(404).json({ message: 'Cliente no encontrado.' });
+        }
+
+        // Empty/null unassigns. Any other value must be a real, active trainer —
+        // otherwise the client would be orphaned into a state where every trainer
+        // can see them (unowned clients are treated as shared).
+        let newTrainer = null;
+        if (trainerId) {
+            newTrainer = await User.findById(trainerId).select('name lastName email role isDeleted');
+            if (!newTrainer || newTrainer.role !== 'trainer' || newTrainer.isDeleted) {
+                return res.status(400).json({ message: 'Ese entrenador no existe.' });
+            }
+        }
+
+        const previousId = client.trainerId;
+        await User.findByIdAndUpdate(id, { trainerId: newTrainer ? newTrainer._id : null });
+
+        // Move the client's program-sourced days with them? No — workouts belong to
+        // the client, not the trainer, so they stay put. Only ownership changes.
+        const clientName = `${client.name || ''} ${client.lastName || ''}`.trim();
+        if (newTrainer) {
+            await createNotification({
+                clientId: client._id,
+                clientName,
+                type: 'client_created',
+                title: 'fue asignado a tu lista',
+                message: `${clientName} ahora es tu cliente.`,
+                data: { reassignedFrom: previousId ? String(previousId) : null },
+            });
+        }
+
+        res.json({
+            message: newTrainer ? `Cliente movido a ${`${newTrainer.name || ''} ${newTrainer.lastName || ''}`.trim()}.` : 'Cliente sin entrenador asignado.',
+            trainerId: newTrainer ? newTrainer._id : null,
+        });
+    } catch (error) {
+        console.error('Error reassigning client:', error);
+        res.status(500).json({ message: 'Error reasignando el cliente.' });
+    }
+});
+
 app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -1405,8 +1465,10 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
             return res.status(404).json({ message: 'Client not found' });
         }
 
-        // Authorization check: trainers can only update their own clients
-        if (req.user.role === 'trainer' && String(prevClient.trainerId) !== String(req.user.id)) {
+        // Trainers may only update their own clients. Uses canTouchClient rather than
+        // a role-string check: the superadmin's role IS 'trainer', so comparing the
+        // string alone would 403 them out of every other trainer's client.
+        if (!(await canTouchClient(req, id))) {
             return res.status(403).json({ message: 'You can only manage your own clients' });
         }
 
@@ -1512,21 +1574,49 @@ app.delete('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'adm
 // --- PROTECTED: Library (Any authenticated user can read, trainer can write) ---
 // ==========================================================================
 
+// May the caller modify this library exercise? Creator or superadmin. Everyone
+// can READ and USE every exercise — this gates writes only.
+const canTouchExercise = async (req, exercise) => {
+    if (!exercise) return false;
+    if (await isSuperadmin(req)) return true;
+    return String(exercise.trainerId || '') === String(req.user.id);
+};
+
 app.get('/api/library', authenticateToken, async (req, res) => {
     try { const exercises = await Exercise.find().sort({ name: 1 }); res.json(exercises); }
     catch (error) { res.status(500).json({ message: 'Error fetching library' }); }
 });
 
+// The library is SHARED: every trainer reads it and may add new exercises (the
+// "save video to library" flow depends on that). Only the superadmin may change
+// an entry that already exists.
+//
+// This matters because the route is an UPSERT matched on name: without the guard
+// below, a trainer assigning a video to "Incline Dumbbell Press" would overwrite
+// that exercise's curated tags with category:['General']. So for a non-superadmin
+// an existing name is returned untouched rather than overwritten — create-only.
 app.post('/api/library', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { name, videoUrl, category, muscleGroupId, origin, insertion, pushPull } = req.body;
+        if (!name || !String(name).trim()) return res.status(400).json({ message: 'Nombre requerido.' });
         // H-3: Escape regex metacharacters to prevent ReDoS
         const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const exercise = await Exercise.findOneAndUpdate(
-            { name: { $regex: new RegExp(`^${safeName}$`, 'i') } },
-            { name, videoUrl, category, muscleGroupId: muscleGroupId || '', origin: origin || '', insertion: insertion || '', pushPull: pushPull || '', lastUpdated: Date.now() },
-            { new: true, upsert: true }
-        );
+        const nameFilter = { name: { $regex: new RegExp(`^${safeName}$`, 'i') } };
+
+        const existing = await Exercise.findOne(nameFilter);
+        if (existing && !(await canTouchExercise(req, existing))) {
+            // Someone else's exercise. This route is an upsert, so without this
+            // guard a trainer saving a video would silently overwrite another
+            // trainer's entry (wiping its tags). Hand it back untouched instead —
+            // they can still USE it, they just can't change it.
+            return res.json({ ...existing.toObject(), _notModified: true });
+        }
+
+        const fields = { name, videoUrl, category, muscleGroupId: muscleGroupId || '', origin: origin || '', insertion: insertion || '', pushPull: pushPull || '', lastUpdated: Date.now() };
+        // Stamp ownership only when creating — never reassign an existing exercise.
+        if (!existing) fields.trainerId = req.user.id;
+
+        const exercise = await Exercise.findOneAndUpdate(nameFilter, fields, { new: true, upsert: true });
         res.json(exercise);
     } catch (error) { res.status(500).json({ message: 'Error saving exercise' }); }
 });
@@ -1534,20 +1624,28 @@ app.post('/api/library', authenticateToken, authorizeRoles('trainer', 'admin', '
 app.put('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { name, videoUrl, category, muscleGroupId, origin, insertion, pushPull } = req.body;
+        const current = await Exercise.findById(req.params.id);
+        if (!current) return res.status(404).json({ message: 'Exercise not found' });
+        if (!(await canTouchExercise(req, current))) {
+            return res.status(403).json({ message: 'Este ejercicio lo creó otro entrenador. Puedes usarlo, pero no editarlo.' });
+        }
         const exercise = await Exercise.findByIdAndUpdate(
             req.params.id,
             { name, videoUrl, category, muscleGroupId: muscleGroupId || '', origin: origin || '', insertion: insertion || '', pushPull: pushPull || '', lastUpdated: Date.now() },
             { new: true }
         );
-        if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
         res.json(exercise);
     } catch (error) { res.status(500).json({ message: 'Error updating exercise' }); }
 });
 
 app.delete('/api/library/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
-        const exercise = await Exercise.findByIdAndDelete(req.params.id);
-        if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+        const current = await Exercise.findById(req.params.id);
+        if (!current) return res.status(404).json({ message: 'Exercise not found' });
+        if (!(await canTouchExercise(req, current))) {
+            return res.status(403).json({ message: 'Este ejercicio lo creó otro entrenador. Puedes usarlo, pero no borrarlo.' });
+        }
+        await Exercise.findByIdAndDelete(req.params.id);
         res.json({ message: 'Exercise deleted' });
     } catch (error) { res.status(500).json({ message: 'Error deleting exercise' }); }
 });
@@ -4292,13 +4390,25 @@ const syncProgramToClients = async (program, todayStr) => {
 
 app.get('/api/programs', authenticateToken, async (req, res) => {
     try {
-        const programs = await Program.find().sort({ createdAt: -1 });
+        // Superadmin sees every trainer's programs; everyone else sees only their
+        // own. Unowned programs stay superadmin-only on purpose — treating them as
+        // shared would expose one trainer's library to the others.
+        const query = (await isSuperadmin(req)) ? {} : { trainerId: req.user.id };
+        const programs = await Program.find(query).sort({ createdAt: -1 });
         res.json(programs);
     } catch (error) {
         console.error('Error fetching programs:', error);
         res.status(500).json({ message: 'Error fetching programs', error});
     }
 });
+
+// May the caller act on this program? Owner or superadmin. Kept separate from
+// canTouchClient because programs and clients have different ownership rules.
+const canTouchProgram = async (req, program) => {
+    if (!program) return false;
+    if (await isSuperadmin(req)) return true;
+    return String(program.trainerId || '') === String(req.user.id);
+};
 
 app.post('/api/programs', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
@@ -4308,7 +4418,8 @@ app.post('/api/programs', authenticateToken, authorizeRoles('trainer', 'admin', 
             description: description || "",
             tags: tags || "Borrador",
             weeks: weeks || [],
-            clientCount: 0
+            clientCount: 0,
+            trainerId: req.user.id,   // creator owns it
         });
         await program.save();
         res.json(program);
@@ -4323,6 +4434,9 @@ app.put('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin
         const { id } = req.params;
         const program = await Program.findById(id);
         if (!program) return res.status(404).json({ message: 'Program not found' });
+        if (!(await canTouchProgram(req, program))) {
+            return res.status(403).json({ message: 'Este programa pertenece a otro entrenador.' });
+        }
 
         // Assign each top-level field explicitly so Mongoose tracks the changes
         const { name, description, tags, weeks } = req.body;
@@ -4373,6 +4487,12 @@ app.put('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin
 // so the trainer can re-assign once and turn auto-sync on for good.
 app.get('/api/programs/:id/assignment-status', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
+        // Reveals which clients a program is assigned to — same ownership rule.
+        const _prog = await Program.findById(req.params.id).select('trainerId');
+        if (!_prog) return res.status(404).json({ message: 'Program not found' });
+        if (!(await canTouchProgram(req, _prog))) {
+            return res.status(403).json({ message: 'Este programa pertenece a otro entrenador.' });
+        }
         const program = await Program.findById(req.params.id).select('name').lean();
         if (!program) return res.status(404).json({ message: 'Program not found' });
 
@@ -4417,6 +4537,11 @@ app.put('/api/clients/:clientId/assigned-program', authenticateToken, authorizeR
 app.delete('/api/programs/:id', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { id } = req.params;
+        const program = await Program.findById(id);
+        if (!program) return res.status(404).json({ message: 'Program not found' });
+        if (!(await canTouchProgram(req, program))) {
+            return res.status(403).json({ message: 'Este programa pertenece a otro entrenador.' });
+        }
         await Program.findByIdAndDelete(id);
         res.json({ message: 'Program deleted' });
     } catch (error) {

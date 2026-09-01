@@ -4384,6 +4384,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // Superadmin only: populate + reveal the "Entrenador asignado" selector so a
+    // client can be moved between trainers. Silent no-op for a normal trainer —
+    // the row stays hidden and ownership can't be changed from the UI at all.
+    const setupClientTrainerSelect = async (currentTrainerId) => {
+        const row = document.getElementById('client-trainer-row');
+        const sel = document.getElementById('new-client-trainer');
+        if (!row || !sel) return;
+        if (!loadSession()?.isSuperadmin) { row.classList.add('hidden'); return; }
+        try {
+            const res = await apiFetch('/api/trainers');
+            if (!res.ok) { row.classList.add('hidden'); return; }
+            const trainers = await res.json();
+            sel.innerHTML = '<option value="">— Sin entrenador —</option>' + trainers.map(t => {
+                const full = `${t.name || ''} ${t.lastName || ''}`.trim() || t.email || 'Sin nombre';
+                return `<option value="${escHtml(t._id)}">${escHtml(full)}</option>`;
+            }).join('');
+            sel.value = currentTrainerId ? String(currentTrainerId) : '';
+            sel.dataset.original = sel.value;      // so we only PUT on an actual change
+            row.classList.remove('hidden');
+        } catch { row.classList.add('hidden'); }
+    };
+
+    // Persist an ownership change, if the superadmin picked a different trainer.
+    // Separate from the profile save because it's a different endpoint and a
+    // different permission — see PUT /api/clients/:id/trainer on the server.
+    const commitClientTrainerChange = async (clientId) => {
+        const sel = document.getElementById('new-client-trainer');
+        if (!sel || !loadSession()?.isSuperadmin) return;
+        const row = document.getElementById('client-trainer-row');
+        if (row?.classList.contains('hidden')) return;
+        const next = sel.value || '';
+        if (next === (sel.dataset.original ?? '')) return;   // unchanged
+        try {
+            const res = await apiFetch(`/api/clients/${clientId}/trainer`, {
+                method: 'PUT', body: JSON.stringify({ trainerId: next || null }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { showToast(data.message || 'No se pudo mover el cliente.', 'error'); return; }
+            showToast(data.message || 'Cliente movido.', 'success');
+        } catch { showToast('Error de conexión al mover el cliente.', 'error'); }
+    };
+
         window.openEditClientModal = (clientId) => {
         const client = clientsCache.find(c => c._id === clientId);
         if (!client) return;
@@ -4397,6 +4439,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.textContent = "Actualizar Cliente";
         modal.classList.remove('hidden');
         populateTimezones();
+        setupClientTrainerSelect(client.trainerId);
         renderGroupOptions();
         renderProgramOptions(client.program || "Sin asignar");
 
@@ -4713,6 +4756,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 const savedClient = await res.json();
                 const savedClientId = savedClient._id;
+
+                // Ownership moves through its own superadmin-only endpoint, so it is
+                // committed separately from the profile save. Awaited before the cache
+                // refresh below so the list reflects the new owner immediately.
+                if (savedClientId) await commitClientTrainerChange(savedClientId);
 
                 if (currentClientViewId) {
                     const idx = clientsCache.findIndex(c => c._id === currentClientViewId);
@@ -5318,6 +5366,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? exTags.map(t => `<span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15">${escHtml(t)}</span>`).join('')
                     : `<span class="px-2 py-0.5 rounded border border-dashed border-[#FFDB89]/15 text-[#FFDB89]/25">Sin etiquetas</span>`;
                 const muscleName = ex.muscleGroupId ? (MUSCLES.find(m => m.id === ex.muscleGroupId)?.name || '') : '';
+                // The library is shared for USE, but only the creator (or the
+                // superadmin) may edit. Hide the pencil otherwise rather than
+                // offering a button that can only ever 403.
+                const _sess = loadSession();
+                const canEditEx = !!_sess?.isSuperadmin || (!!ex.trainerId && String(ex.trainerId) === String(_sess?.id));
                 const ppBadge = ex.pushPull ? `<span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15 text-[#FFDB89]/50">${pushPullLabel[ex.pushPull] || ex.pushPull}</span>` : '';
                 const muscleBadge = muscleName ? `<span class="px-2 py-0.5 rounded bg-[#FFDB89]/8 border border-[#FFDB89]/15 text-[#FFDB89]/50"><i class="fas fa-dumbbell text-[9px] mr-1"></i>${muscleName}</span>` : '';
                 const item = document.createElement('div');
@@ -5335,9 +5388,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition">
-                        <button class="edit-exercise-btn p-2 text-[#FFDB89]/40 hover:text-[#FFDB89] transition" data-ex-id="${ex._id}" title="Editar"><i class="fas fa-edit"></i></button>
+                        ${canEditEx
+                            ? `<button class="edit-exercise-btn p-2 text-[#FFDB89]/40 hover:text-[#FFDB89] transition" data-ex-id="${ex._id}" title="Editar"><i class="fas fa-edit"></i></button>`
+                            : `<span class="p-2 text-[#FFDB89]/15" title="Lo creó otro entrenador — puedes usarlo, pero no editarlo"><i class="fas fa-lock text-xs"></i></span>`}
                     </div>`;
-                item.querySelector('.edit-exercise-btn').addEventListener('click', () => openEditExerciseModal(ex));
+                item.querySelector('.edit-exercise-btn')?.addEventListener('click', () => openEditExerciseModal(ex));
                 listContainer.appendChild(item);
             });
         };
@@ -10431,6 +10486,12 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('new-client-email').value = "";
             document.getElementById('add-client-modal').classList.remove('hidden');
             populateTimezones();
+            // New clients are owned by whoever creates them (the server assigns it),
+            // so the reassign selector has nothing to act on — keep it hidden and
+            // free of stale state from a previous edit.
+            document.getElementById('client-trainer-row')?.classList.add('hidden');
+            const _tSel = document.getElementById('new-client-trainer');
+            if (_tSel) { _tSel.value = ''; delete _tSel.dataset.original; }
             renderGroupOptions();
             renderProgramOptions();
             wireHeartRateCalc();
