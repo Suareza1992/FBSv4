@@ -6778,10 +6778,29 @@ document.addEventListener('DOMContentLoaded', () => {
         // Assign the correct superset-aware label now that the item is in the DOM
         window.reindexBuilderLabels();
 
-        // ── Auto-check restriction for exercises loaded from existing workout ──
+        // ── Existing row: resolve restrictions AND the video from the library ──
+        // An imported routine arrives as plain names with no videoUrl. This row
+        // already looked the exercise up for the restriction badge but threw the
+        // rest away, so a matching library video was never applied — that's why
+        // imported routines showed no video and no suggestion. Uses the normalized
+        // lookup so "Incline Dumbbell Press:" still matches the library entry.
         if (data?.name) {
-            const libEx = globalExerciseLibrary.find(e => e.name.toLowerCase() === data.name.toLowerCase());
-            if (libEx) checkExerciseRestriction(libEx, item);
+            const libEx = findExerciseInLibrary(data.name);
+            if (libEx) {
+                checkExerciseRestriction(libEx, item);
+                // Only fill a gap — never overwrite a video the routine already set.
+                if (!videoBtn.dataset.video && libEx.videoUrl) {
+                    videoBtn.dataset.video = libEx.videoUrl;
+                    videoBtn.classList.remove('text-[#FFDB89]/40');
+                    videoBtn.classList.add('text-[#FFDB89]');
+                    playBtn.classList.remove('text-green-400/35');
+                    playBtn.classList.add('text-green-400');
+                    videoBtn.title = `Video sugerido desde la biblioteca (${libEx.name})`;
+                    videoBtn.insertAdjacentHTML('beforeend',
+                        '<span class="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-400/80" title="Sugerido desde la biblioteca"></span>');
+                    videoBtn.classList.add('relative');
+                }
+            }
         }
     };
 
