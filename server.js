@@ -293,6 +293,12 @@ const UserSchema = new mongoose.Schema({
     weight: { type: Number, default: 0 },
     birthday: { type: String, default: "" },
     gender: { type: String, default: "" },
+    // ── Onboarding (collected once, on first run of the mobile app) ──────────
+    nickname: { type: String, default: "" },
+    goals: { type: [String], default: [] },          // e.g. ['lose_weight','build_muscle']
+    activityLevel: { type: String, default: "" },     // 'beginner' | 'intermediate' | 'advanced'
+    onboardedAt: { type: Date, default: null },       // set once the wizard completes
+
     restingHr: { type: Number, default: null },
     thr: { type: Number, default: null },
     mahr: { type: Number, default: null },
@@ -1160,7 +1166,9 @@ app.put('/api/me', authenticateToken, async (req, res) => {
     try {
         // Safe profile fields any authenticated user can update
         // profilePicture is no longer accepted here — use POST /api/me/profile-picture instead
-        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'servingUnit', 'injuredMuscles', 'dietaryPreferences', 'restingHr'];
+        const allowedFields = ['name', 'lastName', 'unitSystem', 'timezone', 'servingUnit', 'injuredMuscles', 'dietaryPreferences', 'restingHr',
+                               // Onboarding wizard answers — the client fills these in about themselves.
+                               'nickname', 'gender', 'birthday', 'height', 'weight', 'phone', 'goals', 'activityLevel', 'onboardedAt'];
         const updates = {};
         for (const key of allowedFields) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -1476,7 +1484,8 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
         const ALLOWED = ['name','lastName','email','program','group','type','dueDate','isActive',
                          'location','timezone','unitSystem','phone','height','weight','birthday',
                          'gender','thr','mahr','restingHr','emailPreferences','hideFromDashboard',
-                         'profilePicture','equipment','equipmentCheckOn','macroSettings','waterGoal','injuredMuscles','dietaryPreferences'];
+                         'profilePicture','equipment','equipmentCheckOn','macroSettings','waterGoal','injuredMuscles','dietaryPreferences',
+                         'nickname','goals','activityLevel','onboardedAt'];
         const updates = {};
         for (const key of ALLOWED) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -4894,8 +4903,13 @@ async function provisionSignupAccount(opts) {
     if (!email) { console.error('[signup] provision with no email'); return null; }
     if (opts.dedupeQuery && await Payment.findOne(opts.dedupeQuery)) return null; // already done
 
-    const trainer = await User.findOne({ role: { $in: ['trainer', 'admin'] } }).select('_id');
-    if (!trainer) { console.error('[signup] no trainer/admin to own the new client'); return null; }
+    // A self-serve signup from the public website belongs to the OWNER, not to
+    // whichever trainer Mongo happened to return first. With more than one trainer
+    // that lottery would hand a paying customer — and their payment record — to a
+    // colleague, and the buyer would land in the wrong person's roster.
+    const trainer = await User.findOne({ isSuperadmin: true }).select('_id').lean()
+                 || await User.findOne({ role: { $in: ['trainer', 'admin'] } }).select('_id').lean();
+    if (!trainer) { console.error('[signup] no superadmin/trainer to own the new client'); return null; }
 
     const plan   = findSignupPlan(opts.planId);
     const amount = opts.amount != null ? opts.amount : (plan?.amount || 0);
