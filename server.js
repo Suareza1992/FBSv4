@@ -94,6 +94,19 @@ const photoUpload = multer({
     }
 });
 
+// Blog covers are downscaled to 1200x675 on the way in, so the source can be as
+// large as a stock photo or a phone's full-resolution shot without hurting
+// anything. The 10 MB profile-photo cap was rejecting those before they ever
+// reached Cloudinary.
+const coverUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) return cb(new Error('Solo se permiten imágenes.'));
+        cb(null, true);
+    }
+});
+
 // Helper: upload a buffer to Cloudinary and return the result
 const uploadToCloudinary = (buffer, options) => new Promise((resolve, reject) => {
     cloudinary.uploader.upload_stream(options, (error, result) => {
@@ -5587,7 +5600,7 @@ app.get('/api/blog/:slug', async (req, res) => {
 // but stores a wide 16:9 crop suited to a card header. Returns the URL for the
 // caller to save on the post — kept separate from create/update so a cover can be
 // swapped without re-submitting the whole post.
-app.post('/api/blog/cover', authenticateToken, photoUpload.single('photo'), async (req, res) => {
+app.post('/api/blog/cover', authenticateToken, coverUpload.single('photo'), async (req, res) => {
     if (req.user.role !== 'trainer' && req.user.role !== 'admin')
         return res.status(403).json({ message: 'Acceso restringido.' });
     try {
@@ -5596,12 +5609,17 @@ app.post('/api/blog/cover', authenticateToken, photoUpload.single('photo'), asyn
             folder: 'fitbysuarez/blog-covers',
             // Random id, not deterministic: a post can change its cover, and old
             // posts must keep the image they were published with.
-            transformation: [{ quality: 'auto', fetch_format: 'auto', width: 1200, height: 675, crop: 'fill' }],
+            // format:'jpg' normalises HEIC/HEIF/AVIF (what an iPhone hands over by
+            // default) into something every browser can display.
+            format: 'jpg',
+            transformation: [{ quality: 'auto', width: 1200, height: 675, crop: 'fill' }],
         });
         res.json({ coverImage: result.secure_url });
     } catch (e) {
-        console.error('Error uploading blog cover:', e.message);
-        res.status(500).json({ message: 'Error subiendo la imagen.' });
+        // Log the whole error — Cloudinary puts the actionable part (unsupported
+        // format, quota, bad credentials) in fields other than `message`.
+        console.error('Error uploading blog cover:', e);
+        res.status(500).json({ message: e?.message || 'Error subiendo la imagen.' });
     }
 });
 
@@ -5666,6 +5684,37 @@ app.delete('/api/blog/:id', authenticateToken, async (req, res) => {
 // --- FALLBACK (must stay last — serves index.html for all unmatched GETs) ---
 // ==========================================================================
 app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
+
+// ==========================================================================
+// --- ERROR HANDLER (must be registered after every route) ---
+// ==========================================================================
+// Without this, a rejection thrown by middleware — multer's size limit and file
+// filter above all — fell through to Express's default handler, which replies
+// with an HTML error page. Every uploader in the app does `res.json()` on the
+// response, so that HTML parsed as nothing and the user saw a generic "no se
+// pudo subir" with no hint that their file was simply too big. Always answer an
+// /api request with JSON.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+    const isApi = req.path.startsWith('/api/');
+    let status = err.status || 500;
+    let message = 'Error del servidor.';
+
+    if (err instanceof multer.MulterError) {
+        status = 400;
+        message = err.code === 'LIMIT_FILE_SIZE'
+            ? 'La imagen es demasiado grande. El máximo es 25 MB para portadas y 10 MB para fotos.'
+            : `Error al subir el archivo (${err.code}).`;
+    } else if (err?.message) {
+        // fileFilter rejections arrive as a plain Error carrying our own Spanish text.
+        status = err.status || 400;
+        message = err.message;
+    }
+
+    console.error(`[${req.method} ${req.path}]`, err);
+    if (isApi) return res.status(status).json({ message });
+    res.status(status).send(message);
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); });

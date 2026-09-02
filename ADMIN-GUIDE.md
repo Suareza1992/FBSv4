@@ -155,7 +155,33 @@ it can occasionally catch you if you are testing repeatedly from one connection.
 
 ---
 
-## 8. Deploying
+## 8. Blog cover images — what the uploader accepts
+
+| | |
+| --- | --- |
+| **Max size** | **25 MB** (was 10 MB — stock photos kept exceeding it) |
+| **Formats** | anything the browser calls an image: JPG, PNG, WEBP, HEIC |
+| **Output** | always converted to **JPG at 1200×675** |
+
+You do **not** need to resize or compress before uploading. The server crops and
+compresses for you, and Cloudinary serves modern formats automatically. Upload
+the best version you have.
+
+**Aspect ratio is the one thing worth minding.** The crop is `fill` at 16:9, so a
+tall or square photo loses its top and bottom. Landscape shots survive best.
+
+**iPhone photos (.HEIC) work.** They are converted to JPG on upload, so the cover
+displays everywhere even though HEIC itself doesn't render in most browsers.
+
+**If an upload fails, the message now tells you why** — too large, wrong file
+type, or a connection problem. Before, every failure showed the same unhelpful
+"no se pudo subir la imagen" because upload errors were being returned as an HTML
+page the app couldn't read. If you see a generic error again, that's a real bug
+worth reporting, not a bad image.
+
+---
+
+## 9. Deploying
 
 - **web** — push to `main`. Railway auto-deploys; there is no separate step.
   Confirm it landed:

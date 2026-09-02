@@ -16215,7 +16215,15 @@ document.addEventListener('DOMContentLoaded', () => {
         coverFile?.addEventListener('change', async () => {
             const file = coverFile.files?.[0];
             if (!file) return;
-            if (coverStatus) coverStatus.textContent = 'Subiendo…';
+            // Fail fast rather than spending a minute uploading something the
+            // server is going to reject anyway.
+            const MAX = 25 * 1024 * 1024;
+            if (file.size > MAX) {
+                showToast(`La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El máximo es 25 MB — redúcela y vuelve a intentar.`, 'error');
+                coverFile.value = '';
+                return;
+            }
+            if (coverStatus) coverStatus.textContent = `Subiendo… (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
             try {
                 const form = new FormData();
                 form.append('photo', file);
