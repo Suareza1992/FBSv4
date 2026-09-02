@@ -957,6 +957,20 @@ const loadModule = async (name) => {
 - On `401` with a token present: clears `auth_token` and `auth_user` from localStorage and calls `location.reload()` to force re-login.
 - On `401` without a token: throws `'Session expired'` without reloading (prevents infinite reload on login page).
 
+> **Gotcha — file uploads.** `apiFetch` sets `Content-Type: application/json` by
+> default, which is **wrong for a `FormData` body**. The browser must write that
+> header itself so it can append the multipart `boundary=...`; overriding it
+> produces a boundary-less multipart payload, `express.json()` then tries to
+> parse it, and the request dies with
+> `Unexpected token '-', "------WebK"... is not valid JSON`.
+>
+> `apiFetch` now detects `options.body instanceof FormData` and omits the header
+> in that case. This is why the older uploaders — profile picture
+> (`/api/me/profile-picture`) and progress photos (`/api/progress-photos`) — call
+> **raw `fetch()`** instead: they were sidestepping this bug. They still work and
+> were left alone, but new upload code should use `apiFetch` and gets the 401
+> handling for free. The mobile client's `lib/api.ts` has always had this check.
+
 ### Navigation model
 
 Sidebar nav links in `trainer-dashboard.html` have `href` values pointing to fragment HTML files (e.g. `href="/clientes_content.html"`). The app intercepts these clicks (wired in the sidebar init logic) and instead calls `loadModule('clientes_content')` + `updateContent(...)`. Direct URL navigation to `href` paths would also work (Express serves index.html for all routes), but the fragment files themselves are not complete HTML pages — they are content-only divs.

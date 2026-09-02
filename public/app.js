@@ -32,8 +32,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // H-2: apiFetch — token is now an HttpOnly cookie, sent automatically by the browser.
     // We no longer read or set auth_token in localStorage.
     const apiFetch = async (url, options = {}) => {
+        // A FormData body MUST NOT carry a hand-set Content-Type. The browser has
+        // to write it itself so it can append the multipart boundary; forcing
+        // application/json here meant the server received a boundary-less
+        // multipart payload, express.json() tried to parse it, and the upload
+        // died on "Unexpected token '-', \"------WebK\"...". Every other uploader
+        // in this file dodged it by calling raw fetch(); handling it here means
+        // they no longer have to.
+        const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
         const headers = {
-            'Content-Type': 'application/json',
+            ...(isForm ? {} : { 'Content-Type': 'application/json' }),
             // The browser's local date — lets date-sensitive server logic (e.g.
             // program→calendar sync's "future only" cutoff) use the trainer's day.
             'X-Client-Date': localDateStr(),
