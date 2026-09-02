@@ -542,7 +542,8 @@ document.addEventListener('DOMContentLoaded', () => {
             rpe_submitted:     { icon: 'fas fa-fire',                 color: '#FB923C' },
             contact_inquiry:   { icon: 'fas fa-envelope-open-text',   color: '#34D399' },
             muscle_restriction:{ icon: 'fas fa-person-rays',          color: '#F87171' },
-            equipment_updated: { icon: 'fas fa-dumbbell',             color: '#38BDF8' }
+            equipment_updated: { icon: 'fas fa-dumbbell',             color: '#38BDF8' },
+            exercise_swapped:  { icon: 'fas fa-right-left',           color: '#38BDF8' }
         };
         return configs[type] || { icon: 'fas fa-bell', color: '#FFDB89' };
     };
@@ -15445,8 +15446,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             <p class="font-bold ${isDone ? 'text-green-400/80' : 'text-white'} flex-1 transition-colors duration-300" data-ex-name="${i}">${ex.name}</p>
                             ${hasVideo ? `<i class="fas fa-play-circle text-green-400/60 group-hover/excard:text-green-400 text-base shrink-0 transition-colors"></i>` : ''}
                         </div>
+                        ${ex.swappedFrom ? `<p class="text-[11px] text-sky-400/80 font-semibold mt-0.5 flex items-center gap-1"><i class="fas fa-right-left text-[9px]"></i> Cambiado · tu entrenador prescribió "${escHtml(ex.swappedFrom)}"</p>` : ''}
                         ${ex.instructions ? `<p class="text-sm text-[#FFDB89]/60 mt-0.5">${ex.instructions}</p>` : ''}
                     </div>
+                    <!-- Same-muscle swap: applies to THIS DAY only and notifies the trainer -->
+                    <button class="client-swap-btn shrink-0 w-7 h-7 rounded-full border border-white/20 text-white/30 hover:border-[#FFDB89]/50 hover:text-[#FFDB89] flex items-center justify-center transition-all duration-200"
+                        data-swap-index="${i}" title="Cambiar por otro del mismo grupo muscular">
+                        <i class="fas fa-right-left text-[10px] pointer-events-none"></i>
+                    </button>
                     <!-- Per-exercise complete toggle -->
                     <button class="ex-complete-btn shrink-0 w-7 h-7 rounded-full border flex items-center justify-center transition-all duration-200 ${isDone ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'border-white/20 text-white/30 hover:border-green-500/50 hover:text-green-400/60'}"
                         data-ex-index="${i}" title="Marcar ejercicio como completado">
@@ -15684,6 +15691,48 @@ document.addEventListener('DOMContentLoaded', () => {
         updateProgressBadge();
 
         const exLabel = (idx) => (window.getExerciseLetter ? window.getExerciseLetter(idx, clientExercises) : String.fromCharCode(65 + idx % 26));
+
+        // Client-initiated exercise swap. openSwapList() is the same picker the
+        // trainer uses; only the `apply` callback differs — here it goes through
+        // the dedicated /swap route, which re-checks the same-muscle rule server
+        // side and notifies the trainer.
+        document.querySelectorAll('.client-swap-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();   // don't trigger the video preview
+                const idx = parseInt(btn.dataset.swapIndex);
+                if (isNaN(idx) || !clientExercises[idx]) return;
+
+                // A client may reach this screen before loadData() has filled the
+                // library cache; fetch it on demand rather than showing "no tags".
+                if (!globalExerciseLibrary.length) await fetchLibraryFromDB();
+
+                openSwapList(btn, clientExercises[idx].name, async (chosen) => {
+                    const session = loadSession();
+                    const cid = workout.clientId || session?.id;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px] pointer-events-none"></i>';
+                    try {
+                        const res = await apiFetch(`/api/client-workouts/${cid}/${workout.date}/swap`, {
+                            method: 'PATCH',
+                            body: JSON.stringify({ index: idx, name: chosen.name })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            showToast(data?.message || 'No se pudo cambiar el ejercicio.', 'error');
+                            btn.innerHTML = '<i class="fas fa-right-left text-[10px] pointer-events-none"></i>';
+                            return;
+                        }
+                        // Re-open on the server's version so the swapped name, the
+                        // cleared results and the "cambiado" note all render.
+                        document.getElementById('client-workout-detail-modal')?.remove();
+                        showClientWorkoutDetail(data);
+                        showToast('Ejercicio cambiado. Tu entrenador fue notificado.', 'success');
+                    } catch {
+                        showToast('Error de conexión. Intenta de nuevo.', 'error');
+                        btn.innerHTML = '<i class="fas fa-right-left text-[10px] pointer-events-none"></i>';
+                    }
+                });
+            });
+        });
 
         document.querySelectorAll('.ex-complete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {

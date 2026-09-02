@@ -448,6 +448,9 @@ const ClientWorkoutSchema = new mongoose.Schema({
         // Per-exercise effort rating logged by the client alongside their results.
         // Independent of the day-level `rpe` below (which rates the whole session).
         rpe:          { type: Number, min: 1, max: 10, default: null },
+        // Set when the CLIENT swapped this slot for a same-muscle alternative, so
+        // the trainer can see what was originally prescribed. Empty = untouched.
+        swappedFrom:  { type: String, default: '' },
     }],
 
     // ── Cooldown ───────────────────────────────────────────────────────────────
@@ -505,7 +508,8 @@ const NotificationSchema = new mongoose.Schema({
             'workout_comment', 'video_upload',
             'reported_issue', 'metric_inactivity',
             'program_assigned', 'client_created', 'rpe_submitted',
-            'contact_inquiry', 'muscle_restriction', 'equipment_updated'
+            'contact_inquiry', 'muscle_restriction', 'equipment_updated',
+            'exercise_swapped'
         ],
         required: true
     },
@@ -1888,7 +1892,32 @@ app.patch('/api/client-workouts/:clientId/:date', authenticateToken, async (req,
         const wasComplete = before?.isComplete || false;
         const wasMissed   = before?.isMissed   || false;
 
-        const patch = { ...req.body, updatedAt: Date.now() };
+        // A client may only write what they are supposed to own: their results,
+        // effort ratings, mood and completion state. The route used to spread
+        // req.body wholesale, so a hand-crafted request could rewrite the entire
+        // prescription (title/exercises/warmup). Exercise swaps go through the
+        // dedicated /swap route below, which validates the substitution.
+        const CLIENT_WRITABLE = ['results', 'rpe', 'mood', 'isComplete', 'isMissed', 'clientNotes', 'exerciseResults'];
+        let body = req.body;
+        if (req.user.role === 'client') {
+            body = {};
+            for (const f of CLIENT_WRITABLE) if (f in req.body) body[f] = req.body[f];
+            // `exercises` is accepted from a client ONLY to carry per-exercise
+            // results/rpe/isComplete back — never to change the prescription. We
+            // merge those three fields onto the stored array and discard the rest.
+            if (Array.isArray(req.body.exercises) && before) {
+                body.exercises = before.exercises.map((ex, i) => {
+                    const incoming = req.body.exercises[i] || {};
+                    const merged = ex.toObject ? ex.toObject() : { ...ex };
+                    if ('results'    in incoming) merged.results    = String(incoming.results || '');
+                    if ('isComplete' in incoming) merged.isComplete = !!incoming.isComplete;
+                    if ('rpe'        in incoming) merged.rpe        = incoming.rpe == null ? null : Number(incoming.rpe);
+                    return merged;
+                });
+            }
+        }
+
+        const patch = { ...body, updatedAt: Date.now() };
         // A trainer editing a day's prescription = a manual customization. Flag it
         // so a later program re-sync preserves it. (Client edits — results/rpe/
         // completion — never set this; the sync routine itself bypasses PATCH.)
@@ -1941,6 +1970,80 @@ app.patch('/api/client-workouts/:clientId/:date', authenticateToken, async (req,
     } catch (error) {
         console.error('Error patching workout:', error);
         res.status(500).json({ message: 'Error updating workout', error });
+    }
+});
+
+// Client-initiated exercise substitution.
+//
+// Scope is deliberately ONE DAY: it rewrites this date's slot only, never the
+// program template or any future day, so a re-sync still delivers what the
+// trainer prescribed. The trainer is notified rather than asked to approve —
+// a client standing at a busy squat rack cannot wait for a round trip.
+//
+// The "same muscle group" rule is enforced HERE, not just in the UI, because the
+// UI list is only a suggestion and the request is client-controlled.
+app.patch('/api/client-workouts/:clientId/:date/swap', authenticateToken, async (req, res) => {
+    if (!assertOwnership(req, res, req.params.clientId)) return;
+    try {
+        const { clientId, date } = req.params;
+        const index = Number(req.body.index);
+        const wanted = String(req.body.name || '').trim();
+        if (!Number.isInteger(index) || index < 0) return res.status(400).json({ message: 'Índice inválido.' });
+        if (!wanted) return res.status(400).json({ message: 'Falta el ejercicio de reemplazo.' });
+
+        const workout = await ClientWorkout.findOne({ clientId, date });
+        if (!workout) return res.status(404).json({ message: 'Entrenamiento no encontrado.' });
+        const slot = workout.exercises?.[index];
+        if (!slot) return res.status(404).json({ message: 'Ese ejercicio no existe en el día.' });
+
+        // Tags live in Exercise.category; "General" is a placeholder, not a muscle.
+        const realTags = (ex) => (Array.isArray(ex.category) ? ex.category : [ex.category])
+            .filter(t => t && String(t).toLowerCase() !== 'general')
+            .map(t => String(t).toLowerCase());
+
+        const esc = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const [fromLib, toLib] = await Promise.all([
+            Exercise.findOne({ name: new RegExp(`^${esc(slot.name)}$`, 'i') }).lean(),
+            Exercise.findOne({ name: new RegExp(`^${esc(wanted)}$`, 'i') }).lean(),
+        ]);
+        if (!toLib)   return res.status(404).json({ message: 'Ese ejercicio no está en la biblioteca.' });
+        if (!fromLib) return res.status(422).json({ message: 'El ejercicio original no está en la biblioteca, así que no sé qué músculos trabaja.' });
+
+        const fromTags = realTags(fromLib);
+        const shared = realTags(toLib).filter(t => fromTags.includes(t));
+        if (!shared.length) {
+            return res.status(422).json({ message: 'Ese ejercicio no trabaja el mismo grupo muscular.' });
+        }
+
+        const originalName = slot.swappedFrom || slot.name;   // keep the FIRST original across repeat swaps
+        slot.swappedFrom = originalName;
+        slot.name        = toLib.name;
+        slot.videoUrl    = toLib.videoUrl || '';
+        // The prescription (sets/reps) still applies, so `instructions` carries over.
+        // Anything already logged belonged to the previous movement, so it doesn't.
+        slot.results    = '';
+        slot.rpe        = null;
+        slot.isComplete = false;
+
+        workout.updatedAt = Date.now();
+        await workout.save();
+
+        if (req.user.role === 'client') {
+            const client = await User.findById(clientId).select('name lastName');
+            await createNotification({
+                clientId,
+                clientName: client ? `${client.name} ${client.lastName || ''}`.trim() : 'Cliente',
+                type: 'exercise_swapped',
+                title: 'cambió un ejercicio',
+                message: `${originalName} → ${toLib.name} · ${date}`,
+                data: { date, index, from: originalName, to: toLib.name, shared }
+            });
+        }
+
+        res.json(workout);
+    } catch (error) {
+        console.error('Error swapping exercise:', error);
+        res.status(500).json({ message: 'Error cambiando el ejercicio.' });
     }
 });
 

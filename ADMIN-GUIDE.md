@@ -78,9 +78,31 @@ never overwritten. Safe to re-run.
 | **Exercises** (library) | every trainer | every trainer | **creator or you** |
 | **Programs** | owner only | every trainer | **owner or you** |
 | **Clients** | own only | every trainer | own only (you: all) |
+| **A client's own day** | their own | — | results/RPE only, **plus a same-muscle swap** |
 
 You (superadmin) can do anything. Trainers cannot see each other's clients or
 programs at all.
+
+### Client exercise swaps
+
+A client can replace a prescribed exercise with another that works the **same
+muscle group** — the squat rack is taken, a shoulder is sore, they hate that
+movement. What to know:
+
+- **It changes that one day only.** Your program and every future day keep what
+  you prescribed. A program re-sync is unaffected.
+- **You get a notification** ("cambió un ejercicio · Press de banca → Press con
+  mancuernas"), so you can see the pattern if someone dodges the same lift weekly.
+- **The card shows what you originally prescribed** underneath the new name, for
+  both of you.
+- **Sets and reps carry over**; anything they had already logged for that slot is
+  cleared, because it belonged to the previous movement.
+- **The same-muscle rule is enforced on the server**, not just in the picker — a
+  client cannot swap a squat for a bicep curl even by editing the request.
+
+**This depends entirely on tags.** An exercise with no tags offers no
+alternatives and cannot be swapped to. If a client says "there's nothing to
+switch to", the fix is section 4 — tag the exercise in Biblioteca.
 
 An exercise another trainer created shows a **lock** instead of an edit pencil —
 it can still be used in routines, just not modified.
@@ -103,7 +125,37 @@ the **production** database (`MONGO_URI` in `.env`).
 
 ---
 
-## 7. Deploying
+## 7. Where new leads show up
+
+A prospective client can reach you from two places, and **both land in the same
+two spots** — they share `POST /api/contact`:
+
+| They tapped | Where |
+| --- | --- |
+| "Contáctame" CTA | website home page |
+| "Me interesa" on a plan | mobile app, sign-in screen (before logging in) |
+
+Every inquiry arrives as:
+
+1. **An email to `fitbysuarez@gmail.com`** — hitting Reply goes straight to the
+   prospect, not to a noreply mailbox.
+2. **A notification in your dashboard** (Notificaciones), carrying the full
+   message.
+
+The notification is written **first**, on purpose. If email delivery ever breaks,
+the lead is still recorded and you will see it in Notificaciones — you will never
+lose an inquiry to a mail outage. So if a prospect says they wrote you and no
+email arrived, **check Notificaciones before assuming it never happened.**
+
+Leads from the app are prefixed `[Plan: …]` so you can see which plan they were
+looking at.
+
+**Rate limit:** 5 inquiries per hour from the same network. This is anti-spam;
+it can occasionally catch you if you are testing repeatedly from one connection.
+
+---
+
+## 8. Deploying
 
 - **web** — push to `main`. Railway auto-deploys; there is no separate step.
   Confirm it landed:

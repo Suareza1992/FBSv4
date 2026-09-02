@@ -1444,3 +1444,78 @@ When a trainer copies multiple calendar days (single-day copy persists separatel
 **Effect:** The image in the Sobre mí section now scales to match the text column's height (both ~602px), creating visual balance without forcing an unnatural aspect ratio.
 
 **Code:** `public/index.html` line ~478.
+
+---
+
+## 18. Client Exercise Swaps (same muscle group)
+
+**The idea:** a client mid-workout can substitute a prescribed exercise for
+another that trains the same muscles — the rack is occupied, a joint hurts, they
+hate that movement. Before this, only the trainer could swap, from the two
+*authoring* surfaces (program builder and workout editor). The client's own view
+had no swap at all.
+
+### Where the matching comes from
+
+Tags live in `Exercise.category` (an array), with the literal `"General"`
+filtered out as a placeholder rather than a muscle. Two exercises are
+"alternatives" when they share **at least one** tag; results sort by tags in
+common, then alphabetically.
+
+The logic is deliberately duplicated, not shared, because the two runtimes cannot
+import each other:
+
+| | Location |
+|---|---|
+| Web | `public/app.js` → `findSameMuscleAlternatives()` |
+| Mobile | `lib/tags.ts` → `findSameMuscleAlternatives()` |
+| Server | inline in the `/swap` route |
+
+**Keep all three in sync.** The 31-tag vocabulary lives in `TAG_GROUPS` in both
+clients and must stay identical.
+
+### Why a dedicated endpoint
+
+`PATCH /api/client-workouts/:clientId/:date/swap` takes `{ index, name }` and is
+the *only* way a client changes their prescription.
+
+It exists instead of letting the client PATCH `exercises` wholesale because the
+picker list is a **suggestion**, not a constraint — the request is fully client
+controlled. The route therefore re-checks server side that:
+
+1. the slot exists on that day,
+2. the replacement exists in the library,
+3. the replacement **shares a tag** with what it replaces.
+
+Only the name and `videoUrl` are taken from the library, never from the request
+body, so a client cannot inject an arbitrary video URL.
+
+### What the swap does and does not touch
+
+- Rewrites **that date's slot only** — never the `Program`, never a future day.
+  `sourceProgramId` is untouched, so a later re-sync still delivers the
+  trainer's version.
+- `instructions` (sets/reps) **carry over** — the prescription still applies.
+- `results`, `rpe` and `isComplete` are **cleared** — they described a different
+  movement.
+- `swappedFrom` records the **first** original across repeated swaps, so the card
+  always shows what the trainer actually prescribed, not the previous swap.
+- Fires an `exercise_swapped` notification to the client's own trainer.
+
+> `exercise_swapped` had to be added to the `type` enum on `NotificationSchema`.
+> That enum is `required` with a fixed list, so an unregistered type is dropped
+> by the `try/catch` in `createNotification()` **silently** — the swap would
+> succeed and the trainer would simply never hear about it. Add new types there
+> first.
+
+### Related fix: the PATCH allowlist
+
+`PATCH /api/client-workouts/:clientId/:date` previously did
+`const patch = { ...req.body }` with no field filtering. The comments asserted
+that clients only write results/RPE/completion, but nothing enforced it — a
+hand-crafted request could rewrite `title`, `exercises`, `warmup`, anything.
+
+Clients are now restricted to `CLIENT_WRITABLE`, and an incoming `exercises`
+array is **merged** onto the stored one: only `results`, `isComplete` and `rpe`
+are read off each entry, and every other field keeps its stored value. This is
+what both clients already send when logging, so no existing flow changed.
