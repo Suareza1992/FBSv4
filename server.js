@@ -651,6 +651,9 @@ const BlogPostSchema = new mongoose.Schema({
     slug:        { type: String, required: true, unique: true },
     category:    { type: String, default: 'General' },
     excerpt:     { type: String, default: '' },
+    // Cover image (Cloudinary URL). Optional — posts without one fall back to a
+    // branded gradient placeholder rather than a broken/empty card.
+    coverImage:  { type: String, default: '' },
     content:     { type: String, required: true },
     published:   { type: Boolean, default: false },
     publishedAt: { type: Date },
@@ -5476,12 +5479,35 @@ app.get('/api/blog/:slug', async (req, res) => {
     } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// POST /api/blog/cover — admin only: upload a post cover image.
+// Mirrors the profile-picture route (same Cloudinary helper and multer instance),
+// but stores a wide 16:9 crop suited to a card header. Returns the URL for the
+// caller to save on the post — kept separate from create/update so a cover can be
+// swapped without re-submitting the whole post.
+app.post('/api/blog/cover', authenticateToken, photoUpload.single('photo'), async (req, res) => {
+    if (req.user.role !== 'trainer' && req.user.role !== 'admin')
+        return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No se recibió ninguna imagen.' });
+        const result = await uploadToCloudinary(req.file.buffer, {
+            folder: 'fitbysuarez/blog-covers',
+            // Random id, not deterministic: a post can change its cover, and old
+            // posts must keep the image they were published with.
+            transformation: [{ quality: 'auto', fetch_format: 'auto', width: 1200, height: 675, crop: 'fill' }],
+        });
+        res.json({ coverImage: result.secure_url });
+    } catch (e) {
+        console.error('Error uploading blog cover:', e.message);
+        res.status(500).json({ message: 'Error subiendo la imagen.' });
+    }
+});
+
 // POST /api/blog — admin only: create post
 app.post('/api/blog', authenticateToken, async (req, res) => {
     if (req.user.role !== 'trainer' && req.user.role !== 'admin')
         return res.status(403).json({ message: 'Acceso restringido.' });
     try {
-        const { title, category, excerpt, content, published } = req.body;
+        const { title, category, excerpt, content, published, coverImage } = req.body;
         const slug = title.toLowerCase()
             .normalize('NFD').replace(/[̀-ͯ]/g, '')
             .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -5490,6 +5516,7 @@ app.post('/api/blog', authenticateToken, async (req, res) => {
             title, slug: uniqueSlug, category: category || 'General',
             excerpt: excerpt || content.slice(0, 160).replace(/\n/g, ' '),
             content, published: !!published,
+            coverImage: coverImage || '',
             publishedAt: published ? new Date() : null,
         });
         await post.save();
@@ -5502,11 +5529,14 @@ app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
     if (req.user.role !== 'trainer' && req.user.role !== 'admin')
         return res.status(403).json({ message: 'Acceso restringido.' });
     try {
-        const { title, category, excerpt, content, published } = req.body;
+        const { title, category, excerpt, content, published, coverImage } = req.body;
         const existing = await BlogPost.findById(req.params.id);
         if (!existing) return res.status(404).json({ message: 'Post no encontrado.' });
 
         const update = { title, category, content, published: !!published };
+        // Only touch the cover when the caller sends the field, so an edit that
+        // omits it doesn't silently wipe an existing image.
+        if (coverImage !== undefined) update.coverImage = coverImage;
         if (excerpt !== undefined) update.excerpt = excerpt;
         else if (content) update.excerpt = content.slice(0, 160).replace(/\n/g, ' ');
         // Preserve the ORIGINAL publish date — only stamp it the first time the post

@@ -1035,14 +1035,23 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             }
 
             const card = document.createElement('div');
-            card.className = 'section-card rounded-2xl p-5 sm:p-8 flex flex-col';
+            // overflow-hidden + no padding so the cover can bleed to the card edges;
+            // the inner wrapper carries the padding instead.
+            card.className = 'section-card rounded-2xl flex flex-col overflow-hidden';
             // Store searchable data as lowercase dataset attrs
             card.dataset.cat     = post.category || 'General';
             card.dataset.title   = (post.title   || '').toLowerCase();
             card.dataset.content = (post.content || '').toLowerCase() + ' ' + (post.excerpt || '').toLowerCase();
             card.dataset.date    = post.publishedAt || '';
 
+            const _cover = post.coverImage
+              ? `<img src="${escHtmlPublic(post.coverImage)}" alt="" loading="lazy"
+                      class="w-full aspect-video object-cover bg-[#111113]">`
+              : '';
+
             card.innerHTML = `
+              ${_cover}
+              <div class="p-5 sm:p-8 flex flex-col flex-1">
               <div class="flex items-center gap-2 flex-wrap mb-3">
                 <span class="bg-fbs-gold/15 border border-fbs-gold/30 text-fbs-gold text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">${escHtmlPublic(post.category || 'General')}</span>
                 ${dateStr ? `<span class="text-fbs-gold/40 text-xs">${escHtmlPublic(dateStr)}</span>` : ''}
@@ -1052,7 +1061,8 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
               <button class="blog-read-more" aria-expanded="false">
                 <span class="btn-label">${(translations[window.__fbsLang || 'es'] || translations.es).readMore}</span>
                 <i class="fas fa-chevron-down"></i>
-              </button>`;
+              </button>
+              </div>`;
 
             const body  = card.querySelector('.blog-body');
             const btn   = card.querySelector('.blog-read-more');

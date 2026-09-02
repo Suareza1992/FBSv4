@@ -51,6 +51,23 @@
         placeholder="Una frase que enganche al lector…"></textarea>
     </div>
 
+    <!-- Cover image — uploaded separately to /api/blog/cover, which returns the URL
+         stored on the post. A post without one renders a branded placeholder. -->
+    <div>
+      <label class="block text-xs font-bold text-fbs-gold/50 uppercase tracking-wider mb-1.5">Imagen de portada</label>
+      <input type="file" id="blog-cover-file" accept="image/*" class="hidden">
+      <div class="flex items-center gap-3">
+        <button type="button" id="blog-cover-btn"
+          class="px-4 py-2 bg-[#1C1C1E] text-fbs-gold font-semibold rounded-lg border border-fbs-gold/30 hover:bg-fbs-gold/10 transition text-sm">
+          <i class="fas fa-image mr-2"></i>Subir imagen
+        </button>
+        <button type="button" id="blog-cover-remove"
+          class="hidden text-red-400/70 hover:text-red-400 text-xs font-bold transition">Quitar</button>
+        <span id="blog-cover-status" class="text-xs text-fbs-gold/40"></span>
+      </div>
+      <img id="blog-cover-preview" class="hidden mt-3 w-full max-w-sm rounded-xl border border-fbs-gold/15" alt="Portada">
+    </div>
+
     <!-- Content -->
     <div>
       <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">Contenido *</label>

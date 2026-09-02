@@ -16093,6 +16093,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         getEl('blog-input-excerpt').value  = post.excerpt || '';
                         getEl('blog-input-content').value  = post.content || '';
                         getEl('blog-input-published').checked = !!post.published;
+                        window._blogSetCover?.(post.coverImage || '');
                         getEl('blog-form-section').classList.remove('hidden');
                         getEl('blog-input-title').focus();
                         getEl('blog-form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -16124,6 +16125,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 getEl('blog-input-excerpt').value  = '';
                 getEl('blog-input-content').value  = '';
                 getEl('blog-input-published').checked = false;
+                window._blogSetCover?.('');   // don't carry a cover over from the last edit
                 getEl('blog-form-section').classList.remove('hidden');
                 getEl('blog-input-title').focus();
                 getEl('blog-form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -16138,6 +16140,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 editingId = null;
             });
         }
+
+        // ── Cover image ───────────────────────────────────────────────────────
+        // Uploaded on selection to /api/blog/cover (Cloudinary), which returns the
+        // URL we then save with the post. Held in `coverImage` so the save handler
+        // can send it whether the post is new or being edited.
+        let coverImage = '';
+        const coverPreview = getEl('blog-cover-preview');
+        const coverStatus  = getEl('blog-cover-status');
+        const coverRemove  = getEl('blog-cover-remove');
+        const coverFile    = getEl('blog-cover-file');
+
+        const paintCover = () => {
+            if (coverPreview) {
+                coverPreview.src = coverImage || '';
+                coverPreview.classList.toggle('hidden', !coverImage);
+            }
+            coverRemove?.classList.toggle('hidden', !coverImage);
+        };
+        window._blogSetCover = (url) => { coverImage = url || ''; paintCover(); };
+        window._blogGetCover = () => coverImage;
+
+        getEl('blog-cover-btn')?.addEventListener('click', () => coverFile?.click());
+        coverRemove?.addEventListener('click', () => { coverImage = ''; paintCover(); });
+        coverFile?.addEventListener('change', async () => {
+            const file = coverFile.files?.[0];
+            if (!file) return;
+            if (coverStatus) coverStatus.textContent = 'Subiendo…';
+            try {
+                const form = new FormData();
+                form.append('photo', file);
+                const res = await apiFetch('/api/blog/cover', { method: 'POST', body: form });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { showToast(data.message || 'No se pudo subir la imagen.', 'error'); return; }
+                coverImage = data.coverImage || '';
+                paintCover();
+            } catch {
+                showToast('Error de conexión al subir la imagen.', 'error');
+            } finally {
+                if (coverStatus) coverStatus.textContent = '';
+                coverFile.value = '';   // allow re-picking the same file
+            }
+        });
 
         // ── Save / publish button ─────────────────────────────────────────────
         const saveBtn = getEl('blog-save-btn');
@@ -16159,7 +16203,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const url    = editingId ? `/api/blog/${editingId}` : '/api/blog';
                     const res = await apiFetch(url, {
                         method,
-                        body: JSON.stringify({ title, category, excerpt, content, published }),
+                        body: JSON.stringify({ title, category, excerpt, content, published, coverImage: window._blogGetCover?.() || '' }),
                     });
                     if (!res.ok) throw new Error('Server error');
                     showToast(editingId ? 'Artículo actualizado.' : 'Artículo creado.', 'success');
