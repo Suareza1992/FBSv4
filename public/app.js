@@ -31,6 +31,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // H-2: apiFetch — token is now an HttpOnly cookie, sent automatically by the browser.
     // We no longer read or set auth_token in localStorage.
+    // Apply a post's cover framing to an <img> that fills a 16:9 window.
+    // object-position picks WHICH part of the photo shows; the same coordinates
+    // become the transform-origin so zooming pushes into the point the author
+    // centred on rather than the middle of the frame. Kept in one place because
+    // the admin preview and the public card must agree exactly — the landing page
+    // has its own copy (separate script scope) that must stay identical.
+    const applyCoverFraming = (img, pos, zoom) => {
+        if (!img) return;
+        const p = pos || '50% 50%';
+        const z = Math.min(3, Math.max(1, Number(zoom) || 1));
+        img.style.objectPosition  = p;
+        img.style.transformOrigin = p;
+        img.style.transform       = z === 1 ? '' : `scale(${z})`;
+    };
+
     const apiFetch = async (url, options = {}) => {
         // A FormData body MUST NOT carry a hand-set Content-Type. The browser has
         // to write it itself so it can append the multipart boundary; forcing
@@ -16126,13 +16141,30 @@ document.addEventListener('DOMContentLoaded', () => {
                         : '—';
                     row.innerHTML = `
                         <div class="flex-1 min-w-0">
-                            <p class="font-bold text-white text-sm truncate">${escHtml(p.title)}</p>
+                            <button data-action="view" data-slug="${escHtml(p.slug || '')}" data-published="${p.published ? '1' : ''}"
+                                class="block w-full text-left font-bold text-white text-sm truncate hover:text-fbs-gold transition"
+                                title="Ver el artículo como lo ve un visitante">${escHtml(p.title)}</button>
                             <p class="text-fbs-gold/40 text-xs mt-0.5">${escHtml(p.category || 'General')} · ${dateStr}</p>
                         </div>
                         <span class="text-[10px] font-bold px-2 py-1 rounded-full border ${p.published ? 'border-green-500/40 text-green-400 bg-green-500/10' : 'border-fbs-gold/20 text-fbs-gold/50 bg-fbs-gold/5'}">${p.published ? 'Publicado' : 'Borrador'}</span>
+                        <button data-action="view" data-slug="${escHtml(p.slug || '')}" data-published="${p.published ? '1' : ''}" class="text-fbs-gold/60 hover:text-fbs-gold transition text-sm px-2 py-1 rounded-lg hover:bg-fbs-gold/10" title="Ver publicado"><i class="fas fa-arrow-up-right-from-square"></i></button>
                         <button data-id="${escHtml(p._id)}" data-action="edit" class="text-fbs-gold/60 hover:text-fbs-gold transition text-sm px-2 py-1 rounded-lg hover:bg-fbs-gold/10" title="Editar"><i class="fas fa-pen"></i></button>
                         <button data-id="${escHtml(p._id)}" data-action="delete" class="text-red-400/60 hover:text-red-400 transition text-sm px-2 py-1 rounded-lg hover:bg-red-400/10" title="Eliminar"><i class="fas fa-trash"></i></button>`;
                     listEl.appendChild(row);
+                });
+
+                // View: open the public landing page focused on this article, which is
+                // exactly what a visitor sees. Drafts have no public page.
+                listEl.querySelectorAll('[data-action="view"]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        if (!btn.dataset.published) {
+                            showToast('Este artículo es un borrador — publícalo para verlo en la página.', 'info');
+                            return;
+                        }
+                        const slug = btn.dataset.slug;
+                        if (!slug) { showToast('Este artículo no tiene enlace público.', 'error'); return; }
+                        window.open(`/#post-${encodeURIComponent(slug)}`, '_blank', 'noopener');
+                    });
                 });
 
                 // Edit / delete handlers
@@ -16150,7 +16182,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         getEl('blog-input-excerpt').value  = post.excerpt || '';
                         getEl('blog-input-content').value  = post.content || '';
                         getEl('blog-input-published').checked = !!post.published;
-                        window._blogSetCover?.(post.coverImage || '');
+                        window._blogSetCover?.(post.coverImage || '', post.coverPos, post.coverZoom);
                         getEl('blog-form-section').classList.remove('hidden');
                         getEl('blog-input-title').focus();
                         getEl('blog-form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -16203,20 +16235,76 @@ document.addEventListener('DOMContentLoaded', () => {
         // URL we then save with the post. Held in `coverImage` so the save handler
         // can send it whether the post is new or being edited.
         let coverImage = '';
+        let coverX = 50, coverY = 50, coverZoom = 1;   // framing, persisted on the post
         const coverPreview = getEl('blog-cover-preview');
         const coverStatus  = getEl('blog-cover-status');
         const coverRemove  = getEl('blog-cover-remove');
         const coverFile    = getEl('blog-cover-file');
+        const coverEditor  = getEl('blog-cover-editor');
+        const coverFrame   = getEl('blog-cover-frame');
+        const coverZoomEl  = getEl('blog-cover-zoom');
+        const coverReset   = getEl('blog-cover-reset');
 
         const paintCover = () => {
             if (coverPreview) {
                 coverPreview.src = coverImage || '';
-                coverPreview.classList.toggle('hidden', !coverImage);
+                // Same three values the public card applies, so this frame is a
+                // true preview rather than an approximation.
+                applyCoverFraming(coverPreview, `${coverX}% ${coverY}%`, coverZoom);
             }
+            coverEditor?.classList.toggle('hidden', !coverImage);
             coverRemove?.classList.toggle('hidden', !coverImage);
+            if (coverZoomEl) coverZoomEl.value = String(coverZoom);
         };
-        window._blogSetCover = (url) => { coverImage = url || ''; paintCover(); };
+        window._blogSetCover = (url, pos, zoom) => {
+            coverImage = url || '';
+            const [px, py] = String(pos || '50% 50%').split(' ');
+            coverX = parseFloat(px) || 50;
+            coverY = parseFloat(py) || 50;
+            coverZoom = Math.min(3, Math.max(1, Number(zoom) || 1));
+            paintCover();
+        };
         window._blogGetCover = () => coverImage;
+        window._blogGetCoverPos  = () => `${Math.round(coverX)}% ${Math.round(coverY)}%`;
+        window._blogGetCoverZoom = () => coverZoom;
+
+        // ── Drag to reposition ────────────────────────────────────────────────
+        // A drag of the full frame width sweeps the whole image, divided by zoom so
+        // the gesture stays 1:1 with what the user sees as they zoom in.
+        let dragging = false, lastX = 0, lastY = 0;
+        const onDragStart = (e) => {
+            if (!coverImage) return;
+            dragging = true;
+            const pt = e.touches?.[0] || e;
+            lastX = pt.clientX; lastY = pt.clientY;
+        };
+        const onDragMove = (e) => {
+            if (!dragging || !coverFrame) return;
+            e.preventDefault();
+            const pt = e.touches?.[0] || e;
+            const r = coverFrame.getBoundingClientRect();
+            coverX = Math.min(100, Math.max(0, coverX - ((pt.clientX - lastX) / r.width)  * 100 / coverZoom));
+            coverY = Math.min(100, Math.max(0, coverY - ((pt.clientY - lastY) / r.height) * 100 / coverZoom));
+            lastX = pt.clientX; lastY = pt.clientY;
+            applyCoverFraming(coverPreview, `${coverX}% ${coverY}%`, coverZoom);
+        };
+        const onDragEnd = () => { dragging = false; };
+
+        coverFrame?.addEventListener('mousedown', onDragStart);
+        coverFrame?.addEventListener('touchstart', onDragStart, { passive: true });
+        window.addEventListener('mousemove', onDragMove);
+        window.addEventListener('touchmove', onDragMove, { passive: false });
+        window.addEventListener('mouseup', onDragEnd);
+        window.addEventListener('touchend', onDragEnd);
+
+        coverZoomEl?.addEventListener('input', () => {
+            coverZoom = Math.min(3, Math.max(1, parseFloat(coverZoomEl.value) || 1));
+            applyCoverFraming(coverPreview, `${coverX}% ${coverY}%`, coverZoom);
+        });
+        coverReset?.addEventListener('click', () => {
+            coverX = 50; coverY = 50; coverZoom = 1;
+            paintCover();
+        });
 
         getEl('blog-cover-btn')?.addEventListener('click', () => coverFile?.click());
         coverRemove?.addEventListener('click', () => { coverImage = ''; paintCover(); });
@@ -16239,6 +16327,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) { showToast(data.message || 'No se pudo subir la imagen.', 'error'); return; }
                 coverImage = data.coverImage || '';
+                coverX = 50; coverY = 50; coverZoom = 1;   // a new image starts centred
                 paintCover();
             } catch {
                 showToast('Error de conexión al subir la imagen.', 'error');
@@ -16268,7 +16357,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     const url    = editingId ? `/api/blog/${editingId}` : '/api/blog';
                     const res = await apiFetch(url, {
                         method,
-                        body: JSON.stringify({ title, category, excerpt, content, published, coverImage: window._blogGetCover?.() || '' }),
+                        body: JSON.stringify({
+                            title, category, excerpt, content, published,
+                            coverImage: window._blogGetCover?.() || '',
+                            coverPos:   window._blogGetCoverPos?.()  || '50% 50%',
+                            coverZoom:  window._blogGetCoverZoom?.() || 1,
+                        }),
                     });
                     if (!res.ok) throw new Error('Server error');
                     showToast(editingId ? 'Artículo actualizado.' : 'Artículo creado.', 'success');

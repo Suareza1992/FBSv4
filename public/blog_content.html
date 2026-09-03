@@ -65,7 +65,26 @@
           class="hidden text-red-400/70 hover:text-red-400 text-xs font-bold transition">Quitar</button>
         <span id="blog-cover-status" class="text-xs text-fbs-gold/40"></span>
       </div>
-      <img id="blog-cover-preview" class="hidden mt-3 w-full max-w-sm rounded-xl border border-fbs-gold/15" alt="Portada">
+      <!-- Framing editor. The frame is the exact 16:9 window the public card uses,
+           so what is inside it here is what visitors see. Drag to reposition,
+           slider to zoom; both persist on the post as coverPos / coverZoom. -->
+      <div id="blog-cover-editor" class="hidden mt-3 w-full max-w-sm">
+        <div id="blog-cover-frame"
+             class="relative w-full aspect-video rounded-xl overflow-hidden border border-fbs-gold/15 bg-[#111113] cursor-grab active:cursor-grabbing touch-none">
+          <img id="blog-cover-preview" class="absolute inset-0 w-full h-full object-cover select-none pointer-events-none" alt="Portada" draggable="false">
+          <div class="pointer-events-none absolute inset-0 opacity-0 hover:opacity-100 transition bg-black/30 flex items-center justify-center">
+            <span class="text-white text-xs font-bold"><i class="fas fa-up-down-left-right mr-1.5"></i>Arrastra para reencuadrar</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 mt-2">
+          <i class="fas fa-magnifying-glass-minus text-fbs-gold/40 text-xs"></i>
+          <input type="range" id="blog-cover-zoom" min="1" max="3" step="0.02" value="1"
+                 class="flex-1 accent-fbs-gold h-1 cursor-pointer">
+          <i class="fas fa-magnifying-glass-plus text-fbs-gold/40 text-xs"></i>
+          <button type="button" id="blog-cover-reset"
+                  class="text-fbs-gold/50 hover:text-fbs-gold text-[11px] font-bold transition">Centrar</button>
+        </div>
+      </div>
     </div>
 
     <!-- Content -->

@@ -671,6 +671,12 @@ const BlogPostSchema = new mongoose.Schema({
     // Cover image (Cloudinary URL). Optional — posts without one fall back to a
     // branded gradient placeholder rather than a broken/empty card.
     coverImage:  { type: String, default: '' },
+    // How the cover is framed inside the card's 16:9 window. `coverPos` is a CSS
+    // object-position ("50% 35%") and doubles as the zoom's transform-origin, so
+    // zooming happens around whatever the author centred on. Defaults reproduce
+    // the old behaviour exactly, which is why existing posts need no migration.
+    coverPos:    { type: String, default: '50% 50%' },
+    coverZoom:   { type: Number, default: 1, min: 1, max: 3 },
     content:     { type: String, required: true },
     published:   { type: Boolean, default: false },
     publishedAt: { type: Date },
@@ -5612,7 +5618,12 @@ app.post('/api/blog/cover', authenticateToken, coverUpload.single('photo'), asyn
             // format:'jpg' normalises HEIC/HEIF/AVIF (what an iPhone hands over by
             // default) into something every browser can display.
             format: 'jpg',
-            transformation: [{ quality: 'auto', width: 1200, height: 675, crop: 'fill' }],
+            // 'limit' only downscales oversized images and never changes the aspect
+            // ratio. We used to crop to 1200x675 here, which threw away everything
+            // outside a centre 16:9 box — leaving the author nothing to reposition.
+            // Framing is a display-time concern now (coverPos / coverZoom), so the
+            // stored image keeps its full composition.
+            transformation: [{ quality: 'auto', width: 2000, crop: 'limit' }],
         });
         res.json({ coverImage: result.secure_url });
     } catch (e) {
@@ -5628,7 +5639,7 @@ app.post('/api/blog', authenticateToken, async (req, res) => {
     if (req.user.role !== 'trainer' && req.user.role !== 'admin')
         return res.status(403).json({ message: 'Acceso restringido.' });
     try {
-        const { title, category, excerpt, content, published, coverImage } = req.body;
+        const { title, category, excerpt, content, published, coverImage, coverPos, coverZoom } = req.body;
         const slug = title.toLowerCase()
             .normalize('NFD').replace(/[̀-ͯ]/g, '')
             .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -5638,6 +5649,8 @@ app.post('/api/blog', authenticateToken, async (req, res) => {
             excerpt: excerpt || content.slice(0, 160).replace(/\n/g, ' '),
             content, published: !!published,
             coverImage: coverImage || '',
+            coverPos:  coverPos  || '50% 50%',
+            coverZoom: Number(coverZoom) || 1,
             publishedAt: published ? new Date() : null,
         });
         await post.save();
@@ -5650,7 +5663,7 @@ app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
     if (req.user.role !== 'trainer' && req.user.role !== 'admin')
         return res.status(403).json({ message: 'Acceso restringido.' });
     try {
-        const { title, category, excerpt, content, published, coverImage } = req.body;
+        const { title, category, excerpt, content, published, coverImage, coverPos, coverZoom } = req.body;
         const existing = await BlogPost.findById(req.params.id);
         if (!existing) return res.status(404).json({ message: 'Post no encontrado.' });
 
@@ -5658,6 +5671,8 @@ app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
         // Only touch the cover when the caller sends the field, so an edit that
         // omits it doesn't silently wipe an existing image.
         if (coverImage !== undefined) update.coverImage = coverImage;
+        if (coverPos   !== undefined) update.coverPos  = coverPos || '50% 50%';
+        if (coverZoom  !== undefined) update.coverZoom = Math.min(3, Math.max(1, Number(coverZoom) || 1));
         if (excerpt !== undefined) update.excerpt = excerpt;
         else if (content) update.excerpt = content.slice(0, 160).replace(/\n/g, ' ');
         // Preserve the ORIGINAL publish date — only stamp it the first time the post

@@ -1533,3 +1533,75 @@ Clients are now restricted to `CLIENT_WRITABLE`, and an incoming `exercises`
 array is **merged** onto the stored one: only `results`, `isComplete` and `rpe`
 are read off each entry, and every other field keeps its stored value. This is
 what both clients already send when logging, so no existing flow changed.
+
+---
+
+## 19. Blog Cover Framing & Per-Article Deep Links
+
+### Framing (`coverPos` / `coverZoom`)
+
+Covers used to be cropped to 1200×675 **at upload time** with `crop: 'fill'`.
+That discarded everything outside a centre 16:9 box, so there was nothing left to
+reposition — the author got whatever Cloudinary's centre gravity chose.
+
+Upload now uses `crop: 'limit', width: 2000`, which **only downscales and never
+changes the aspect ratio**. Framing moved to display time, stored on the post:
+
+| Field | Meaning |
+|---|---|
+| `coverPos` | CSS `object-position`, e.g. `"50% 35%"` |
+| `coverZoom` | 1–3 |
+
+Both default to the old behaviour (`"50% 50%"`, `1`), which is why **existing
+posts needed no migration** — they render byte-identically.
+
+### The rendering rule (three places must agree)
+
+```
+object-position:  <coverPos>
+transform-origin: <coverPos>     ← same value, so zoom pushes into the
+transform:        scale(<zoom>)    point the author centred on
+```
+
+- `public/app.js` → `applyCoverFraming()` (admin preview)
+- `public/index.html` → inline in the blog card builder (separate script scope, so
+  it is a deliberate copy — **keep it in sync**)
+- mobile → `components/CoverImage.tsx`
+
+React Native has no `object-fit`/`object-position`, so `CoverImage` reproduces the
+browser pipeline by hand: `Image.getSize()` for the natural dimensions, compute
+the cover scale and the overflow distribution, then apply the zoom about the same
+origin as a plain absolute offset. It falls back to `resizeMode="cover"` until the
+natural size resolves — which is what the default framing looks like anyway.
+
+### The admin editor
+
+The 16:9 preview in `blog_content.html` is the same window the public card uses,
+so it is genuinely WYSIWYG. Drag maths:
+
+```js
+coverX -= (dx / frameWidth) * 100 / coverZoom
+```
+
+Dividing by zoom keeps the gesture 1:1 with what the author sees as they zoom in.
+Both axes clamp to 0–100.
+
+### Per-article deep links
+
+There is **no standalone article page** — the landing page renders every post as
+an expandable card. So "view this article" means "open the landing page focused
+on it":
+
+- each card gets `id="post-<slug>"` plus `data-slug`
+- `focusPostFromHash()` runs on load and on `hashchange`: clears any active
+  filter (a filtered-out card cannot be scrolled to), expands the card, scrolls,
+  and flashes a gold ring for ~2.4s
+- the admin Blog list opens `/#post-<slug>` in a new tab; drafts show a toast
+  instead, since they have no public page
+
+> **Gotcha:** the landing page scrolls inside `#auth-screen`, **not** the window —
+> `body` is `overflow-hidden`. `window.scrollTo` does nothing here.
+> `scrollIntoView` works because it walks to the nearest scrollable ancestor, but
+> it is called with `behavior: 'auto'` deliberately: the container sets
+> `scroll-behavior: smooth`, and animating ~6500px on arrival is both slow and
+> fragile (the animation is rAF-driven and stalls in a backgrounded tab).

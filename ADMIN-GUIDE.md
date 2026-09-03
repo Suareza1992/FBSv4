@@ -173,6 +173,31 @@ tall or square photo loses its top and bottom. Landscape shots survive best.
 **iPhone photos (.HEIC) work.** They are converted to JPG on upload, so the cover
 displays everywhere even though HEIC itself doesn't render in most browsers.
 
+### Framing the cover
+
+After uploading, a 16:9 preview appears — **that frame is exactly what visitors
+see**. Drag the image inside it to reposition, use the slider to zoom (1×–3×), or
+hit **Centrar** to reset. The framing saves with the post and is applied
+identically on the website and in the app.
+
+The full image is stored, so you can re-frame the same photo any time without
+re-uploading.
+
+> **Posts covered before this existed** were cropped to a centre 16:9 box at
+> upload time — the rest of the photo was discarded. They still display fine, but
+> you can only reposition within what was kept. **Re-upload the original** if you
+> want full freedom on an older post.
+
+### Seeing an article the way a visitor does
+
+In the Blog list, **click an article's title** (or the ↗ icon) to open the public
+landing page scrolled to that article, already expanded. That is the real page,
+not a preview.
+
+Drafts have no public page — you'll get a reminder to publish first. The link
+format is `fitbysuarez.com/#post-<slug>`, so you can share a single article
+directly.
+
 **If an upload fails, the message now tells you why** — too large, wrong file
 type, or a connection problem. Before, every failure showed the same unhelpful
 "no se pudo subir la imagen" because upload errors were being returned as an HTML

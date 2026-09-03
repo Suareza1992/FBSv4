@@ -1043,10 +1043,21 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             card.dataset.title   = (post.title   || '').toLowerCase();
             card.dataset.content = (post.content || '').toLowerCase() + ' ' + (post.excerpt || '').toLowerCase();
             card.dataset.date    = post.publishedAt || '';
+            // Anchor for deep links (/#post-<slug>) — lets the admin list and any
+            // shared URL open the landing page focused on one article.
+            card.dataset.slug    = post.slug || '';
+            if (post.slug) card.id = `post-${post.slug}`;
 
+            // The cover sits in a fixed 16:9 window; coverPos / coverZoom decide which
+            // part of the photo fills it. Must match applyCoverFraming() in app.js.
+            const _cz  = Math.min(3, Math.max(1, Number(post.coverZoom) || 1));
+            const _cp  = (post.coverPos || '50% 50%').replace(/["\\]/g, '');
             const _cover = post.coverImage
-              ? `<img src="${escHtmlPublic(post.coverImage)}" alt="" loading="lazy"
-                      class="w-full aspect-video object-cover bg-[#111113]">`
+              ? `<div class="w-full aspect-video overflow-hidden bg-[#111113]">
+                   <img src="${escHtmlPublic(post.coverImage)}" alt="" loading="lazy"
+                        class="w-full h-full object-cover"
+                        style="object-position:${_cp};transform-origin:${_cp};${_cz === 1 ? '' : `transform:scale(${_cz});`}">
+                 </div>`
               : '';
 
             card.innerHTML = `
@@ -1169,6 +1180,31 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
 
           // Initial render
           applyFilters();
+
+          // ── Deep link to a single article (/#post-<slug>) ───────────────────
+          // Clears any active filter first, otherwise the target card can be
+          // hidden and the scroll lands on nothing.
+          const focusPostFromHash = () => {
+            const m = (location.hash || '').match(/^#post-(.+)$/);
+            if (!m) return;
+            const card = grid.querySelector(`[data-slug="${CSS.escape(decodeURIComponent(m[1]))}"]`);
+            if (!card) return;
+            if (activeCategory || searchInput.value) resetAll();
+            const body = card.querySelector('.blog-body');
+            const btn  = card.querySelector('.blog-read-more');
+            if (body && !body.classList.contains('expanded')) btn?.click();
+            // 'auto', not 'smooth': arriving from a link should land you on the
+            // article, not animate 6000px past the rest of the page. (The container
+            // sets scroll-behavior:smooth, so this has to be stated explicitly.)
+            card.scrollIntoView({ behavior: 'auto', block: 'center' });
+            // Brief highlight so it is obvious which article was linked to.
+            card.style.transition = 'box-shadow .4s';
+            card.style.boxShadow  = '0 0 0 2px rgba(255,219,137,0.65)';
+            setTimeout(() => { card.style.boxShadow = ''; }, 2400);
+          };
+          focusPostFromHash();
+          window.addEventListener('hashchange', focusPostFromHash);
+
           window.__blogApplyFilters = applyFilters;
           Object.defineProperty(window, '__blogSortDir', { get: () => sortDir });
         })();
