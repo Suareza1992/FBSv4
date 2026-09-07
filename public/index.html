@@ -1922,6 +1922,24 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
   (function() {
     const canvas = document.getElementById('topo-canvas');
     if (!canvas) return;
+
+    // This canvas sits behind the LOGGED-IN dashboard, so whatever it costs is
+    // paid for the entire session, not just while someone reads the landing page.
+    // A client reported their phone getting hot using their profile: it was this,
+    // running a 180x180 grid x 22 contour search every frame with no stop
+    // condition. Decorative motion is never worth cooking someone's battery.
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // Guard on a POSITIVE width: a viewport reported as 0 (prerender, hidden
+    // frame, a pane that hasn't laid out yet) is not a phone, and treating it as
+    // one would strip the background on desktop too.
+    const vw           = document.documentElement.clientWidth || window.innerWidth || 0;
+    const isSmall      = vw > 0 && vw <= 900;
+    const weakDevice   = (navigator.hardwareConcurrency || 8) <= 4;
+    if (reduceMotion || isSmall || weakDevice) {
+        canvas.remove();   // phones and low-core machines get a clean flat background
+        return;
+    }
+
     const ctx = canvas.getContext('2d');
 
     let W = 1, H = 1;
@@ -1943,8 +1961,12 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
     window.addEventListener('resize', resize);
 
     // ── Grid density ──────────────────────────────────────────────
-    const COLS = 180;
-    const ROWS = 180;
+    // Was a flat 180x180 = 32,400 points, each running a 22-level contour search
+    // — roughly a million operations per frame regardless of window size. Tie it
+    // to the actual canvas so a small window does proportionally less work.
+    const density = Math.max(70, Math.min(150, Math.round(Math.max(W, H) / 11)));
+    const COLS = density;
+    const ROWS = density;
 
     // ── Contour settings ──────────────────────────────────────────
     const NUM_CONTOURS   = 22;
@@ -2055,10 +2077,24 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
         ctx.fill();
       }
 
-      requestAnimationFrame(animate);
+      rafId = requestAnimationFrame(tick);
     }
 
-    requestAnimationFrame(animate);
+    // ~30fps is plenty for a slow ambient background and halves the work.
+    const FRAME_MS = 1000 / 30;
+    let lastFrame = 0, rafId = null;
+    function tick(ts) {
+        if (ts - lastFrame < FRAME_MS) { rafId = requestAnimationFrame(tick); return; }
+        lastFrame = ts;
+        animate(ts);
+    }
+
+    // requestAnimationFrame already throttles in a background tab, but stopping
+    // outright means zero work when the page is merely open in another tab.
+    const start = () => { if (rafId == null) rafId = requestAnimationFrame(tick); };
+    const stop  = () => { if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; } };
+    document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
+    start();
   })();
   </script>
 </body>

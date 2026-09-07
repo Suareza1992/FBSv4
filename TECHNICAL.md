@@ -1701,3 +1701,63 @@ on it":
 > it is called with `behavior: 'auto'` deliberately: the container sets
 > `scroll-behavior: smooth`, and animating ~6500px on arrival is both slow and
 > fragile (the animation is rAF-driven and stalls in a backgrounded tab).
+
+---
+
+## 20. Performance: why a client's phone got hot
+
+A client reported their phone heating up while using their profile in the
+browser. Two always-on canvas loops were responsible.
+
+### The main offender: the topographic particle background
+
+`#topo-canvas` lives inside **`#dashboard-container`**, not the landing page — so
+it renders behind the logged-in dashboard for the entire session. It ran:
+
+- a fixed **180 × 180 grid = 32,400 points** per frame
+- each point doing 4 trig calls plus a **22-level contour search**
+- then a depth sort and a canvas `arc()` + `fill()` per visible dot
+- via `requestAnimationFrame(animate)` with **no stop condition of any kind**
+
+Measured in-browser on a desktop, one frame of just the grid+contour maths cost
+**18.6 ms**. At 60 fps that is **~1116 ms of work per second** — more CPU time
+than exists in a second, on hardware far faster than a phone. It was pinning a
+core permanently.
+
+**Fixes:**
+
+1. **Removed entirely on phones, tablets, low-core machines and
+   `prefers-reduced-motion`** (`canvas.remove()` then `return`). It is decoration
+   behind content; it is not worth a client's battery.
+2. **Grid scales with the canvas** instead of a flat 180² — 13,456 points at
+   1280×720 (2.1 ms/frame).
+3. **Capped to ~30 fps** and **stopped on `visibilitychange`**.
+
+Net on desktop: **1116 ms/s → 63 ms/s (~18×)**. On phones: **zero**.
+
+> The small-screen test guards on a **positive** width
+> (`vw > 0 && vw <= 900`). A viewport reported as `0` — prerender, hidden frame,
+> a pane that has not laid out — is not a phone, and treating it as one strips
+> the background from desktops too.
+
+### The second offender: the clock dial
+
+`window.clockDrawLoop` redrew an 800×800 canvas — gear paths, 60 markers, 60
+numerals — on **every animation frame**, while its content only changes **once
+per second**. It now early-returns unless a key built from the values that
+actually drive the drawing has changed:
+
+```
+clockMode | stopwatch second | timer second | clock s:m:24hr
+```
+
+Verified: 3 redraws over 3 simulated seconds at 60 fps (was 180); **59 of 60
+frames skipped**, no visual difference. The key is built from the *driving
+values*, not wall-clock time — keying on `Date.now()` would let a running
+stopwatch's dial drift up to a second out of phase.
+
+### Rule
+
+Any `requestAnimationFrame` loop in the shell (`index.html`) or in a long-lived
+module runs for the whole session. Give every one of them a stop condition, a
+frame cap, and a reason to exist on mobile.
