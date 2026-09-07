@@ -1586,6 +1586,77 @@ coverX -= (dx / frameWidth) * 100 / coverZoom
 Dividing by zoom keeps the gesture 1:1 with what the author sees as they zoom in.
 Both axes clamp to 0–100.
 
+### The two croppers
+
+Both are the same UI pattern — a fixed viewport masking a draggable, zoomable
+image — but they differ in **output**, and that difference is deliberate.
+
+| | Profile picture | Blog cover |
+|---|---|---|
+| Viewport | circle, 192px | 16:9, full modal width |
+| Markup | `ajustes_content.html` | `blog_content.html` |
+| Model | px translate + `baseScale` | `object-position` % + zoom |
+| Output | **destructive** — canvas → 400×400 JPEG | **non-destructive** — `coverPos`/`coverZoom` on the post |
+| Re-editable later | no (re-upload to change) | yes, any time |
+
+**Why destructive for avatars:** the photo is displayed in a dozen places
+(sidebar, client rows, mobile header, notifications). Baking the crop in at
+upload means every one of those sites keeps working with a plain `<img>` and no
+framing logic. `POST /api/me/profile-picture` also uses a deterministic
+`public_id` (`user_<id>`) with `overwrite: true`, so re-uploading replaces rather
+than accumulates.
+
+**Why non-destructive for covers:** there are only two display sites (landing
+card, mobile reader), and the author benefits from re-framing without
+re-uploading. This is also why the upload stopped cropping to 16:9 (see above).
+
+They keep separate internal models because their outputs need different maths —
+unifying them would mean rewriting the working avatar exporter for no gain.
+**Do not "simplify" one into the other without a reason.**
+
+The cover cropper writes to `draftX/draftY/draftZoom` and only commits to
+`coverX/coverY/coverZoom` on **Aplicar**, so Cancel genuinely discards. Reopening
+seeds the draft from the committed values.
+
+### Mobile uses the OS cropper
+
+`expo-image-picker` with `allowsEditing: true` plus an `aspect` gives the native
+crop UI — pinch to zoom, drag to pan, fixed mask. It is used at `[1, 1]` for
+avatars (`perfil.tsx`, `onboarding.tsx`) and `[16, 9]` for covers (`blog.tsx`).
+
+That is genuinely better than a hand-rolled RN gesture cropper, so there is no
+custom cropper on mobile. The consequence: a cover uploaded from the phone is
+already cut to 16:9 and stores the default framing — **re-framing a cover is a
+web-only action**. `components/CoverImage.tsx` still applies whatever framing the
+web set.
+
+### Gotcha: Tailwind is pre-compiled — dynamic classes silently do nothing
+
+`public/output.css` is built by `npm run build:css`, which scans `./public/**/*.{html,js}`
+for class names. **A class that only ever appears inside a JS template string is
+not guaranteed to be in that file**, and an unknown Tailwind class fails silently
+— no error, the property just never applies.
+
+`aspect-video` bit exactly this way: the cover and placeholder bands collapsed to
+the height of their content (a 12.5:1 sliver instead of 16:9), because
+`aspect-video` is not in `output.css` and resolved to `aspect-ratio: auto`.
+
+**Rule: for markup generated in JS, inline any layout-critical CSS** rather than
+trusting a utility class to exist. That is why these bands carry
+`style="aspect-ratio:16/9"`. The same reasoning already appears elsewhere in
+`app.js` (the RPE button grid is inlined for this reason).
+
+> Two pre-existing spots use `aspect-[3/4]` (`app.js:4035` and `app.js:14750`, both
+> progress-photo tiles) and that class is **also absent from `output.css`**. They
+> were not touched here, but they are very likely mis-sized for the same reason.
+
+### No-cover placeholder
+
+A post without a cover renders a branded 16:9 band (gradient + dumbbell icon)
+rather than collapsing. This keeps every card the same shape, stops the text
+sitting flush against the card's top edge, and matches what the mobile reader
+(`app/articulos.tsx`) already did.
+
 ### Per-article deep links
 
 There is **no standalone article page** — the landing page renders every post as

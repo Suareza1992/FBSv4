@@ -16241,20 +16241,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const coverRemove  = getEl('blog-cover-remove');
         const coverFile    = getEl('blog-cover-file');
         const coverEditor  = getEl('blog-cover-editor');
-        const coverFrame   = getEl('blog-cover-frame');
-        const coverZoomEl  = getEl('blog-cover-zoom');
-        const coverReset   = getEl('blog-cover-reset');
+        const coverAdjust  = getEl('blog-cover-adjust');
 
         const paintCover = () => {
             if (coverPreview) {
                 coverPreview.src = coverImage || '';
-                // Same three values the public card applies, so this frame is a
+                // Same three values the public card applies, so this thumbnail is a
                 // true preview rather than an approximation.
                 applyCoverFraming(coverPreview, `${coverX}% ${coverY}%`, coverZoom);
             }
             coverEditor?.classList.toggle('hidden', !coverImage);
             coverRemove?.classList.toggle('hidden', !coverImage);
-            if (coverZoomEl) coverZoomEl.value = String(coverZoom);
         };
         window._blogSetCover = (url, pos, zoom) => {
             coverImage = url || '';
@@ -16268,43 +16265,75 @@ document.addEventListener('DOMContentLoaded', () => {
         window._blogGetCoverPos  = () => `${Math.round(coverX)}% ${Math.round(coverY)}%`;
         window._blogGetCoverZoom = () => coverZoom;
 
-        // ── Drag to reposition ────────────────────────────────────────────────
-        // A drag of the full frame width sweeps the whole image, divided by zoom so
-        // the gesture stays 1:1 with what the user sees as they zoom in.
-        let dragging = false, lastX = 0, lastY = 0;
-        const onDragStart = (e) => {
-            if (!coverImage) return;
-            dragging = true;
-            const pt = e.touches?.[0] || e;
-            lastX = pt.clientX; lastY = pt.clientY;
+        // ── Cropper modal ────────────────────────────────────────────────────
+        // Same masking pattern as the profile-picture editor in Ajustes: a fixed
+        // viewport over a draggable, zoomable image. The output differs — this one
+        // writes coverPos/coverZoom onto the post instead of cutting a new file, so
+        // the author can re-frame later without re-uploading.
+        const cropModal = getEl('blog-crop-modal');
+        const cropFrame = getEl('blog-crop-frame');
+        const cropImg   = getEl('blog-crop-img');
+        const cropZoom  = getEl('blog-crop-zoom');
+        const cropLabel = getEl('blog-crop-zoom-label');
+        let draftX = 50, draftY = 50, draftZoom = 1;   // edits stay here until "Aplicar"
+
+        const paintCrop = () => {
+            applyCoverFraming(cropImg, `${draftX}% ${draftY}%`, draftZoom);
+            if (cropZoom)  cropZoom.value = String(Math.round(draftZoom * 100));
+            if (cropLabel) cropLabel.textContent = `${draftZoom.toFixed(1)}\u00d7`;
         };
-        const onDragMove = (e) => {
-            if (!dragging || !coverFrame) return;
+        const openCropper = () => {
+            if (!coverImage || !cropModal) return;
+            draftX = coverX; draftY = coverY; draftZoom = coverZoom;
+            if (cropImg) cropImg.src = coverImage;
+            paintCrop();
+            cropModal.classList.remove('hidden');
+            cropModal.classList.add('flex');
+        };
+        const closeCropper = () => {
+            cropModal?.classList.add('hidden');
+            cropModal?.classList.remove('flex');
+        };
+
+        let cropping = false, cropLastX = 0, cropLastY = 0;
+        const cropStart = (e) => {
+            cropping = true;
+            const pt = e.touches?.[0] || e;
+            cropLastX = pt.clientX; cropLastY = pt.clientY;
+        };
+        const cropMove = (e) => {
+            if (!cropping || !cropFrame) return;
             e.preventDefault();
             const pt = e.touches?.[0] || e;
-            const r = coverFrame.getBoundingClientRect();
-            coverX = Math.min(100, Math.max(0, coverX - ((pt.clientX - lastX) / r.width)  * 100 / coverZoom));
-            coverY = Math.min(100, Math.max(0, coverY - ((pt.clientY - lastY) / r.height) * 100 / coverZoom));
-            lastX = pt.clientX; lastY = pt.clientY;
-            applyCoverFraming(coverPreview, `${coverX}% ${coverY}%`, coverZoom);
+            const r = cropFrame.getBoundingClientRect();
+            // Divide by zoom so the drag stays 1:1 with what is on screen.
+            draftX = Math.min(100, Math.max(0, draftX - ((pt.clientX - cropLastX) / r.width)  * 100 / draftZoom));
+            draftY = Math.min(100, Math.max(0, draftY - ((pt.clientY - cropLastY) / r.height) * 100 / draftZoom));
+            cropLastX = pt.clientX; cropLastY = pt.clientY;
+            paintCrop();
         };
-        const onDragEnd = () => { dragging = false; };
+        const cropEnd = () => { cropping = false; };
 
-        coverFrame?.addEventListener('mousedown', onDragStart);
-        coverFrame?.addEventListener('touchstart', onDragStart, { passive: true });
-        window.addEventListener('mousemove', onDragMove);
-        window.addEventListener('touchmove', onDragMove, { passive: false });
-        window.addEventListener('mouseup', onDragEnd);
-        window.addEventListener('touchend', onDragEnd);
+        cropFrame?.addEventListener('mousedown', cropStart);
+        cropFrame?.addEventListener('touchstart', cropStart, { passive: true });
+        window.addEventListener('mousemove', cropMove);
+        window.addEventListener('touchmove', cropMove, { passive: false });
+        window.addEventListener('mouseup', cropEnd);
+        window.addEventListener('touchend', cropEnd);
 
-        coverZoomEl?.addEventListener('input', () => {
-            coverZoom = Math.min(3, Math.max(1, parseFloat(coverZoomEl.value) || 1));
-            applyCoverFraming(coverPreview, `${coverX}% ${coverY}%`, coverZoom);
+        cropZoom?.addEventListener('input', () => {
+            draftZoom = Math.min(3, Math.max(1, (parseInt(cropZoom.value, 10) || 100) / 100));
+            paintCrop();
         });
-        coverReset?.addEventListener('click', () => {
-            coverX = 50; coverY = 50; coverZoom = 1;
+        getEl('blog-crop-reset')?.addEventListener('click', () => { draftX = 50; draftY = 50; draftZoom = 1; paintCrop(); });
+        getEl('blog-crop-cancel')?.addEventListener('click', closeCropper);
+        getEl('blog-crop-apply')?.addEventListener('click', () => {
+            coverX = draftX; coverY = draftY; coverZoom = draftZoom;
             paintCover();
+            closeCropper();
         });
+        cropModal?.addEventListener('click', (e) => { if (e.target === cropModal) closeCropper(); });
+        coverAdjust?.addEventListener('click', openCropper);
 
         getEl('blog-cover-btn')?.addEventListener('click', () => coverFile?.click());
         coverRemove?.addEventListener('click', () => { coverImage = ''; paintCover(); });
@@ -16329,6 +16358,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 coverImage = data.coverImage || '';
                 coverX = 50; coverY = 50; coverZoom = 1;   // a new image starts centred
                 paintCover();
+                openCropper();   // frame it now, while the author is thinking about it
             } catch {
                 showToast('Error de conexión al subir la imagen.', 'error');
             } finally {

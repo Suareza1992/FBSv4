@@ -175,10 +175,15 @@ displays everywhere even though HEIC itself doesn't render in most browsers.
 
 ### Framing the cover
 
-After uploading, a 16:9 preview appears — **that frame is exactly what visitors
-see**. Drag the image inside it to reposition, use the slider to zoom (1×–3×), or
-hit **Centrar** to reset. The framing saves with the post and is applied
-identically on the website and in the app.
+Uploading opens the **cropper** straight away: a large 16:9 window with
+rule-of-thirds guides. Drag the photo to reposition, use the slider to zoom
+(1×–3×), **Centrar** to reset, then **Aplicar**. Cancel discards.
+
+**That window is exactly what visitors see.** To change the framing later, click
+**Ajustar encuadre** under the thumbnail — no re-upload needed.
+
+It is the same tool as the profile-photo editor in **Ajustes**, just at 16:9
+instead of a circle.
 
 The full image is stored, so you can re-frame the same photo any time without
 re-uploading.

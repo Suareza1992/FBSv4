@@ -65,25 +65,17 @@
           class="hidden text-red-400/70 hover:text-red-400 text-xs font-bold transition">Quitar</button>
         <span id="blog-cover-status" class="text-xs text-fbs-gold/40"></span>
       </div>
-      <!-- Framing editor. The frame is the exact 16:9 window the public card uses,
-           so what is inside it here is what visitors see. Drag to reposition,
-           slider to zoom; both persist on the post as coverPos / coverZoom. -->
+      <!-- Compact state: shows the framing as saved. "Ajustar" opens the full
+           cropper below, which is the same viewport the public card uses. -->
       <div id="blog-cover-editor" class="hidden mt-3 w-full max-w-sm">
-        <div id="blog-cover-frame"
-             class="relative w-full aspect-video rounded-xl overflow-hidden border border-fbs-gold/15 bg-[#111113] cursor-grab active:cursor-grabbing touch-none">
-          <img id="blog-cover-preview" class="absolute inset-0 w-full h-full object-cover select-none pointer-events-none" alt="Portada" draggable="false">
-          <div class="pointer-events-none absolute inset-0 opacity-0 hover:opacity-100 transition bg-black/30 flex items-center justify-center">
-            <span class="text-white text-xs font-bold"><i class="fas fa-up-down-left-right mr-1.5"></i>Arrastra para reencuadrar</span>
-          </div>
+        <div id="blog-cover-thumb" style="aspect-ratio:16/9"
+             class="relative w-full rounded-xl overflow-hidden border border-fbs-gold/15 bg-[#111113]">
+          <img id="blog-cover-preview" class="absolute inset-0 w-full h-full object-cover" alt="Portada" draggable="false">
         </div>
-        <div class="flex items-center gap-3 mt-2">
-          <i class="fas fa-magnifying-glass-minus text-fbs-gold/40 text-xs"></i>
-          <input type="range" id="blog-cover-zoom" min="1" max="3" step="0.02" value="1"
-                 class="flex-1 accent-fbs-gold h-1 cursor-pointer">
-          <i class="fas fa-magnifying-glass-plus text-fbs-gold/40 text-xs"></i>
-          <button type="button" id="blog-cover-reset"
-                  class="text-fbs-gold/50 hover:text-fbs-gold text-[11px] font-bold transition">Centrar</button>
-        </div>
+        <button type="button" id="blog-cover-adjust"
+                class="mt-2 px-3 py-1.5 rounded-lg border border-fbs-gold/25 text-fbs-gold/80 hover:bg-fbs-gold/10 hover:text-fbs-gold transition text-xs font-bold">
+          <i class="fas fa-crop-simple mr-1.5"></i>Ajustar encuadre
+        </button>
       </div>
     </div>
 
@@ -133,3 +125,50 @@
 
 </body>
 </html>
+
+<!-- ── Cover cropper ─────────────────────────────────────────────────────────
+     A fixed 16:9 viewport over a draggable, zoomable image — the same masking
+     pattern as the profile-picture editor in Ajustes, at the aspect ratio the
+     blog card actually uses. Non-destructive: it writes coverPos / coverZoom on
+     the post rather than re-cutting the file, so the framing stays editable.  -->
+<div id="blog-crop-modal" class="fixed inset-0 z-[90] hidden items-end md:items-center justify-center bg-black/80 p-0 md:p-4">
+  <div class="bg-[#1C1C1E] rounded-t-2xl md:rounded-2xl shadow-2xl border border-fbs-gold/20 p-6 w-full max-w-2xl"
+       style="max-height:92vh;max-height:92dvh;overflow-y:auto">
+    <h3 class="text-lg font-bold text-fbs-gold mb-1">Ajustar portada</h3>
+    <p class="text-xs text-fbs-gold/50 mb-5">Arrastra para reposicionar · Desliza para hacer zoom. Lo que ves aquí es exactamente lo que verá el visitante.</p>
+
+    <div id="blog-crop-frame" style="aspect-ratio:16/9;touch-action:none"
+         class="relative w-full rounded-xl overflow-hidden border-2 border-fbs-gold/40 bg-black cursor-grab active:cursor-grabbing select-none">
+      <img id="blog-crop-img" class="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="" draggable="false">
+      <!-- Rule-of-thirds guides, purely visual -->
+      <div class="pointer-events-none absolute inset-0 opacity-25">
+        <div class="absolute inset-y-0 left-1/3 w-px bg-white"></div>
+        <div class="absolute inset-y-0 left-2/3 w-px bg-white"></div>
+        <div class="absolute inset-x-0 top-1/3 h-px bg-white"></div>
+        <div class="absolute inset-x-0 top-2/3 h-px bg-white"></div>
+      </div>
+    </div>
+
+    <div class="mt-5">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-bold text-fbs-gold/60 uppercase tracking-wider">Zoom</span>
+        <span id="blog-crop-zoom-label" class="text-xs font-bold text-fbs-gold/40">1.0×</span>
+      </div>
+      <input type="range" id="blog-crop-zoom" min="100" max="300" value="100" step="1"
+             class="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+             style="accent-color:#FFDB89;background:rgba(255,219,137,0.15);">
+    </div>
+
+    <div class="flex items-center gap-2 mt-6">
+      <button type="button" id="blog-crop-reset"
+        class="px-3 py-2 rounded-lg border border-fbs-gold/20 text-fbs-gold/50 text-xs font-bold hover:bg-fbs-gold/10 hover:text-fbs-gold/80 transition">
+        <i class="fas fa-undo mr-1"></i>Centrar
+      </button>
+      <div class="flex-1"></div>
+      <button type="button" id="blog-crop-cancel"
+        class="px-4 py-2 rounded-lg border border-fbs-gold/20 text-fbs-gold/70 text-sm font-medium hover:bg-fbs-gold/10 transition">Cancelar</button>
+      <button type="button" id="blog-crop-apply"
+        class="px-4 py-2 rounded-lg bg-fbs-gold text-[#030303] text-sm font-bold hover:bg-fbs-gold/80 transition">Aplicar</button>
+    </div>
+  </div>
+</div>

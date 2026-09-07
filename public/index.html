@@ -1053,12 +1053,19 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             const _cz  = Math.min(3, Math.max(1, Number(post.coverZoom) || 1));
             const _cp  = (post.coverPos || '50% 50%').replace(/["\\]/g, '');
             const _cover = post.coverImage
-              ? `<div class="w-full aspect-video overflow-hidden bg-[#111113]">
+              ? `<div class="w-full overflow-hidden bg-[#111113]" style="aspect-ratio:16/9">
                    <img src="${escHtmlPublic(post.coverImage)}" alt="" loading="lazy"
                         class="w-full h-full object-cover"
                         style="object-position:${_cp};transform-origin:${_cp};${_cz === 1 ? '' : `transform:scale(${_cz});`}">
                  </div>`
-              : '';
+              // No cover yet: hold the same 16:9 band with a branded placeholder
+              // rather than collapsing it. Keeps every card the same shape, stops
+              // the text sitting flush against the card's top edge, and matches
+              // what the mobile reader already does.
+              : `<div class="w-full flex items-center justify-center border-b border-fbs-gold/10"
+                      style="aspect-ratio:16/9;background:linear-gradient(135deg,#141416 0%,#1C1C1E 55%,#141416 100%)">
+                   <i class="fas fa-dumbbell text-3xl" style="color:rgba(255,219,137,0.18)"></i>
+                 </div>`;
 
             card.innerHTML = `
               ${_cover}
