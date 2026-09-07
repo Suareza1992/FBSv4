@@ -68,9 +68,9 @@
       <!-- Compact state: shows the framing as saved. "Ajustar" opens the full
            cropper below, which is the same viewport the public card uses. -->
       <div id="blog-cover-editor" class="hidden mt-3 w-full max-w-sm">
-        <div id="blog-cover-thumb" style="aspect-ratio:16/9"
-             class="relative w-full rounded-xl overflow-hidden border border-fbs-gold/15 bg-[#111113]">
-          <img id="blog-cover-preview" class="absolute inset-0 w-full h-full object-cover" alt="Portada" draggable="false">
+        <div id="blog-cover-thumb" style="aspect-ratio:16/9;background:linear-gradient(135deg,#141416 0%,#1C1C1E 55%,#141416 100%)"
+             class="relative w-full rounded-xl overflow-hidden border border-fbs-gold/15">
+          <img id="blog-cover-preview" class="absolute" alt="Portada" draggable="false">
         </div>
         <button type="button" id="blog-cover-adjust"
                 class="mt-2 px-3 py-1.5 rounded-lg border border-fbs-gold/25 text-fbs-gold/80 hover:bg-fbs-gold/10 hover:text-fbs-gold transition text-xs font-bold">
@@ -137,9 +137,11 @@
     <h3 class="text-lg font-bold text-fbs-gold mb-1">Ajustar portada</h3>
     <p class="text-xs text-fbs-gold/50 mb-5">Arrastra para reposicionar · Desliza para hacer zoom. Lo que ves aquí es exactamente lo que verá el visitante.</p>
 
-    <div id="blog-crop-frame" style="aspect-ratio:16/9;touch-action:none"
-         class="relative w-full rounded-xl overflow-hidden border-2 border-fbs-gold/40 bg-black cursor-grab active:cursor-grabbing select-none">
-      <img id="blog-crop-img" class="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="" draggable="false">
+    <!-- The gradient shows through whenever the photo is zoomed out past "fills
+         the frame" — same treatment as a post with no cover at all. -->
+    <div id="blog-crop-frame" style="aspect-ratio:16/9;touch-action:none;background:linear-gradient(135deg,#141416 0%,#1C1C1E 55%,#141416 100%)"
+         class="relative w-full rounded-xl overflow-hidden border-2 border-fbs-gold/40 cursor-grab active:cursor-grabbing select-none">
+      <img id="blog-crop-img" class="absolute pointer-events-none" alt="" draggable="false">
       <!-- Rule-of-thirds guides, purely visual -->
       <div class="pointer-events-none absolute inset-0 opacity-25">
         <div class="absolute inset-y-0 left-1/3 w-px bg-white"></div>
@@ -154,7 +156,7 @@
         <span class="text-xs font-bold text-fbs-gold/60 uppercase tracking-wider">Zoom</span>
         <span id="blog-crop-zoom-label" class="text-xs font-bold text-fbs-gold/40">1.0×</span>
       </div>
-      <input type="range" id="blog-crop-zoom" min="100" max="300" value="100" step="1"
+      <input type="range" id="blog-crop-zoom" min="30" max="300" value="100" step="1"
              class="w-full h-1.5 rounded-full appearance-none cursor-pointer"
              style="accent-color:#FFDB89;background:rgba(255,219,137,0.15);">
     </div>

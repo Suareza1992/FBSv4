@@ -676,7 +676,9 @@ const BlogPostSchema = new mongoose.Schema({
     // zooming happens around whatever the author centred on. Defaults reproduce
     // the old behaviour exactly, which is why existing posts need no migration.
     coverPos:    { type: String, default: '50% 50%' },
-    coverZoom:   { type: Number, default: 1, min: 1, max: 3 },
+    // 1 = fills the 16:9 window. Below 1 pulls back and the card's brand
+    // gradient shows around the photo; above 1 pushes in.
+    coverZoom:   { type: Number, default: 1, min: 0.3, max: 3 },
     content:     { type: String, required: true },
     published:   { type: Boolean, default: false },
     publishedAt: { type: Date },
@@ -5672,7 +5674,7 @@ app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
         // omits it doesn't silently wipe an existing image.
         if (coverImage !== undefined) update.coverImage = coverImage;
         if (coverPos   !== undefined) update.coverPos  = coverPos || '50% 50%';
-        if (coverZoom  !== undefined) update.coverZoom = Math.min(3, Math.max(1, Number(coverZoom) || 1));
+        if (coverZoom  !== undefined) update.coverZoom = Math.min(3, Math.max(0.3, Number(coverZoom) || 1));
         if (excerpt !== undefined) update.excerpt = excerpt;
         else if (content) update.excerpt = content.slice(0, 160).replace(/\n/g, ' ');
         // Preserve the ORIGINAL publish date — only stamp it the first time the post

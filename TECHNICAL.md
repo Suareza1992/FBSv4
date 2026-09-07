@@ -1575,18 +1575,32 @@ changes the aspect ratio**. Framing moved to display time, stored on the post:
 | Field | Meaning |
 |---|---|
 | `coverPos` | CSS `object-position`, e.g. `"50% 35%"` |
-| `coverZoom` | 1–3 |
+| `coverZoom` | **0.3–3**, where **1 = fills the frame** |
 
 Both default to the old behaviour (`"50% 50%"`, `1`), which is why **existing
 posts needed no migration** — they render byte-identically.
 
 ### The rendering rule (three places must agree)
 
+Zoom **below 1x must reveal more of the photo**, and `object-fit` cannot do that —
+scaling a cover-fitted element just shrinks the same crop. So all three sites
+compute explicit geometry from the image's natural dimensions:
+
 ```
-object-position:  <coverPos>
-transform-origin: <coverPos>     ← same value, so zoom pushes into the
-transform:        scale(<zoom>)    point the author centred on
+s  = max(W/iw, H/ih) * zoom     // cover scale, then the zoom
+dw = iw * s ;  dh = ih * s
+left = -(dw - W) * posX ;  top = -(dh - H) * posY
 ```
+
+The `left`/`top` formula handles both directions with no special case: above 1x
+the leftover is overflow to hide, below 1x it is margin to sit in, and the same
+expression centres correctly either way.
+
+Below 1x the frame's **brand gradient** shows around the photo — the same
+gradient a post with no cover at all uses, so it reads as deliberate.
+On mobile there is no `expo-linear-gradient` (and no appetite for a new
+dependency), so `CoverImage` uses the gradient's midpoint as a solid `#18181A`;
+the gradient spans `#141416`→`#1C1C1E`, a difference of 8 per channel.
 
 - `public/app.js` → `applyCoverFraming()` (admin preview)
 - `public/index.html` → inline in the blog card builder (separate script scope, so

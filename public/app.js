@@ -31,19 +31,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // H-2: apiFetch — token is now an HttpOnly cookie, sent automatically by the browser.
     // We no longer read or set auth_token in localStorage.
-    // Apply a post's cover framing to an <img> that fills a 16:9 window.
-    // object-position picks WHICH part of the photo shows; the same coordinates
-    // become the transform-origin so zooming pushes into the point the author
-    // centred on rather than the middle of the frame. Kept in one place because
-    // the admin preview and the public card must agree exactly — the landing page
-    // has its own copy (separate script scope) that must stay identical.
+    // Zoom below 1x has to reveal MORE of the photo, which object-fit cannot do —
+    // scaling a cover-fitted element just shrinks the same crop. So compute the
+    // geometry ourselves from the natural dimensions, exactly like
+    // components/CoverImage.tsx on mobile. Keep the two in sync.
+    //
+    //   zoom 1   = fills the frame (cover)
+    //   zoom < 1 = pulls back; the brand gradient behind shows through
+    //   zoom > 1 = pushes in
+    //
+    // `pos` positions the image within the leftover space in both directions: at
+    // zoom > 1 that space is overflow to hide, at zoom < 1 it is margin to sit in,
+    // and the same formula handles both.
+    const COVER_MIN_ZOOM = 0.3, COVER_MAX_ZOOM = 3;
     const applyCoverFraming = (img, pos, zoom) => {
         if (!img) return;
-        const p = pos || '50% 50%';
-        const z = Math.min(3, Math.max(1, Number(zoom) || 1));
-        img.style.objectPosition  = p;
-        img.style.transformOrigin = p;
-        img.style.transform       = z === 1 ? '' : `scale(${z})`;
+        const [px, py] = String(pos || '50% 50%').split(' ');
+        const x = (parseFloat(px) || 50) / 100;
+        const y = (parseFloat(py) || 50) / 100;
+        const z = Math.min(COVER_MAX_ZOOM, Math.max(COVER_MIN_ZOOM, Number(zoom) || 1));
+
+        const paint = () => {
+            const frame = img.parentElement;
+            const W = frame?.clientWidth || 0;
+            const H = frame?.clientHeight || 0;
+            const iw = img.naturalWidth, ih = img.naturalHeight;
+            if (!W || !H || !iw || !ih) return;
+            const s  = Math.max(W / iw, H / ih) * z;   // cover scale, then the zoom
+            const dw = iw * s, dh = ih * s;
+            img.style.position = 'absolute';
+            img.style.left   = `${-(dw - W) * x}px`;
+            img.style.top    = `${-(dh - H) * y}px`;
+            img.style.width  = `${dw}px`;
+            img.style.height = `${dh}px`;
+            img.style.maxWidth = 'none';
+            // These would fight the explicit geometry.
+            img.style.objectFit = '';
+            img.style.transform = '';
+        };
+        if (img.complete && img.naturalWidth) paint();
+        img.onload = paint;
     };
 
     const apiFetch = async (url, options = {}) => {
@@ -16283,7 +16310,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const [px, py] = String(pos || '50% 50%').split(' ');
             coverX = parseFloat(px) || 50;
             coverY = parseFloat(py) || 50;
-            coverZoom = Math.min(3, Math.max(1, Number(zoom) || 1));
+            coverZoom = Math.min(COVER_MAX_ZOOM, Math.max(COVER_MIN_ZOOM, Number(zoom) || 1));
             paintCover();
         };
         window._blogGetCover = () => coverImage;
@@ -16305,7 +16332,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const paintCrop = () => {
             applyCoverFraming(cropImg, `${draftX}% ${draftY}%`, draftZoom);
             if (cropZoom)  cropZoom.value = String(Math.round(draftZoom * 100));
-            if (cropLabel) cropLabel.textContent = `${draftZoom.toFixed(1)}\u00d7`;
+            if (cropLabel) cropLabel.textContent = `${draftZoom.toFixed(2)}\u00d7`;
         };
         const openCropper = () => {
             if (!coverImage || !cropModal) return;
@@ -16347,7 +16374,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('touchend', cropEnd);
 
         cropZoom?.addEventListener('input', () => {
-            draftZoom = Math.min(3, Math.max(1, (parseInt(cropZoom.value, 10) || 100) / 100));
+            draftZoom = Math.min(COVER_MAX_ZOOM, Math.max(COVER_MIN_ZOOM, (parseInt(cropZoom.value, 10) || 100) / 100));
             paintCrop();
         });
         getEl('blog-crop-reset')?.addEventListener('click', () => { draftX = 50; draftY = 50; draftZoom = 1; paintCrop(); });

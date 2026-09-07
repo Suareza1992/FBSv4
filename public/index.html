@@ -1034,6 +1034,29 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
               dateStr += ` · ${_updLabel} ${_upd.toLocaleDateString(_lang, _dOpts)}`;
             }
 
+            const _frameCover = (img) => {
+              const [px, py] = (img.dataset.coverPos || '50% 50%').split(' ');
+              const x = (parseFloat(px) || 50) / 100, y = (parseFloat(py) || 50) / 100;
+              const z = Math.min(3, Math.max(0.3, parseFloat(img.dataset.coverZoom) || 1));
+              const paint = () => {
+                const f = img.parentElement;
+                const W = f?.clientWidth || 0, H = f?.clientHeight || 0;
+                const iw = img.naturalWidth, ih = img.naturalHeight;
+                if (!W || !H || !iw || !ih) return;
+                const s = Math.max(W / iw, H / ih) * z;
+                const dw = iw * s, dh = ih * s;
+                img.style.left = `${-(dw - W) * x}px`;
+                img.style.top  = `${-(dh - H) * y}px`;
+                img.style.width = `${dw}px`;
+                img.style.height = `${dh}px`;
+                img.style.maxWidth = 'none';
+              };
+              if (img.complete && img.naturalWidth) paint();
+              img.onload = paint;
+              // Cards reflow with the grid, so re-paint on resize.
+              if (window.ResizeObserver) new ResizeObserver(paint).observe(img.parentElement);
+            };
+
             const card = document.createElement('div');
             // overflow-hidden + no padding so the cover can bleed to the card edges;
             // the inner wrapper carries the padding instead.
@@ -1050,13 +1073,16 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
 
             // The cover sits in a fixed 16:9 window; coverPos / coverZoom decide which
             // part of the photo fills it. Must match applyCoverFraming() in app.js.
-            const _cz  = Math.min(3, Math.max(1, Number(post.coverZoom) || 1));
+            // Geometry is computed after load (see _frameCover below) because zoom
+            // under 1x must reveal more of the photo, which object-fit cannot do.
+            // The gradient behind shows through when it does. Mirrors
+            // applyCoverFraming() in app.js — keep the two in step.
+            const _cz  = Math.min(3, Math.max(0.3, Number(post.coverZoom) || 1));
             const _cp  = (post.coverPos || '50% 50%').replace(/["\\]/g, '');
             const _cover = post.coverImage
-              ? `<div class="w-full overflow-hidden bg-[#111113]" style="aspect-ratio:16/9">
-                   <img src="${escHtmlPublic(post.coverImage)}" alt="" loading="lazy"
-                        class="w-full h-full object-cover"
-                        style="object-position:${_cp};transform-origin:${_cp};${_cz === 1 ? '' : `transform:scale(${_cz});`}">
+              ? `<div class="cover-frame w-full overflow-hidden relative" style="aspect-ratio:16/9;background:linear-gradient(135deg,#141416 0%,#1C1C1E 55%,#141416 100%)">
+                   <img src="${escHtmlPublic(post.coverImage)}" alt="" loading="lazy" class="absolute"
+                        data-cover-pos="${_cp}" data-cover-zoom="${_cz}">
                  </div>`
               // No cover yet: hold the same 16:9 band with a branded placeholder
               // rather than collapsing it. Keeps every card the same shape, stops
@@ -1097,6 +1123,9 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
 
             grid.appendChild(card);
             cardEls.push(card);
+
+            const _img = card.querySelector('img[data-cover-pos]');
+            if (_img) _frameCover(_img);
           });
 
           controlsEl.classList.remove('hidden');
