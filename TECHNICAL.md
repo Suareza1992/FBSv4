@@ -1522,6 +1522,31 @@ body, so a client cannot inject an arbitrary video URL.
 > succeed and the trainer would simply never hear about it. Add new types there
 > first.
 
+### Video previews in the alternatives list
+
+Client feedback: *"not everyone knows the exercises by name."* The swap list now
+shows a **poster frame** per alternative plus a **play button**, on both
+platforms. The row itself still selects; the play button is a separate control.
+
+- Web: play calls the existing `window.previewExerciseVideo()` overlay.
+- Mobile: play uses `Linking.openURL`, matching every other exercise video in the
+  app. `expo-video` cannot play YouTube URLs and `react-native-webview` is not a
+  dependency, so an in-app player is not an option here.
+
+Two bugs surfaced while building this:
+
+**1. Shorts had no thumbnails on web.** `getVideoThumbnail()` matched
+`watch?v=`, `embed/` and `youtu.be/` but **not** `shorts/` — while mobile's
+`videoThumbnail()` in `lib/tags.ts` always did. Of 236 library exercises (all of
+which have a video), **131 are Shorts URLs**, so 55% of the library showed no
+poster frame anywhere on the web, including the video library grid. The two
+regexes are now identical — **keep them that way.**
+
+**2. The video overlay opened behind the swap list.** `previewExerciseVideo()`
+used `z-index: 9997/9998`, but the swap portal sits at `10000` (deliberately, to
+escape the routine modal's overflow). Playing a video from the list would have
+rendered it underneath. The overlay is now `10050/10051`.
+
 ### Related fix: the PATCH allowlist
 
 `PATCH /api/client-workouts/:clientId/:date` previously did

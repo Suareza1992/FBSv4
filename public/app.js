@@ -5113,7 +5113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const getVideoThumbnail = (url) => {
         if (!url) return null;
         // YouTube: youtube.com/watch?v=ID or youtu.be/ID
-        const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+        const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
         if (ytMatch) return `https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg`;
         // Vimeo: vimeo.com/ID
         // (Vimeo thumbnails require an API call, so we skip for now)
@@ -6514,16 +6514,41 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             portal.innerHTML = `
                 ${header(`Cambiar "${escHtml(name)}"`, `Mismo grupo muscular · ${myTags.map(escHtml).join(', ')}`)}
-                <div class="max-h-72 overflow-y-auto divide-y divide-[#FFDB89]/8">
-                    ${alts.slice(0, 40).map((a, i) => `
-                        <button type="button" data-swap-idx="${i}" class="w-full text-left px-4 py-2.5 hover:bg-[#FFDB89]/8 transition flex items-center gap-3">
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm text-[#FFDB89] truncate">${escHtml(a.ex.name)}</p>
-                                <p class="text-[10px] text-[#FFDB89]/40 truncate">${a.shared.map(escHtml).join(' · ')}</p>
-                            </div>
-                            ${a.ex.videoUrl ? '<i class="fas fa-video text-[10px] text-green-400/60 shrink-0"></i>' : ''}
-                        </button>`).join('')}
+                <div class="max-h-96 overflow-y-auto divide-y divide-[#FFDB89]/8">
+                    ${alts.slice(0, 40).map((a, i) => {
+                        // A poster frame plus a play button: clients pick a
+                        // substitute mid-workout and often don't recognise an
+                        // exercise by name alone.
+                        const _t = getVideoThumbnail(a.ex.videoUrl);
+                        return `
+                        <div class="flex items-center gap-2 pr-2 hover:bg-[#FFDB89]/8 transition">
+                            <button type="button" data-swap-idx="${i}" class="flex-1 min-w-0 text-left px-3 py-2.5 flex items-center gap-3">
+                                <span class="w-16 h-9 rounded bg-[#0D0D0D] border border-[#FFDB89]/10 overflow-hidden shrink-0 flex items-center justify-center">
+                                    ${_t
+                                        ? `<img src="${escHtml(_t)}" alt="" loading="lazy" class="w-full h-full object-cover" onerror="this.remove()">`
+                                        : `<i class="fas fa-dumbbell text-[10px] text-[#FFDB89]/25"></i>`}
+                                </span>
+                                <span class="flex-1 min-w-0">
+                                    <span class="block text-sm text-[#FFDB89] truncate">${escHtml(a.ex.name)}</span>
+                                    <span class="block text-[10px] text-[#FFDB89]/40 truncate">${a.shared.map(escHtml).join(' · ')}</span>
+                                </span>
+                            </button>
+                            ${a.ex.videoUrl
+                                ? `<button type="button" data-swap-play="${i}" title="Ver video de este ejercicio"
+                                        class="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-green-400/70 hover:text-green-400 hover:bg-green-400/10 transition">
+                                     <i class="fas fa-play text-[11px] pointer-events-none"></i>
+                                   </button>`
+                                : ''}
+                        </div>`;
+                    }).join('')}
                 </div>`;
+            portal.querySelectorAll('[data-swap-play]').forEach(btn => {
+                btn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();   // don't pick the exercise
+                    const a = alts[Number(btn.dataset.swapPlay)];
+                    if (a?.ex?.videoUrl) window.previewExerciseVideo(a.ex.videoUrl, a.ex.name || 'Ejercicio', btn);
+                });
+            });
             portal.querySelectorAll('[data-swap-idx]').forEach(btn => {
                 btn.addEventListener('click', () => {
                     apply(alts[Number(btn.dataset.swapIdx)].ex);
@@ -10151,7 +10176,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const backdrop = document.createElement('div');
         backdrop.id = 'video-preview-backdrop';
         backdrop.style.cssText = [
-            'position:fixed;inset:0;z-index:9997',
+            'position:fixed;inset:0;z-index:10050',
             'background:rgba(0,0,0,.65)',
             '-webkit-backdrop-filter:blur(4px)',
             'backdrop-filter:blur(4px)'
@@ -10167,7 +10192,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const card   = document.createElement('div');
         card.id      = 'video-preview-overlay';
         card.style.cssText = [
-            'position:fixed;z-index:9998',
+            'position:fixed;z-index:10051',
             `width:${CARD_W}px`,
             'top:50%;left:50%;transform:translate(-50%,-50%)',
             'background:#1C1C1E',
