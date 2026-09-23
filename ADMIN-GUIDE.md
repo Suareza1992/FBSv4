@@ -211,7 +211,55 @@ worth reporting, not a bad image.
 
 ---
 
-## 9. Deploying
+## 9. Sesiones en vivo (video calls)  *(web)*
+
+**Starting one.** Open a client (Clientes → the client), then click **Sesión en vivo** in the
+header, next to the arrow. Their browser rings for 45 seconds.
+
+**They must be logged in.** The call rings in the browser, not on their phone as a notification.
+If they are not signed in on the web app, you get "No está disponible en este momento" straight
+away rather than 45 seconds of silence — that is working as intended, not a bug.
+
+**What the statuses mean** (Sesiones tab on the client):
+
+| Status | Meaning |
+|---|---|
+| **Completada** | A real call happened; the duration is shown |
+| **No contestó** | Rang out, or they were offline — they may never have seen it |
+| **Rechazada** | They saw it and declined |
+| **Falló** | The connection could not be established |
+| `relay` badge | The call went through a relay server. Costs bandwidth; see below. |
+
+**During a call** you can navigate anywhere in the app — open their programa, their nutrición,
+their historial — and keep talking. The call floats on top. The **minimise** button (top right)
+shrinks it to a pill so you can see the whole page.
+
+### When a client cannot connect
+
+1. **"Necesitamos acceso a tu cámara y micrófono"** — they declined the browser permission. They
+   must re-enable it in browser settings; you cannot fix this from your side.
+2. **"Otra aplicación está usando tu cámara"** — Zoom, Photo Booth or similar has the camera. They
+   close that app and try again.
+3. **"Reconectando…" that never resolves** — usually a weak mobile connection. The app retries
+   three times, then ends the call and says so. Ask them to switch between Wi-Fi and data.
+4. **Frozen picture, call still "Conectado"** — they probably switched apps; the app shows "La
+   otra persona puso la app en segundo plano." It recovers when they come back.
+5. **Nothing rings at all** — have them reload the page. The connection to the server re-opens on
+   load, and a stale tab from before a deploy will not receive calls.
+
+> Always ask them to **hard reload** after any app update — a stale tab runs the old JavaScript.
+> This is the same gotcha as everywhere else in the app.
+
+### Cost
+
+Most calls connect device-to-device and cost nothing. When a direct connection is impossible
+(common on cellular), the call goes through a relay and uses paid bandwidth — roughly **1 GB per
+hour of relayed call**. Those calls carry the `relay` badge. If you see many of them, that is worth
+knowing before the bill arrives.
+
+---
+
+## 10. Deploying
 
 - **web** — push to `main`. Railway auto-deploys; there is no separate step.
   Confirm it landed:

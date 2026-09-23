@@ -11,9 +11,10 @@ The snippets are *illustrative* — faithful to the real patterns in `server.js`
 3. [Client features](03-client-features.md) — workout logging, nutrition, photos, metrics, equipment
 4. [Integrations & cross-cutting](04-integrations.md) — email, food APIs, AI, security, deployment
 5. [Self-serve signup & payments](05-self-serve-signup-and-payments.md) — public pricing page, Stripe + **native PayPal**, pay-then-create-account provisioning
-6. [The mobile app](06-mobile-app.md) — the Expo/React Native companion app: cookie auth, role-aware tabs, screen-by-screen, store-policy rationale
+6. [Live sessions (WebRTC)](07-live-sessions-webrtc.md) — trainer↔client video calls: signaling over WebSocket, the call lifecycle, media capture, peer connections, TURN, and resilience. Go-live checks in [GO-LIVE-live-sessions.md](GO-LIVE-live-sessions.md)
+7. [The mobile app](06-mobile-app.md) — the Expo/React Native companion app: cookie auth, role-aware tabs, screen-by-screen, store-policy rationale
 
-Parts 1–4 are the web platform. Part 5 adds public paid onboarding on top of it. Part 6 is a **separate repo** (`FitBySuarez-mobile`) that consumes the same API — start it only once the backend is stable.
+Parts 1–4 are the web platform. Part 5 adds public paid onboarding and Part 6 adds live video on top of it. Part 7 is a **separate repo** (`FitBySuarez-mobile`) that consumes the same API — start it only once the backend is stable.
 
 ## Condensed build order
 
@@ -26,7 +27,8 @@ Shortest path to a working app:
 5. **Blog** (§15), **Email/Food/Security** (Part 4 §21–24).
 6. **AI** (§23) last, behind feature flags.
 7. **Self-serve signup + Stripe/PayPal** (Part 5) — once invite-flow accounts work, reuse that same provisioning behind a paid checkout.
-8. **Mobile app** (Part 6) — last; it's pure front-end over the finished API.
+8. **Live sessions** (Part 6) — after the SPA and auth are stable; it hooks into the router and the client detail view.
+9. **Mobile app** (Part 7) — last; it's pure front-end over the finished API.
 
 Deploy (§25) as soon as Part 1 works, and keep deploying.
 

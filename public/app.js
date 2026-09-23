@@ -137,6 +137,152 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(container);
     })();
 
+    // ─── BOTTOM ACTION RAIL ─────────────────────────────────────────────────
+    // Every bottom-centre chip used to position itself at
+    // `fixed bottom-6 left-1/2 -translate-x-1/2`, so whenever two were on screen
+    // at once — copy selection + clipboard, clipboard + undo, either of those plus
+    // a "guardado en la librería" pill — they stacked exactly on top of each other
+    // and the one underneath was unreachable.
+    //
+    // They now live in one horizontal rail. A new chip enters on the LEFT and
+    // pushes the others to the right; the oldest TRANSIENT chip is evicted once
+    // the rail is full. Persistent chips are never auto-evicted — "Terminar" is
+    // the only way out of copy mode, so dropping it would strand the user.
+    //
+    // On narrow screens a row is physically impossible, so it stacks vertically
+    // (newest at the bottom, nearest the thumb).
+    const ActionRail = (() => {
+        const MAX_TRANSIENT = 3;
+        let rail = null;
+
+        const ensure = () => {
+            if (rail && document.body.contains(rail)) return rail;
+            rail = document.createElement('div');
+            rail.id = 'fbs-action-rail';
+            // z-90: above page content, below the toast container (9999) and the
+            // live-session overlay (150), so neither is ever covered by a chip.
+            // left:0/right:0 + justify-content:center, NOT left:50% + translateX(-50%).
+            // For a fixed element, `left:50%` makes the shrink-to-fit available width
+            // `100vw - 50vw` — so the rail was only ever half the viewport wide and
+            // wrapped to a second row with four chips that would have fit on one.
+            rail.style.cssText = [
+                'position:fixed', 'bottom:24px', 'left:0', 'right:0',
+                'z-index:90', 'display:flex', 'align-items:center',
+                'justify-content:center', 'gap:8px', 'padding:0 8px',
+                'pointer-events:none',
+                // wrap-REVERSE, not wrap: extra lines must go UPWARD. Plain wrap
+                // pushes them below the bottom edge where they cannot be reached.
+                'flex-wrap:wrap-reverse',
+                'padding-bottom:env(safe-area-inset-bottom)',
+            ].join(';');
+            const narrow = window.matchMedia('(max-width: 720px)');
+            const applyDir = () => {
+                // column-reverse keeps the NEWEST chip closest to the bottom edge,
+                // matching the row behaviour where newest is leading.
+                rail.style.flexDirection = narrow.matches ? 'column-reverse' : 'row';
+                rail.style.alignItems = narrow.matches ? 'stretch' : 'center';
+            };
+            applyDir();
+            narrow.addEventListener?.('change', applyDir);
+            document.body.appendChild(rail);
+            return rail;
+        };
+
+        /** Animate the shove: measure, mutate, then play the delta back. */
+        const flip = (mutate) => {
+            const r = ensure();
+            const before = new Map();
+            [...r.children].forEach(c => before.set(c, c.getBoundingClientRect()));
+            mutate(r);
+            [...r.children].forEach(c => {
+                const b = before.get(c);
+                if (!b) return;
+                const a = c.getBoundingClientRect();
+                const dx = b.left - a.left, dy = b.top - a.top;
+                if (!dx && !dy) return;
+                try {
+                    c.animate(
+                        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0,0)' }],
+                        { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' }
+                    );
+                } catch { /* layout is already correct; only the tween is lost */ }
+            });
+        };
+
+        const evictIfFull = (r) => {
+            const transient = [...r.children].filter(c => c.dataset.railSticky !== '1');
+            // Children are newest-first, so the LAST transient one is the oldest.
+            while (transient.length > MAX_TRANSIENT) remove(transient.pop().id);
+        };
+
+        /**
+         * Put an element into the rail. Keeps its id, so existing code that does
+         * getElementById(...).innerHTML = ... and .remove() keeps working.
+         * Re-adding an element already in the rail leaves it in place (chips
+         * re-render on every state change and must not jump to the front).
+         */
+        const add = (el, { sticky = false } = {}) => {
+            const r = ensure();
+            el.dataset.railSticky = sticky ? '1' : '0';
+            el.style.pointerEvents = 'auto';
+            // Shrink rather than overflow: a chip narrower than its content is
+            // still usable, a chip past the viewport edge is not.
+            el.style.flex = '0 1 auto';
+            el.style.maxWidth = '100%';
+            if (el.parentElement === r) { evictIfFull(r); return el; }
+            flip((rr) => rr.insertBefore(el, rr.firstChild));   // newest leads
+            try {
+                el.animate(
+                    [{ opacity: 0, transform: 'translateX(-14px) scale(.96)' },
+                     { opacity: 1, transform: 'translateX(0) scale(1)' }],
+                    { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }
+                );
+            } catch { /* decorative only — the chip is already visible either way */ }
+            evictIfFull(r);
+            return el;
+        };
+
+        const remove = (id) => {
+            const el = document.getElementById(id);
+            if (!el || el.parentElement?.id !== 'fbs-action-rail') { el?.remove(); return; }
+            if (el.dataset.railRemoving === '1') return;     // already on its way out
+            el.dataset.railRemoving = '1';
+            el.style.pointerEvents = 'none';                 // no clicks mid-fade
+
+            // The actual removal is on a TIMER, not on anim.onfinish. An animation
+            // callback can simply never arrive — a throttled background tab, reduced
+            // motion, a browser that skips the animation — and then the chip stays on
+            // screen forever, which is the exact complaint this whole rail exists to
+            // fix. The animation is decoration; the timer is the contract.
+            const DUR = 160;
+            try {
+                el.animate(
+                    [{ opacity: 1, transform: 'translateX(0) scale(1)' },
+                     { opacity: 0, transform: 'translateX(-10px) scale(.96)' }],
+                    { duration: DUR, easing: 'ease-in', fill: 'forwards' }
+                );
+            } catch { /* WAAPI unavailable — it just vanishes, which is fine */ }
+
+            setTimeout(() => { if (el.isConnected) flip(() => el.remove()); }, DUR);
+        };
+
+        /** A self-expiring chip. Used by the small "guardado" confirmations. */
+        const flash = (id, html, ms = 2600) => {
+            document.getElementById(id)?.remove();
+            const el = document.createElement('div');
+            el.id = id;
+            el.className = 'flex items-center gap-2 bg-[#1C1C1E] border border-[#FFDB89]/30 ' +
+                           'text-[#FFDB89] text-sm font-bold px-5 py-2.5 rounded-full shadow-xl';
+            el.innerHTML = html;
+            add(el);
+            setTimeout(() => remove(id), ms);
+            return el;
+        };
+
+        return { add, remove, flash, _MAX_TRANSIENT: MAX_TRANSIENT, _el: () => rail };
+    })();
+    window.ActionRail = ActionRail;
+
     window.showToast = (message, type = 'info', duration = 3500) => {
         const container = document.getElementById('toast-container');
         if (!container) return;
@@ -2011,6 +2157,12 @@ document.addEventListener('DOMContentLoaded', () => {
         dashboardContainer.classList.remove('hidden');
         document.body.classList.add('flex');
 
+        // ── Live sessions: open the signaling socket for the whole session ──
+        // Deliberately here and not inside LiveSession.start(): a CLIENT never
+        // initiates, so a socket opened only when calling would mean an incoming
+        // call could never reach them. Both roles connect at login.
+        window.LiveSession?.connect();
+
         const dashModule = user.role === 'trainer' ? 'trainer-dashboard' : 'client-dashboard';
         const dashHtml = await loadModule(dashModule);
         sidebarPlaceholder.innerHTML = dashHtml;
@@ -2651,9 +2803,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button id="back-to-clients-btn" class="text-[#FFDB89]/70 hover:text-[#FFDB89] transition shrink-0"><i class="fas fa-arrow-left text-xl"></i></button>
                         <h2 class="text-lg sm:text-2xl font-bold text-[#FFDB89] truncate">${client.name} ${client.lastName}</h2>
                     </div>
-                    <button id="next-client-btn" title="Siguiente cliente" class="w-9 h-9 flex items-center justify-center rounded-full border border-[#FFDB89]/25 bg-[#FFDB89]/8 text-[#FFDB89]/60 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 hover:border-[#FFDB89]/50 transition shrink-0">
-                        <i class="fas fa-chevron-right text-sm"></i>
-                    </button>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button id="live-session-btn" title="Sesión en vivo"
+                                data-client-id="${escHtml(client._id || client.id)}"
+                                data-client-name="${escHtml(`${client.name || ''} ${client.lastName || ''}`.trim())}"
+                                class="h-9 px-3 flex items-center gap-2 rounded-full border border-[#FFDB89]/25 bg-[#FFDB89]/8 text-[#FFDB89]/80 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 hover:border-[#FFDB89]/50 transition">
+                            <i class="fas fa-video text-sm"></i>
+                            <span class="hidden sm:inline text-xs font-bold">Sesión en vivo</span>
+                        </button>
+                        <button id="next-client-btn" title="Siguiente cliente" class="w-9 h-9 flex items-center justify-center rounded-full border border-[#FFDB89]/25 bg-[#FFDB89]/8 text-[#FFDB89]/60 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 hover:border-[#FFDB89]/50 transition shrink-0">
+                            <i class="fas fa-chevron-right text-sm"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Tab Bar — horizontally scrollable on mobile -->
@@ -2664,6 +2825,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="photos">Fotos</button>
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="restrictions">Restricciones</button>
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="equipment">Equipo</button>
+                    <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="sessions">Sesiones</button>
                     <div class="ml-auto flex items-center shrink-0 pl-2 pr-1" id="hoy-btn-wrap">
                         <button class="px-3 py-1 text-sm font-semibold border border-[#FFDB89]/30 bg-[#FFDB89]/10 text-[#FFDB89] rounded hover:bg-[#FFDB89]/20 transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
                     </div>
@@ -2700,6 +2862,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <!-- TAB: Equipment (read-only) -->
+                <div id="tab-sessions" class="client-tab-content hidden flex-grow overflow-y-auto p-3 sm:p-6">
+                    <p class="text-gray-400 text-sm animate-pulse">Cargando sesiones...</p>
+                </div>
+
+                <!-- TAB: Equipment -->
                 <div id="tab-equipment" class="client-tab-content hidden flex-grow overflow-y-auto p-3 sm:p-6">
                     <p class="text-gray-400 text-sm animate-pulse">Cargando equipo...</p>
                 </div>
@@ -2790,6 +2957,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (tab.dataset.tab === 'photos') loadClientPhotos(clientId);
                 if (tab.dataset.tab === 'restrictions') loadClientRestrictions(clientId);
                 if (tab.dataset.tab === 'equipment') loadClientEquipment(clientId);
+                if (tab.dataset.tab === 'sessions') loadClientSessions(clientId);
             };
         });
 
@@ -2918,6 +3086,103 @@ document.addEventListener('DOMContentLoaded', () => {
         if (frac) return parseInt(frac[1]) / parseInt(frac[2]);
         const n = parseFloat(s);
         return isNaN(n) ? null : n;
+    };
+
+    // ── Live-session history ────────────────────────────────────────────────
+    const CALL_STATUS = {
+        ended:    { label: 'Completada', icon: 'fa-phone',        cls: 'text-green-400' },
+        missed:   { label: 'No contestó', icon: 'fa-phone-slash', cls: 'text-[#FFDB89]/50' },
+        declined: { label: 'Rechazada',   icon: 'fa-phone-slash', cls: 'text-red-400' },
+        failed:   { label: 'Falló',       icon: 'fa-triangle-exclamation', cls: 'text-red-400' },
+    };
+
+    const callDuration = (sec) => {
+        if (!sec) return '—';
+        const m = Math.floor(sec / 60), sx = sec % 60;
+        return m ? `${m} min ${sx}s` : `${sx}s`;
+    };
+
+    const loadClientSessions = async (clientId) => {
+        const container = document.getElementById('tab-sessions');
+        if (!container) return;
+        try {
+            const calls = await apiGetJSON(`/api/calls?clientId=${encodeURIComponent(clientId)}`);
+
+            if (!calls.length) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-[#FFDB89]/40">
+                        <i class="fas fa-video text-3xl mb-3 block"></i>
+                        <p class="text-sm">Aún no hay sesiones en vivo con este cliente.</p>
+                        <p class="text-xs mt-1 text-[#FFDB89]/30">Usa el botón "Sesión en vivo" arriba para iniciar una.</p>
+                    </div>`;
+                return;
+            }
+
+            // Summary: the numbers a coach actually wants at a glance.
+            const completed = calls.filter(c => c.status === 'ended');
+            const totalMin = Math.round(completed.reduce((a, c) => a + (c.durationSec || 0), 0) / 60);
+            const answerRate = calls.length ? Math.round((completed.length / calls.length) * 100) : 0;
+
+            const stat = (value, label) => `
+                <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-xl px-3 py-2.5 text-center">
+                    <p class="text-lg font-bold text-[#FFDB89]">${escHtml(value)}</p>
+                    <p class="text-[10px] uppercase tracking-wide text-[#FFDB89]/45 mt-0.5">${escHtml(label)}</p>
+                </div>`;
+
+            const rows = calls.map(c => {
+                const cfg = CALL_STATUS[c.status] || CALL_STATUS.failed;
+                const d = new Date(c.startedAt);
+                const when = d.toLocaleDateString('es-PR', { day: '2-digit', month: 'short', year: 'numeric' });
+                const time = d.toLocaleTimeString('es-PR', { hour: '2-digit', minute: '2-digit' });
+                const dirIcon = c.direction === 'outgoing' ? 'fa-arrow-up-right-from-square' : 'fa-arrow-down';
+                const dirLabel = c.direction === 'outgoing' ? 'Saliente' : 'Entrante';
+                // Only shown when a call was actually relayed — it is the line item
+                // that costs money, so it is worth being able to see per call.
+                const relay = c.connectionType === 'relay'
+                    ? `<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#FFDB89]/10 text-[#FFDB89]/50" title="Se usó un servidor de retransmisión (TURN)">relay</span>`
+                    : '';
+                return `
+                <tr class="border-b border-[#FFDB89]/10 hover:bg-[#FFDB89]/5 transition">
+                    <td class="px-3 py-3 whitespace-nowrap">
+                        <span class="text-[#FFDB89] font-medium">${escHtml(when)}</span>
+                        <span class="text-[#FFDB89]/40 text-xs ml-2">${escHtml(time)}</span>
+                    </td>
+                    <td class="px-3 py-3 whitespace-nowrap text-[#FFDB89]/60 text-xs">
+                        <i class="fas ${dirIcon} mr-1.5 opacity-60"></i>${escHtml(dirLabel)}
+                    </td>
+                    <td class="px-3 py-3 whitespace-nowrap ${cfg.cls} text-xs font-semibold">
+                        <i class="fas ${cfg.icon} mr-1.5"></i>${escHtml(cfg.label)}${relay}
+                    </td>
+                    <td class="px-3 py-3 whitespace-nowrap text-right text-[#FFDB89]/70 text-xs tabular-nums">
+                        ${escHtml(callDuration(c.durationSec))}
+                    </td>
+                </tr>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                    ${stat(String(calls.length), 'Sesiones')}
+                    ${stat(String(completed.length), 'Completadas')}
+                    ${stat(`${totalMin} min`, 'Tiempo total')}
+                    ${stat(`${answerRate}%`, 'Contestadas')}
+                </div>
+                <div class="overflow-x-auto rounded-xl border border-[#FFDB89]/15">
+                    <table class="w-full text-sm">
+                        <thead class="bg-[#FFDB89]/5">
+                            <tr class="text-[10px] uppercase tracking-wide text-[#FFDB89]/45">
+                                <th class="px-3 py-2.5 text-left font-semibold">Fecha</th>
+                                <th class="px-3 py-2.5 text-left font-semibold">Dirección</th>
+                                <th class="px-3 py-2.5 text-left font-semibold">Resultado</th>
+                                <th class="px-3 py-2.5 text-right font-semibold">Duración</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+        } catch (e) {
+            container.innerHTML = `<p class="text-red-400 text-sm">
+                <i class="fas fa-triangle-exclamation mr-2"></i>No se pudo cargar el historial de sesiones.</p>`;
+        }
     };
 
     const loadClientMetrics = async (clientId) => {
@@ -5116,6 +5381,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Returns true if it's safe to proceed, false if user cancelled
     const checkVideoDuplicate = async (url, name) => {
         const normName = name.toLowerCase();
+
+        // Same NAME already in the library with a DIFFERENT video → this is
+        // DESTRUCTIVE and must be confirmed. POST /api/library is an upsert by
+        // name, so going ahead replaces that entry's video for every routine that
+        // uses it. The old code only warned when the URL matched a different
+        // exercise, so silently clobbering an existing exercise's video was the
+        // one dangerous case with no guard at all.
+        const nameMatch = globalExerciseLibrary.find(
+            e => e.name.toLowerCase() === normName && e.videoUrl && e.videoUrl !== url);
+        if (nameMatch) {
+            return await showConfirm(
+                `"${nameMatch.name}" ya tiene otro video en la librería.\n¿Reemplazarlo con este?`,
+                { confirmLabel: 'Reemplazar video', cancelLabel: 'Cancelar', danger: true });
+        }
+
         // Same URL already saved under a DIFFERENT name → warn
         const urlMatch = globalExerciseLibrary.find(e => e.videoUrl && e.videoUrl === url && e.name.toLowerCase() !== normName);
         if (urlMatch) {
@@ -5124,12 +5404,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Same name + same URL → exact duplicate, skip silently
         const exactMatch = globalExerciseLibrary.find(e => e.name.toLowerCase() === normName && e.videoUrl === url);
         if (exactMatch) {
-            // Show toast instead of alert
-            const toast = document.createElement('div');
-            toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-5 py-2.5 rounded-full shadow-xl pointer-events-none';
-            toast.innerHTML = `<i class="fas fa-check-circle mr-2 text-green-400"></i>"${name}" ya está en la librería`;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 2000);
+            // Transient: goes in the rail, so it queues beside any clipboard or
+            // undo chip instead of landing on top of it.
+            ActionRail.flash('rail-lib-exists',
+                `<i class="fas fa-check-circle text-green-400"></i>"${escHtml(name)}" ya está en la librería`, 2000);
             return false; // skip the API call, URL already applied
         }
         return true; // good to go (new entry OR updating URL for existing name)
@@ -5585,8 +5863,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if(!bar) {
                 bar = document.createElement('div');
                 bar.id = 'copy-selection-bar';
-                bar.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[55] bg-[#FFDB89] text-[#2C2C2E] px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-fade-in-down';
-                document.body.appendChild(bar);
+                bar.className = 'z-[55] bg-[#FFDB89] text-[#2C2C2E] px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-fade-in-down';
+                // Lives in the shared bottom rail so it can never sit on top of
+                // another chip. sticky: a persistent action bar is the only way out
+                // of its mode, so it must never be auto-evicted.
+                ActionRail.add(bar, { sticky: true });
             }
             bar.innerHTML = `
                 <span class="font-bold text-sm"><i class="fas fa-check-square mr-2"></i>${selectedCopyDays.size} dia${selectedCopyDays.size > 1 ? 's' : ''} seleccionado${selectedCopyDays.size > 1 ? 's' : ''}</span>
@@ -5615,8 +5896,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!chip) {
             chip = document.createElement('div');
             chip.id = 'calendar-clipboard-chip';
-            chip.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
-            document.body.appendChild(chip);
+            chip.className = 'z-[80] flex items-center gap-3 bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
+            // Lives in the shared bottom rail so it can never sit on top of
+            // another chip. sticky: a persistent action bar is the only way out
+            // of its mode, so it must never be auto-evicted.
+            ActionRail.add(chip, { sticky: true });
         }
         const hasUndo = lastPastedWorkouts && lastPastedWorkouts.length > 0;
         chip.innerHTML = `
@@ -5643,8 +5927,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!pill) {
             pill = document.createElement('div');
             pill.id = 'calendar-undo-pill';
-            pill.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-2 bg-[#1C1C1E] border border-amber-400/30 text-amber-400 text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
-            document.body.appendChild(pill);
+            pill.className = 'z-[80] flex items-center gap-2 bg-[#1C1C1E] border border-amber-400/30 text-amber-400 text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
+            // Lives in the shared bottom rail so it can never sit on top of
+            // another chip. sticky: a persistent action bar is the only way out
+            // of its mode, so it must never be auto-evicted.
+            ActionRail.add(pill, { sticky: true });
         }
         const n = lastPastedWorkouts.length;
         pill.innerHTML = `
@@ -6083,8 +6370,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!chip) {
             chip = document.createElement('div');
             chip.id = 'program-clipboard-chip';
-            chip.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
-            document.body.appendChild(chip);
+            chip.className = 'z-[80] flex items-center gap-3 bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-4 py-2.5 rounded-full shadow-xl';
+            // Lives in the shared bottom rail so it can never sit on top of
+            // another chip. sticky: a persistent action bar is the only way out
+            // of its mode, so it must never be auto-evicted.
+            ActionRail.add(chip, { sticky: true });
         }
         chip.innerHTML = `
             <span class="flex items-center gap-2"><i class="fas fa-clipboard text-[#FFDB89]/60"></i>Copiado: <span class="text-white max-w-[10rem] truncate">${escHtml(label)}</span></span>
@@ -6355,7 +6645,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.addRoutineWarmupItem = () => {
-        routineWarmupItems.push({ id: Date.now(), name: '', videoUrl: '' });
+        routineWarmupItems.push({ id: Date.now(), name: '', videoUrl: '', videoFor: '' });
         renderRoutineItems();
     };
     window.removeRoutineWarmupItem = (id) => {
@@ -6364,7 +6654,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     window.updateRoutineWarmupItem = (id, val) => {
         const item = routineWarmupItems.find(i => i.id === id);
-        if (item) item.name = val;
+        if (!item) return;
+        item.name = val;
+        // Same rule as the builder rows: the video belongs to the NAME.
+        // Re-render only when it actually changed — renderRoutineItems() rebuilds
+        // the inputs, which would steal focus on every keystroke otherwise.
+        if (syncItemVideoToName(item, val)) renderRoutineItems();
     };
     window.openVideoForRoutineWarmupItem = (id) => {
         currentVideoTarget = `routine-warmup-item-${id}`;
@@ -6380,7 +6675,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.addRoutineCooldownItem = () => {
-        routineCooldownItems.push({ id: Date.now(), name: '', videoUrl: '' });
+        routineCooldownItems.push({ id: Date.now(), name: '', videoUrl: '', videoFor: '' });
         renderRoutineItems();
     };
     window.removeRoutineCooldownItem = (id) => {
@@ -6391,7 +6686,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window._renderRoutineItems = renderRoutineItems;
     window.updateRoutineCooldownItem = (id, val) => {
         const item = routineCooldownItems.find(i => i.id === id);
-        if (item) item.name = val;
+        if (!item) return;
+        item.name = val;
+        if (syncItemVideoToName(item, val)) renderRoutineItems();
     };
     window.openVideoForRoutineCooldownItem = (id) => {
         currentVideoTarget = `routine-cooldown-item-${id}`;
@@ -6778,7 +7075,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex gap-2">
                         <input type="text" class="exercise-name-input flex-1 min-w-0 p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/25 font-semibold focus:ring-2 focus:ring-[#FFDB89]/30 focus:border-[#FFDB89]/50 outline-none transition" placeholder="Nombre del ejercicio" value="${data ? data.name : ''}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
                         <button class="play-video-btn inline-flex items-center justify-center w-11 h-11 bg-green-500/10 border border-green-500/20 ${data?.video ? 'text-green-400' : 'text-green-400/35'} hover:bg-green-500/20 hover:text-green-400 rounded-xl transition shrink-0" title="Ver video"><i class="fas fa-play text-xs"></i></button>
-                        <button class="inline-flex items-center justify-center w-11 h-11 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0 open-video-modal" data-video="${data?.video || ''}"><i class="fas fa-video text-xs"></i></button>
+                        <button class="inline-flex items-center justify-center w-11 h-11 bg-[#FFDB89]/5 border border-[#FFDB89]/20 ${data?.video ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'} hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0 open-video-modal" data-video="${data?.video || ''}" data-video-for="${data?.video ? (data?.name || '').replace(/"/g,'&quot;') : ''}"><i class="fas fa-video text-xs"></i></button>
                         <button type="button" class="swap-exercise-btn inline-flex items-center justify-center w-11 h-11 bg-[#FFDB89]/5 border border-[#FFDB89]/20 text-[#FFDB89]/40 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 rounded-xl transition shrink-0" title="Cambiar por otro del mismo grupo muscular"><i class="fas fa-right-left text-xs"></i></button>
                     </div>
                     <textarea class="exercise-stats-input w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89]/80 placeholder:text-[#FFDB89]/25 text-sm resize-none focus:border-[#FFDB89]/40 focus:ring-2 focus:ring-[#FFDB89]/20 outline-none transition" rows="3" placeholder="Sets x Reps — Ej: 4x10 @ 70%, descanso 90s...">${data ? data.stats : ''}</textarea>
@@ -6807,12 +7104,8 @@ document.addEventListener('DOMContentLoaded', () => {
             hideExAc();
             openSwapList(input, input.value, (chosen) => {
                 input.value = chosen.name;
-                videoBtn.dataset.video = chosen.videoUrl || '';
-                const hasVid = !!chosen.videoUrl;
-                videoBtn.classList.toggle('text-[#FFDB89]', hasVid);
-                videoBtn.classList.toggle('text-[#FFDB89]/40', !hasVid);
-                playBtn.classList.toggle('text-green-400', hasVid);
-                playBtn.classList.toggle('text-green-400/35', !hasVid);
+                // Already cleared correctly; now also record WHOSE video this is.
+                setRowVideo(item, chosen.videoUrl || '', chosen.videoUrl ? chosen.name : '');
                 checkExerciseRestriction(chosen, item);
                 showToast(`Cambiado a "${chosen.name}".`, 'success');
             });
@@ -6820,6 +7113,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         input.addEventListener('input', (e) => {
             const val = e.target.value.trim();
+            // The name just changed, so the attached video may no longer belong to
+            // it. Do this BEFORE the early return: clearing the name entirely must
+            // also drop the video, or the row keeps a URL with no exercise.
+            syncRowVideoToName(item, val);
             const portal = getExAcPortal();
             portal.innerHTML = '';
             hideExAc();
@@ -6835,13 +7132,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const div = buildSuggestionRow(match, val, (picked) => {
                     input.value = picked.name;
                     hideExAc();
-                    if (picked.videoUrl) {
-                        videoBtn.dataset.video = picked.videoUrl;
-                        videoBtn.classList.remove('text-[#FFDB89]/40');
-                        videoBtn.classList.add('text-[#FFDB89]');
-                        playBtn.classList.remove('text-green-400/35');
-                        playBtn.classList.add('text-green-400');
-                    }
+                    // ALWAYS assign, including the empty case. The old code only ran
+                    // when the picked exercise HAD a video, so picking one without a
+                    // video silently left the previous exercise's URL in place.
+                    setRowVideo(item, picked.videoUrl || '', picked.videoUrl ? picked.name : '');
                     // ── Restriction check ─────────────────────────────────
                     checkExerciseRestriction(picked, item);
                 });
@@ -6867,6 +7161,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Only fill a gap — never overwrite a video the routine already set.
                 if (!videoBtn.dataset.video && libEx.videoUrl) {
                     videoBtn.dataset.video = libEx.videoUrl;
+                    videoBtn.dataset.videoFor = libEx.name;
                     videoBtn.classList.remove('text-[#FFDB89]/40');
                     videoBtn.classList.add('text-[#FFDB89]');
                     playBtn.classList.remove('text-green-400/35');
@@ -7015,18 +7310,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const div = buildSuggestionRow(match, val, (picked) => {
                 inputEl.value = picked.name;
                 hideExAc();
-                if (type === 'warmup') {
-                    window.updateRoutineWarmupItem(itemId, picked.name);
-                    if (picked.videoUrl) {
-                        const it = routineWarmupItems.find(i => i.id === itemId);
-                        if (it) { it.videoUrl = picked.videoUrl; renderRoutineItems(); }
-                    }
-                } else {
-                    window.updateRoutineCooldownItem(itemId, picked.name);
-                    if (picked.videoUrl) {
-                        const it = routineCooldownItems.find(i => i.id === itemId);
-                        if (it) { it.videoUrl = picked.videoUrl; renderRoutineItems(); }
-                    }
+                // ALWAYS assign, including the empty case — picking an exercise
+                // with no video used to leave the previous one's URL behind.
+                const list = type === 'warmup' ? routineWarmupItems : routineCooldownItems;
+                const it = list.find(i => i.id === itemId);
+                if (it) {
+                    it.name     = picked.name;
+                    it.videoUrl = picked.videoUrl || '';
+                    it.videoFor = picked.videoUrl ? picked.name : '';
+                    renderRoutineItems();
                 }
             });
             portal.appendChild(div);
@@ -8435,6 +8727,77 @@ document.addEventListener('DOMContentLoaded', () => {
         const key = exerciseNameKey(name);
         if (!key) return null;
         return globalExerciseLibrary.find(ex => exerciseNameKey(ex.name) === key);
+    };
+
+    // ── Keeping a row's video tied to its exercise name ──────────────────────
+    //
+    // BUG THIS FIXES: type "Machine Abductions", pick it (its library video gets
+    // attached), then change your mind and type a different exercise. The name
+    // changed but the URL stayed, because the pick handler only ever SET a video
+    // ("if (picked.videoUrl) ...") and nothing ever CLEARED one.
+    //
+    // Why that was dangerous rather than merely untidy: opening the video modal on
+    // that row pre-fills the OLD url with the NEW name, and saving posts to
+    // POST /api/library, which is an UPSERT BY NAME. One click and the new
+    // exercise is created (or an existing one overwritten) pointing at the wrong
+    // video.
+    //
+    // The rule: a video belongs to the NAME it was attached to. We remember that
+    // name alongside the url, so a deliberately custom video survives edits to
+    // sets/reps, and a stale one is dropped the instant the name changes.
+    const videoBelongsToName = (ownerName, currentName) => {
+        if (!ownerName) return false;
+        return exerciseNameKey(ownerName) === exerciseNameKey(currentName);
+    };
+
+    /** Write a video (or clear it) onto a builder row and sync both button states. */
+    const setRowVideo = (rowEl, url, ownerName) => {
+        const videoBtn = rowEl.querySelector('.open-video-modal');
+        const playBtn  = rowEl.querySelector('.play-video-btn');
+        if (!videoBtn) return;
+        const has = !!url;
+        videoBtn.dataset.video = url || '';
+        // The name this url belongs to. Cleared with the url so a blank row can
+        // never claim ownership of anything.
+        videoBtn.dataset.videoFor = has ? (ownerName || '') : '';
+        videoBtn.classList.toggle('text-[#FFDB89]', has);
+        videoBtn.classList.toggle('text-[#FFDB89]/40', !has);
+        if (playBtn) {
+            playBtn.classList.toggle('text-green-400', has);
+            playBtn.classList.toggle('text-green-400/35', !has);
+        }
+        // Drop the "suggested from library" dot/tooltip when the video changes.
+        videoBtn.querySelector('span.rounded-full')?.remove();
+        if (!has) videoBtn.title = 'Asignar video';
+    };
+
+    /**
+     * Call whenever a builder row's NAME changes.
+     *  - video belongs to the current name -> leave it (custom videos survive)
+     *  - video belongs to a DIFFERENT name -> stale, replace or clear
+     *  - no video and the new name is in the library -> fill it in
+     */
+    const syncRowVideoToName = (rowEl, name) => {
+        const videoBtn = rowEl.querySelector('.open-video-modal');
+        if (!videoBtn) return;
+        const url   = videoBtn.dataset.video || '';
+        const owner = videoBtn.dataset.videoFor || '';
+        if (url && videoBelongsToName(owner, name)) return;   // still the right video
+
+        const lib = findExerciseInLibrary(name);
+        if (lib?.videoUrl) setRowVideo(rowEl, lib.videoUrl, lib.name);
+        else if (url) setRowVideo(rowEl, '', '');             // stale -> drop it
+    };
+
+    /** Same rule for the warm-up / cool-down item objects (state, not DOM). */
+    const syncItemVideoToName = (item, name) => {
+        if (!item) return;
+        if (item.videoUrl && videoBelongsToName(item.videoFor, name)) return;
+        const lib = findExerciseInLibrary(name);
+        if (lib?.videoUrl) { item.videoUrl = lib.videoUrl; item.videoFor = lib.name; }
+        else if (item.videoUrl) { item.videoUrl = ''; item.videoFor = ''; }
+        else return;
+        return true;    // changed — caller re-renders
     };
 
     // Auto-assign video URLs to imported exercises by matching against the library
@@ -10340,11 +10703,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         : ex
                 );
 
-                const toast = document.createElement('div');
-                toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-5 py-2.5 rounded-full shadow-xl pointer-events-none';
-                toast.innerHTML = `<i class="fas fa-bookmark mr-2 text-[#FFDB89]"></i>"${name}" guardado en la librería`;
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 2500);
+                ActionRail.flash('rail-lib-saved',
+                    `<i class="fas fa-bookmark text-[#FFDB89]"></i>"${escHtml(name)}" guardado en la librería`, 2500);
             }
         } catch(e) { console.error('Error saving to library:', e); }
         // Also apply to current exercise context
@@ -10527,6 +10887,23 @@ document.addEventListener('DOMContentLoaded', () => {
             return; 
         }
 
+        // ── Live sessions: start a call with this client ──────────────────────
+        const liveBtn = target.closest('#live-session-btn');
+        if (liveBtn) {
+            e.preventDefault();
+            if (!window.LiveSession) { showToast('Las sesiones en vivo no están disponibles.', 'error'); return; }
+            if (window.LiveSession.isActive()) { showToast('Ya estás en una llamada.', 'info'); return; }
+            if (!window.LiveSession.isConnected()) {
+                // Socket down (server restart, flaky network). Reconnect and let them retry
+                // rather than opening a call UI that can never reach anyone.
+                window.LiveSession.connect();
+                showToast('Reconectando… intenta de nuevo en un momento.', 'info');
+                return;
+            }
+            window.LiveSession.start(liveBtn.dataset.clientId, liveBtn.dataset.clientName);
+            return;
+        }
+
         if (target.id === 'logout-btn' || target.closest('#logout-btn')) {
             const confirmed = await showConfirm('¿Estás seguro que quieres cerrar sesión?', {
                 confirmLabel: 'Cerrar sesión',
@@ -10534,6 +10911,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 danger: true
             });
             if (!confirmed) return;
+            // End any call and stop reconnecting BEFORE the cookie is cleared —
+            // otherwise the socket's auto-reconnect fires against a dead session.
+            window.LiveSession?.end();
+            window.LiveSession?.disconnect();
             // H-2: Tell server to clear the HttpOnly cookie, then wipe local state
             fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).finally(() => {
                 localStorage.removeItem('auth_user');
@@ -10764,11 +11145,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => cell.style.outline = '', 800);
             }
             // Show brief toast
-            const toast = document.createElement('div');
-            toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-[#1C1C1E] border border-[#FFDB89]/30 text-[#FFDB89] text-sm font-bold px-5 py-2.5 rounded-full shadow-xl pointer-events-none';
-            toast.innerHTML = '<i class="fas fa-check mr-2 text-green-400"></i>Día copiado — pégalo en otros días o en el <strong>calendario</strong> de un cliente';
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3200);
+            ActionRail.flash('rail-day-copied',
+                '<i class="fas fa-check text-green-400"></i>Día copiado — pégalo en otros días o en el <strong>calendario de un cliente</strong>', 3200);
             return;
         }
         // Dismiss the persistent clipboard (multi-paste) chip
@@ -10893,13 +11271,16 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (typeof currentVideoTarget === 'string' && currentVideoTarget.startsWith('routine-warmup-item-')) {
                 const id = Number(currentVideoTarget.replace('routine-warmup-item-', ''));
                 const item = routineWarmupItems.find(i => i.id === id);
-                if (item) { item.videoUrl = url; renderRoutineItems(); }
+                if (item) { item.videoUrl = url; item.videoFor = url ? item.name : ''; renderRoutineItems(); }
             } else if (typeof currentVideoTarget === 'string' && currentVideoTarget.startsWith('routine-cooldown-item-')) {
                 const id = Number(currentVideoTarget.replace('routine-cooldown-item-', ''));
                 const item = routineCooldownItems.find(i => i.id === id);
-                if (item) { item.videoUrl = url; renderRoutineItems(); }
+                if (item) { item.videoUrl = url; item.videoFor = url ? item.name : ''; renderRoutineItems(); }
             } else if (currentVideoTarget !== 'library-standalone' && currentVideoExerciseBtn) {
                 currentVideoExerciseBtn.dataset.video = url;
+                // The name in the modal is the one this url now belongs to, so a
+                // later edit to the row's name correctly invalidates it.
+                currentVideoExerciseBtn.dataset.videoFor = url ? name : '';
                 currentVideoExerciseBtn.classList.toggle('text-[#FFDB89]', !!url);
                 currentVideoExerciseBtn.classList.toggle('text-[#FFDB89]/40', !url);
                 // Sync the sibling green play button

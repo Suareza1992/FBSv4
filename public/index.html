@@ -1363,6 +1363,10 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
   </div><!-- /app-container -->
 
   <script src="app.js"></script>
+  <!-- Sesiones en vivo (WebRTC). Loads AFTER app.js because it calls showToast().
+       It attaches its UI to document.body, never to mainContentArea, so a page
+       navigation cannot destroy an in-progress call. -->
+  <script src="live-session.js"></script>
 
   <script>
   // ── i18n ─────────────────────────────────────────────────────────────────

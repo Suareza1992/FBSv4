@@ -36,7 +36,7 @@ export default [
 
     // Backend — Node.js, ESM.
     {
-        files: ['server.js', 'auth-service.js', 'seed-test-client.js', 'middleware/**/*.js'],
+        files: ['server.js', 'signaling.js', 'auth-service.js', 'seed-test-client.js', 'middleware/**/*.js'],
         languageOptions: {
             sourceType: 'module',
             globals: {

@@ -1775,3 +1775,290 @@ stopwatch's dial drift up to a second out of phase.
 Any `requestAnimationFrame` loop in the shell (`index.html`) or in a long-lived
 module runs for the whole session. Give every one of them a stop condition, a
 frame cap, and a reason to exist on mobile.
+
+---
+
+## 21. Exercise videos are bound to the exercise NAME
+
+**The bug (fixed 2026-09-21).** In the program builder, type "Machine Abductions", pick it from
+autocomplete — its library video attaches to the row. Change your mind and switch to a different
+exercise, and the *previous* exercise's video URL stayed on the row.
+
+**Why it was dangerous, not just untidy.** Opening the video modal on that row pre-fills the URL
+from `data-video` and the name from the row's name input — so you got the **old URL** with the
+**new name**. Saving posts to `POST /api/library`, which is an **upsert by name**
+(`server.js`, `Exercise.findOneAndUpdate(nameFilter, fields, { upsert: true })`). One click and the
+new exercise is created — or an existing library entry is **overwritten** — pointing at the wrong
+video. That is why the videos kept having to be re-entered.
+
+**Root cause.** Every code path that attached a video was written as *set-if-present*:
+
+```js
+// public/app.js — autocomplete pick, BEFORE
+if (picked.videoUrl) {
+    videoBtn.dataset.video = picked.videoUrl;   // ...and no else branch
+}
+```
+
+Picking an exercise **with** a video worked. Picking one **without** a video left whatever was
+there before. The same shape appeared in three places: the builder's autocomplete pick, the
+warm-up/cool-down item autocomplete, and plain typing — which never touched the video at all.
+(The `swap-exercise-btn` handler was already correct: `chosen.videoUrl || ''`.)
+
+**The fix — ownership.** A video now remembers which name it belongs to:
+
+| Where | Field |
+|---|---|
+| Builder rows (DOM) | `data-video` + **`data-video-for`** on `.open-video-modal` |
+| Warm-up / cool-down items (state) | `item.videoUrl` + **`item.videoFor`** |
+
+```js
+const syncRowVideoToName = (rowEl, name) => {
+    const videoBtn = rowEl.querySelector('.open-video-modal');
+    const url   = videoBtn.dataset.video || '';
+    const owner = videoBtn.dataset.videoFor || '';
+    if (url && videoBelongsToName(owner, name)) return;   // still the right video
+
+    const lib = findExerciseInLibrary(name);
+    if (lib?.videoUrl) setRowVideo(rowEl, lib.videoUrl, lib.name);
+    else if (url) setRowVideo(rowEl, '', '');             // stale -> drop it
+};
+```
+
+Called on every name change (typing, autocomplete pick, swap). The resulting behaviour:
+
+| Action | Result |
+|---|---|
+| Pick an exercise with a video | Video attached, owner recorded |
+| Switch to an exercise **without** a video | **Old video cleared** |
+| Switch to another exercise **with** a video | Swapped to the new one |
+| Clear the name entirely | Video dropped — no orphan URL |
+| Re-type the **same** name (any case, extra spaces, trailing `:`) | Video kept |
+| Assign a **custom** video, then edit sets/reps | Video kept |
+| Assign a custom video, then change the **name** | Video replaced or cleared |
+
+Name comparison goes through `exerciseNameKey()`, so `"Machine Abductions:"` from a markdown
+import still matches the library entry.
+
+**Second line of defence.** `checkVideoDuplicate()` gained a branch it was missing entirely: if the
+library already has an exercise with **this name** and a **different** video, saving is destructive
+and now asks first ("¿Reemplazarlo con este?", `danger: true`). The pre-existing check only warned
+when the *URL* matched a different exercise — the genuinely destructive case had no guard at all.
+
+> **Lesson: a set-if-present branch with no `else` is a bug whenever the field it guards can
+> already hold a stale value.** `if (x) target = x;` reads as "only update when we have something,"
+> but what it actually means is "keep the previous value when we don't" — and the previous value
+> belonged to something else. When one field derives from another, either recompute it on every
+> change or record what it derives from so you can tell when it has gone stale.
+
+**Files:** `public/app.js` — `videoBelongsToName` / `setRowVideo` / `syncRowVideoToName` /
+`syncItemVideoToName` (near `findExerciseInLibrary`), the `.exercise-name-input` `input` handler,
+both autocomplete pick handlers, `updateRoutineWarmupItem` / `updateRoutineCooldownItem`, the video
+modal's apply paths, and `checkVideoDuplicate`.
+
+---
+
+## 22. Live Sessions (WebRTC video calls)
+
+A trainer can video-call a client from inside the web app. **Media never touches the server** —
+audio and video flow browser-to-browser (or through a TURN relay). The server handles
+introductions and bookkeeping only: a few KB per call.
+
+Full build narrative in `docs/07-live-sessions-webrtc.md`; the teaching version is
+`~/Desktop/Coding Crash Courses/WebSockets Crash Course.md`.
+
+### Pieces
+
+| File | Role |
+|---|---|
+| `signaling.js` | WebSocket signaling server, attached at `/rtc` |
+| `server.js` | `CallSession` model, `resolveCallTarget()`, `GET /api/rtc/ice`, `GET /api/calls` |
+| `public/live-session.js` | Everything browser-side: media, overlay, peer connection, resilience |
+| `public/app.js` | `connect()` at login, logout teardown, the "Sesión en vivo" button, the Sesiones tab |
+
+### The HTTP server had to change
+
+`app.listen()` creates an `http.Server` internally and never hands it back — and a WebSocket needs
+that object to attach an `upgrade` listener:
+
+```js
+const server = http.createServer(app);
+attachSignaling(server, { CallSession, resolveCallTarget, createNotification });
+server.listen(PORT, ...);
+```
+
+Dependencies are **injected** rather than imported: `server.js` already imports `signaling.js`, so
+importing back would be a circular import, and ESM hoisting would leave the model `undefined` at
+evaluation time. Injection also makes the authorization logic testable against a fake model with
+no database.
+
+### Auth happens at the upgrade, and only there
+
+`cookieParser()` does **not** run on an upgrade request — an upgrade never enters the Express
+router — so `signaling.js` parses the `Cookie` header itself and calls `jwt.verify` before
+`handleUpgrade()`. `{ noServer: true }` is what makes rejecting possible: once the handshake
+completes you are speaking a different protocol and there is no clean way to send a 401.
+
+### Every relayed frame is re-authorized
+
+The server never forwards a message just because it arrived. For each `rtc:*` / `call:peerstate`
+frame it reloads the `CallSession`, proves the sender is `callerId` or `calleeId`, checks the call
+is still live, and forwards **only** to the other participant — rebuilding the frame from an
+allowlist with a server-derived `from`. Without that check any logged-in user could inject an SDP
+offer into any call by guessing an ObjectId, and an SDP offer controls where media flows.
+
+### Two authorization rules, deliberately
+
+| Question | Rule |
+|---|---|
+| May A **call** B? | `resolveCallTarget()` — superadmin → anyone; client → their own trainer; trainer → their roster (**and `trainerId == null` legacy clients**) |
+| May A **read** B's call history? | `canTouchClient()` — the same rule as every other client-data endpoint |
+
+Calling is not one-directional (a client may call their coach back), so it needed its own rule.
+Reading history *is* ordinary data access, so it reuses the ordinary one.
+
+### Race guards
+
+`finishCall()` ends a call with a **conditional update** — the filter includes the status it
+expects:
+
+```js
+CallSession.findOneAndUpdate(
+    { _id: callId, status: { $in: ['ringing', 'active'] } },   // <- the guard
+    { $set: { status, endedAt, endedBy, failureReason, durationSec } },
+    { new: true }
+);
+```
+
+A callee declining at the same instant the 45-second ring timer fires would otherwise both
+succeed, both notify, and the second would overwrite the first. The loser gets `null` and does
+nothing. Same pattern on `accept`, which matters when a client has two tabs open.
+
+### Timers live on the server
+
+A ring timeout in the caller's browser dies with the tab, leaving a row stuck at `ringing` forever
+— which then blocks both users from ever calling again via the busy check. So the 45-second ring
+timeout and the 20-second disconnect grace are server-side.
+
+Server timers don't survive a **restart** either, so the busy check is **time-bounded**: a
+`ringing` row older than the ring timeout is restart debris and is ignored. The system self-heals
+instead of needing a cleanup job.
+
+### The call UI cannot be a module
+
+`updateContent()` does `mainContentArea.innerHTML = ...` on every navigation. A `<video>` inside
+it would be destroyed the moment the user clicks a nav item, taking the `MediaStream` with it.
+
+The overlay is therefore appended to `document.body` at `z-[150]` — above the app (max `z-[120]`)
+and the password modal (`z-[100]`), **below toasts (`z-[200]`)** so in-call feedback stays visible.
+That constraint is the feature: the trainer can open the client's programa or nutrición *while
+talking to them*.
+
+### The ICE candidate queue
+
+Candidates arrive before the peer's SDP has been applied. Calling `addIceCandidate()` before
+`setRemoteDescription()` **resolves** throws `InvalidStateError` and the candidate is lost — which
+produces a call that connects *sometimes*. Candidates are queued until `remoteReady` (set **after**
+the await) and then drained in order.
+
+### TURN
+
+`GET /api/rtc/ice` (authenticated) calls the provider server-side — credentials must never reach
+the bundle, since anyone holding one can use the relay as free bandwidth on your bill. Cached 5
+minutes, 4-second timeout, and **degrades to STUN-only** on any failure or when unconfigured, so
+local dev works with no credentials. STUN stays first in the list so ICE prefers the free path.
+
+Provider swap = one function, `fetchIceServers()`. Env: `TURN_APP`, `TURN_API_KEY`, optional
+`TURN_API_URL`.
+
+**Verifying it:** on one LAN, ICE always finds a direct path and never touches the relay, so a
+working call proves nothing. Force it:
+
+```js
+LiveSession._forceRelay(true);    // iceTransportPolicy: 'relay'
+```
+
+Every candidate must then come from TURN. If the call connects, TURN works.
+
+### Resilience
+
+- `disconnected` → **wait 5s** (most heal on their own); `failed` → ICE restart immediately
+- ICE restart re-gathers on the **existing** connection, keeping the media tracks. **Only the
+  caller restarts** — both restarting produces glare. Capped at 3, budget reset on every healthy
+  connect, ICE config refreshed first because TURN credentials expire on long calls.
+- A **byte-based stall watchdog**, because `iceConnectionState === 'connected'` coexists happily
+  with a frozen frame. Warns at ~3s, restarts at ~9s. Backgrounded peers are exempt, or every
+  hidden tab would trigger a reconnect.
+- `call:peerstate` tells the peer when a tab backgrounds (iOS Safari suspends video encoding).
+
+### Known limits
+
+> ⚠️ **Single instance only.** `signaling.js` keeps `peers` as a `Map<userId, Set<WebSocket>>` in
+> **this process's memory**. Run two Railway instances and two users on different instances cannot
+> find each other — calls silently fail to ring, with no error anywhere. The fix is a Redis pub/sub
+> adapter so `sendToUser` publishes instead of writing directly. **Do not scale past one instance
+> without it.** The invite rate limit is per-instance for the same reason.
+
+> ⚠️ **Web only.** `react-native-webrtc` needs an EAS dev build, which is the same thing blocking
+> push notifications. Do both in one pass.
+
+> ⚠️ **1:1 only.** Group calls need an SFU — mesh P2P scales quadratically.
+
+No recording: it would add storage and egress cost plus a consent question on top of the progress
+photos already held.
+
+---
+
+## 23. The bottom action rail
+
+**The bug (fixed 2026-09-23).** Seven different bottom-of-screen elements each positioned
+themselves at `fixed bottom-6 left-1/2 -translate-x-1/2`. Any two on screen together landed in
+*exactly* the same place, and the one underneath was unreachable — including **"Terminar"**, which
+is the only way out of copy mode, and **"Deshacer"**.
+
+| Element | Kind |
+|---|---|
+| `copy-selection-bar` | persistent — "N días seleccionados" |
+| `calendar-clipboard-chip` | persistent — Copiado + Deshacer + Terminar |
+| `calendar-undo-pill` | persistent — Deshacer |
+| `program-clipboard-chip` | persistent — Copiado + Terminar |
+| 3× inline pills | transient — "guardado en la librería", "Día copiado" |
+
+The code had already noticed the symptom and worked around it in one spot — the undo pill hides
+itself when the clipboard chip is showing, because that chip renders its own Deshacer. That
+workaround is now unnecessary but harmless.
+
+**The fix.** One shared container, `ActionRail` (`public/app.js`, next to the toast system). Chips
+no longer position themselves; they are children of the rail:
+
+- **Horizontal row**, newest inserted **first** so it enters on the left and pushes older chips
+  right. On screens under 720px it becomes `column-reverse` — a row of 300px chips cannot fit on a
+  phone — keeping the newest nearest the thumb.
+- **Overflow wraps upward** (`flex-wrap: wrap-reverse`). Plain `wrap` would push extra rows *below*
+  the bottom edge where they can't be reached.
+- **Transients are capped** (3) and the oldest is evicted. **Persistent chips are never
+  auto-evicted** — dropping "Terminar" would strand the user in copy mode with no way out.
+- **FLIP animation** so the shove is visible: measure every chip, mutate, then play the delta back.
+
+Chips keep their ids, so existing `getElementById(...).innerHTML = ...` re-render code and
+`.remove()` calls work unchanged. Re-adding a chip already in the rail leaves it in place — chips
+re-render on every state change and must not jump to the front each time.
+
+### Two gotchas worth remembering
+
+> ⚠️ **`position: fixed; left: 50%` caps an element's shrink-to-fit width at `100vw - 50vw`.**
+> The rail was half the viewport wide and wrapped to a second row with four chips that would have
+> fit on one — while `max-width: calc(100vw - 16px)` sat there looking correct and doing nothing.
+> Fix: `left: 0; right: 0; justify-content: center`, no transform.
+
+> ⚠️ **Never make a DOM removal depend on an animation callback.** `remove()` originally did the
+> real work in `anim.onfinish`. An animation callback can simply never arrive — a throttled
+> background tab, `prefers-reduced-motion`, a browser that skips it — and then the chip stays on
+> screen forever, which is the exact complaint the rail exists to fix. The removal is now on a
+> `setTimeout`; the animation is decoration, the timer is the contract. Every `el.animate()` call
+> here is wrapped in `try/catch` for the same reason.
+
+**z-order:** rail `90` — above page content, below the live-session overlay (`150`) and the
+bottom-right toast container (`9999`), so neither is ever covered.
+
+`showToast()` is unchanged: it stacks vertically at bottom-**right** and never collided with these.

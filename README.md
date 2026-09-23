@@ -121,6 +121,8 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Body measurements** — record and track circumference measurements (chest, biceps, waist, hips, quads, calves), body fat %, BMI, and weight per session
 - **Payment / Invoice management** — create invoices per client, mark them paid/overdue, send branded invoice emails with deep links to ATH Móvil, Venmo, and PayPal
 - **Settings** — configure payment handles (ATH Móvil business name, Venmo handle, PayPal.me username)
+- **Sesiones en vivo (video calls)** — 1:1 WebRTC video call with any client straight from their profile. Media flows **browser-to-browser**, never through the server. The call overlay floats above the app, so you can open their programa, historial or nutrición *while talking to them*, or minimise it to a pill. Handles ringing, decline, missed calls (with a notification), multi-tab, mid-call network changes (ICE restart), and backgrounded tabs. Web only — the mobile app needs an EAS dev build first
+- **Sesiones tab** — per-client call history: sessions, completed, total minutes, answer rate, plus a per-call log with direction, result, duration, and a `relay` badge on calls that used a TURN relay (those are the ones that cost bandwidth)
 
 ### Client Dashboard
 - **Workout view** — see today's assigned workout with exercise instructions, video demos, warmup, and cooldown; mark individual exercises complete; mark session complete or missed; submit RPE (Rate of Perceived Exertion) rating after each session
@@ -523,6 +525,7 @@ There are two roles: `trainer` and `client`. The trainer role is also compatible
 - Configure payment handles on their own profile
 - Record body measurements for clients
 - View and manage the notification feed
+- Start a live video session with any client on their roster, and read that client's call history
 
 ### Client Capabilities
 - Read and log their own workouts (mark complete/missed, submit RPE)
@@ -530,6 +533,7 @@ There are two roles: `trainer` and `client`. The trainer role is also compatible
 - View their own payment history (read-only)
 - Update their own profile (name, unit preferences, profile picture, macro gram goals)
 - Manage their own equipment inventory
+- Receive live video sessions, and call **their own trainer** back (they cannot call anyone else)
 - Read the exercise library and assigned programs
 
 Clients cannot see other clients' data, cannot create/edit programs, cannot manage invoices, and cannot access the notification feed.

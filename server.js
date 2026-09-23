@@ -9,12 +9,14 @@ import cookieParser from 'cookie-parser';           // H-2: HttpOnly JWT cookie
 import helmet from 'helmet';                        // H-5: Security headers
 import rateLimit from 'express-rate-limit';         // H-4: Brute-force protection
 import path from 'path';
+import http from 'http';                             // live sessions: raw server for the WS upgrade
 import { fileURLToPath } from 'url';
 // nodemailer removed — email is sent via Resend HTTP API (SMTP blocked by Railway)
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { authenticateToken, authorizeRoles } from './middleware/auth.js';
+import { attachSignaling } from './signaling.js';   // live sessions: WebRTC signaling over WS
 import Stripe from 'stripe';
 import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
@@ -145,7 +147,16 @@ app.use(helmet({
             // openfoodfacts domains: the browser calls OFF directly for barcode
             // lookups (world.) and the "Buscar en internet" food search (search.)
             // — client's own connection: free, keyless, and no server quota.
-            connectSrc: ["'self'", "https://api.nal.usda.gov", "https://cdn.jsdelivr.net", "https://world.openfoodfacts.org", "https://search.openfoodfacts.org"],
+            // 'self' does NOT reliably cover ws:/wss: across browsers, so the
+            // signaling socket's scheme is listed explicitly. Omit these and the
+            // socket is blocked by CSP with a console violation and NO server-side
+            // error — a silent failure that is very hard to trace.
+            connectSrc: ["'self'", "https://api.nal.usda.gov", "https://cdn.jsdelivr.net", "https://world.openfoodfacts.org", "https://search.openfoodfacts.org",
+                         "ws://localhost:3000", "wss://api.fitbysuarez.com", "wss://fitbysuarez.com"],
+            // Live-session <video> uses srcObject (a MediaStream), which CSP does
+            // not gate — but blob: costs nothing and covers any future
+            // URL.createObjectURL use (recording, snapshots).
+            mediaSrc:   ["'self'", "blob:"],
             frameSrc:   ["'self'", "https://www.youtube.com", "https://youtube.com",
                          "https://www.youtube-nocookie.com", "https://player.vimeo.com", "https://drive.google.com"],
         }
@@ -396,6 +407,60 @@ const canTouchClient = async (req, clientId) => {
     return String(client.trainerId) === String(req.user.id);
 };
 
+// ── Live sessions: may this user place a call to that one? ───────────────────
+// Deliberately NOT canTouchClient(). That answers "may you read/write this client's
+// DATA", which is one-directional: a client can never touch their trainer's record,
+// so reusing it would make calling your own trainer back impossible. Calling is a
+// different relationship and deserves its own rule.
+//
+// Returns the names and trainer-of-record too, because the caller needs all three
+// and this is already the one place that loads both users.
+const resolveCallTarget = async (actor, targetId) => {
+    if (!mongoose.isValidObjectId(targetId)) return { ok: false, code: 'BAD_TARGET' };
+    if (String(actor.id) === String(targetId)) return { ok: false, code: 'SELF_CALL' };
+
+    const fields = 'name lastName role trainerId isSuperadmin isActive isDeleted';
+    const [me, them] = await Promise.all([
+        User.findById(actor.id).select(fields).lean(),
+        User.findById(targetId).select(fields).lean(),
+    ]);
+    if (!me || !them) return { ok: false, code: 'NO_USER' };
+    if (them.isDeleted || them.isActive === false) return { ok: false, code: 'TARGET_INACTIVE' };
+
+    const fullName = (u) => [u.name, u.lastName].filter(Boolean).join(' ').trim();
+
+    let allowed = false;
+    let trainerId = null;
+
+    if (me.isSuperadmin) {
+        allowed = true;
+        trainerId = them.role === 'client' ? (them.trainerId || me._id) : me._id;
+    } else if (me.role === 'client') {
+        // A client may call their OWN trainer and nobody else.
+        allowed = !!me.trainerId && String(me.trainerId) === String(targetId);
+        trainerId = me.trainerId;
+    } else {
+        // Trainer -> a client on their roster. A NULL trainerId means a legacy account
+        // that predates the field; treating that as "not mine" would lock trainers out
+        // of their own roster, exactly as noted on canTouchClient above.
+        allowed = them.role === 'client'
+            && (them.trainerId == null || String(them.trainerId) === String(me._id));
+        trainerId = me._id;
+    }
+
+    if (!allowed) return { ok: false, code: 'NOT_ALLOWED' };
+    if (!trainerId) return { ok: false, code: 'NO_TRAINER' };
+
+    return {
+        ok: true,
+        trainerId,
+        callerName: fullName(me),
+        calleeName: fullName(them),
+        calleeIsClient: them.role === 'client',
+        callerIsClient: me.role === 'client',
+    };
+};
+
 const ExerciseSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
     // Trainer who created this exercise. The library is SHARED for reading — any
@@ -522,7 +587,11 @@ const NotificationSchema = new mongoose.Schema({
             'reported_issue', 'metric_inactivity',
             'program_assigned', 'client_created', 'rpe_submitted',
             'contact_inquiry', 'muscle_restriction', 'equipment_updated',
-            'exercise_swapped'
+            'exercise_swapped',
+            // Live sessions. NOTE: this enum is strict — a type missing from it makes
+            // Notification.create() throw a ValidationError that createNotification()
+            // swallows in its own try/catch, so you get NO notification and NO error.
+            'live_session_missed', 'live_session_ended'
         ],
         required: true
     },
@@ -534,6 +603,38 @@ const NotificationSchema = new mongoose.Schema({
 });
 NotificationSchema.index({ trainerId: 1, isRead: 1, createdAt: -1 });
 const Notification = mongoose.model('Notification', NotificationSchema);
+
+// --- Live Session (WebRTC call) Schema ---
+// One document per call ATTEMPT, created the moment an invite is sent — not when
+// the call connects. That's deliberate: a call that was never answered is exactly
+// the thing the callee needs a record of.
+const CallSessionSchema = new mongoose.Schema({
+    callerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    calleeId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // Denormalised so a trainer's call history is one indexed query, no join.
+    trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    callerName: { type: String, default: '' },
+    calleeName: { type: String, default: '' },
+    status: {
+        type: String,
+        enum: ['ringing', 'active', 'ended', 'declined', 'missed', 'failed'],
+        default: 'ringing'
+    },
+    startedAt:   { type: Date, default: Date.now }, // invite sent
+    answeredAt:  { type: Date, default: null },     // callee accepted
+    endedAt:     { type: Date, default: null },
+    durationSec: { type: Number, default: 0 },
+    endedBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Reported by the browser from the selected ICE candidate pair. This is how you
+    // learn your REAL TURN relay rate, which is the only thing TURN costs money on.
+    connectionType: { type: String, enum: ['p2p', 'relay', 'unknown'], default: 'unknown' },
+    failureReason:  { type: String, default: '' },
+});
+CallSessionSchema.index({ trainerId: 1, startedAt: -1 });
+CallSessionSchema.index({ calleeId: 1, startedAt: -1 });
+// Finding "is either party already busy?" on every invite.
+CallSessionSchema.index({ status: 1, callerId: 1, calleeId: 1 });
+const CallSession = mongoose.model('CallSession', CallSessionSchema);
 
 // --- Weight/Metrics Log Schema ---
 const WeightLogSchema = new mongoose.Schema({
@@ -4724,6 +4825,130 @@ app.delete('/api/groups/:id', authenticateToken, authorizeRoles('trainer', 'admi
 // trainer's, so oversight includes activity from the whole roster.
 const notifScope = async (req) => (await isSuperadmin(req)) ? {} : { trainerId: req.user.id };
 
+// ==========================================================================
+// --- LIVE SESSIONS: ICE / TURN CONFIGURATION ---
+// ==========================================================================
+// STUN alone fails for roughly 10-20% of real connections: symmetric NAT, which
+// is common on cellular carriers, cannot be traversed without a relay. TURN is
+// that relay, and it is the only part of WebRTC that costs money — you pay for
+// bandwidth that actually gets relayed.
+//
+// Credentials are minted SERVER-SIDE and never shipped in the bundle. Anyone
+// holding a TURN credential can use the relay as free bandwidth on your bill.
+
+const STUN_ONLY = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+// Upstream credentials are short-lived but not per-request. Caching them means
+// one call to the provider every few minutes no matter how many clients ask,
+// which keeps you off their rate limits and takes their latency out of the path
+// at the exact moment a call is being set up.
+let iceCache = { servers: null, expires: 0 };
+const ICE_CACHE_MS = 5 * 60 * 1000;
+
+/**
+ * Fetch ICE servers from the configured provider.
+ *
+ * Provider-agnostic by design: every one of these returns the same shape to the
+ * caller, so switching is a matter of changing this one function. Metered is the
+ * default; Twilio and Cloudflare are documented in docs/07-live-sessions-webrtc.md.
+ */
+const fetchIceServers = async () => {
+    const key = process.env.TURN_API_KEY;
+    const app = process.env.TURN_APP;
+    if (!key || !app) return null;                  // not configured — caller degrades
+
+    // TURN_API_URL overrides the endpoint: another provider, another region, or a
+    // self-hosted credential service later. {app} and {key} are substituted.
+    const url = (process.env.TURN_API_URL
+        || 'https://{app}.metered.live/api/v1/turn/credentials?apiKey={key}')
+        .replace('{app}', encodeURIComponent(app))
+        .replace('{key}', encodeURIComponent(key));
+
+    // A slow provider must never hold up a call. Better to start with STUN and
+    // maybe fail than to make the user stare at "Llamando…" for ten seconds.
+    const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!r.ok) throw new Error(`TURN provider returned ${r.status}`);
+
+    const body = await r.json();
+    // Metered returns a bare array; normalise defensively so a provider change or
+    // a response-shape change cannot hand the browser something it will reject.
+    const list = Array.isArray(body) ? body : (body.iceServers || body.ice_servers || []);
+    const servers = list.filter((x) => x && x.urls);
+    if (!servers.length) throw new Error('TURN provider returned no usable servers');
+    return servers;
+};
+
+/**
+ * Call history for one client (trainer view) or for oneself (client view).
+ *
+ * Authorized with canTouchClient() — the SAME rule as every other client-data
+ * endpoint. resolveCallTarget() governs who may *place* a call; who may *read the
+ * history* is ordinary data access, so it uses the ordinary rule.
+ */
+app.get('/api/calls', authenticateToken, async (req, res) => {
+    try {
+        const clientId = req.query.clientId || req.user.id;
+        if (!mongoose.isValidObjectId(clientId)) {
+            return res.status(400).json({ message: 'Cliente inválido.' });
+        }
+        if (!(await canTouchClient(req, clientId))) {
+            return res.status(403).json({ message: 'Forbidden' });
+        }
+
+        const limit = Math.min(parseInt(req.query.limit, 10) || 25, 100);
+
+        // Either side of the call — a client may have rung the trainer back.
+        const calls = await CallSession.find({
+            $or: [{ callerId: clientId }, { calleeId: clientId }],
+            status: { $in: ['ended', 'declined', 'missed', 'failed'] },   // no live rows
+        })
+            .sort({ startedAt: -1 })
+            .limit(limit)
+            .select('callerId calleeId callerName calleeName status startedAt answeredAt endedAt durationSec connectionType')
+            .lean();
+
+        // Tell the UI which way the call went, so it can render "Saliente"/"Entrante"
+        // from the CLIENT's point of view without leaking any other identifiers.
+        res.json(calls.map((c) => ({
+            _id: c._id,
+            direction: String(c.callerId) === String(clientId) ? 'outgoing' : 'incoming',
+            withName: String(c.callerId) === String(clientId) ? c.calleeName : c.callerName,
+            status: c.status,
+            startedAt: c.startedAt,
+            durationSec: c.durationSec,
+            connectionType: c.connectionType,
+        })));
+    } catch (err) {
+        console.error('Error fetching calls:', err);
+        res.status(500).json({ message: 'Error al cargar el historial de sesiones.' });
+    }
+});
+
+app.get('/api/rtc/ice', authenticateToken, async (req, res) => {
+    // Cache hit — no upstream call, no latency.
+    if (iceCache.servers && Date.now() < iceCache.expires) {
+        return res.json({ iceServers: iceCache.servers, cached: true });
+    }
+    try {
+        const servers = await fetchIceServers();
+        if (!servers) {
+            // No TURN configured (local dev, or before you sign up). STUN-only still
+            // connects on the same network, so development keeps working.
+            return res.json({ iceServers: STUN_ONLY, turn: false });
+        }
+        // Always keep STUN in the list: a host or server-reflexive candidate is far
+        // cheaper than a relayed one, and ICE will prefer it when it works.
+        iceCache = { servers: [...STUN_ONLY, ...servers], expires: Date.now() + ICE_CACHE_MS };
+        res.json({ iceServers: iceCache.servers, turn: true });
+    } catch (err) {
+        // Degrade rather than fail. A call that MIGHT work peer-to-peer is strictly
+        // better than no call at all, and this is exactly when the provider being
+        // down should hurt least. Never log the credentials themselves.
+        console.error('[rtc] ICE provider failed:', err.message);
+        res.json({ iceServers: STUN_ONLY, turn: false, degraded: true });
+    }
+});
+
 app.get('/api/notifications/unread-count', authenticateToken, async (req, res) => {
     try {
         const count = await Notification.countDocuments({ ...(await notifScope(req)), isRead: false });
@@ -5734,4 +5959,15 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); });
+
+// Live sessions need a raw http.Server to attach the WebSocket 'upgrade' listener
+// to. app.listen() creates one internally and never hands it back, so we create it
+// ourselves and let Express be its request handler — behaviour is identical.
+const server = http.createServer(app);
+// Dependencies are INJECTED rather than imported by signaling.js. server.js already
+// imports signaling.js, so signaling.js importing back would be a circular import —
+// and with ESM hoisting the model would still be undefined at evaluation time.
+// Passing them in is explicit, avoids the cycle, and makes signaling.js testable
+// with fakes (no database needed to exercise the authorization logic).
+attachSignaling(server, { CallSession, resolveCallTarget, createNotification });   // must run BEFORE listen()
+server.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); });
