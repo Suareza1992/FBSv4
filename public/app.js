@@ -3088,6 +3088,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return isNaN(n) ? null : n;
     };
 
+    // A <input type="date"> speaks YYYY-MM-DD in LOCAL time. toISOString() converts
+    // to UTC first, which in Puerto Rico (UTC-4) shows the PREVIOUS day for anything
+    // published before 20:00. Build the string from the local parts instead.
+    const toDateInput = (v) => {
+        if (!v) return '';
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return '';
+        const p = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+
     // ── Live-session history ────────────────────────────────────────────────
     const CALL_STATUS = {
         ended:    { label: 'Completada', icon: 'fa-phone',        cls: 'text-green-400' },
@@ -16615,6 +16626,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         getEl('blog-input-excerpt').value  = post.excerpt || '';
                         getEl('blog-input-content').value  = post.content || '';
                         getEl('blog-input-published').checked = !!post.published;
+                        getEl('blog-input-date').value = toDateInput(post.publishedAt);
                         window._blogSetCover?.(post.coverImage || '', post.coverPos, post.coverZoom);
                         getEl('blog-form-section').classList.remove('hidden');
                         getEl('blog-input-title').focus();
@@ -16647,6 +16659,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 getEl('blog-input-excerpt').value  = '';
                 getEl('blog-input-content').value  = '';
                 getEl('blog-input-published').checked = false;
+                getEl('blog-input-date').value = '';   // empty = "use today"
                 window._blogSetCover?.('');   // don't carry a cover over from the last edit
                 getEl('blog-form-section').classList.remove('hidden');
                 getEl('blog-input-title').focus();
@@ -16802,6 +16815,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // ── Save / publish button ─────────────────────────────────────────────
         const saveBtn = getEl('blog-save-btn');
+        getEl('blog-date-today')?.addEventListener('click', () => {
+            const el = getEl('blog-input-date');
+            if (el) el.value = toDateInput(new Date());
+        });
+
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
                 const title   = getEl('blog-input-title').value.trim();
@@ -16809,8 +16827,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const excerpt = getEl('blog-input-excerpt').value.trim();
                 const content = getEl('blog-input-content').value.trim();
                 const published = getEl('blog-input-published').checked;
+                const pubDate = getEl('blog-input-date')?.value || '';
 
                 if (!title)   { showToast('El título es obligatorio.', 'error'); return; }
+                if (pubDate && isNaN(new Date(pubDate).getTime())) {
+                    showToast('La fecha de publicación no es válida.', 'error'); return;
+                }
                 if (!content) { showToast('El contenido no puede estar vacío.', 'error'); return; }
 
                 saveBtn.disabled = true;
@@ -16822,6 +16844,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         method,
                         body: JSON.stringify({
                             title, category, excerpt, content, published,
+                            // Omitted entirely when blank, so the server keeps the
+                            // existing date rather than being handed an empty string.
+                            ...(pubDate ? { publishedAt: pubDate } : {}),
                             coverImage: window._blogGetCover?.() || '',
                             coverPos:   window._blogGetCoverPos?.()  || '50% 50%',
                             coverZoom:  window._blogGetCoverZoom?.() || 1,

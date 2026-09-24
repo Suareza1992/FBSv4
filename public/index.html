@@ -1025,10 +1025,15 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
             const _lang = window.__fbsLang === 'en' ? 'en-US' : 'es-PR';
             const _dOpts = { year: 'numeric', month: 'long', day: 'numeric' };
             const _pub = post.publishedAt ? new Date(post.publishedAt) : null;
-            const _upd = post.updatedAt ? new Date(post.updatedAt) : null;
+            // contentUpdatedAt, NOT updatedAt. updatedAt bumps on any write at all —
+            // a cover repositioned, a category renamed, a schema migration touching
+            // every document — and using it told readers articles had been revised
+            // when only the database had changed. Only a real edit to the title,
+            // excerpt or body sets contentUpdatedAt.
+            const _upd = post.contentUpdatedAt ? new Date(post.contentUpdatedAt) : null;
             let dateStr = _pub ? _pub.toLocaleDateString(_lang, _dOpts) : '';
-            // Append an "updated" date only when the post was edited meaningfully after
-            // publishing (>5 min later), so the publish moment / quick fixes don't flag it.
+            // Still require a meaningful gap, so fixing a typo minutes after
+            // publishing doesn't brand the piece as revised.
             if (_pub && _upd && (_upd - _pub > 5 * 60 * 1000)) {
               const _updLabel = window.__fbsLang === 'en' ? 'Updated' : 'Actualizado';
               dateStr += ` · ${_updLabel} ${_upd.toLocaleDateString(_lang, _dOpts)}`;

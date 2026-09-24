@@ -783,6 +783,16 @@ const BlogPostSchema = new mongoose.Schema({
     content:     { type: String, required: true },
     published:   { type: Boolean, default: false },
     publishedAt: { type: Date },
+    // Why this exists separately from the automatic `updatedAt`:
+    // `updatedAt` bumps on ANY write — a cover repositioned, a category renamed,
+    // a schema migration backfilling a new field. Two posts here both read
+    // 2026-09-03 00:13 to the minute because adding coverPos/coverZoom touched
+    // every document, and the public site then told readers both articles had
+    // been revised that day. They had not.
+    //
+    // `updatedAt` is a database fact. "Actualizado" is an editorial claim. Only a
+    // change to the title, excerpt or body sets this one.
+    contentUpdatedAt: { type: Date, default: null },
 }, { timestamps: true });
 const BlogPost = mongoose.model('BlogPost', BlogPostSchema);
 
@@ -5799,6 +5809,20 @@ app.post('/api/stripe/subscription/cancel', authenticateToken, authorizeRoles('t
 // --- BLOG ROUTES (must be before the catch-all GET * below) ---
 // ==========================================================================
 
+// Accepts "2026-05-25" from a date input, or a full ISO string. Anything
+// unparseable returns null so the caller falls back to its default rather than
+// writing an Invalid Date into the document.
+const parseDateInput = (v) => {
+    if (!v) return null;
+    // A bare YYYY-MM-DD parses as UTC midnight, which displays as the PREVIOUS day
+    // anywhere west of Greenwich — including Puerto Rico. Pin it to local noon so
+    // the date a trainer picks is the date every reader sees.
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(String(v).trim())
+        ? new Date(`${String(v).trim()}T12:00:00`)
+        : new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+};
+
 // GET /api/blog — public: all published posts (newest first)
 app.get('/api/blog', async (req, res) => {
     try {
@@ -5866,7 +5890,7 @@ app.post('/api/blog', authenticateToken, async (req, res) => {
     if (req.user.role !== 'trainer' && req.user.role !== 'admin')
         return res.status(403).json({ message: 'Acceso restringido.' });
     try {
-        const { title, category, excerpt, content, published, coverImage, coverPos, coverZoom } = req.body;
+        const { title, category, excerpt, content, published, coverImage, coverPos, coverZoom, publishedAt } = req.body;
         const slug = title.toLowerCase()
             .normalize('NFD').replace(/[̀-ͯ]/g, '')
             .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -5878,7 +5902,9 @@ app.post('/api/blog', authenticateToken, async (req, res) => {
             coverImage: coverImage || '',
             coverPos:  coverPos  || '50% 50%',
             coverZoom: Number(coverZoom) || 1,
-            publishedAt: published ? new Date() : null,
+            // An explicit date wins — lets a back-dated import or a correction keep
+            // its real publication date instead of "whenever it was typed in".
+            publishedAt: published ? (parseDateInput(publishedAt) || new Date()) : null,
         });
         await post.save();
         res.status(201).json(post);
@@ -5890,11 +5916,20 @@ app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
     if (req.user.role !== 'trainer' && req.user.role !== 'admin')
         return res.status(403).json({ message: 'Acceso restringido.' });
     try {
-        const { title, category, excerpt, content, published, coverImage, coverPos, coverZoom } = req.body;
+        const { title, category, excerpt, content, published, coverImage, coverPos, coverZoom, publishedAt } = req.body;
         const existing = await BlogPost.findById(req.params.id);
         if (!existing) return res.status(404).json({ message: 'Post no encontrado.' });
 
         const update = { title, category, content, published: !!published };
+
+        // Did the READER-FACING text actually change? Cover framing, category and
+        // publish-toggle edits are not a revision and must not flag the article as
+        // updated on the public site.
+        const contentChanged =
+            (title   !== undefined && title   !== existing.title) ||
+            (content !== undefined && content !== existing.content) ||
+            (excerpt !== undefined && excerpt !== existing.excerpt);
+        if (contentChanged) update.contentUpdatedAt = new Date();
         // Only touch the cover when the caller sends the field, so an edit that
         // omits it doesn't silently wipe an existing image.
         if (coverImage !== undefined) update.coverImage = coverImage;
@@ -5902,10 +5937,13 @@ app.patch('/api/blog/:id', authenticateToken, async (req, res) => {
         if (coverZoom  !== undefined) update.coverZoom = Math.min(3, Math.max(0.3, Number(coverZoom) || 1));
         if (excerpt !== undefined) update.excerpt = excerpt;
         else if (content) update.excerpt = content.slice(0, 160).replace(/\n/g, ' ');
-        // Preserve the ORIGINAL publish date — only stamp it the first time the post
-        // goes live. Subsequent edits leave publishedAt untouched (updatedAt auto-bumps
-        // via timestamps), so we keep both dates for clarity/honesty.
-        if (published && !existing.publishedAt) update.publishedAt = new Date();
+        // Publication date:
+        //  - an explicit date from the editor always wins (corrections, back-dating)
+        //  - otherwise stamp it only the FIRST time the post goes live
+        //  - an ordinary edit never touches it
+        const explicitDate = parseDateInput(publishedAt);
+        if (explicitDate) update.publishedAt = explicitDate;
+        else if (published && !existing.publishedAt) update.publishedAt = new Date();
 
         const post = await BlogPost.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
         res.json(post);

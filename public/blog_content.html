@@ -41,6 +41,26 @@
         placeholder="Ej. Nutrición, Entrenamiento, Mentalidad…" value="General">
     </div>
 
+    <!-- Publication date -->
+    <div>
+      <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">
+        Fecha de publicación
+        <span class="font-normal normal-case opacity-60">(déjala vacía para usar la fecha de hoy)</span>
+      </label>
+      <div class="flex items-center gap-3 flex-wrap">
+        <input id="blog-input-date" type="date"
+          class="bg-[#0D0D0D] border border-fbs-gold/20 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-fbs-gold/60 transition"
+          style="color-scheme:dark">
+        <button type="button" id="blog-date-today"
+          class="text-xs font-bold text-fbs-gold/50 hover:text-fbs-gold border border-fbs-gold/20 hover:border-fbs-gold/50 rounded-full px-3 py-1.5 transition">
+          Hoy
+        </button>
+      </div>
+      <p class="text-[11px] text-fbs-gold/35 mt-2">
+        Editar el artículo no cambia esta fecha. Cámbiala aquí si quieres corregirla.
+      </p>
+    </div>
+
     <!-- Excerpt (optional short teaser) -->
     <div>
       <label class="block text-xs font-bold text-fbs-gold/60 uppercase tracking-wider mb-2">

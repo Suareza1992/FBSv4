@@ -2062,3 +2062,62 @@ re-render on every state change and must not jump to the front each time.
 bottom-right toast container (`9999`), so neither is ever covered.
 
 `showToast()` is unchanged: it stacks vertically at bottom-**right** and never collided with these.
+
+---
+
+## 24. Blog dates: publication vs revision
+
+**Reported (2026-09-24):** "when I edit the blogs, the publication date gets updated."
+
+**What was actually happening.** `publishedAt` was never changing — the PATCH route already
+preserved it. The live data showed it stable since June. What readers saw was the appended
+**"· Actualizado 3 sept 2026"**, driven by Mongoose's automatic `updatedAt`.
+
+And that date was not an edit. Both older posts carried `updatedAt: 2026-09-03 00:13` **identical
+to the minute** — a schema migration (the `coverPos` / `coverZoom` addition) had touched every
+document, and the public site duly announced that two articles had been revised that day.
+
+> **`updatedAt` is a database fact. "Actualizado" is an editorial claim.** Any write bumps the
+> first: a cover repositioned, a category renamed, a migration backfilling a field. Only a change
+> to what the reader reads should bump the second. Conflating them makes the site lie.
+
+### The fix
+
+**New field `contentUpdatedAt`**, set only when `title`, `excerpt` or `content` actually differ:
+
+```js
+const contentChanged =
+    (title   !== undefined && title   !== existing.title) ||
+    (content !== undefined && content !== existing.content) ||
+    (excerpt !== undefined && excerpt !== existing.excerpt);
+if (contentChanged) update.contentUpdatedAt = new Date();
+```
+
+`index.html` reads `post.contentUpdatedAt` for the "Actualizado" suffix instead of `updatedAt`.
+Existing posts have it `null`, so the label simply disappears until a genuine edit — which is the
+correct state for two posts whose only "change" was a migration.
+
+**`publishedAt` is now editable.** A date field in the blog editor (`blog_content.html`), with a
+"Hoy" shortcut. Precedence in the PATCH route:
+
+1. An explicit date from the editor always wins — corrections and back-dating
+2. Otherwise stamp it only the **first** time the post goes live
+3. An ordinary edit never touches it
+
+### The timezone trap, twice
+
+> ⚠️ **A bare `YYYY-MM-DD` parses as UTC midnight.** `new Date('2026-05-25')` is
+> `2026-05-25T00:00:00Z`, which in Puerto Rico (UTC-4) is **24 May at 20:00** — so picking 25 May
+> would publish the post dated the 24th. `parseDateInput()` pins bare dates to local noon.
+
+> ⚠️ **`toISOString().slice(0,10)` is wrong for filling a `<input type="date">.`** The input
+> speaks LOCAL time; `toISOString` converts to UTC first. A post published 25 May at 23:30 in
+> Puerto Rico is 26 May in UTC, so the editor would show the wrong day and silently save it back.
+> `toDateInput()` builds the string from `getFullYear()/getMonth()/getDate()`.
+
+Both directions verified: a 23:30 local post round-trips as 25 May, where the naive version
+returns 26 May.
+
+**Verified:** 14/14 server (back-dating, body edit preserves the date, cover/category edits are not
+revisions, unpublish→republish preserves, garbage dates ignored) + 12/12 UI. The test created and
+then deleted its own post; no test data left behind.
