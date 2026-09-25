@@ -117,7 +117,11 @@ const MUSCLE = [
   [/oblique|side plank|woodchop|russian twist|side bend/,                       'obliques'],
   [/hip flexor|leg raise|knee raise|\bl[- ]?sit\b/,                             'hip_flexors'],
   [/plank|crunch|sit[- ]?up|hollow|dead ?bug|ab wheel|toes to bar|flutter|bicycle|\babs?\b|knees? to (elbow|chest)|knee tuck|v[- ]?up|windshield|dragon flag|scissors/, 'abs'],
-  [/hip thrust|glute|bridge|kickback|hip extension|abduction|clam|hip raise|pull ?through|hip airplane/, 'glutes'],
+  // Before glutes: abduction used to land on 'glutes' (defensible — gluteus medius)
+  // only because the taxonomy had no abductors. It does now.
+  [/adduction|adductor|inner thigh|aductor|copenhagen/,                        'adductors'],
+  [/abduction|abductor|outer thigh|clam|monster walk|banded walk/,             'abductors'],
+  [/hip thrust|glute|bridge|kickback|hip extension|hip raise|pull ?through|hip airplane/, 'glutes'],
   [/leg curl|hamstring|romanian|rdl|nordic|deadlift/,                           'hamstrings'],
   [/squat|leg press|leg extension|lunge|step[- ]?up|step[- ]?down|split squat|sissy|hack|prensa/, 'quads'],
   [/calf|calve|gastroc|soleus|pantorrilla/,                                     'calves'],
@@ -211,6 +215,17 @@ for (const ex of all) {
     if (empty && !isEmpty(d[f])) patch[f] = d[f];
     if (f === 'unilateral' && empty) patch[f] = d[f];    // always settle the boolean
   }
+  // Consistency repair, NOT an overwrite: if the primary muscle also appears in
+  // secondaryMuscles it would be double-counted in weekly volume. This happens
+  // when someone corrects the primary by hand — the secondaries were derived
+  // against the OLD primary and the library UI does not manage them. Removing
+  // the duplicate honours the human's choice rather than contradicting it.
+  const secs = ex.secondaryMuscles || [];
+  const primary = patch.muscleGroupId ?? ex.muscleGroupId;
+  if (primary && secs.includes(primary)) {
+      patch.secondaryMuscles = (patch.secondaryMuscles ?? secs).filter(m => m !== primary);
+  }
+
   if (Object.keys(patch).length) planned.push({ _id: ex._id, name: ex.name, patch });
   if (!d.pattern)            noPattern.push(ex.name);
   if (!d.muscleGroupId)      noMuscle.push(ex.name);
