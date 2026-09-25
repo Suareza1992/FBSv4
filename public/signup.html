@@ -51,6 +51,20 @@
     button:disabled { opacity: .6; cursor: default; }
     button.paypal { background: #ffc439; color: #003087; margin-top: 10px; }
     button.paypal strong { font-weight: 800; }
+    button.ath { background: #E8542F; color: #fff; margin-top: 10px; }
+    button.ath strong { font-weight: 800; }
+    .ath-panel { margin-top: 18px; padding: 18px; border: 1px solid rgba(255,219,137,.25);
+                 border-radius: 14px; background: rgba(255,219,137,.05); text-align: left; }
+    .ath-panel h3 { margin: 0 0 12px; color: #FFDB89; font-size: 16px; }
+    .ath-step { display: flex; gap: 10px; align-items: baseline; margin: 0 0 10px;
+                color: #ddd; font-size: 14px; line-height: 1.45; }
+    .ath-step > span:first-child { flex: 0 0 22px; height: 22px; border-radius: 999px;
+                background: rgba(255,219,137,.15); color: #FFDB89; font-weight: 800;
+                font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
+    .ath-code { font: 800 22px/1 ui-monospace, monospace; letter-spacing: 2px; color: #FFDB89;
+                background: #0D0D0D; border: 1px dashed rgba(255,219,137,.4); border-radius: 10px;
+                padding: 14px; text-align: center; margin: 4px 0 14px; user-select: all; }
+    .ath-note { color: rgba(255,219,137,.45); font-size: 12px; margin: 10px 0 0; }
     .msg { padding: 14px; border-radius: 10px; font-size: 14px; margin-bottom: 18px; line-height: 1.5; }
     .msg.err { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.4); color: #fca5a5; }
     .msg.ok  { background: rgba(52,211,153,0.1);  border: 1px solid rgba(52,211,153,0.4); color: #6ee7b7; }
@@ -89,9 +103,26 @@
         <input id="email" type="email" placeholder="tu@correo.com" autocomplete="email" />
         <button id="submit">Pagar con tarjeta</button>
         <button id="paypal" class="paypal">Pagar con <strong>PayPal</strong></button>
+        <button id="athmovil" class="ath">Pagar con <strong>ATH Móvil</strong></button>
       </div>
 
-      <div class="foot">Pago seguro con Stripe o PayPal · ¿Ya tienes cuenta? <a href="/">Inicia sesión</a></div>
+      <!-- ATH Móvil: shown after the request is created. Deliberately manual —
+           ATH Móvil has no self-serve API without a merchant account, so the
+           client transfers with a reference code and the trainer confirms. -->
+      <div id="ath-panel" class="ath-panel" hidden>
+        <h3>Pago por ATH Móvil</h3>
+        <p class="ath-step"><span>1</span> Envía <strong id="ath-amount"></strong> a <strong id="ath-handle"></strong><span id="ath-phone-wrap" hidden> (o al <strong id="ath-phone"></strong>)</span></p>
+        <p class="ath-step"><span>2</span> Escribe este código en el mensaje del pago:</p>
+        <div class="ath-code" id="ath-ref"></div>
+        <p class="ath-step"><span>3</span> Pulsa el botón de abajo. Verificamos el pago y te enviamos el correo para activar tu cuenta.</p>
+        <p class="ath-note" id="ath-recurring" hidden>
+          Este plan es mensual. Por ATH Móvil el cobro <strong>no se renueva solo</strong> — te avisaremos cada mes.
+        </p>
+        <button id="ath-claim">Ya envié el pago</button>
+        <p class="ath-note">Tu cuenta se crea cuando confirmemos el pago, normalmente el mismo día.</p>
+      </div>
+
+      <div class="foot">Pago seguro con Stripe, PayPal o ATH Móvil · ¿Ya tienes cuenta? <a href="/">Inicia sesión</a></div>
     </div>
   </div>
 
@@ -214,6 +245,55 @@
 
     document.getElementById('paypal').addEventListener('click', (e) =>
       startPayment('/api/signup/paypal/create', e.currentTarget, 'Redirigiendo a PayPal…', 'Pagar con <strong>PayPal</strong>', 'approveUrl'));
+
+    // ── ATH Móvil ─────────────────────────────────────────────────────────────
+    let athRef = null;
+    document.getElementById('athmovil').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const payload = collectForm();
+      if (!payload) return;
+      btn.disabled = true; btn.textContent = 'Preparando…';
+      try {
+        const res = await fetch('/api/signup/athmovil', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'No se pudo iniciar el pago.');
+        athRef = data.ref;
+        document.getElementById('ath-amount').textContent = '$' + data.amount;
+        document.getElementById('ath-handle').textContent = data.handle;
+        document.getElementById('ath-ref').textContent    = data.ref;
+        if (data.phone) {
+          document.getElementById('ath-phone').textContent = data.phone;
+          document.getElementById('ath-phone-wrap').hidden = false;
+        }
+        document.getElementById('ath-recurring').hidden = !data.recurring;
+        document.getElementById('ath-panel').hidden = false;
+        document.getElementById('ath-panel').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (err) {
+        showErr(err.message);
+      } finally {
+        btn.disabled = false; btn.innerHTML = 'Pagar con <strong>ATH Móvil</strong>';
+      }
+    });
+
+    document.getElementById('ath-claim').addEventListener('click', async (e) => {
+      if (!athRef) return;
+      const btn = e.currentTarget;
+      btn.disabled = true; btn.textContent = 'Enviando…';
+      try {
+        await fetch('/api/signup/athmovil/claim', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ref: athRef }),
+        });
+        btn.textContent = '✓ Aviso enviado';
+        document.getElementById('ath-panel').insertAdjacentHTML('beforeend',
+          '<p class="ath-note" style="color:#4ade80">Recibimos tu aviso. Te escribiremos al confirmar el pago.</p>');
+      } catch {
+        btn.disabled = false; btn.textContent = 'Ya envié el pago';
+      }
+    });
   </script>
 </body>
 </html>

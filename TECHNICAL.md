@@ -2121,3 +2121,205 @@ returns 26 May.
 **Verified:** 14/14 server (back-dating, body edit preserves the date, cover/category edits are not
 revisions, unpublish→republish preserves, garbage dates ignored) + 12/12 UI. The test created and
 then deleted its own post; no test data left behind.
+
+---
+
+## 25. Routine generator — Phase 1: library enrichment
+
+The generator is deliberately **deterministic**: no AI at runtime. A routine is a
+constraint-satisfaction problem, and a filter that *guarantees* it never picks an exercise using
+equipment a client lacks beats a model that *usually* doesn't. It's also instant, free, offline-
+capable, reproducible, and can explain every pick.
+
+**The bottleneck was never the algorithm — it was the data.** Survey of the live library before
+this phase:
+
+```
+exercises ................ 261
+  has a video ............ 261 (100%)
+  tagged with a muscle ...   0 (  0%)   <- muscleGroupId empty on every document
+  tagged push/pull .......   2 (  1%)
+```
+
+The rich `MUSCLES` taxonomy in `app.js` (20+ muscles with group, push/pull type, origin,
+insertion, neighbours) was entirely unused. Only `category` was populated, and it mixes body parts
+("Piernas"), individual muscles ("Quadriceps") and movement patterns ("Empuje") in one flat list.
+
+### New Exercise fields
+
+| Field | Values | Why the generator needs it |
+|---|---|---|
+| `pattern` | squat, hinge, lunge, push_h, push_v, pull_h, pull_v, carry, core, rotation, isolation, mobility, cardio | Split templates are built from **patterns**, not muscles — "every session needs a hinge and a horizontal push" is how programming actually works |
+| `role` | compound / accessory / isolation | Ordering within a session, and the set/rep prescription |
+| `equipment` | `[String]` | Filter by what the client owns |
+| `unilateral` | Boolean | Affects set counts and session length |
+| `secondaryMuscles` | `[String]` | Weekly volume accounting |
+
+`muscleGroupId` already existed; it is finally populated.
+
+### The equipment vocabulary is not arbitrary
+
+Tokens mirror the **client** equipment object exactly — `dumbbells[]`, `plates[]`,
+`kettlebells[]`, `cables[]`, `stations.{barra,banco,prensa,squat}`,
+`other.{bands,trx,mat,pullup,treadmill,bike,row,box}` — so the generator answers "does this client
+own what this exercise needs?" with a direct lookup and no translation layer. Picking the
+vocabulary that matches data you already collect is most of the design work.
+
+### `scripts/enrich-exercises.mjs`
+
+Same conventions as `tag-exercises.mjs` (which fills `category` and is untouched):
+
+```bash
+node scripts/enrich-exercises.mjs                 # DRY RUN — prints, writes nothing
+node scripts/enrich-exercises.mjs --gaps          # list only what NO rule matched
+node scripts/enrich-exercises.mjs --field=pattern # one field at a time
+node scripts/enrich-exercises.mjs --apply         # write
+```
+
+Everything is derived from the exercise **name**. "Barbell Bench Press" already contains every
+fact required — deriving it once, offline, into columns is what keeps the generator pure.
+
+**Coverage after three rule-tightening passes:**
+
+| | first pass | after tightening |
+|---|---|---|
+| pattern | 88% | **100%** |
+| primary muscle | 79% | **90%** |
+| equipment | 66% | 67% |
+
+The remaining 27 with no muscle are stretches, mobility drills, warm-ups and conditioning
+(Foam Roll, Cat Cow, Burpees, Pogo Jumps, Side Shuffles) — things with no single prime mover.
+That is the correct answer, not a gap. Exercises with no equipment tokens need no equipment.
+
+Three rules from the final pass are worth noting because they encode real programming judgement
+rather than just matching a word:
+
+```js
+// A bridge IS a hip hinge — so "Glute Bridge" and "Hip Bridge and Reach" land in
+// the hinge slot, not in isolation.
+[/…|hip hinge|bridge|…/, 'hinge'],
+
+// A thruster is a front squat into an overhead press; the PRESS is what defines
+// the upper-body pattern it fills.
+[/…|push press|thruster|…/, 'push_v'],
+
+// warm-up / massage / balance drills resolve to mobility, and this rule sits
+// BEFORE the isolation rule — so "Rotator Cuff Warm Up" becomes mobility rather
+// than a working isolation set, which is what it actually is in a session.
+[/…|warm ?up|massage gun|percussion|airplane|reach over/, 'mobility'],
+```
+
+Verified with 20 spot checks that the broader rules did not steal anything: `Jump Squat` is still
+`squat` (not `cardio`), `Box Jump` is `cardio`, `Flat Bench Press` is still `push_h/chest`.
+
+> **Data finding:** the library contains both **`Reverse Threadmill Walk`** and **`Reverse
+> Treadmill Walk`** — the same exercise entered twice, one with a typo. The cardio rule matches
+> both spellings so neither is left untagged, but the duplicate itself should be merged.
+
+Two rules did most of the lifting:
+
+```js
+// A bare "press" that reached here is not overhead (push_v matched first) and not
+// a leg press (squat matched first) — so it is a horizontal push. Catches
+// "Incline Dumbbell Press", "Decline Press", "Machine Press"…
+[/\bpress(es)?\b/, 'push_h'],
+
+// A name rule is always preferred, but a pattern already implies its prime mover.
+const PATTERN_MUSCLE = { push_h:'chest', push_v:'shoulders', pull_v:'lats', ... };
+```
+
+### Safety contract — proven, not asserted
+
+Verified against a throwaway collection so the real library was never touched (14/14):
+
+- **Only fills empty fields.** A hand-set `muscleGroupId: 'glutes'` on a Romanian Deadlift survives
+  even though the rule would say `hamstrings` — while the empty fields beside it are still filled.
+- **Safe to re-run.** A second `--apply` writes zero documents and changes nothing.
+- **`--field=` is isolated.** Filling `pattern` leaves `role` untouched.
+- `ENRICH_COLLECTION` is a documented test seam that points the script at a scratch collection.
+
+> ⚠️ **Not applied to production.** The script is dry-run by default for a reason: 261 documents
+> is a large write and the tags deserve a read-through first. Run `--gaps`, then `--apply`.
+
+### Known taxonomy gap
+
+After the final pass this is the **only** exercise a rule genuinely cannot resolve:
+`MUSCLES` has no **adductors** or **abductors**, so "Machine Adductions" cannot be tagged
+correctly. `abduction` currently maps to `glutes` (anatomically defensible — gluteus medius);
+adduction has no home. Add both ids to `MUSCLES` before Phase 4 if adductor work should be
+programmable.
+
+### What Phase 1 does NOT include
+
+No generator yet. Next: split templates (Phase 3), the slot-filling engine with equipment and
+injury filters (Phase 4), the prescription table (Phase 5), and a trainer UI that **pre-fills the
+existing builder for review** rather than writing programs directly (Phase 6).
+
+---
+
+## 26. Why Stripe — and what it costs
+
+### The honest history
+
+**No formal comparison was ever made.** Searched for it on 2026-09-25 and found nothing: the
+commit is `ac0a97d "Stripe integration."` (3 May 2026) with an empty body, and neither
+`TECHNICAL.md`, `README.md`, `ADMIN-GUIDE.md` nor `docs/05-self-serve-signup-and-payments.md`
+records a rationale. Stripe was the default reach, not the winner of an evaluation.
+
+Written down now so the question has an answer next time.
+
+**Native PayPal was added later (June 2026) for two specific reasons**, and this *is* recorded —
+in `docs/05`:
+
+> *"PayPal-through-Stripe takes Stripe's cut and is region-limited for subscriptions. A native
+> integration sends money straight to the trainer's PayPal."*
+
+So the sequence was: Stripe first, then PayPal bolted on when paying Stripe's cut on PayPal
+transactions became annoying and Stripe's PayPal-for-subscriptions turned out not to cover the
+region.
+
+### Why it should stay
+
+Not inertia — the subscription plan depends on recurring billing being done well, which is
+Stripe's strongest area, and the webhook/provisioning layer is built around it. Switching would
+mean rebuilding exactly the part that most needs hardening
+(see `docs/PAYMENTS-LAUNCH-AUDIT.md`).
+
+### The part that isn't Stripe
+
+**ATH Móvil is not supported by Stripe**, and it is how a large share of clients in Puerto Rico
+actually pay. It is handled entirely outside the processor: a manual `Payment` record plus a
+payment handle on the trainer profile.
+
+So the real stack is **"Stripe for cards and subscriptions, manual for local methods."** That
+split does more work than the Stripe-vs-PayPal question ever did, and any future payments
+decision should start there.
+
+### Fee arithmetic
+
+To net `N` after a processor fee of `p` percent plus `f` fixed:
+
+```
+charge = (N + f) / (1 - p)
+```
+
+The intuition people get wrong: you cannot just add the percentage back. Adding 2.9% to $95 gives
+$97.76, which nets $94.73 — short, because the fee is charged on the *higher* amount.
+
+Rates used below (verify against your own dashboard; they change and vary by account):
+domestic card **2.9% + $0.30**, international **+1.5%**, Stripe Billing on recurring
+payments **+0.5%**.
+
+| To net $95/mo | Charge | Fee |
+|---|---|---|
+| Domestic card | **$98.15** | $3.15 |
+| Domestic + Billing 0.5% | **$98.66** | $3.65 |
+| International card | **$99.69** | $4.69 |
+| International + Billing | **$100.21** | $5.21 |
+
+At the current **$95.00** the trainer keeps **$91.94** domestic / $90.52 international.
+At the current one-time **$260**, keeps **$252.16** domestic.
+
+> ⚠️ **This is arithmetic, not pricing advice, and it ignores tax.** Puerto Rico IVU may apply to
+> personal-training services — confirm with an accountant before setting a public price. Stripe
+> Tax is not enabled.

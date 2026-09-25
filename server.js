@@ -352,7 +352,15 @@ const UserSchema = new mongoose.Schema({
     },
     waterGoal: { type: Number, default: 64 }, // oz per day
     paymentHandles: {
-        athMovil: { type: String, default: '' }, // ATH Móvil Business name / @handle
+        // Personal / current ATH Móvil — the name or handle a client searches for.
+        athMovil: { type: String, default: '' },
+        // The COMMERCIAL (ATH Móvil Business) account, for when one exists. Kept
+        // separate rather than overwriting the personal handle so both can be held
+        // during the switch-over. When set, this is what clients are shown.
+        athMovilBusiness: { type: String, default: '' },
+        // Optional: the phone number registered to the ATH Móvil account. Some
+        // clients find a number easier to use than a business name.
+        athMovilPhone: { type: String, default: '' },
         venmo:    { type: String, default: '' }, // Venmo @handle (without @)
         paypal:   { type: String, default: '' }, // PayPal.me username (without paypal.me/)
     },
@@ -474,6 +482,34 @@ const ExerciseSchema = new mongoose.Schema({
     origin: { type: String, default: "" },
     insertion: { type: String, default: "" },
     pushPull: { type: String, enum: ['push', 'pull', 'both', ''], default: "" },
+
+    // ── Routine-generator metadata ───────────────────────────────────────────
+    // Filled by scripts/enrich-exercises.mjs, which derives all of it from the
+    // exercise NAME. Everything here is optional: an untagged exercise is simply
+    // never auto-selected by the generator, it stays fully usable by hand.
+
+    // Movement pattern. Split templates are built from PATTERNS, not muscles —
+    // "every session needs a hinge and a horizontal push" is how programming
+    // actually works, and it's what keeps a generated week balanced.
+    pattern: {
+        type: String,
+        enum: ['squat', 'hinge', 'lunge', 'push_h', 'push_v', 'pull_h', 'pull_v',
+               'carry', 'core', 'rotation', 'isolation', 'mobility', 'cardio', ''],
+        default: ''
+    },
+    // Compounds lead a session and get lower reps / longer rest; isolation closes
+    // it out. Drives both ordering and the set/rep prescription.
+    role: { type: String, enum: ['compound', 'accessory', 'isolation', ''], default: '' },
+    // Tokens chosen to match the CLIENT equipment object exactly (dumbbells,
+    // plates, kettlebells, cables, stations.{barra,banco,prensa,squat},
+    // other.{bands,trx,mat,pullup,treadmill,bike,row,box}) so the generator can
+    // filter by what someone owns with no translation layer in between.
+    equipment: { type: [String], default: [] },
+    // Per-side work: affects set counts and session time.
+    unilateral: { type: Boolean, default: false },
+    // Muscles worked beyond muscleGroupId — used for weekly volume accounting.
+    secondaryMuscles: { type: [String], default: [] },
+
     lastUpdated: { type: Date, default: Date.now }
 });
 const Exercise = mongoose.model('Exercise', ExerciseSchema);
@@ -831,17 +867,51 @@ const PaymentSchema = new mongoose.Schema({
     paypalSaleId:            { type: String, default: null },       // per-cycle sale id (dedupes renewals)
 });
 PaymentSchema.index({ trainerId: 1, dueDate: -1 });
+// Every dedupe in the payment paths was check-then-act in application code:
+//   if (await Payment.findOne(dedupeQuery)) return;
+// Two concurrent webhook deliveries can both pass that check and both write.
+// These make the duplicate IMPOSSIBLE rather than unlikely — the second insert
+// throws instead of corrupting the ledger.
+//
+// ⚠️ PARTIAL, NOT SPARSE. `sparse` only skips documents where the field is
+// ABSENT, and these fields default to `null` in the schema — so null is a
+// present value and the SECOND manual invoice collides with the first on a
+// duplicate `null`. That took down invoice creation entirely the first time it
+// was tried. A $type:'string' partial filter indexes only real ids.
+const externalIdIndex = (field) => PaymentSchema.index(
+    { [field]: 1 },
+    { unique: true, partialFilterExpression: { [field]: { $type: 'string' } } }
+);
+externalIdIndex('stripeCheckoutSessionId');
+externalIdIndex('stripeInvoiceId');
+externalIdIndex('paypalOrderId');
+externalIdIndex('paypalSaleId');
 const Payment = mongoose.model('Payment', PaymentSchema);
 
 // Carries self-serve signup details across the PayPal approval redirect (TTL 24h).
 const PendingSignupSchema = new mongoose.Schema({
-    ref:       { type: String, required: true, unique: true }, // PayPal order id OR subscription id
-    kind:      { type: String, enum: ['order', 'subscription'], required: true },
+    ref:       { type: String, required: true, unique: true }, // PayPal order/subscription id, or an ATH Móvil code
+    kind:      { type: String, enum: ['order', 'subscription', 'athmovil'], required: true },
     name:      { type: String, default: '' },
     lastName:  { type: String, default: '' },
     email:     { type: String, required: true },
     planId:    { type: String, required: true },
+    // ── ATH Móvil (manual confirmation) ──────────────────────────────────────
+    // ATH Móvil has no self-serve API without a merchant account, so this path is
+    // deliberately manual: the client is shown a handle, an amount and a reference
+    // code; the trainer confirms once the transfer lands. NO account is created
+    // until then — same rule as every other path: pay first, provision second.
+    amount:    { type: Number, default: 0 },
+    // 'awaiting' -> the client says they sent it; the trainer has not confirmed.
+    status:    { type: String, enum: ['awaiting', 'confirmed', 'cancelled'], default: 'awaiting' },
+    claimedAt: { type: Date, default: null },   // when the client pressed "ya envié el pago"
     createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 },
+});
+// ATH Móvil requests must NOT be swept by the 24h TTL that exists for PayPal
+// redirects — a bank transfer can easily take longer than a day to be confirmed.
+PendingSignupSchema.index({ createdAt: 1 }, {
+    expireAfterSeconds: 60 * 60 * 24,
+    partialFilterExpression: { kind: { $in: ['order', 'subscription'] } },
 });
 const PendingSignup = mongoose.model('PendingSignup', PendingSignupSchema);
 
@@ -1325,6 +1395,8 @@ app.put('/api/me', authenticateToken, async (req, res) => {
         if (req.body.paymentHandles && req.user.role === 'trainer') {
             const ph = req.body.paymentHandles;
             if (ph.athMovil !== undefined) updates['paymentHandles.athMovil'] = ph.athMovil.trim();
+            if (ph.athMovilBusiness !== undefined) updates['paymentHandles.athMovilBusiness'] = ph.athMovilBusiness.trim();
+            if (ph.athMovilPhone !== undefined) updates['paymentHandles.athMovilPhone'] = ph.athMovilPhone.trim();
             if (ph.venmo    !== undefined) updates['paymentHandles.venmo']    = ph.venmo.replace('@', '').trim();
             if (ph.paypal   !== undefined) updates['paymentHandles.paypal']   = ph.paypal.trim();
         }
@@ -2552,6 +2624,23 @@ app.post('/api/personal-foods/:id/submit-community', authenticateToken, async (r
 // --- PROTECTED: Payments / Invoices ---
 // ==========================================================================
 
+// ── Money input validation ───────────────────────────────────────────────────
+// One place, because both the manual-invoice route and the Stripe checkout route
+// take a caller-supplied amount and both were accepting anything Number() would
+// swallow — including negatives, zero, NaN and values that overflow Stripe.
+const MAX_INVOICE_USD = 50000;   // a sanity bound, not a limit anyone legitimately hits
+const parseAmountUSD = (raw) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n))  return { ok: false, message: 'El monto no es un número válido.' };
+    if (n <= 0)               return { ok: false, message: 'El monto debe ser mayor que cero.' };
+    if (n > MAX_INVOICE_USD)  return { ok: false, message: `El monto no puede exceder $${MAX_INVOICE_USD.toLocaleString()}.` };
+    // Round to cents. A stray 99.999 would otherwise be stored as-is and become
+    // 10000 cents at Stripe — a silent one-cent discrepancy per invoice.
+    const cents = Math.round(n * 100);
+    if (cents < 1) return { ok: false, message: 'El monto debe ser al menos $0.01.' };
+    return { ok: true, amount: cents / 100 };
+};
+
 // GET all payments for the trainer (with client name populated)
 app.get('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
@@ -2589,10 +2678,22 @@ app.get('/api/payments/mine', authenticateToken, async (req, res) => {
 app.post('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { clientId, amount, periodLabel, dueDate, notes } = req.body;
-        if (!clientId || !amount || !dueDate) return res.status(400).json({ message: 'clientId, amount y dueDate son requeridos' });
+        if (!clientId || amount === undefined || !dueDate) {
+            return res.status(400).json({ message: 'clientId, amount y dueDate son requeridos' });
+        }
+        // S2 — the invoice must be for one of YOUR clients. Without this a trainer
+        // could bill another trainer's client, and that client would see the
+        // invoice in their own /api/payments/mine feed.
+        if (!mongoose.isValidObjectId(clientId)) return res.status(400).json({ message: 'Cliente inválido.' });
+        if (!(await canTouchClient(req, clientId))) return res.status(403).json({ message: 'Forbidden' });
+
+        // S3 — reject negative, zero, NaN and absurd amounts.
+        const money = parseAmountUSD(amount);
+        if (!money.ok) return res.status(400).json({ message: money.message });
+
         const payment = new Payment({
             clientId, trainerId: req.user.id,
-            amount: Number(amount), periodLabel: periodLabel || '', dueDate, notes: notes || ''
+            amount: money.amount, periodLabel: periodLabel || '', dueDate, notes: notes || ''
         });
         await payment.save();
         res.status(201).json(payment);
@@ -2605,6 +2706,13 @@ app.patch('/api/payments/:id', authenticateToken, authorizeRoles('trainer', 'adm
         const allowed = ['status', 'method', 'paidDate', 'amount', 'dueDate', 'periodLabel', 'notes'];
         const updates = {};
         for (const key of allowed) { if (req.body[key] !== undefined) updates[key] = req.body[key]; }
+        // Editing an invoice obeys the same money rules as creating one — otherwise
+        // the validation on POST is trivially bypassed with a PATCH.
+        if (updates.amount !== undefined) {
+            const money = parseAmountUSD(updates.amount);
+            if (!money.ok) return res.status(400).json({ message: money.message });
+            updates.amount = money.amount;
+        }
         // Auto-set paidDate when marking paid
         if (updates.status === 'paid' && !updates.paidDate) {
             updates.paidDate = new Date().toISOString().split('T')[0];
@@ -2649,11 +2757,16 @@ app.post('/api/payments/:id/invoice', authenticateToken, authorizeRoles('trainer
 
         // Build payment method links
         const payLinks = [];
-        if (handles.athMovil) payLinks.push(`
+        // The commercial (Business) account wins when it exists; the personal handle
+        // is the fallback, so invoices keep working during the switch-over.
+        const athHandle = (handles.athMovilBusiness || handles.athMovil || '').trim();
+        const athPhone  = (handles.athMovilPhone || '').trim();
+        if (athHandle) payLinks.push(`
             <tr>
                 <td style="padding:12px 16px;border-bottom:1px solid #333;">
                     <strong style="color:#FFDB89;">ATH Móvil</strong><br>
-                    <span style="color:#ccc;">Busca <strong>${handles.athMovil}</strong> en ATH Móvil Business y envía $${amount}</span>
+                    <span style="color:#ccc;">Busca <strong>${athHandle}</strong> en ATH Móvil y envía $${amount}</span>
+                    ${athPhone ? `<br><span style="color:#888;font-size:13px;">o al teléfono <strong>${athPhone}</strong></span>` : ''}
                 </td>
             </tr>`);
         if (handles.venmo) payLinks.push(`
@@ -5209,7 +5322,7 @@ const getOrCreateStripeCustomer = async (clientUser) => {
 // EDIT these to match your real offering. `mode` is 'subscription' (recurring
 // monthly) or 'payment' (one-time). Amounts are in USD.
 const SIGNUP_PLANS = [
-    { id: 'monthly',       label: 'Coaching mensual',  amount: 95,  mode: 'subscription', blurb: 'Entrenamiento + nutrición personalizados, con ajustes cada semana. Se renueva cada mes.' },
+    { id: 'monthly',       label: 'Coaching mensual',  amount: 99,  mode: 'subscription', blurb: 'Entrenamiento + nutrición personalizados, con ajustes cada semana. Se renueva cada mes.' },
     {
         id: 'progressions3', label: '3 Progresiones', amount: 260, mode: 'payment',
         blurb: 'Tres progresiones de programa completas en un solo pago. Sin renovación.',
@@ -5372,6 +5485,154 @@ app.post('/api/signup/checkout', authLimiter, async (req, res) => {
         console.error('Signup checkout error:', e);
         res.status(500).json({ message: e.message || 'Error iniciando el pago.' });
     }
+});
+
+// ── ATH Móvil (manual confirmation) ──────────────────────────────────────────
+// ATH Móvil has no self-serve payment API without a merchant (Business) account,
+// so this path cannot be automated the way Stripe and PayPal are. It is honest
+// about that: the client is given a handle, an amount and a reference code, and
+// the trainer confirms once the transfer actually lands.
+//
+// Crucially it keeps the same rule as every other path — NO account is created
+// until the money is confirmed. A PendingSignup holds the details in the meantime.
+//
+// When a real ATH Móvil Business account exists, the confirm step becomes an API
+// call and the rest of this flow is unchanged.
+
+/** Who collects the money, and under which handle. */
+const athMovilPayee = async () => {
+    const trainer = await User.findOne({ isSuperadmin: true }).select('paymentHandles name').lean()
+                 || await User.findOne({ role: { $in: ['trainer', 'admin'] } }).select('paymentHandles name').lean();
+    const ph = trainer?.paymentHandles || {};
+    // The commercial account wins when present — that is the whole point of
+    // keeping it in its own field.
+    const handle = (ph.athMovilBusiness || ph.athMovil || '').trim();
+    return { trainer, handle, phone: (ph.athMovilPhone || '').trim() };
+};
+
+// Unambiguous by design: no 0/O or 1/I, because this gets typed into a phone by
+// hand and then read back off a bank statement.
+const ATH_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const athRef = () => 'FBS-' + Array.from(crypto.randomBytes(6))
+    .map(b => ATH_ALPHABET[b % ATH_ALPHABET.length]).join('');
+
+// POST /api/signup/athmovil — public: start a manual ATH Móvil signup
+app.post('/api/signup/athmovil', authLimiter, async (req, res) => {
+    try {
+        const { name, lastName, email, planId } = req.body;
+        const cleanEmail = (email || '').toLowerCase().trim();
+        if (!name || !cleanEmail || !planId) return res.status(400).json({ message: 'Nombre, email y plan son requeridos.' });
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) return res.status(400).json({ message: 'Email inválido.' });
+
+        const plan = findSignupPlan(planId);
+        if (!plan) return res.status(400).json({ message: 'Plan no válido.' });
+        if (await User.findOne({ email: cleanEmail })) {
+            return res.status(409).json({ message: 'Ya existe una cuenta con ese email. Inicia sesión.' });
+        }
+
+        const { handle, phone } = await athMovilPayee();
+        if (!handle) {
+            return res.status(503).json({ message: 'El pago por ATH Móvil no está disponible en este momento.' });
+        }
+
+        // Reuse an existing open request for the same email+plan rather than
+        // minting a second code — otherwise a double click produces two codes and
+        // the trainer cannot tell which one the transfer refers to.
+        let pending = await PendingSignup.findOne({ email: cleanEmail, planId, kind: 'athmovil', status: 'awaiting' });
+        if (!pending) {
+            pending = await PendingSignup.create({
+                ref: athRef(), kind: 'athmovil',
+                name, lastName: lastName || '', email: cleanEmail,
+                planId, amount: plan.amount, status: 'awaiting',
+            });
+        }
+
+        res.json({
+            ref: pending.ref, handle, phone,
+            amount: plan.amount, planLabel: plan.label,
+            // Recurring plans cannot auto-renew over ATH Móvil; say so plainly here
+            // rather than letting someone discover it next month.
+            recurring: plan.mode === 'subscription',
+        });
+    } catch (e) {
+        console.error('ATH Móvil signup error:', e);
+        res.status(500).json({ message: 'No se pudo iniciar el pago por ATH Móvil.' });
+    }
+});
+
+// POST /api/signup/athmovil/claim — public: "ya envié el pago"
+// Only flags it for the trainer's attention. It does NOT create anything.
+app.post('/api/signup/athmovil/claim', authLimiter, async (req, res) => {
+    try {
+        const pending = await PendingSignup.findOneAndUpdate(
+            { ref: (req.body.ref || '').trim().toUpperCase(), kind: 'athmovil', status: 'awaiting' },
+            { $set: { claimedAt: new Date() } }, { new: true }
+        );
+        if (!pending) return res.status(404).json({ message: 'Referencia no encontrada.' });
+        await createNotification({
+            clientId: null, clientName: `${pending.name} ${pending.lastName || ''}`.trim() || pending.email,
+            type: 'contact_inquiry',
+            title: 'dice que envió un pago por ATH Móvil',
+            message: `${pending.email} · $${pending.amount} · ref ${pending.ref} — confirma en Pagos`,
+        });
+        res.json({ status: 'ok' });
+    } catch (e) {
+        console.error('ATH Móvil claim error:', e);
+        res.status(500).json({ message: 'Error registrando el aviso.' });
+    }
+});
+
+// GET /api/signup/pending — trainer: ATH Móvil requests awaiting confirmation
+app.get('/api/signup/pending', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        const list = await PendingSignup.find({ kind: 'athmovil', status: 'awaiting' })
+            .sort({ claimedAt: -1, createdAt: -1 }).lean();
+        res.json(list.map(p => ({
+            ref: p.ref, name: `${p.name} ${p.lastName || ''}`.trim(), email: p.email,
+            amount: p.amount, planId: p.planId, planLabel: findSignupPlan(p.planId)?.label || p.planId,
+            createdAt: p.createdAt, claimedAt: p.claimedAt,
+        })));
+    } catch (e) { res.status(500).json({ message: 'Error cargando pagos pendientes.' }); }
+});
+
+// POST /api/signup/pending/:ref/confirm — trainer: money received -> provision
+app.post('/api/signup/pending/:ref/confirm', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        // Flip to 'confirmed' FIRST, conditionally. Two taps on the button would
+        // otherwise both pass a status check and provision twice; the filter makes
+        // the second one a no-op. Same compare-and-swap used for call teardown.
+        const pending = await PendingSignup.findOneAndUpdate(
+            { ref: (req.params.ref || '').trim().toUpperCase(), kind: 'athmovil', status: 'awaiting' },
+            { $set: { status: 'confirmed' } }, { new: true }
+        );
+        if (!pending) return res.status(404).json({ message: 'Solicitud no encontrada o ya confirmada.' });
+
+        const client = await provisionSignupAccount({
+            email: pending.email, name: pending.name, lastName: pending.lastName,
+            planId: pending.planId, amount: pending.amount, method: 'ath_movil',
+            dedupeQuery: { notes: `ATH Móvil ${pending.ref}` },
+            paymentFields: { notes: `ATH Móvil ${pending.ref}` },
+        });
+        if (!client) {
+            // Put it back so the trainer can retry rather than losing the request.
+            await PendingSignup.updateOne({ ref: pending.ref }, { $set: { status: 'awaiting' } });
+            return res.status(500).json({ message: 'No se pudo crear la cuenta. Intenta de nuevo.' });
+        }
+        await PendingSignup.deleteOne({ ref: pending.ref });
+        res.json({ status: 'ok', clientId: client._id });
+    } catch (e) {
+        console.error('ATH Móvil confirm error:', e);
+        res.status(500).json({ message: 'Error confirmando el pago.' });
+    }
+});
+
+// POST /api/signup/pending/:ref/cancel — trainer: discard a request
+app.delete('/api/signup/pending/:ref', authenticateToken, authorizeRoles('trainer', 'admin'), async (req, res) => {
+    try {
+        const r = await PendingSignup.deleteOne({ ref: (req.params.ref || '').trim().toUpperCase(), kind: 'athmovil' });
+        if (!r.deletedCount) return res.status(404).json({ message: 'Solicitud no encontrada.' });
+        res.json({ status: 'ok' });
+    } catch (e) { res.status(500).json({ message: 'Error descartando la solicitud.' }); }
 });
 
 // ── Native PayPal (self-serve signup) ────────────────────────────────────────
@@ -5592,13 +5853,22 @@ app.post('/api/stripe/checkout', authenticateToken, authorizeRoles('trainer', 'a
     if (!stripeReady(res)) return;
     try {
         const { clientId, amount, periodLabel, dueDate, notes, type, planLabel, trialDays } = req.body;
-        if (!clientId || !amount || !dueDate || !type) return res.status(400).json({ message: 'Faltan campos requeridos.' });
+        if (!clientId || amount === undefined || !dueDate || !type) {
+            return res.status(400).json({ message: 'Faltan campos requeridos.' });
+        }
+        // Same two gates as the manual-invoice route — this one actually moves
+        // money, so it matters more here, not less.
+        if (!mongoose.isValidObjectId(clientId)) return res.status(400).json({ message: 'Cliente inválido.' });
+        if (!(await canTouchClient(req, clientId))) return res.status(403).json({ message: 'Forbidden' });
+
+        const money = parseAmountUSD(amount);
+        if (!money.ok) return res.status(400).json({ message: money.message });
 
         const client = await User.findById(clientId).select('name lastName email stripeCustomerId');
         if (!client) return res.status(404).json({ message: 'Cliente no encontrado.' });
 
         const trainer = await User.findById(req.user.id).select('name lastName');
-        const amountCents = Math.round(Number(amount) * 100);
+        const amountCents = Math.round(money.amount * 100);
         const description = planLabel || periodLabel || `Entrenamiento — ${periodLabel}`;
         const trainerName = `${trainer.name} ${trainer.lastName || ''}`.trim();
 
@@ -5722,12 +5992,21 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
             case 'invoice.paid': {
                 const invoice = event.data.object;
                 if (!invoice.subscription) break;
+                // Stripe retries on timeout and can deliver the same event twice.
+                // Without this, every redelivery after the first cycle wrote ANOTHER
+                // Payment row for the same invoice — inflating revenue and showing
+                // the client invoices that never existed. The PayPal path has always
+                // deduped on paypalSaleId; this is the missing equivalent.
+                if (invoice.id && await Payment.findOne({ stripeInvoiceId: invoice.id })) break;
                 // Mark existing record paid (first cycle) or create a new one for subsequent cycles
                 const existing = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
                 if (existing) {
                     if (existing.status !== 'paid') {
                         existing.status  = 'paid';
                         existing.paidDate = new Date().toISOString().split('T')[0];
+                        // Stamp the invoice id so the dedupe guard above can recognise
+                        // a redelivery of THIS cycle, not just of later ones.
+                        if (invoice.id) existing.stripeInvoiceId = invoice.id;
                         await existing.save();
                     } else {
                         // Subsequent cycle — create a new payment record for this billing period
@@ -5765,7 +6044,14 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
             }
         }
     } catch (e) {
-        console.error('Stripe webhook handler error:', e);
+        // MUST be a 5xx. Returning 200 here tells Stripe the event was handled and
+        // it never redelivers — so a transient failure (Mongo blip, email service
+        // down, duplicate key) leaves a PAYING customer with no account, no payment
+        // record and no alert, indistinguishable from success in the logs.
+        // A 500 puts the event back on Stripe's retry schedule, which is exactly
+        // what that schedule is for.
+        console.error('Stripe webhook handler error:', event.type, e);
+        return res.status(500).json({ error: 'handler failed', type: event.type });
     }
     res.json({ received: true });
 });

@@ -1155,6 +1155,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const venmoEl  = document.getElementById('settings-venmo');
                 const paypalEl = document.getElementById('settings-paypal');
                 if (athEl)    athEl.value    = ph.athMovil || '';
+                const athBizEl = document.getElementById('settings-ath-business');
+                const athTelEl = document.getElementById('settings-ath-phone');
+                if (athBizEl) athBizEl.value = ph.athMovilBusiness || '';
+                if (athTelEl) athTelEl.value = ph.athMovilPhone || '';
                 if (venmoEl)  venmoEl.value  = ph.venmo    || '';
                 if (paypalEl) paypalEl.value = ph.paypal   || '';
 
@@ -1170,6 +1174,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 body: JSON.stringify({
                                     paymentHandles: {
                                         athMovil: document.getElementById('settings-ath')?.value.trim()    || '',
+                                        athMovilBusiness: document.getElementById('settings-ath-business')?.value.trim() || '',
+                                        athMovilPhone:    document.getElementById('settings-ath-phone')?.value.trim()    || '',
                                         venmo:    document.getElementById('settings-venmo')?.value.trim()  || '',
                                         paypal:   document.getElementById('settings-paypal')?.value.trim() || ''
                                     }

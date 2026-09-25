@@ -18,7 +18,7 @@ export default [
 
     // Shared rules/parser options for all our JS.
     {
-        files: ['**/*.js'],
+        files: ['**/*.js', '**/*.mjs'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'module',
@@ -36,7 +36,11 @@ export default [
 
     // Backend — Node.js, ESM.
     {
-        files: ['server.js', 'signaling.js', 'auth-service.js', 'seed-test-client.js', 'middleware/**/*.js'],
+        // scripts/*.mjs are Node too. They were never linted before because the
+        // shared block only globs **/*.js, so `process` and `console` read as
+        // undefined in every maintenance script.
+        files: ['server.js', 'signaling.js', 'auth-service.js', 'seed-test-client.js',
+                'middleware/**/*.js', 'scripts/**/*.mjs', 'scripts/**/*.js'],
         languageOptions: {
             sourceType: 'module',
             globals: {
