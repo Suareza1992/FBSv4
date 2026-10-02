@@ -2323,3 +2323,671 @@ At the current one-time **$260**, keeps **$252.16** domestic.
 > ⚠️ **This is arithmetic, not pricing advice, and it ignores tax.** Puerto Rico IVU may apply to
 > personal-training services — confirm with an accountant before setting a public price. Stripe
 > Tax is not enabled.
+
+---
+
+## 27. Nutrition logs: appending without overwriting
+
+**Question that started it (2026-09-25):** a client logs one food in the morning and another in
+the afternoon — same date. Separate logs, or one?
+
+**Already one.** The save is an upsert keyed on `(clientId, date)`, so there is exactly one
+document per client per day and `meals` is an array of groups inside it. Confirmed against live
+data: 133 logs, **0** duplicate `(clientId, date)` pairs.
+
+### The real problem underneath
+
+Both clients sent the **entire** `meals` array on every change and the server `$set` it. Last write
+wins — so a stale tab, or a second device, silently erased whatever the other had added. No error,
+no clue. Same family as the "array-replacing saves" gotcha in the handoff notes.
+
+### The fix: appends the server owns
+
+```
+POST /api/nutrition-logs/food      { clientId, date, mealName, foods: [...] }
+POST /api/nutrition-logs/exercise  { clientId, date, entries: [...] }
+```
+
+The client sends only what it is **adding**. Nothing it holds can overwrite anything it has not
+seen. The old full-replace route stays for edits, deletes and reordering, where replacing really
+is the intent.
+
+### Three attempts, and why the first two were wrong
+
+This took three goes, and the failures are the useful part.
+
+**Attempt 1 — read, modify in JS, write back, with retries.** Ten simultaneous appends: **three
+survived.** Each writer saved its own stale copy over the others. The retry loop hid the problem
+rather than solving it; there is no number of retries that makes read-modify-write safe.
+
+**Attempt 2 — atomic `$push`, with a read-modify-write fallback for creating a new meal group.**
+Worse: **3/10**. The fallback's conditional update did not `$inc` the revision, so its guard never
+guarded and every concurrent caller clobbered the rest. *A guard you don't increment is not a
+guard.*
+
+**Attempt 3 — no read-modify-write anywhere.** Every step is one atomic operation:
+
+```js
+// push into an existing group
+{ clientId, date, 'meals.name': group },
+{ $push: { 'meals.$[g].foods': { $each: list } } },
+{ arrayFilters: [{ 'g.name': group }] }
+
+// create the group — $ne means exactly one concurrent caller can win
+{ clientId, date, 'meals.name': { $ne: group } },
+{ $push: { meals: { id, name: group, foods: [...list] } } },
+{ upsert: true }
+```
+
+Losers of the create race fall through to the push and land normally.
+
+### The totals were wrong even when the data was right
+
+With all the foods stored correctly, the calorie total was still **one food short** under load. The
+recompute was `findOne` → sum in JS → `$set`, which *looks* idempotent but is not: a recompute can
+read the document **before** another append's push lands and write its stale sum **after** it.
+
+Totals are now computed **inside** the update, with an aggregation pipeline, so the read and the
+write are one atomic step:
+
+```js
+NutritionLog.findOneAndUpdate({ clientId, date }, [{ $set: {
+    calories: sumMacro('calories'), protein: sumMacro('protein'),
+    carbs: sumMacro('carbs'), fat: sumMacro('fat'),
+    rev: { $add: [{ $ifNull: ['$rev', 0] }, 1] },
+} }], { new: true });
+```
+
+`$convert` with `onError: 0` because foods store macros as **strings** (`"156"`), and `$isArray`
+guards because `meals` defaults to `{}`.
+
+> Deliberately not `$inc`-ing a delta: that is also atomic, but rounding each delta drifts from the
+> true sum over many appends. Recomputing from the stored state cannot drift.
+
+### Stale-overwrite guard on the old route
+
+`NutritionLog.rev` increments on every write. A client that sends `baseRev` gets **409 plus the
+current document** instead of clobbering; a client that omits it keeps the old behaviour, so the
+apps can adopt it independently without a flag day.
+
+### Also added
+
+`{ clientId: 1, date: 1 }` **unique** — one log per client per day. The append routes upsert
+concurrently, and without it two simultaneous first-writes could create two documents for the same
+day. Checked for duplicates before adding: none.
+
+**Verified: 22/22**, including 12 concurrent appends into an existing group, 12 creating a group,
+10 on a brand-new day, 8 concurrent exercise appends, and mixed food+exercise load — every food
+stored, every total exact.
+
+### Both clients now send appends
+
+The server being safe only pays off once the apps stop sending the whole day back. Both do now.
+
+**Web** — `public/app.js` gained `appendFoodsToMeal(mealIndex, foods, { toast })`. It pushes
+optimistically so the food appears instantly, POSTs only the new items, then **adopts the document
+the server returns**:
+
+```js
+const saved = await res.json();
+if (Array.isArray(saved?.meals)) {
+    mealsData = saved.meals;          // the server's version wins
+    nutritionRev = saved.rev ?? nutritionRev;
+    renderMeals(); recalcTotals();
+}
+```
+
+Adopting is the point. Re-rendering from the response is what makes a food added on the phone
+*appear* on the website mid-session instead of being erased by the next save. All four add paths go
+through it: the AI text parser, search/barcode scan, the personal food library, and saved combos.
+On a network failure it falls back to the old full save, so a bad request never loses what the user
+just typed.
+
+**Mobile** — `app/(app)/(tabs)/nutricion.tsx` got the same treatment, via `appendFoods()` and
+`adoptLog()`. Six add paths (manual entry, saved combo, AI suggestion, barcode scan, parsed text,
+personal food) now send only what they are adding. Two other things were quietly dangerous there:
+
+| Path | Was | Now |
+|---|---|---|
+| Drinking water | Sent `meals` alongside `water` — every sip rewrote the day's food from a possibly stale copy | `persistWater()` sends `{ water }` only |
+| Adding an exercise | Sent the whole `exercise` array | `appendExercise()` sends one entry |
+| Removing an exercise | Full replace, no guard | Full replace **with `baseRev`** — genuinely rewrites the array, so this is correct |
+
+`revRef` is a **ref, not state**: the save callbacks have to read the newest revision, not the one
+captured when the component last rendered.
+
+With both clients converted the 409 guard is live, and `persistLog` became dead code on mobile and
+was removed — meals there are append-only.
+
+
+---
+
+## 28. Opening a section in a new tab
+
+**Symptom.** Right-click a nav button → "Open in new tab" → a wall of raw HTML. No styling, no
+data, nothing works.
+
+**Three causes stacked on top of each other.**
+
+1. The section files are **fragments**, not pages. `clientes_content.html` begins
+   `<div class="space-y-8 pb-10">` — no `<html>`, no `<head>`, no stylesheet, no script. The SPA
+   fetches them and injects them into the shell; a browser asked to render one directly has nothing
+   to work with.
+2. The nav links pointed **straight at those files** (`href="/clientes_content.html"`). A left click
+   was intercepted by JS, so nobody noticed — but the middle click, the right-click menu and the
+   copied link all used the raw href.
+3. `express.static` is mounted near the top of `server.js` and the SPA catch-all near the bottom, so
+   static wins: the fragment was served long before any fallback could redirect it.
+
+**The fix, in three parts.**
+
+All 17 nav `href`s became hash routes (`#/clientes`, `#/client_nutricion`, …), so the URL a user
+copies or opens in a new tab is one the app can act on.
+
+`stateFromHash()` reads the address bar back into app state on load, and the hash **beats**
+`sessionStorage` in `router()` — a deep link must win over wherever you were last time:
+
+```js
+const mod = RESTORABLE_MODULES.has(raw) ? raw
+          : (RESTORABLE_MODULES.has(`${raw}_content`) ? `${raw}_content` : null);
+```
+
+A hash is user-supplied input, so `moduleAllowedFor(role, mod)` gates it: a client following
+`#/clientes` must not get the trainer roster shell, where every API call behind it would 403.
+
+And a middleware **before** `express.static` catches old bookmarks and shared links:
+
+```js
+const navigating = req.get('Sec-Fetch-Mode') === 'navigate'
+                || req.get('Sec-Fetch-Dest') === 'document';
+if (!navigating) return next();      // the SPA's own fetch() — hand over the fragment
+return res.redirect(302, `/${hash}`);
+```
+
+`Sec-Fetch-Mode` is the whole trick. It distinguishes "the user put this in the address bar" from
+"a script asked for this file", so the redirect fixes navigations without breaking the module
+loader, which still needs the bare fragment.
+
+### Why `#/` and not `/clientes`
+
+Module loading uses **relative** fetches — `fetch(`${moduleToLoad}.html`)`. Under a real pathname
+like `/clientes`, a relative fetch resolves against `/`, and any deeper path would break it
+entirely. Hash routing keeps the document at `/` no matter where the user is.
+
+### The bug the fix introduced
+
+`library_content.html` is an orphan — its contents were folded into `programas_content` and nothing
+links to it — so it is in the redirect allowlist but has **no module in the router**. It redirected
+to `#/library`, which `stateFromHash()` cannot resolve: a blank frame instead of raw markup. Fixed
+with a `NO_MODULE` set (the two dashboards plus `library_content`) that redirects to the shell.
+
+That is two lists in two files that must agree, which is exactly the kind of thing that silently
+drifts. So:
+
+```bash
+npm run check:routes
+```
+
+`scripts/check-routes.mjs` re-derives `SPA_PARTIALS`/`NO_MODULE` from `server.js` and the module
+table from `public/app.js` and asserts every server slug resolves in the client router, both ways.
+It needs no server and no database. **Run it after adding a section.** 59 checks, all passing.
+
+
+---
+
+## 29. Caching and load: compression, query bounds, autoIndex
+
+Three fixes, all cheap, all measured. None of them is a cache — FbS still has no caching
+*layer*. They are about not sending, not fetching and not building what nobody asked for.
+
+### Compression
+
+There was none. Mounted first in the stack so it wraps everything below it:
+
+```js
+app.use(compression({
+    filter: (req, res) => res.getHeader('Cache-Control')?.toString().includes('no-transform')
+        ? false
+        : compression.filter(req, res),
+}));
+```
+
+`compression.filter` is the library's own default — it skips images, video and anything already
+compressed, because re-zipping a JPEG only burns CPU. The added rule lets a response opt out with
+`Cache-Control: no-transform`.
+
+Measured:
+
+| | Before | After |
+|---|---|---|
+| `app.js` | 1,051 KB | 227 KB |
+| The whole shell | 1,308 KB | 285 KB |
+| A workout-history JSON response | 973 KB | 12 KB |
+
+**Why this does not break the Stripe webhook.** That route needs the raw *request* body to verify a
+signature, and compression only ever touches the *response*. The two never meet. Verified: an
+unsigned POST still returns 400 from Stripe's own verifier.
+
+`Vary: Accept-Encoding` comes along automatically, which matters — without it a shared cache could
+hand a gzipped body to a client that cannot read it.
+
+### Bounding the queries
+
+`GET /api/client-workouts/:clientId` returned **every workout ever**, hydrated, with the full
+`exercises` array in each document. One document per client per day means it grows forever, and the
+mobile Inicio tab refetches it *on every focus*. Three bounds:
+
+```
+?from= / ?to=    date window; `from` defaults to 400 days ago (the furthest any screen looks —
+                 the streak walks are capped at 400). NO default `to`: programs are assigned
+                 ahead, so the future must stay visible. ?from=1970-01-01 opts back into everything.
+?limit=          hard backstop, default and max 1000. No request can be unbounded.
+?fields=summary  drops `exercises`, returns `exerciseCount` instead.
+```
+
+`summary` is **opt-in** on purpose. The trainer's calendar caches whole documents into
+`window._calendarWorkouts` for copy/paste, and the client-detail editor needs the exercises to edit
+them. Only the two screens that render dates and flags use it: mobile Inicio (needs nothing else)
+and Programa (needs a count).
+
+The combined effect on the app's hottest request, for a client with 700 days of history:
+
+```
+before:  973 KB   (everything, uncompressed)
+after:     4 KB   (windowed + summary + gzip)
+```
+
+Also capped, all newest-first with `.lean()`: workout logs (500), body measurements (500), personal
+foods (500), saved meals (300), invoices (500/1000). `.lean()` skips Mongoose document hydration,
+which buys nothing on a read-only JSON response.
+
+> **Bounding is not pagination.** These endpoints now refuse to return unbounded data, but there is
+> no cursor — record 501 is not on a next page, it is unreachable. That is a deliberate trade for
+> now (nobody is near these numbers) and the honest thing to know about it. The notifications feed
+> is the one endpoint that paginates properly.
+
+### autoIndex off in production
+
+```js
+const IS_PROD = process.env.NODE_ENV === 'production';
+mongoose.set('autoIndex', !IS_PROD);
+```
+
+Mongoose's default is ON: every boot, it walks each schema and issues `createIndex` for whatever the
+code declares. That is how the broken `sparse` payment indexes reached production before anyone had
+reviewed them (§ 26). Index changes are now a deliberate step:
+
+```bash
+SYNC_INDEXES=true npm start
+```
+
+which syncs and exits **without binding a port** — the real app is usually already holding it when
+you go to run this. `syncIndexes()` also DROPS indexes the schemas no longer declare, so read the
+diff it prints before running it against production.
+
+### The bug this uncovered — ATH Móvil signups were being deleted
+
+Turning autoIndex off and running the sync by hand made an error visible that had been swallowed on
+every boot for months:
+
+```
+PendingSignup: An existing index has the same name as the requested index.
+  requested: { createdAt: 1 }, expireAfterSeconds: 86400,
+             partialFilterExpression: { kind: { $in: ["order","subscription"] } }
+  existing:  { createdAt: 1 }, expireAfterSeconds: 86400
+```
+
+`PendingSignupSchema` declared the TTL **twice**:
+
+```js
+createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 },   // ← builds createdAt_1
+…
+PendingSignupSchema.index({ createdAt: 1 }, {                           // ← also wants createdAt_1
+    expireAfterSeconds: 60 * 60 * 24,
+    partialFilterExpression: { kind: { $in: ['order', 'subscription'] } },
+});
+```
+
+Both auto-generate the name `createdAt_1`. Mongo cannot hold two specs under one name, the
+field-level one is applied first, and the partial one failed silently every time.
+
+**What that meant in practice.** The partial filter exists so ATH Móvil rows are *spared* — a bank
+transfer can easily take more than a day to confirm, and the comment in the code says exactly that.
+With the unfiltered index winning, ATH Móvil pending signups were swept after 24 hours. A client who
+pressed "ya envié el pago" and whose transfer landed slowly would vanish, and with them the
+trainer's ability to confirm and provision the account. A paying customer, silently lost.
+
+Fixed by dropping the field-level `expires` and naming the real index explicitly, so a future
+field-level `expires` collides loudly instead of quietly replacing it:
+
+```js
+PendingSignupSchema.index({ createdAt: 1 }, {
+    name: 'pendingsignup_ttl_paypal_only',
+    expireAfterSeconds: 60 * 60 * 24,
+    partialFilterExpression: { kind: { $in: ['order', 'subscription'] } },
+});
+```
+
+Verified behaviourally, not just structurally: three rows three days old — `order`, `subscription`
+and `athmovil`. After Mongo's TTL monitor ran, the two PayPal rows were gone and the ATH Móvil row
+survived.
+
+**This needs `SYNC_INDEXES=true` run against production** to take effect; the schema change alone
+does not touch the index that is already there.
+
+### Verified
+
+24 checks against an isolated local database seeded with 731 workouts — default window, future
+workouts still included, `?from=1970-01-01` escape hatch, explicit windows, limit cap, junk params
+falling back to defaults, the summary projection's shape and size, gzip on the wire, and every
+capped endpoint still answering.
+
+
+---
+
+## 30. Two bugs in `invoice.paid`, found by turning Stripe on
+
+Both surfaced during the first real test payment (2026-09-26), and the second one
+only existed *because* of the fix for the first.
+
+### Bug 1 — the field Stripe deleted
+
+`invoice.paid` opened with `if (!invoice.subscription) break;`. Stripe **removed
+`subscription` from the Invoice object** in API version `2025-03-31.basil`, moving it to
+`parent.subscription_details.subscription`.
+
+The webhook endpoint's API version is configured **per endpoint in the dashboard**, entirely
+separate from the `apiVersion` this file pins for outgoing calls. The FbS endpoint was created on
+`2025-11-17.clover`, so `invoice.subscription` was `undefined` and the handler bailed on its first
+line — then fell through to `res.json({ received: true })` and returned **200**.
+
+That 200 is the whole lesson. **A 200 means "my server did not crash," not "my server did the
+work."** The test payment's delivery log showed two green 200s and looked perfect; one of them had
+done nothing at all.
+
+Month 1 was fine regardless, because `checkout.session.completed` creates the account and the
+invoice. The failure would have appeared in month 2 as invoices silently missing from Facturación
+while Stripe kept charging the card.
+
+```js
+const subscriptionId = invoice.subscription
+    || invoice.parent?.subscription_details?.subscription
+    || null;
+if (!subscriptionId) break;
+```
+
+### Bug 2 — the coin flip that fix would have unmasked
+
+The handler decided "first cycle or renewal?" by reading the existing row's status:
+
+```js
+if (existing.status !== 'paid') { /* cycle 1: mark it paid */ }
+else                            { /* renewal: create a new row */ }
+```
+
+On a new subscription Stripe emits `invoice.paid` **and** `checkout.session.completed` within the
+same second, and **does not guarantee their order.** The test signup happened to deliver
+`invoice.paid` at 12:13:34 and `checkout.session.completed` at 12:13:35 — invoice first, so it
+found no row and did nothing.
+
+The other order is a duplicate invoice. `provisionSignupAccount` writes the row with
+`status: 'paid'` and no `stripeInvoiceId`, so `invoice.paid` arriving second would find a paid row,
+read that as "must be a renewal", and bill the client a **second invoice for month 1**.
+
+This had never fired, because Bug 1 made the handler bail before reaching it. **Shipping the Bug 1
+fix alone would have introduced duplicate invoices on roughly half of all new signups** — a fix
+turning into a regression, hidden behind a green test.
+
+The answer is not to infer the cycle at all. Stripe states it:
+
+```js
+const isFirstCycle = invoice.billing_reason === 'subscription_create';
+```
+
+`subscription_create` → cycle 1: stamp the invoice id on the existing row for dedupe, or do nothing
+if `checkout.session.completed` has not landed yet (it is about to create the row itself, already
+paid). Anything else → a renewal: create a row for the new period.
+
+### Verified
+
+9 cases: both event orderings on cycle 1, redelivery of each, the month-2 renewal, renewal
+redelivery, the pre-basil Invoice shape, and a non-subscription invoice. All pass.
+
+### The transferable lesson
+
+Two independent signals said this integration was healthy — a green test payment and two 200s in
+the delivery log. Both were true and neither meant what it looked like. When a handler's failure
+mode is `break`, success and silence are the same HTTP response, so the status code cannot
+distinguish them. Where that matters, assert on the *state the handler was supposed to change*,
+not on the response it returned.
+
+
+### Three layers, deliberately overlapping
+
+After both bugs, `invoice.paid` refuses a duplicate three separate ways. They are listed in the
+order they run, and each one knows less than the one before:
+
+| Guard | Catches | Knows about |
+|---|---|---|
+| `stripeInvoiceId` lookup | Stripe redelivering the *same* invoice | Event delivery mechanics |
+| `billing_reason` | The cycle-1 race with `checkout.session.completed` | Stripe's own semantics |
+| Subscription + `periodLabel` | **Anything else** | Nothing — only "does this month already exist?" |
+
+The third is deliberately ignorant. It cannot be fooled by a misread field or an event ordering
+nobody anticipated, because it does not reason about Stripe at all — it asks whether this client
+already has an invoice for this month on this subscription, and if so records nothing and logs it.
+A phantom invoice in a client's history costs trust; a warning line in the log costs nothing.
+
+It is scoped per subscription, so two different clients both paying in October are unaffected.
+Verified: 6 cases, including a different invoice for the same period (blocked), a genuine new month
+(recorded), and another client's same-month renewal (recorded).
+
+### What this does NOT protect against, and does not need to
+
+**None of this can cause or prevent a double charge on a customer's card.** Stripe charges the
+card, once per billing period; this code only *records* what Stripe reports afterwards. The failure
+mode these guards address is a phantom row in Facturación — inflated revenue figures and an
+invoice the client never actually paid. Real, worth preventing, and not the same thing as taking
+someone's money twice.
+
+
+---
+
+## 31. Two routines for one day (the alternative block)
+
+**The need.** A client who might not make it to the gym needs a second option for the same day —
+the full session, and the version he can do at home.
+
+**Why not simply add a second workout.** `ClientWorkout` has a unique index on
+`{ clientId, date }`. One document owns the day, and the whole system leans on that: nine
+server-side `findOne({ clientId, date })` lookups, ten places where the web calendar does
+`_calendarWorkouts[date] = workout`, five in the mobile app's `byDate[date]`, plus program
+auto-sync, which maps one program day onto one calendar date. Dropping that index would be a
+refactor of everything that touches a workout, and the calendar's whole mental model — one cell,
+one routine — would have to change too.
+
+So the day still owns one document. It just carries a second exercise list.
+
+```js
+alternative: {
+    label:     { type: String, default: '' },   // "En casa", "Sin equipo"
+    exercises: [WorkoutExerciseFields],
+},
+chosenBlock: { type: String, enum: ['main', 'alternative'], default: 'main' },
+```
+
+### One exercise shape, used twice
+
+`WorkoutExerciseFields` was extracted and is now used by both `exercises` and
+`alternative.exercises`. The alternative is a real workout, not a note — it logs results, per-set
+notes, per-exercise RPE and completion exactly like the main block. Sharing one definition is the
+only way to guarantee the two never drift apart as fields get added.
+
+### Who may write what
+
+The existing split holds: the trainer owns the prescription, the client owns their results. So:
+
+- `alternative` joined `PRESCRIPTION_FIELDS`, which means a trainer editing it flags `manualEdit`
+  and a later program re-sync preserves the customization.
+- `chosenBlock` joined `CLIENT_WRITABLE`. Picking the gym routine or the at-home one is the
+  client's call, not a change to what was prescribed.
+- The per-exercise results merge was factored into `mergeResults()` and applied to **both**
+  blocks. Writing it once is deliberate: a copy-pasted second version is exactly how the
+  alternative would have quietly become the less-guarded path.
+
+Verified: a client can write results, RPE and completion into the alternative, and **cannot**
+rename its exercises, change their prescription, edit the label, or append new ones.
+
+### Omission is not deletion
+
+```js
+if (alternative !== undefined) { update.alternative = { … }; }
+```
+
+Every caller that predates this field — the program push, both copy/paste paths, the mobile day
+editor — sends no `alternative` at all, and none of them is trying to delete one. Only an explicit
+empty list removes it. This guard is the difference between the feature working and a program
+re-sync silently wiping the trainer's work.
+
+### The editor is reused, not duplicated
+
+`editorExercises` is always "the block currently on screen". Switching stashes the visible array
+into the block being left and loads the one being entered, so add, reorder, superset-link, video
+attach and autocomplete all work on the alternative with no extra code.
+
+Saving reads through `editorBlockArrays()` rather than the stashes directly — otherwise saving
+while the alternative is open would write a stale main block, and vice versa.
+
+**The bug this shape caused.** `renderWorkoutEditorUI()` has a fast path: when the panel already
+exists it swaps only the exercise list and returns. The switcher lived above that in the header, so
+clicking "En casa" loaded the alternative's exercises while the tab highlight stayed on
+"Principal" — the editor was showing one block and claiming to be on the other. Fixed by
+extracting `editorBlockSwitcherHtml()` and rendering it on both paths. Caught in the browser, not
+in review; a partial-render path is easy to forget precisely because the part you changed does
+update.
+
+### What the client sees
+
+Nothing at all, on a normal day. The toggle renders only when `alternative.exercises` is non-empty,
+so every existing client's view is byte-identical to before.
+
+When there is one: **Elige tu rutina de hoy**, two buttons, and the exercise list below swaps.
+The choice is persisted before the view re-renders, so closing the app and coming back reopens the
+routine they actually started. Results already logged against the other block stay where they are —
+switching picks a routine, it never discards work.
+
+### Verified
+
+23 server checks (storage, the omission guard, the client's write boundary in both directions,
+clearing, and that the day is still exactly one document), plus a full browser pass on a local
+instance: the trainer switcher, a save made from inside the alternative preserving both blocks, and
+the client toggle persisting `chosenBlock` and swapping the exercises.
+
+
+---
+
+## 32. Why the role guard went inside the fetch
+
+A client logging in produced three `403 Forbidden` responses and a
+`console.error("Error cargando clientes")` on every page load. `/api/clients` is
+trainer/admin/superadmin only, and a client has no roster.
+
+The interesting part is **where** the fix belongs. Three 403s looked like three different
+trainer-only endpoints being called; the network log said otherwise — it was `/api/clients` three
+times, reached by three unrelated paths: `loadData()` at sign-in, the activity feed's
+`if (!clientsCache.length)`, and the `clientsCache.length === 0` check in the calendar.
+
+Patching those three call sites would have worked and would have been wrong. There are seven
+callers of `fetchClientsFromDB()` in the file, and the next one added would have reintroduced the
+problem silently. The guard belongs where the knowledge is:
+
+```js
+const fetchClientsFromDB = async () => {
+    if (loadSession()?.role === 'client') return;
+    …
+};
+```
+
+`clientsLoadFailed` deliberately stays `false`. Nothing failed — and flipping it would render the
+trainer-facing "retry loading clients" state to a client who was never meant to see it.
+
+**Why this was worth fixing at all.** It was cosmetic: the catch handled it and nothing broke. But
+three red errors on every single client page load is three errors a real failure now has to hide
+behind. Console noise has a cost that only shows up the day you are debugging something else.
+
+Verified in a clean browser session both ways: a client login makes **zero** `/api/clients`
+requests and logs no errors; a trainer login still fetches it and the Clientes table renders.
+
+
+---
+
+## 33. Activating and deactivating trainers
+
+The Entrenadores table already rendered an Activo/Inactivo badge and filtered on it — the badge
+just wasn't clickable. Making it one surfaced something bigger.
+
+### Why this did NOT reuse `PUT /api/clients/:id`
+
+That route already accepts `isActive`, so reusing it was the obvious move. Its guard is
+`canTouchClient()`:
+
+```js
+const client = await User.findById(clientId).select('trainerId');
+if (client.trainerId == null) return true;          // legacy / unassigned
+```
+
+Every **trainer** record has no `trainerId`. So that `return true` meant any trainer could edit any
+other trainer through the clients route — and the allowlist on that route includes `email`, which
+together with password reset is an account-takeover path.
+
+Not theoretical. Before the fix, a plain (non-superadmin) trainer deactivated the superadmin with
+one `PUT` and got a **200** back.
+
+Two changes:
+
+1. **A dedicated route.** `PATCH /api/trainers/:id/active`, `requireSuperadmin`, which refuses any
+   target that is not a trainer and refuses to let you deactivate yourself. Locking yourself out of
+   your own platform should take more than a mis-click on your own row.
+2. **The clients route now checks the target's role.** `/api/clients/:id` is for clients; a
+   non-client target is refused with 403. Self-edits stay allowed — the UI already sends those to
+   `/api/me`, and refusing them here would change behaviour for no security gain.
+
+### What "inactive" actually means
+
+Worth stating plainly, because it is less than it sounds, and it is the **same** for clients:
+
+| Effect | Inactive? |
+|---|---|
+| Shows as Inactivo, filterable in the list | yes |
+| Cannot be called in a live session (`TARGET_INACTIVE`) | yes |
+| **Blocked from logging in** | **no** |
+| Their clients reassigned, or data touched | no — nothing cascades |
+
+`POST /api/auth/login` checks the password and nothing else: not `isActive`, not `isDeleted`. So
+"deactivating" is a bookkeeping state and a live-session gate, not an access revocation. That is
+pre-existing behaviour for clients, and the trainer toggle mirrors it deliberately rather than
+quietly redefining what the word means in two places at once. **If it should block login, that is a
+one-line change to the login handler — but it changes what deactivating a client means too, so it
+is a decision, not a fix.**
+
+### UI
+
+Web: the badge is a button, except on your own row where it stays a dimmed `span` with a tooltip —
+mirroring the server guard so the UI never offers something the API will refuse. Mobile: the status
+dot became a `Pressable` with `hitSlop` (a 7pt dot is not a touch target), nested inside the row's
+own Pressable so tapping the dot toggles instead of opening that trainer's roster.
+
+Deactivating asks for confirmation; activating does not. One direction takes something away from a
+working account, the other gives it back.
+
+Both clients flip the status filter back to "Todos" afterwards — deactivating while filtered to
+Activos would otherwise make the row vanish and read as a deletion.
+
+### Verified
+
+24 checks across two suites: the happy path both directions, the self-guard, non-trainer targets,
+a plain trainer getting 403, a client getting 403, input validation, the closed hole, and that
+nothing cascades to the trainer's clients. Plus a regression suite proving ordinary client editing
+still works — a trainer deactivating their own client, editing other fields, and the superadmin
+editing any client. Then a browser pass: own row non-clickable, confirm dialog on deactivate,
+no confirm on activate, filter reset, and the database matching the table.

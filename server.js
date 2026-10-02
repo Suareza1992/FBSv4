@@ -8,6 +8,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';           // H-2: HttpOnly JWT cookie
 import helmet from 'helmet';                        // H-5: Security headers
 import rateLimit from 'express-rate-limit';         // H-4: Brute-force protection
+import compression from 'compression';               // gzip every response — see below
 import path from 'path';
 import http from 'http';                             // live sessions: raw server for the WS upgrade
 import { fileURLToPath } from 'url';
@@ -125,6 +126,25 @@ const getPhotoUrl = (publicId) => cloudinary.url(publicId, {
     secure: true,
 });
 
+// ── Compression ──────────────────────────────────────────────────────────────
+// Mounted FIRST so it wraps every response below it — static files and JSON alike.
+// The shell alone was 1.3 MB of uncompressed text; gzip takes it to ~285 KB (78%
+// off), and the JSON responses compress just as well, which is what the mobile
+// app feels on cellular.
+//
+// `filter` keeps the library's own default (skips images, video and anything
+// already compressed — re-zipping a JPEG only burns CPU) and adds one rule of
+// ours: a response may opt out with `Cache-Control: no-transform`.
+//
+// Why this sits ABOVE the Stripe raw-body exclusion: compression only ever
+// touches the RESPONSE. The webhook's signature is computed over the REQUEST
+// body, so the two never interact.
+app.use(compression({
+    filter: (req, res) => res.getHeader('Cache-Control')?.toString().includes('no-transform')
+        ? false
+        : compression.filter(req, res),
+}));
+
 // Stripe webhook needs raw body for signature verification — exclude it from json parsing
 app.use((req, res, next) => {
     if (req.path === '/api/stripe/webhook') return next();
@@ -201,6 +221,44 @@ const setAuthCookie = (res, token) => {
     });
 };
 
+// ── SPA partials must never be opened as pages ───────────────────────────────
+// The section files (clientes_content.html, client_nutricion.html, …) are HTML
+// FRAGMENTS — a bare <div> with no <head>, stylesheet or script. express.static
+// happily serves them, and it runs long before the SPA catch-all, so
+// right-click → "open in new tab" on a nav link gave the user raw unstyled markup.
+//
+// The nav links now use hash routes, but old bookmarks and shared links still
+// exist, so redirect a NAVIGATION to the app. The SPA's own fetch() for the same
+// file must still get the fragment — `Sec-Fetch-Mode: navigate` is what separates
+// "the user typed/clicked this into the address bar" from "script asked for it".
+const SPA_PARTIALS = new Set([
+    'trainer_home', 'notifications_content', 'clientes_content', 'entrenadores_content',
+    'programas_content', 'pagos_content', 'blog_content', 'ajustes_content', 'library_content',
+    'client_inicio', 'client_programas', 'client_metricas', 'client_nutricion',
+    'client_equipo', 'client_progress', 'client_clock', 'client_historial',
+    'trainer-dashboard', 'client-dashboard',
+]);
+// Partials the SPA router has no module for: redirect them to the shell, not to
+// a dead hash. Kept as its own set so the pairing is visible — every other slug
+// above must resolve in stateFromHash().
+const NO_MODULE = new Set(['trainer-dashboard', 'client-dashboard', 'library_content']);
+app.use((req, res, next) => {
+    if (req.method !== 'GET' || !req.path.endsWith('.html')) return next();
+    const slug = req.path.replace(/^\//, '').replace(/\.html$/, '');
+    if (!SPA_PARTIALS.has(slug)) return next();          // signup.html, privacidad.html… are real pages
+
+    const navigating = req.get('Sec-Fetch-Mode') === 'navigate'
+                    || req.get('Sec-Fetch-Dest') === 'document';
+    if (!navigating) return next();                      // the SPA's own fetch — hand over the fragment
+
+    // Some of these have no module behind them — the dashboards are the shell
+    // itself, and library_content.html is an orphan whose contents were folded
+    // into programas_content. Sending those to a hash the router cannot resolve
+    // would leave the user staring at a blank frame, so they go to the app root.
+    const hash = NO_MODULE.has(slug) ? '' : `#/${slug.replace(/_content$/, '')}`;
+    return res.redirect(302, `/${hash}`);
+});
+
 app.use(express.static('public'));
 
 // --- DEBUGGING (only printed when DEBUG=true in .env) ---
@@ -210,9 +268,38 @@ if (DEBUG) {
 }
 
 // --- MONGODB CONNECTION ---
+// ── autoIndex ────────────────────────────────────────────────────────────────
+// Mongoose's default is ON: on every boot it walks each schema and issues
+// createIndex for anything declared. In development that is convenient. In
+// production it is two problems:
+//
+//   1. It runs index builds on a live database during startup, against whatever
+//      the code says — which is how the broken `sparse` payment indexes reached
+//      production before anyone had reviewed them (see TECHNICAL.md § 26).
+//   2. It costs time and I/O on every deploy, for work that is almost always a
+//      no-op.
+//
+// Off in production: index changes become a deliberate, reviewed migration.
+// Declare the index in the schema, then create it by hand, then deploy.
+const IS_PROD = process.env.NODE_ENV === 'production';
+mongoose.set('autoIndex', !IS_PROD);
+
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/fitbysuarez')
 .then(async () => {
     console.log('MongoDB Conectado');
+    // With autoIndex off, index changes are applied deliberately:
+    //     SYNC_INDEXES=true npm start
+    // syncIndexes() creates what the schemas declare and DROPS indexes the schemas
+    // no longer declare, so read the diff it prints before running it on prod.
+    if (process.env.SYNC_INDEXES === 'true') {
+        console.log('SYNC_INDEXES=true — syncing schema indexes…');
+        const result = await mongoose.syncIndexes();
+        for (const [model, dropped] of Object.entries(result)) {
+            if (dropped?.length) console.log(`  ${model}: dropped ${dropped.join(', ')}`);
+        }
+        console.log('Index sync complete. Exiting.');
+        process.exit(0);
+    }
     await seedAdmin();
 })
 .catch(err => console.error('Error de MongoDB:', err));
@@ -523,6 +610,25 @@ const WorkoutLogSchema = new mongoose.Schema({
 });
 const WorkoutLog = mongoose.model('WorkoutLog', WorkoutLogSchema);
 
+// One exercise slot. Shared by a day's main block and its alternative block, so
+// the two can never drift apart — see `alternative` in the schema below.
+const WorkoutExerciseFields = {
+    id:           Number,
+    name:         { type: String, default: '' },
+    instructions: { type: String, default: '' },  // trainer's prescribed sets/reps/etc.
+    results:      { type: String, default: '' },  // client's logged results
+    videoUrl:     { type: String, default: '' },
+    isSuperset:   { type: Boolean, default: false },
+    supersetHead: { type: Boolean, default: false },
+    isComplete:   { type: Boolean, default: false }, // per-exercise completion by client
+    // Per-exercise effort rating logged by the client alongside their results.
+    // Independent of the day-level `rpe` (which rates the whole session).
+    rpe:          { type: Number, min: 1, max: 10, default: null },
+    // Set when the CLIENT swapped this slot for a same-muscle alternative, so
+    // the trainer can see what was originally prescribed. Empty = untouched.
+    swappedFrom:  { type: String, default: '' },
+};
+
 const ClientWorkoutSchema = new mongoose.Schema({
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     date:     { type: String, required: true },
@@ -550,22 +656,27 @@ const ClientWorkoutSchema = new mongoose.Schema({
     }],
 
     // ── Exercises ──────────────────────────────────────────────────────────────
-    exercises: [{
-        id:           Number,
-        name:         { type: String, default: '' },
-        instructions: { type: String, default: '' },  // trainer's prescribed sets/reps/etc.
-        results:      { type: String, default: '' },  // client's logged results
-        videoUrl:     { type: String, default: '' },
-        isSuperset:   { type: Boolean, default: false },
-        supersetHead: { type: Boolean, default: false },
-        isComplete:   { type: Boolean, default: false }, // per-exercise completion by client
-        // Per-exercise effort rating logged by the client alongside their results.
-        // Independent of the day-level `rpe` below (which rates the whole session).
-        rpe:          { type: Number, min: 1, max: 10, default: null },
-        // Set when the CLIENT swapped this slot for a same-muscle alternative, so
-        // the trainer can see what was originally prescribed. Empty = untouched.
-        swappedFrom:  { type: String, default: '' },
-    }],
+    // Shape defined once above and used for BOTH blocks. The alternative is a
+    // real workout, not a note — it logs results exactly like the main one, so
+    // sharing the shape is the only way to guarantee the two never drift apart.
+    exercises: [WorkoutExerciseFields],
+
+    // ── Alternative block ──────────────────────────────────────────────────────
+    // A second, complete routine for the SAME day: the gym session, and the
+    // can't-get-to-the-gym version. One ClientWorkout still owns the day, so
+    // `{clientId, date}` stays unique and program sync, the calendar and both
+    // "Hoy" screens keep working untouched — the day simply carries a second
+    // exercise list the client can switch to.
+    //
+    // Empty `exercises` = no alternative offered, which is every day that
+    // already exists.
+    alternative: {
+        label:     { type: String, default: '' },      // e.g. "En casa", "Sin equipo"
+        exercises: [WorkoutExerciseFields],
+    },
+    // Which block the client actually did. The CLIENT owns this field; the
+    // trainer reads it to see whether the session happened as prescribed.
+    chosenBlock: { type: String, enum: ['main', 'alternative'], default: 'main' },
 
     // ── Cooldown ───────────────────────────────────────────────────────────────
     cooldown:        { type: String, default: '' },   // general instructions text
@@ -701,9 +812,22 @@ const NutritionLogSchema = new mongoose.Schema({
     // total burned, used to widen the day's calorie budget.
     exercise: { type: mongoose.Schema.Types.Mixed, default: [] },
     exerciseCalories: { type: Number, default: 0 },
+    // Optimistic-concurrency counter, bumped on every write.
+    //
+    // Why: both clients send the WHOLE `meals` array on every change, and the
+    // server $set it. Two devices with the day open — or one stale tab — meant the
+    // second save silently erased whatever the first had added. No error, no clue.
+    //
+    // A client that sends `baseRev` gets a 409 instead of clobbering. A client that
+    // omits it keeps the old behaviour, so nothing breaks before both apps ship.
+    rev: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now }
 });
 NutritionLogSchema.index({ clientId: 1, date: -1 });
+// One log per client per day. The append routes upsert concurrently, and without
+// this two simultaneous first-writes could create two documents for the same day.
+// Verified against live data before adding: 0 duplicate (clientId, date) pairs.
+NutritionLogSchema.index({ clientId: 1, date: 1 }, { unique: true });
 const NutritionLog = mongoose.model('NutritionLog', NutritionLogSchema);
 
 // Reusable meal combos a client saves to re-log identical meals in one tap.
@@ -905,11 +1029,20 @@ const PendingSignupSchema = new mongoose.Schema({
     // 'awaiting' -> the client says they sent it; the trainer has not confirmed.
     status:    { type: String, enum: ['awaiting', 'confirmed', 'cancelled'], default: 'awaiting' },
     claimedAt: { type: Date, default: null },   // when the client pressed "ya envié el pago"
-    createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 },
+    // NO field-level `expires:` here — see the index below. A field-level `expires`
+    // builds its own { createdAt: 1 } TTL index, which auto-generates the SAME name
+    // (`createdAt_1`) as the partial index below. Mongo cannot hold two different
+    // specs under one name, so the unfiltered one won and the partial one failed
+    // silently every boot — meaning ATH Móvil rows WERE being swept after 24h,
+    // which is the exact opposite of the intent.
+    createdAt: { type: Date, default: Date.now },
 });
 // ATH Móvil requests must NOT be swept by the 24h TTL that exists for PayPal
 // redirects — a bank transfer can easily take longer than a day to be confirmed.
+// Named explicitly so a future field-level `expires` collides loudly instead of
+// quietly replacing this.
 PendingSignupSchema.index({ createdAt: 1 }, {
+    name: 'pendingsignup_ttl_paypal_only',
     expireAfterSeconds: 60 * 60 * 24,
     partialFilterExpression: { kind: { $in: ['order', 'subscription'] } },
 });
@@ -1484,6 +1617,46 @@ app.get('/api/trainers', authenticateToken, requireSuperadmin, async (req, res) 
     }
 });
 
+/**
+ * PATCH /api/trainers/:id/active — activate or deactivate a trainer.
+ *
+ * Deliberately NOT reusing PUT /api/clients/:id, even though that route already
+ * accepts `isActive`. Its guard is canTouchClient(), which returns true when the
+ * target has no `trainerId` — true of every trainer record — so routing trainer
+ * updates through it would let any trainer flip any other trainer's status. This
+ * route is superadmin-only and refuses to touch anything that is not a trainer.
+ *
+ * What deactivating does today: the trainer shows as Inactivo in the list, can be
+ * filtered out, and cannot be called in a live session (resolveCallTarget returns
+ * TARGET_INACTIVE). It does NOT block login — see the note in TECHNICAL.md § 33.
+ * Their clients keep their `trainerId`; nothing cascades.
+ */
+app.patch('/api/trainers/:id/active', authenticateToken, requireSuperadmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (typeof req.body.isActive !== 'boolean') {
+            return res.status(400).json({ message: 'isActive debe ser true o false.' });
+        }
+        // Locking yourself out of your own platform should take more than a
+        // mis-click on your own row.
+        if (String(req.user.id) === String(id)) {
+            return res.status(400).json({ message: 'No puedes desactivar tu propia cuenta.' });
+        }
+        const trainer = await User.findOne({ _id: id, role: 'trainer', isDeleted: { $ne: true } });
+        if (!trainer) return res.status(404).json({ message: 'Entrenador no encontrado.' });
+
+        trainer.isActive = req.body.isActive;
+        await trainer.save();
+        res.json({
+            _id: trainer._id, name: trainer.name, lastName: trainer.lastName,
+            email: trainer.email, isActive: trainer.isActive,
+        });
+    } catch (e) {
+        console.error('Error updating trainer status:', e);
+        res.status(500).json({ message: 'Error actualizando el estado del entrenador.' });
+    }
+});
+
 app.get('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         let query = { role: 'client', isDeleted: { $ne: true } };
@@ -1684,6 +1857,22 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
             return res.status(404).json({ message: 'Client not found' });
         }
 
+        // ── This route is for CLIENTS ────────────────────────────────────────
+        // canTouchClient() below returns true whenever the target has no
+        // `trainerId` — which is true of every TRAINER record. Without this
+        // check, any trainer could edit any other trainer through here: not only
+        // `isActive`, but `email`, which together with password reset is an
+        // account-takeover path. Verified before the fix: a plain trainer
+        // deactivated the superadmin with a single PUT and got a 200 back.
+        //
+        // Self-edits stay allowed. The UI already sends those to /api/me, but
+        // refusing them here would be a behaviour change for no security gain.
+        // Trainer status now has its own superadmin-only route:
+        // PATCH /api/trainers/:id/active.
+        if (prevClient.role !== 'client' && String(prevClient._id) !== String(req.user.id)) {
+            return res.status(403).json({ message: 'Esta ruta es solo para clientes.' });
+        }
+
         // Trainers may only update their own clients. Uses canTouchClient rather than
         // a role-string check: the superadmin's role IS 'trainer', so comparing the
         // string alone would 403 them out of every other trainer's client.
@@ -1803,7 +1992,9 @@ const canTouchExercise = async (req, exercise) => {
 };
 
 app.get('/api/library', authenticateToken, async (req, res) => {
-    try { const exercises = await Exercise.find().sort({ name: 1 }); res.json(exercises); }
+    // The whole library is the point here (it feeds the exercise picker), so no
+    // limit — but .lean() skips Mongoose hydration on a few hundred documents.
+    try { const exercises = await Exercise.find().sort({ name: 1 }).lean(); res.json(exercises); }
     catch (error) { res.status(500).json({ message: 'Error fetching library' }); }
 });
 
@@ -1895,7 +2086,13 @@ app.get('/api/log/:clientId', authenticateToken, async (req, res) => {
     if (!(await canTouchClient(req, req.params.clientId))) {
         return res.status(403).json({ message: 'Forbidden: This client is not under your management' });
     }
-    try { const logs = await WorkoutLog.find({ clientId: req.params.clientId }); res.json(logs); }
+    // Grows with every session logged, so cap it — newest first, since that is
+    // what any caller actually wants to show.
+    try {
+        const logs = await WorkoutLog.find({ clientId: req.params.clientId })
+            .sort({ date: -1 }).limit(500).lean();
+        res.json(logs);
+    }
     catch (e) { res.status(500).json({ message: 'Error fetching logs' }); }
 });
 
@@ -1909,7 +2106,7 @@ app.post('/api/client-workouts', authenticateToken, async (req, res) => {
         const {
             clientId, date, title, isRest, restType,
             warmup, warmupVideoUrl, warmupItems,
-            exercises,
+            exercises, alternative,
             cooldown, cooldownVideoUrl, cooldownItems,
             sourceProgramId, sourceWeek, sourceDayNum,
         } = req.body;
@@ -1926,6 +2123,17 @@ app.post('/api/client-workouts', authenticateToken, async (req, res) => {
             cooldownItems:    cooldownItems     || [],
             updatedAt:        Date.now(),
         };
+        // The alternative block is optional, and OMITTING it must not erase one
+        // that already exists — every caller that predates this field (program
+        // push, the mobile day editor, the copy/paste paths) sends no
+        // `alternative` at all, and they are not trying to delete it. Sending an
+        // explicit empty exercises array is how you remove it.
+        if (alternative !== undefined) {
+            update.alternative = {
+                label:     (alternative?.label || '').toString().trim(),
+                exercises: Array.isArray(alternative?.exercises) ? alternative.exercises : [],
+            };
+        }
         if (sourceProgramId) {
             // This day comes from a program push — record provenance for re-sync.
             update.sourceProgramId = sourceProgramId;
@@ -1981,11 +2189,63 @@ app.get('/api/client-workouts/:clientId/:date', authenticateToken, async (req, r
     }
 });
 
+/**
+ * GET /api/client-workouts/:clientId — a client's workout history.
+ *
+ * This is the most-called endpoint in the mobile app (the Inicio tab refetches it
+ * on every focus), and it used to return EVERY workout ever, hydrated, with the
+ * full `exercises` array in each document. One document per client per day means
+ * the response grows forever: a client two years in was pulling ~730 fat docs to
+ * render one day's card.
+ *
+ * Three bounds, none of which change what an existing caller sees by default:
+ *
+ *   ?from= / ?to=   a date window. `from` defaults to 400 days ago — the furthest
+ *                   back any current screen looks (the streak walks cap at 400).
+ *                   There is NO default `to`: programs are assigned ahead, so the
+ *                   future must stay visible. Pass ?from=1970-01-01 for everything.
+ *   ?limit=         hard backstop, default and max 1000. No request can be unbounded.
+ *   ?fields=summary drops the heavy `exercises` array and returns `exerciseCount`
+ *                   instead. Opt-in, because the trainer's calendar and the client
+ *                   detail editor genuinely need the full documents.
+ *
+ * `.lean()` throughout: these are read-only JSON responses, so paying for Mongoose
+ * document hydration buys nothing.
+ */
+const WORKOUT_WINDOW_DAYS = 400;
 app.get('/api/client-workouts/:clientId', authenticateToken, async (req, res) => {
     if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
         const { clientId } = req.params;
-        const workouts = await ClientWorkout.find({ clientId }).sort({ date: 1 });
+        const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+        const defaultFrom = new Date(Date.now() - WORKOUT_WINDOW_DAYS * 864e5)
+            .toISOString().slice(0, 10);
+        const from = isDate(req.query.from) ? req.query.from : defaultFrom;
+        const to   = isDate(req.query.to)   ? req.query.to   : null;
+
+        const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 1000));
+
+        // Dates are stored as 'YYYY-MM-DD' strings, which sort lexicographically the
+        // same way they sort chronologically — so a plain $gte/$lte range works and
+        // uses the { clientId, date } index.
+        const query = { clientId, date: { $gte: from, ...(to ? { $lte: to } : {}) } };
+
+        if (req.query.fields === 'summary') {
+            const workouts = await ClientWorkout.aggregate([
+                { $match: { clientId: new mongoose.Types.ObjectId(String(clientId)), date: query.date } },
+                { $sort: { date: 1 } },
+                { $limit: limit },
+                { $project: {
+                    date: 1, title: 1, isRest: 1, restType: 1, isComplete: 1,
+                    isMissed: 1, mood: 1, rpe: 1, sourceProgramId: 1,
+                    exerciseCount: { $size: { $ifNull: ['$exercises', []] } },
+                } },
+            ]);
+            return res.json(workouts);
+        }
+
+        const workouts = await ClientWorkout.find(query).sort({ date: 1 }).limit(limit).lean();
         res.json(workouts);
     } catch (error) {
         console.error('Error fetching client workouts:', error);
@@ -2101,7 +2361,9 @@ app.patch('/api/client-workouts/:clientId/:date', authenticateToken, async (req,
         // req.body wholesale, so a hand-crafted request could rewrite the entire
         // prescription (title/exercises/warmup). Exercise swaps go through the
         // dedicated /swap route below, which validates the substitution.
-        const CLIENT_WRITABLE = ['results', 'rpe', 'mood', 'isComplete', 'isMissed', 'clientNotes', 'exerciseResults'];
+        // `chosenBlock` is client-writable on purpose: picking the gym routine or
+        // the at-home one is the client's call, not a change to the prescription.
+        const CLIENT_WRITABLE = ['results', 'rpe', 'mood', 'isComplete', 'isMissed', 'clientNotes', 'exerciseResults', 'chosenBlock'];
         let body = req.body;
         if (req.user.role === 'client') {
             body = {};
@@ -2109,15 +2371,27 @@ app.patch('/api/client-workouts/:clientId/:date', authenticateToken, async (req,
             // `exercises` is accepted from a client ONLY to carry per-exercise
             // results/rpe/isComplete back — never to change the prescription. We
             // merge those three fields onto the stored array and discard the rest.
+            //
+            // Applied to BOTH blocks: a client who trains the at-home routine logs
+            // results against `alternative.exercises`, and those are just as much
+            // theirs to write. Same merge, same three fields, same refusal to let
+            // anything else through — writing it once means the alternative can
+            // never accidentally become the weaker-guarded path.
+            const mergeResults = (stored, incoming) => (stored || []).map((ex, i) => {
+                const from = (incoming || [])[i] || {};
+                const merged = ex.toObject ? ex.toObject() : { ...ex };
+                if ('results'    in from) merged.results    = String(from.results || '');
+                if ('isComplete' in from) merged.isComplete = !!from.isComplete;
+                if ('rpe'        in from) merged.rpe        = from.rpe == null ? null : Number(from.rpe);
+                return merged;
+            });
             if (Array.isArray(req.body.exercises) && before) {
-                body.exercises = before.exercises.map((ex, i) => {
-                    const incoming = req.body.exercises[i] || {};
-                    const merged = ex.toObject ? ex.toObject() : { ...ex };
-                    if ('results'    in incoming) merged.results    = String(incoming.results || '');
-                    if ('isComplete' in incoming) merged.isComplete = !!incoming.isComplete;
-                    if ('rpe'        in incoming) merged.rpe        = incoming.rpe == null ? null : Number(incoming.rpe);
-                    return merged;
-                });
+                body.exercises = mergeResults(before.exercises, req.body.exercises);
+            }
+            if (Array.isArray(req.body.alternative?.exercises) && before) {
+                // Only the exercises travel — the label is the trainer's text.
+                body['alternative.exercises'] =
+                    mergeResults(before.alternative?.exercises, req.body.alternative.exercises);
             }
         }
 
@@ -2125,7 +2399,7 @@ app.patch('/api/client-workouts/:clientId/:date', authenticateToken, async (req,
         // A trainer editing a day's prescription = a manual customization. Flag it
         // so a later program re-sync preserves it. (Client edits — results/rpe/
         // completion — never set this; the sync routine itself bypasses PATCH.)
-        const PRESCRIPTION_FIELDS = ['title', 'exercises', 'warmup', 'warmupItems', 'cooldown', 'cooldownItems', 'isRest', 'restType'];
+        const PRESCRIPTION_FIELDS = ['title', 'exercises', 'alternative', 'warmup', 'warmupItems', 'cooldown', 'cooldownItems', 'isRest', 'restType'];
         if (req.user.role !== 'client' && PRESCRIPTION_FIELDS.some(f => f in req.body)) {
             patch.manualEdit = true;
         }
@@ -2309,7 +2583,8 @@ app.post('/api/weight-logs', authenticateToken, async (req, res) => {
 app.get('/api/body-measurements/:clientId', authenticateToken, async (req, res) => {
     if (!assertOwnership(req, res, req.params.clientId)) return;
     try {
-        const measurements = await BodyMeasurement.find({ clientId: req.params.clientId }).sort({ date: 1 });
+        const measurements = await BodyMeasurement.find({ clientId: req.params.clientId })
+            .sort({ date: 1 }).limit(500).lean();
         res.json(measurements);
     } catch (e) { res.status(500).json({ message: 'Error fetching body measurements' }); }
 });
@@ -2368,9 +2643,176 @@ app.get('/api/nutrition-logs/:clientId', authenticateToken, async (req, res) => 
     } catch (e) { res.status(500).json({ message: 'Error fetching nutrition logs' }); }
 });
 
+// ── Totals, recomputed INSIDE the update ────────────────────────────────────
+// An update built from an aggregation pipeline reads and writes the document in a
+// single atomic step, so the sum always reflects what is actually stored.
+//
+// The read-then-write version that preceded this looked idempotent but was not:
+// a recompute could read the document BEFORE another append's push landed and
+// write its stale sum AFTER it. Ten concurrent appends stored all ten foods and
+// then reported a total that was one food short.
+//
+// Foods store macros as STRINGS ("156"), hence $convert with onError/onNull.
+const sumMacro = (field) => ({
+    $round: [{ $sum: { $map: {
+        input: { $cond: [
+            { $isArray: '$meals' },
+            { $reduce: {
+                input: '$meals',
+                initialValue: [],
+                in: { $concatArrays: ['$$value', { $cond: [
+                    { $isArray: '$$this.foods' }, '$$this.foods', [],
+                ] }] },
+            } },
+            [],
+        ] },
+        as: 'f',
+        in: { $convert: { input: `$$f.${field}`, to: 'double', onError: 0, onNull: 0 } },
+    } } }, 0],
+});
+
+/** Atomic: recompute every macro total from the document's own current state. */
+const recomputeTotals = (clientId, date) => NutritionLog.findOneAndUpdate(
+    { clientId, date },
+    [{ $set: {
+        calories: sumMacro('calories'), protein: sumMacro('protein'),
+        carbs:    sumMacro('carbs'),    fat:     sumMacro('fat'),
+        rev: { $add: [{ $ifNull: ['$rev', 0] }, 1] },
+    } }],
+    { new: true }
+);
+
+/** Same idea for the exercise array, which is flat. */
+const recomputeExercise = (clientId, date) => NutritionLog.findOneAndUpdate(
+    { clientId, date },
+    [{ $set: {
+        exerciseCalories: { $round: [{ $sum: { $map: {
+            input: { $cond: [{ $isArray: '$exercise' }, '$exercise', []] },
+            as: 'e',
+            in: { $convert: { input: '$$e.calories', to: 'double', onError: 0, onNull: 0 } },
+        } } }, 0] },
+        rev: { $add: [{ $ifNull: ['$rev', 0] }, 1] },
+    } }],
+    { new: true }
+);
+
+// Still needed for the create-the-day path, where there is nothing to read yet.
+const macroTotals = (meals) => {
+    const t = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    (Array.isArray(meals) ? meals : []).forEach((m) => {
+        (m?.foods || []).forEach((f) => {
+            t.calories += parseFloat(f?.calories) || 0;
+            t.protein  += parseFloat(f?.protein)  || 0;
+            t.carbs    += parseFloat(f?.carbs)    || 0;
+            t.fat       += parseFloat(f?.fat)     || 0;
+        });
+    });
+    return { calories: Math.round(t.calories), protein: Math.round(t.protein),
+             carbs: Math.round(t.carbs), fat: Math.round(t.fat) };
+};
+
+const isFood = (f) => !!f && typeof f === 'object' && typeof f.name === 'string' && f.name.trim();
+
+/**
+ * POST /api/nutrition-logs/food — APPEND one or more foods to a day.
+ *
+ * This is the fix for the overwrite problem. Adding food is what a client does
+ * repeatedly through the day, and it is the operation that was losing data: the
+ * old path required sending the entire `meals` array back, so anything added
+ * elsewhere since the page loaded was wiped.
+ *
+ * Here the client sends only what it is ADDING. The server reads the current day,
+ * appends, recomputes the totals and writes — so two devices adding different
+ * foods both succeed, in either order, and neither can erase the other.
+ *
+ * Body: { clientId, date, mealName, foods: [ {name, calories, protein, carbs, fat, ...} ] }
+ */
+app.post('/api/nutrition-logs/food', authenticateToken, async (req, res) => {
+    try {
+        const { clientId, date, mealName, foods } = req.body;
+        if (!clientId || !date) return res.status(400).json({ message: 'clientId y date son requeridos.' });
+        if (!(await canTouchClient(req, clientId))) return res.status(403).json({ message: 'Forbidden' });
+
+        const list = (Array.isArray(foods) ? foods : [foods]).filter(isFood);
+        if (!list.length) return res.status(400).json({ message: 'No hay alimentos válidos que agregar.' });
+        const group = (mealName || 'Comida').toString().trim() || 'Comida';
+
+        // ── Getting the food in, with NO read-modify-write anywhere ──────────
+        // Every step is a single atomic MongoDB operation. An earlier version read
+        // the day, edited the array in JS and wrote it back; under ten simultaneous
+        // appends only three survived, because each writer saved its own stale copy
+        // over the others. There is no safe way to do that — so we never do it.
+        const pushToGroup = () => NutritionLog.updateOne(
+            { clientId, date, 'meals.name': group },
+            { $push: { 'meals.$[g].foods': { $each: list } } },
+            { arrayFilters: [{ 'g.name': group }] }
+        );
+        // Creating the group is atomic too: `$ne` means exactly one concurrent
+        // caller can win, and the rest fall through to the push above. The unique
+        // (clientId, date) index makes the upsert safe for the first write of a day.
+        const createGroup = () => NutritionLog.updateOne(
+            { clientId, date, 'meals.name': { $ne: group } },
+            { $push: { meals: { id: 'meal_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                                name: group, foods: [...list] } } },
+            { upsert: true }
+        );
+
+        let done = (await pushToGroup()).modifiedCount > 0;
+        for (let attempt = 0; !done && attempt < 5; attempt++) {
+            try {
+                const r = await createGroup();
+                done = (r.modifiedCount > 0) || (r.upsertedCount > 0);
+            } catch (e) {
+                // Duplicate key: another request created the day a moment ago.
+                if (e?.code !== 11000) throw e;
+            }
+            if (!done) done = (await pushToGroup()).modifiedCount > 0;
+        }
+        if (!done) return res.status(409).json({ message: 'No se pudo guardar. Intenta de nuevo.' });
+
+        // ── Totals ───────────────────────────────────────────────────────────
+        // Recomputed from what is now stored, deliberately NOT $inc-ed by a delta.
+        // Recomputing is idempotent: if two of these race, both read a post-push
+        // state and both write a correct sum. An $inc would drift on rounding.
+        const saved = await recomputeTotals(clientId, date);
+        return res.json(saved);
+    } catch (e) {
+        console.error('Append food error:', e);
+        res.status(500).json({ message: 'Error agregando el alimento.' });
+    }
+});
+
+app.post('/api/nutrition-logs/exercise', authenticateToken, async (req, res) => {
+    try {
+        const { clientId, date, entries } = req.body;
+        if (!clientId || !date) return res.status(400).json({ message: 'clientId y date son requeridos.' });
+        if (!(await canTouchClient(req, clientId))) return res.status(403).json({ message: 'Forbidden' });
+
+        const list = (Array.isArray(entries) ? entries : [entries])
+            .filter((e) => e && typeof e === 'object' && (e.name || e.calories))
+            .map((e) => ({ name: String(e.name || 'Ejercicio'), calories: Math.max(0, Math.round(parseFloat(e.calories) || 0)) }));
+        if (!list.length) return res.status(400).json({ message: 'No hay ejercicios válidos que agregar.' });
+
+        // `exercise` is a flat array, so the atomic push needs no arrayFilters.
+        // upsert handles the first entry of the day in the same operation.
+        await NutritionLog.updateOne(
+            { clientId, date },
+            { $push: { exercise: { $each: list } }, $setOnInsert: { rev: 0 } },
+            { upsert: true }
+        );
+
+        // Idempotent recompute, same reasoning as the food route.
+        const saved = await recomputeExercise(clientId, date);
+        return res.json(saved);
+    } catch (e) {
+        console.error('Append exercise error:', e);
+        res.status(500).json({ message: 'Error agregando el ejercicio.' });
+    }
+});
+
 app.post('/api/nutrition-logs', authenticateToken, async (req, res) => {
     try {
-        const { clientId, date, calories, protein, carbs, fat, water, notes, mood, meals, exercise, exerciseCalories } = req.body;
+        const { clientId, date, calories, protein, carbs, fat, water, notes, mood, meals, exercise, exerciseCalories, baseRev } = req.body;
         // Only update fields that were explicitly provided
         const updateFields = {};
         if (calories !== undefined) updateFields.calories = calories;
@@ -2391,9 +2833,30 @@ app.post('/api/nutrition-logs', authenticateToken, async (req, res) => {
                                  water !== undefined || meals !== undefined ||
                                  exercise !== undefined || exerciseCalories !== undefined;
 
+        // ── Stale-overwrite guard ────────────────────────────────────────────
+        // This route REPLACES whole arrays, so a save built from a stale copy of
+        // the day erases anything added elsewhere since. A client that sends
+        // `baseRev` is telling us which version it edited; if the stored document
+        // has moved on, refuse and hand back the current one so it can reload.
+        //
+        // Omitting `baseRev` keeps the old behaviour — the apps opt in as they
+        // ship, and nothing breaks in the meantime.
+        if (baseRev !== undefined && (meals !== undefined || exercise !== undefined)) {
+            const current = await NutritionLog.findOne({ clientId, date }).select('rev').lean();
+            const storedRev = current?.rev ?? 0;
+            if (current && Number(baseRev) !== storedRev) {
+                const fresh = await NutritionLog.findOne({ clientId, date });
+                return res.status(409).json({
+                    conflict: true,
+                    message: 'Este día se actualizó en otro dispositivo. Recargamos los datos más recientes.',
+                    current: fresh,
+                });
+            }
+        }
+
         const log = await NutritionLog.findOneAndUpdate(
             { clientId, date },
-            { $set: updateFields },
+            { $set: updateFields, $inc: { rev: 1 } },
             { new: true, upsert: hasNutritionData }
         );
         if (!log) { res.json({ ok: true }); return; } // mood/notes update on non-existent log — no-op
@@ -2435,7 +2898,8 @@ app.delete('/api/nutrition-logs/:logId', authenticateToken, async (req, res) => 
 // List the current user's saved combos, newest first.
 app.get('/api/saved-meals', authenticateToken, async (req, res) => {
     try {
-        const meals = await SavedMeal.find({ clientId: req.user.id }).sort({ createdAt: -1 });
+        const meals = await SavedMeal.find({ clientId: req.user.id })
+            .sort({ createdAt: -1 }).limit(300).lean();
         res.json(meals);
     } catch (e) { res.status(500).json({ message: 'Error fetching saved meals' }); }
 });
@@ -2505,7 +2969,7 @@ app.get('/api/personal-foods', authenticateToken, async (req, res) => {
         if (sort === 'frequent') sortQuery = { timesUsed: -1, createdAt: -1 };
 
         const foods = await PersonalFoodLibrary.find({ clientId: req.user.id })
-            .sort(sortQuery);
+            .sort(sortQuery).limit(500).lean();
         res.json(foods);
     } catch (e) { res.status(500).json({ message: 'Error fetching personal foods' }); }
 });
@@ -2646,6 +3110,7 @@ app.get('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin', '
     try {
         const payments = await Payment.find({ trainerId: req.user.id })
             .sort({ dueDate: -1 })
+            .limit(1000)
             .lean();
         // Attach client name to each record
         const clientIds = [...new Set(payments.map(p => p.clientId.toString()))];
@@ -2661,7 +3126,7 @@ app.get('/api/payments', authenticateToken, authorizeRoles('trainer', 'admin', '
 app.get('/api/payments/client/:clientId', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const payments = await Payment.find({ clientId: req.params.clientId, trainerId: req.user.id })
-            .sort({ dueDate: -1 }).lean();
+            .sort({ dueDate: -1 }).limit(500).lean();
         res.json(payments);
     } catch (e) { res.status(500).json({ message: 'Error fetching client payments' }); }
 });
@@ -2669,7 +3134,7 @@ app.get('/api/payments/client/:clientId', authenticateToken, authorizeRoles('tra
 // A client reads their OWN invoices (for the mobile/client app).
 app.get('/api/payments/mine', authenticateToken, async (req, res) => {
     try {
-        const payments = await Payment.find({ clientId: req.user.id }).sort({ dueDate: -1 }).lean();
+        const payments = await Payment.find({ clientId: req.user.id }).sort({ dueDate: -1 }).limit(500).lean();
         res.json(payments);
     } catch (e) { res.status(500).json({ message: 'Error fetching payments' }); }
 });
@@ -5327,7 +5792,7 @@ const SIGNUP_PLANS = [
         id: 'progressions3', label: '3 Progresiones', amount: 260, mode: 'payment',
         blurb: 'Tres progresiones de programa completas en un solo pago. Sin renovación.',
         // ─────────────────────────────────────────────────────────────────────────────
-        //  EDITA AQUÍ ↓  — Este texto aparece al pulsar "Más información" en el plan $250.
+        //  EDITA AQUÍ ↓  — Este texto aparece al pulsar "Más información" en el plan $260.
         //  Explica qué es una "progresión". Usa saltos de línea normales para párrafos.
         // ─────────────────────────────────────────────────────────────────────────────
         moreInfo: `Una "progresión" es un bloque de entrenamiento diseñado para un objetivo específico (normalmente ~4 semanas).
@@ -5991,46 +6456,108 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
             // ── Recurring subscription invoice paid ──────────────────────────
             case 'invoice.paid': {
                 const invoice = event.data.object;
-                if (!invoice.subscription) break;
+                // ── Read the subscription id in a version-proof way ──────────
+                // Stripe REMOVED `subscription` from the Invoice object in API
+                // version 2025-03-31.basil, moving it to
+                // `parent.subscription_details.subscription`. The version a
+                // webhook sends is configured per-endpoint in the dashboard,
+                // SEPARATELY from the `apiVersion` this file pins for outgoing
+                // calls — so a new endpoint created with today's default would
+                // send the new shape, `invoice.subscription` would be undefined,
+                // and every renewal would fall out here. Month 1 still looked
+                // fine (that arrives via checkout.session.completed), so the
+                // failure would have been invisible until month 2 went missing
+                // from Facturación while Stripe kept charging the card.
+                //
+                // Reading both shapes means the endpoint's API version cannot
+                // break renewals, now or on Stripe's next major version.
+                const subscriptionId = invoice.subscription
+                    || invoice.parent?.subscription_details?.subscription
+                    || null;
+                if (!subscriptionId) break;
                 // Stripe retries on timeout and can deliver the same event twice.
                 // Without this, every redelivery after the first cycle wrote ANOTHER
                 // Payment row for the same invoice — inflating revenue and showing
                 // the client invoices that never existed. The PayPal path has always
                 // deduped on paypalSaleId; this is the missing equivalent.
                 if (invoice.id && await Payment.findOne({ stripeInvoiceId: invoice.id })) break;
-                // Mark existing record paid (first cycle) or create a new one for subsequent cycles
-                const existing = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
-                if (existing) {
-                    if (existing.status !== 'paid') {
-                        existing.status  = 'paid';
-                        existing.paidDate = new Date().toISOString().split('T')[0];
-                        // Stamp the invoice id so the dedupe guard above can recognise
-                        // a redelivery of THIS cycle, not just of later ones.
+                const existing = await Payment.findOne({ stripeSubscriptionId: subscriptionId });
+
+                // ── First invoice, or a renewal? Ask Stripe, don't guess ─────
+                // This used to be inferred from the existing row's status:
+                // "not paid yet" meant cycle 1, "already paid" meant a renewal.
+                // That inference is a COIN FLIP. On a new subscription Stripe
+                // emits invoice.paid and checkout.session.completed within the
+                // same second and does NOT guarantee their order — this very
+                // signup delivered invoice.paid at 12:13:34 and checkout at
+                // 12:13:35. Had they arrived the other way round, checkout would
+                // have created the row as `status: 'paid'`, invoice.paid would
+                // have read that as "already paid, so this must be a renewal",
+                // and billed the client a second invoice for month 1.
+                //
+                // It never fired before only because `invoice.subscription` was
+                // undefined on this API version, so the handler bailed above —
+                // fixing THAT would have unmasked THIS on roughly half of new
+                // signups. `billing_reason` states the answer outright.
+                const isFirstCycle = invoice.billing_reason === 'subscription_create';
+
+                if (isFirstCycle) {
+                    // checkout.session.completed owns creating this row. If it has
+                    // already landed, mark it paid and stamp the invoice id so a
+                    // redelivery is recognised. If it has not, do nothing — it is
+                    // about to create the row itself, already paid.
+                    if (existing) {
+                        if (existing.status !== 'paid') {
+                            existing.status   = 'paid';
+                            existing.paidDate = new Date().toISOString().split('T')[0];
+                        }
                         if (invoice.id) existing.stripeInvoiceId = invoice.id;
                         await existing.save();
-                    } else {
-                        // Subsequent cycle — create a new payment record for this billing period
-                        const periodEnd   = new Date(invoice.period_end * 1000).toISOString().split('T')[0];
-                        const periodStart = new Date(invoice.period_start * 1000);
-                        const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-                        const newPayment = new Payment({
-                            clientId:            existing.clientId,
-                            trainerId:           existing.trainerId,
-                            amount:              invoice.amount_paid / 100,
-                            status:              'paid',
-                            method:              'stripe',
-                            paidDate:            new Date().toISOString().split('T')[0],
-                            dueDate:             periodEnd,
-                            periodLabel:         `${months[periodStart.getMonth()]} ${periodStart.getFullYear()}`,
-                            type:                'subscription',
-                            planLabel:           existing.planLabel,
-                            stripeSubscriptionId: invoice.subscription,
-                            stripeInvoiceId:     invoice.id,
-                            stripePaymentLink:   invoice.hosted_invoice_url,
-                        });
-                        await newPayment.save();
                     }
+                    break;
                 }
+
+                // Renewal (month 2 onward). The cycle-1 row is where client and
+                // trainer come from, so without it there is nothing to attach to.
+                if (!existing) break;
+
+                const periodEnd   = new Date(invoice.period_end * 1000).toISOString().split('T')[0];
+                const periodStart = new Date(invoice.period_start * 1000);
+                const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+                const periodLabel = `${months[periodStart.getMonth()]} ${periodStart.getFullYear()}`;
+
+                // ── Last line of defence: one invoice per subscription, per period ──
+                // The guards above are specific — they know about redelivered events
+                // and about Stripe's `billing_reason`. This one knows nothing and
+                // asks only: does this client already have an invoice for this month
+                // on this subscription? If yes, whatever produced this second one is
+                // a bug, and the right move is to record nothing and say so in the
+                // logs. A phantom invoice in a client's history costs trust; a line
+                // in the server log costs nothing.
+                const samePeriod = await Payment.findOne({
+                    stripeSubscriptionId: subscriptionId, periodLabel,
+                });
+                if (samePeriod) {
+                    console.warn('[stripe] invoice.paid for an already-recorded period — ignored.',
+                        { subscriptionId, periodLabel, invoiceId: invoice.id, existingPaymentId: String(samePeriod._id) });
+                    break;
+                }
+
+                await new Payment({
+                    clientId:            existing.clientId,
+                    trainerId:           existing.trainerId,
+                    amount:              invoice.amount_paid / 100,
+                    status:              'paid',
+                    method:              'stripe',
+                    paidDate:            new Date().toISOString().split('T')[0],
+                    dueDate:             periodEnd,
+                    periodLabel,
+                    type:                'subscription',
+                    planLabel:           existing.planLabel,
+                    stripeSubscriptionId: subscriptionId,
+                    stripeInvoiceId:     invoice.id,
+                    stripePaymentLink:   invoice.hosted_invoice_url,
+                }).save();
                 break;
             }
             // ── Subscription cancelled ───────────────────────────────────────
@@ -6294,4 +6821,10 @@ const server = http.createServer(app);
 // Passing them in is explicit, avoids the cycle, and makes signaling.js testable
 // with fakes (no database needed to exercise the authorization logic).
 attachSignaling(server, { CallSession, resolveCallTarget, createNotification });   // must run BEFORE listen()
-server.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); });
+// SYNC_INDEXES is a one-off maintenance run, not a server boot: it must not bind a
+// port, because the real app is usually already holding it when you go to run this.
+if (process.env.SYNC_INDEXES === 'true') {
+    console.log('SYNC_INDEXES=true — maintenance run, not starting the HTTP listener.');
+} else {
+    server.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); });
+}

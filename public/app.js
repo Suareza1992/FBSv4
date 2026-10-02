@@ -362,6 +362,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // NEW: Workout Editor State (For the Orange Modal)
     let editorExercises = [];
     let editorDateStr = "";
+    // ── Alternative block (a second routine for the same day) ───────────────
+    // The day editor is reused rather than duplicated: `editorExercises` is
+    // always "the block currently on screen", and switching stashes the visible
+    // array into the block you are leaving and loads the one you are entering.
+    // Every existing button — add, reorder, superset, video — therefore works on
+    // the alternative for free, and the two blocks can never diverge in features.
+    let editorBlock      = 'main';   // which block the editor is showing
+    let editorMainStash  = [];       // the main block while the alternative is on screen
+    let editorAltStash   = [];       // the alternative while the main block is on screen
+    let editorAltLabel   = '';       // e.g. "En casa" — shown to the client on the toggle
     let editorWarmup = ""; // State for Warmup Text
     let editorWarmupVideoUrl = ""; // State for Warmup Video URL
     let editorWarmupItems = []; // Individual warmup exercises [{id, name, videoUrl}]
@@ -466,9 +476,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="bg-[#FFDB89]/10 text-[#FFDB89] px-2 py-1 rounded text-xs font-bold tabular-nums">${count} ${count === 1 ? 'cliente' : 'clientes'}</span>
                 </td>
                 <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${t.isActive ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}">
+                    ${isMe ? `
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${t.isActive ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'} opacity-60 cursor-default" title="No puedes cambiar tu propio estado">
                         ${t.isActive ? 'Activo' : 'Inactivo'}
-                    </span>
+                    </span>` : `
+                    <button onclick="window.toggleTrainerStatus('${t._id}', ${!!t.isActive})"
+                        class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full transition hover:ring-1 hover:ring-[#FFDB89]/40 ${t.isActive ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}"
+                        title="${t.isActive ? 'Desactivar' : 'Activar'} a este entrenador">
+                        ${t.isActive ? 'Activo' : 'Inactivo'}
+                    </button>`}
                 </td>
                 <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button onclick="window.viewTrainerClients('${t._id}')" class="text-[#FFDB89]/70 hover:text-[#FFDB89] transition text-xs font-bold">
@@ -511,6 +527,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // Activate / deactivate a trainer. Mirrors window.toggleClientStatus, including
+    // flipping the filter back to "Todos" — deactivating while the list is filtered
+    // to Activos would otherwise make the row vanish and look like a deletion.
+    //
+    // Deactivating is confirmed, activating is not: one direction takes something
+    // away from a working account, the other gives it back.
+    window.toggleTrainerStatus = async (trainerId, currentActive) => {
+        const t = trainersCache.find(x => String(x._id) === String(trainerId));
+        const who = `${t?.name || ''} ${t?.lastName || ''}`.trim() || 'este entrenador';
+        if (currentActive) {
+            const ok = await showConfirm(
+                `¿Desactivar a ${escHtml(who)}?<br><span class="text-xs text-[#FFDB89]/60">No podrá recibir llamadas en vivo. Sus clientes y sus datos no se tocan.</span>`,
+                { confirmLabel: 'Desactivar', danger: true }
+            );
+            if (!ok) return;
+        }
+        try {
+            const res = await apiFetch(`/api/trainers/${trainerId}/active`, {
+                method: 'PATCH', body: JSON.stringify({ isActive: !currentActive }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => null);
+                showToast(err?.message || 'Error actualizando el estado.', 'error');
+                return;
+            }
+            const updated = await res.json();
+            const idx = trainersCache.findIndex(x => String(x._id) === String(trainerId));
+            // Keep clientCount — the PATCH response deliberately doesn't carry it.
+            if (idx > -1) trainersCache[idx] = { ...trainersCache[idx], ...updated };
+            const filterEl = document.getElementById('trainer-status-filter');
+            if (filterEl) filterEl.value = 'all';
+            renderTrainersTable();
+            renderTrainerStats();
+            showToast(`${updated.name} marcado como ${updated.isActive ? 'Activo' : 'Inactivo'}.`, 'success');
+        } catch (e) {
+            console.error('Error toggling trainer status:', e);
+            showToast('Error de conexión.', 'error');
+        }
+    };
+
     const attachTrainerFilterListeners = () => {
         document.getElementById('trainer-search-input')?.addEventListener('input', renderTrainersTable);
         document.getElementById('trainer-status-filter')?.addEventListener('change', renderTrainersTable);
@@ -547,6 +603,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchClientsFromDB = async () => {
+        // `/api/clients` is trainer/admin/superadmin only, so a client asking for it
+        // is a guaranteed 403 — three per login, because loadData() and two
+        // on-demand callers all route through here. A client has no roster and
+        // nothing reads clientsCache for them, so the right answer is not to ask.
+        //
+        // Guarded INSIDE the fetch rather than at each call site: the three callers
+        // reached this by different paths and a fourth would have reintroduced the
+        // problem. `clientsLoadFailed` deliberately stays false — nothing failed,
+        // and flipping it would show the trainer-facing "retry" state to a client.
+        if (loadSession()?.role === 'client') return;
+
         try {
             // On success the new list replaces the cache; on failure we keep the
             // previous cache (apiGetJSON throws) so a transient blip never blanks it.
@@ -1927,6 +1994,39 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const RESTORABLE_MODULES = new Set(Object.keys(MODULE_TITLES));
 
+    // Which modules each role may open. A deep link is user-supplied input, so a
+    // client following #/clientes must not get the trainer roster shell — the API
+    // would 403 every call behind it and they'd stare at a broken page.
+    const TRAINER_MODULES = new Set(['trainer_home', 'notifications_content', 'clientes_content',
+        'entrenadores_content', 'programas_content', 'pagos_content', 'blog_content', 'ajustes_content']);
+    const CLIENT_MODULES  = new Set(['client_inicio', 'client_programas', 'client_metricas',
+        'client_nutricion', 'client_equipo', 'client_progress', 'client_clock', 'client_historial',
+        'ajustes_content']);
+    const moduleAllowedFor = (role, mod) =>
+        (role === 'trainer' ? TRAINER_MODULES : CLIENT_MODULES).has(mod);
+
+    /**
+     * Read the address bar back into app state — the inverse of hashForState().
+     *
+     * Without this, opening a section in a new tab did nothing useful: the nav
+     * links pointed straight at the HTML PARTIALS (`/clientes_content.html`),
+     * which are bare `<div>` fragments with no <head>, CSS or script. express.static
+     * serves them before the SPA fallback ever runs, so the browser showed raw
+     * unstyled markup instead of the app.
+     */
+    const stateFromHash = () => {
+        const raw = (location.hash || '').replace(/^#\/?/, '').trim();
+        if (!raw) return null;
+        const deep = raw.match(/^(cliente|programa)\/([A-Za-z0-9_-]+)$/);
+        if (deep) return deep[1] === 'cliente'
+            ? { view: 'client',  clientId:  deep[2] }
+            : { view: 'program', programId: deep[2] };
+        // hashForState() strips a trailing "_content", so put it back when needed.
+        const mod = RESTORABLE_MODULES.has(raw) ? raw
+                  : (RESTORABLE_MODULES.has(`${raw}_content`) ? `${raw}_content` : null);
+        return mod ? { view: 'module', module: mod } : null;
+    };
+
     // ══════════════════════════════════════════════════════════════════════════
     // BROWSER HISTORY (Back / Forward)
     // The SPA renders every view at "/", so without this the browser's Back button
@@ -2206,13 +2306,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         setTimeout(updateThemeIcon, 100);
 
-        // ── Refresh restore ──────────────────────────────────────────────────
-        // If the user was on a non-home section before refreshing, take them
-        // straight back there instead of dropping them on the home page.
-        const _lastMod = sessionStorage.getItem('fbs_last_module');
+        // ── Restore where the user should land ───────────────────────────────
+        // The ADDRESS BAR wins: an explicit #/clientes — typed, bookmarked, or
+        // opened in a new tab — is a deliberate request and must beat whatever
+        // this tab happened to be showing last. sessionStorage is the fallback,
+        // so a plain refresh still returns you to the section you were on.
         const _homeMod = user.role === 'trainer' ? 'trainer_home' : 'client_inicio';
-        if (_lastMod && RESTORABLE_MODULES.has(_lastMod) && _lastMod !== _homeMod) {
-            await loadAndInitModule(_lastMod);
+        const _hash = stateFromHash();
+        let _restored = false;
+
+        if (_hash?.view === 'client' && user.role === 'trainer') {
+            await window.openClientProfile(_hash.clientId); _restored = true;
+        } else if (_hash?.view === 'program' && user.role === 'trainer') {
+            await loadAndInitModule('programas_content');
+            await openProgramBuilder(_hash.programId); _restored = true;
+        } else if (_hash?.view === 'module' && moduleAllowedFor(user.role, _hash.module)) {
+            if (_hash.module !== _homeMod) await loadAndInitModule(_hash.module);
+            _restored = true;
+        } else if (_hash) {
+            // A link to something this role cannot open — send them home rather
+            // than leaving a stale hash that reopens the same dead end on refresh.
+            history.replaceState(null, '', location.pathname);
+        }
+
+        if (!_restored) {
+            const _lastMod = sessionStorage.getItem('fbs_last_module');
+            if (_lastMod && RESTORABLE_MODULES.has(_lastMod) && _lastMod !== _homeMod
+                && moduleAllowedFor(user.role, _lastMod)) {
+                await loadAndInitModule(_lastMod);
+            }
         }
         // ────────────────────────────────────────────────────────────────────
 
@@ -8930,10 +9052,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // `whitespace-nowrap` is what keeps this a pill. Without it the span is a
+        // plain inline box, so in a narrow column "Al día" broke across two lines
+        // and the rounded-full background wrapped with it — the badge looked torn
+        // in half until the window was widened. `inline-flex` keeps the icon and
+        // the label on one baseline at any size.
+        const BADGE_BASE = 'inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-bold';
         const statusBadge = s => {
-            if (s === 'paid')    return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-green-500/15 text-green-400 border border-green-500/30"><i class="fas fa-check mr-1"></i>Al día</span>`;
-            if (s === 'overdue') return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30"><i class="fas fa-exclamation-triangle mr-1"></i>Vencido</span>`;
-            return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30"><i class="fas fa-clock mr-1"></i>Pendiente</span>`;
+            if (s === 'paid')    return `<span class="${BADGE_BASE} bg-green-500/15 text-green-400 border border-green-500/30"><i class="fas fa-check mr-1"></i>Al día</span>`;
+            if (s === 'overdue') return `<span class="${BADGE_BASE} bg-red-500/15 text-red-400 border border-red-500/30"><i class="fas fa-exclamation-triangle mr-1"></i>Vencido</span>`;
+            return `<span class="${BADGE_BASE} bg-yellow-500/15 text-yellow-400 border border-yellow-500/30"><i class="fas fa-clock mr-1"></i>Pendiente</span>`;
         };
 
         tbody.innerHTML = list.map(p => {
@@ -9347,6 +9475,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await snapshotDayForUndo(dateStr, { reset: true });
             editorExercises = [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
             editorDateStr = dateStr;
+            editorBlock = 'main'; editorAltStash = []; editorMainStash = []; editorAltLabel = '';
             editorWarmup = "";
             editorWarmupVideoUrl = "";
             editorCooldown = "";
@@ -9622,6 +9751,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     editorCooldown = workout.cooldown || '';
                     editorCooldownVideoUrl = workout.cooldownVideoUrl || '';
                     editorCooldownItems = workout.cooldownItems || [];
+                    // The alternative always loads into the stash; the editor opens
+                    // on the main block, as it always has.
+                    editorBlock     = 'main';
+                    editorAltLabel  = workout.alternative?.label || '';
+                    editorAltStash  = (workout.alternative?.exercises || []).map(e => ({ ...e }));
+                    editorMainStash = [];
                     // Always ensure at least one blank exercise row — [] is truthy so the old `|| [template]` didn't fire
                     const loadedExercises = workout.exercises?.length > 0 ? workout.exercises : null;
                     editorExercises = loadedExercises || [{ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }];
@@ -9805,6 +9940,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (wList) wList.innerHTML = warmupItemsHtml;
             const cList = document.getElementById('cooldown-items-list');
             if (cList) cList.innerHTML = cooldownItemsHtml;
+            const switcher = document.getElementById('editor-block-switcher');
+            if (switcher) switcher.innerHTML = editorBlockSwitcherHtml();
             wireEditorAutocomplete();
             return;
         }
@@ -9821,6 +9958,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button onclick="window.closeWorkoutEditor()" class="hover:text-[#FFDB89] transition"><i class="fas fa-times text-sm"></i></button>
                     </div>
                 </div>
+
+                <!-- BLOCK SWITCHER — rendered by editorBlockSwitcherHtml() so the
+                     partial-update path below can refresh it too. Empty for a
+                     day with no alternative, so the editor is unchanged. -->
+                <div id="editor-block-switcher" class="px-4 pt-3 shrink-0 flex items-center gap-2 flex-wrap">${editorBlockSwitcherHtml()}</div>
 
                 <!-- UNSAVED BANNER — hidden by default, slides in when dirty -->
                 <div id="editor-unsaved-banner" class="bg-[#ff6b4a] shrink-0 overflow-hidden transition-all duration-500" style="max-height:0; opacity:0;">
@@ -9995,6 +10137,110 @@ document.addEventListener('DOMContentLoaded', () => {
                 ex.supersetHead = false;
             }
         });
+    };
+
+    // The block switcher's markup, used by BOTH render paths. The editor has a
+    // fast path that only swaps the exercise list when the panel already exists
+    // — without rendering the switcher there too, clicking "En casa" loaded the
+    // alternative's exercises while the tab highlight stayed on "Principal".
+    const editorBlockSwitcherHtml = () => `
+                    <button onclick="window.switchEditorBlock('main')"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold border transition ${editorBlock === 'main'
+                            ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
+                            : 'bg-transparent text-[#FFDB89]/60 border-[#FFDB89]/25 hover:text-[#FFDB89]'}">
+                        Principal
+                    </button>
+                    ${(editorAltStash.length || editorBlock === 'alternative') ? `
+                    <button onclick="window.switchEditorBlock('alternative')"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold border transition ${editorBlock === 'alternative'
+                            ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
+                            : 'bg-transparent text-[#FFDB89]/60 border-[#FFDB89]/25 hover:text-[#FFDB89]'}">
+                        ${escHtml(editorAltLabel || 'Alternativa')}
+                    </button>
+                    <input type="text" id="editor-alt-label" value="${(editorAltLabel || '').replace(/"/g,'&quot;')}"
+                        oninput="window.updateAltLabel(this.value)" placeholder="Nombre de la alternativa (ej. En casa)"
+                        class="flex-1 min-w-[12rem] bg-white/5 border border-[#FFDB89]/20 rounded-lg px-2.5 py-1.5 text-xs text-[#FFDB89] placeholder-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50"
+                        autocomplete="off" spellcheck="false">
+                    <button onclick="window.removeAltBlock()" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-400/60 hover:text-red-400 border border-red-400/25 hover:border-red-400/50 transition" title="Quitar la alternativa">
+                        <i class="fas fa-trash-alt text-[10px]"></i>
+                    </button>` : `
+                    <button onclick="window.addAltBlock()"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border border-dashed border-[#FFDB89]/25 hover:border-[#FFDB89]/50 transition">
+                        <i class="fas fa-plus text-[10px] mr-1"></i>Añadir alternativa
+                    </button>`}
+                    ${editorBlock === 'alternative' ? `
+                    <span class="w-full text-[10px] text-[#FFDB89]/40">Esta rutina es la opción B del mismo día — el cliente elige cuál hacer.</span>` : ''}
+                `;
+
+    // Both blocks, whichever one happens to be on screen. The visible block lives
+    // in `editorExercises`, so a save must read through this rather than reading
+    // the stashes directly — otherwise saving while the alternative is open would
+    // write a stale main block (and vice versa).
+    const editorBlockArrays = () => ({
+        main:        editorBlock === 'main'        ? editorExercises : editorMainStash,
+        alternative: editorBlock === 'alternative' ? editorExercises : editorAltStash,
+    });
+
+    // The alternative, shaped for the save payload. Always sent, so clearing it
+    // actually clears it; a day that never had one sends an empty list, which the
+    // server treats as "no alternative" — unchanged from before this feature.
+    const editorAltPayload = () => ({
+        label: editorAltLabel || '',
+        exercises: editorBlockArrays().alternative
+            .filter(ex => (ex.name || '').trim())
+            .map(ex => ({
+                id: ex.id, name: ex.name, instructions: ex.instructions || '',
+                results: ex.results || '', videoUrl: ex.videoUrl || '',
+                isSuperset: ex.isSuperset || false, supersetHead: ex.supersetHead || false,
+                isComplete: ex.isComplete || false, rpe: ex.rpe ?? null,
+            })),
+    });
+
+    // ── Alternative block: switching, naming, adding, removing ──────────────
+    // `editorExercises` is always the block on screen. Switching stashes it into
+    // the block being left and loads the one being entered, so every existing
+    // editor control operates on the alternative with no extra code.
+    const stashCurrentBlock = () => {
+        if (editorBlock === 'main') editorMainStash = editorExercises;
+        else                        editorAltStash  = editorExercises;
+    };
+    const blankExercise = () => ({ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" });
+
+    window.switchEditorBlock = (to) => {
+        if (to === editorBlock) return;
+        stashCurrentBlock();
+        editorExercises = (to === 'main' ? editorMainStash : editorAltStash);
+        // Never show an empty list — the editor assumes at least one row exists.
+        if (!editorExercises.length) editorExercises = [blankExercise()];
+        editorBlock = to;
+        renderWorkoutEditorUI();
+    };
+
+    window.addAltBlock = () => {
+        stashCurrentBlock();
+        editorAltStash = editorAltStash.length ? editorAltStash : [blankExercise()];
+        editorExercises = editorAltStash;
+        editorBlock = 'alternative';
+        if (!editorAltLabel) editorAltLabel = 'En casa';   // a sensible default he can rename
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
+    };
+
+    window.updateAltLabel = (v) => { editorAltLabel = v; window.markEditorDirty(); };
+
+    window.removeAltBlock = async () => {
+        const ok = await showConfirm('¿Quitar la rutina alternativa de este día?', { confirmLabel: 'Quitar', danger: true });
+        if (!ok) return;
+        // If the alternative is on screen, move back to the main block first so
+        // `editorExercises` is never left pointing at the array we just dropped.
+        if (editorBlock === 'alternative') {
+            editorExercises = editorMainStash.length ? editorMainStash : [blankExercise()];
+            editorBlock = 'main';
+        }
+        editorAltStash = [];
+        editorAltLabel = '';
+        renderWorkoutEditorUI();
+        window.markEditorDirty();
     };
 
     window.addEditorExercise = () => { captureEditorSnapshot(); editorExercises.push({ id: Date.now(), name: "", instructions: "", results: "", isSuperset: false, supersetHead: false, videoUrl: "" }); renderWorkoutEditorUI(); window.markEditorDirty(); };
@@ -10388,11 +10634,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Carry the client's own fields through untouched — this POST replaces the
             // whole exercises array, so anything omitted here is destroyed. `rpe` and
             // `isComplete` are logged by the client, never edited by the trainer.
-            exercises: editorExercises.map(ex => ({
+            exercises: editorBlockArrays().main.map(ex => ({
                 id: ex.id, name: ex.name, instructions: ex.instructions || '',
                 results: ex.results || '', videoUrl: ex.videoUrl || '', isSuperset: ex.isSuperset || false, supersetHead: ex.supersetHead || false,
                 isComplete: ex.isComplete || false, rpe: ex.rpe ?? null
-            }))
+            })),
+            alternative: editorAltPayload(),
         };
         try {
             const response = await apiFetch('/api/client-workouts', { method: 'POST', body: JSON.stringify(workoutData) });
@@ -10774,14 +11021,15 @@ document.addEventListener('DOMContentLoaded', () => {
             warmup: editorWarmup,
             warmupVideoUrl: editorWarmupVideoUrl,
             cooldown: editorCooldown,
-            exercises: editorExercises.map(ex => ({
+            exercises: editorBlockArrays().main.map(ex => ({
                 id: ex.id,
                 name: ex.name,
                 instructions: ex.instructions || '',
                 videoUrl: ex.videoUrl || '',
                 isSuperset: ex.isSuperset || false,
                 supersetHead: ex.supersetHead || false
-            }))
+            })),
+            alternative: editorAltPayload(),
         };
 
         try {
@@ -12345,6 +12593,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // State: meals array
         let mealsData = [];
         let exerciseData = [];  // [{name, calories}] extra activity logged for the day
+        // Which version of the day this tab last saw. Sent as `baseRev` on the
+        // full-replace save so the server can refuse a stale overwrite instead of
+        // silently erasing what another device added.
+        let nutritionRev = 0;
         let waterOz = 0;
         let waterGoalOz = 64;   // trainer-set or default 8 × 8 oz — drives the water bar
         let nlpEnabled = true;  // natural-language "Describir" tab; toggled by /api/me flag
@@ -14031,21 +14283,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const addParsedItems = () => {
                     if (!parsedItems.length) return;
-                    if (!mealsData[mealIndex].foods) mealsData[mealIndex].foods = [];
-                    parsedItems.forEach(it => {
-                        mealsData[mealIndex].foods.push({
-                            name:          it.matchedName || it.food,
-                            calories:      it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat,
-                            servingAmount: it.grams, servingUnit: 'g',
-                        });
-                    });
                     const n = parsedItems.length;
+                    const items = parsedItems.map(it => ({
+                        name:          it.matchedName || it.food,
+                        calories:      it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat,
+                        servingAmount: it.grams, servingUnit: 'g',
+                    }));
                     stopScanner();
                     modal.remove();
-                    renderMeals();
-                    recalcTotals();
-                    doSaveNutrition({ silent: true });
-                    showToast(`${n} alimento${n !== 1 ? 's' : ''} agregado${n !== 1 ? 's' : ''}.`, 'success');
+                    // APPEND, not full replace — see appendFoodsToMeal().
+                    appendFoodsToMeal(mealIndex, items,
+                        { toast: `${n} alimento${n !== 1 ? 's' : ''} agregado${n !== 1 ? 's' : ''}.` });
                 };
 
                 const renderResults = () => {
@@ -14209,7 +14457,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? (modalUnit === 'oz' ? gToOz(servingG) : Math.round(servingG))
                     : null;
 
-                mealsData[mealIndex].foods.push({
+                const pendingItem = {
                     name:          pending.name,
                     calories:      pending.calories || '',
                     protein:       pending.protein  || '',
@@ -14217,7 +14465,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     fat:           pending.fat      || '',
                     servingAmount: servingAmt,
                     servingUnit:   servingAmt ? modalUnit : null
-                });
+                };
                 // Add to live foodHistory so it appears next time without refresh
                 const key = pending.name.toLowerCase().trim();
                 if (!foodHistory.find(f => f.name.toLowerCase().trim() === key)) {
@@ -14237,9 +14485,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }).catch(() => {}); // non-blocking — never fails the user's log
                 stopScanner();
                 modal.remove();
-                renderMeals();
-                recalcTotals();
-                doSaveNutrition({ silent: true });
+                // APPEND, not full replace.
+                appendFoodsToMeal(mealIndex, pendingItem);
             });
 
             // ---- Close ----
@@ -14376,6 +14623,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const logs = await res.json();
                 const log = logs.find(l => l.date === dateStr);
                 if (log) {
+                    nutritionRev = log.rev ?? 0;
                     mealsData = log.meals ? (Array.isArray(log.meals) ? log.meals : Object.values(log.meals)) : [];
                     exerciseData = Array.isArray(log.exercise) ? log.exercise : [];
                     // DB is authoritative — use its value, then sync localStorage with it
@@ -14478,8 +14726,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const targetIdx = parseInt(modal.querySelector('#pf-meal').value) || 0;
                 const qty = parseFloat(modal.querySelector('#pf-quantity').value) || 1;
                 if (!mealsData[targetIdx]) return;
-                if (!mealsData[targetIdx].foods) mealsData[targetIdx].foods = [];
-                mealsData[targetIdx].foods.push({
+                const item = {
                     name: pf.name,
                     calories: Math.round((pf.calories || 0) * qty),
                     protein: +((pf.protein || 0) * qty).toFixed(1),
@@ -14487,12 +14734,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     fat: +((pf.fat || 0) * qty).toFixed(1),
                     servingAmount: pf.servingSize ? pf.servingSize * qty : null,
                     servingUnit: pf.servingUnit || 'g',
-                });
+                };
                 close();
-                renderMeals();
-                recalcTotals();
-                doSaveNutrition({ silent: true });
-                showToast(`✓ "${pf.name}" añadido.`, 'success');
+                appendFoodsToMeal(targetIdx, item, { toast: `✓ "${pf.name}" añadido.` });
             };
         };
 
@@ -14859,14 +15103,14 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.querySelector('#combo-add').onclick = () => {
                 const targetIdx = parseInt(modal.querySelector('#combo-meal').value) || 0;
                 if (!mealsData[targetIdx]) return;
-                if (!mealsData[targetIdx].foods) mealsData[targetIdx].foods = [];
+                const comboItems = [];
                 modal.querySelectorAll('.combo-cal').forEach(inp => {
                     const f = items[+inp.dataset.i];
                     const newCal   = parseFloat(inp.value);
                     const baseCal  = parseFloat(inp.dataset.baseCal)  || 0;
                     const ratio    = (baseCal > 0 && !isNaN(newCal)) ? newCal / baseCal : 1;
                     const finalCal = isNaN(newCal) ? (Number(f.calories) || 0) : newCal;
-                    mealsData[targetIdx].foods.push({
+                    comboItems.push({
                         name:     f.name,
                         calories: Math.round(finalCal),
                         protein:  +(((parseFloat(inp.dataset.basePro)  || 0) * ratio).toFixed(1)),
@@ -14877,16 +15121,71 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 });
                 close();
-                renderMeals();
-                recalcTotals();
-                doSaveNutrition({ silent: true });
-                showToast(`✓ "${sm.name}" añadida.`, 'success');
+                appendFoodsToMeal(targetIdx, comboItems, { toast: `✓ "${sm.name}" añadida.` });
             };
         };
 
         // --- SAVE ---
         const saveBtn = document.getElementById('save-nutrition-btn');
         // Shared save function — called by button and auto-save
+        /**
+         * Add food(s) WITHOUT sending the whole day back.
+         *
+         * The four "add a food" paths used to push into mealsData and then call
+         * doSaveNutrition(), which replaces the entire `meals` array on the server.
+         * Anything added meanwhile — the phone, another tab — was silently erased.
+         *
+         * This sends only what is being added. The server appends atomically and
+         * returns the authoritative day, which we adopt: so a food someone added
+         * elsewhere APPEARS here instead of being destroyed.
+         */
+        const appendFoodsToMeal = async (mealIndex, foods, { toast = null } = {}) => {
+            const list = (Array.isArray(foods) ? foods : [foods]).filter(f => f && f.name);
+            if (!list.length) return false;
+
+            const meal = mealsData[mealIndex];
+            if (!meal) return false;
+            if (!meal.foods) meal.foods = [];
+
+            // Optimistic: show it immediately, reconcile with the server after.
+            meal.foods.push(...list);
+            renderMeals();
+            recalcTotals();
+
+            const dateStr = document.getElementById('nutri-date')?.value || todayStr;
+            const session = loadSession();
+            if (!session?.id) return false;
+
+            try {
+                const res = await apiFetch('/api/nutrition-logs/food', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        clientId: session.id, date: dateStr,
+                        mealName: meal.name || 'Comida', foods: list,
+                    }),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const saved = await res.json();
+                // Adopt the server's version — this is what makes a concurrent add
+                // from another device show up rather than get overwritten.
+                if (Array.isArray(saved?.meals)) {
+                    mealsData = saved.meals;
+                    nutritionRev = saved.rev ?? nutritionRev;
+                    renderMeals();
+                    recalcTotals();
+                }
+                if (toast) showToast(toast, 'success');
+                return true;
+            } catch (e) {
+                // Fall back to the old full save so a single bad request never
+                // loses what the user just typed.
+                console.warn('[nutrition] append failed, falling back to full save:', e.message);
+                await doSaveNutrition({ silent: true });
+                if (toast) showToast(toast, 'success');
+                return false;
+            }
+        };
+
         const doSaveNutrition = async ({ silent = false } = {}) => {
             const dateStr = document.getElementById('nutri-date')?.value || todayStr;
             const notes   = document.getElementById('nutrition-notes')?.value || '';
@@ -14908,10 +15207,29 @@ document.addEventListener('DOMContentLoaded', () => {
                         calories: Math.round(calories), protein: Math.round(protein),
                         carbs: Math.round(carbs), fat: Math.round(fat),
                         water: waterOz, notes, meals: mealsData,
-                        exercise: exerciseData, exerciseCalories
+                        exercise: exerciseData, exerciseCalories,
+                        // Tells the server which version we edited. Stale -> 409.
+                        baseRev: nutritionRev,
                     })
                 });
+
+                // 409: this day changed elsewhere while we had it open. Take the
+                // server's copy rather than overwrite it — losing someone's food
+                // silently is exactly what this whole mechanism exists to prevent.
+                if (res.status === 409) {
+                    const conflict = await res.json();
+                    if (conflict?.current) {
+                        mealsData    = Array.isArray(conflict.current.meals) ? conflict.current.meals : mealsData;
+                        exerciseData = Array.isArray(conflict.current.exercise) ? conflict.current.exercise : exerciseData;
+                        nutritionRev = conflict.current.rev ?? nutritionRev;
+                        renderMeals();
+                        recalcTotals();
+                    }
+                    showToast('Este día se actualizó en otro dispositivo. Cargamos la versión más reciente.', 'info');
+                    return;
+                }
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                try { nutritionRev = (await res.clone().json())?.rev ?? nutritionRev; } catch { /* non-JSON ok */ }
                 if (!silent) {
                     const orig = saveBtn.innerHTML;
                     saveBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Guardado';
@@ -15874,7 +16192,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Working copy of exercises — client can type results without mutating the original yet
-        const clientExercises = (workout.exercises || []).map(ex => ({ ...ex }));
+        // ── Which block is this client doing? ───────────────────────────────
+        // A day can carry a second complete routine (the gym session and the
+        // at-home version). `chosenBlock` is the client's own choice, so the
+        // modal reopens on whatever they picked last.
+        const altExercises = workout.alternative?.exercises || [];
+        const hasAlt       = altExercises.length > 0;
+        const activeBlock  = (hasAlt && workout.chosenBlock === 'alternative') ? 'alternative' : 'main';
+        const blockSource  = activeBlock === 'alternative' ? altExercises : (workout.exercises || []);
+        const clientExercises = blockSource.map(ex => ({ ...ex }));
 
         // Debounced auto-save for client results
         let _resultsSaveTimer = null;
@@ -15889,7 +16215,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const clientId = workout.clientId || session?.id;
                     const res = await apiFetch(`/api/client-workouts/${clientId}/${workout.date}`, {
                         method: 'PATCH',
-                        body: JSON.stringify({ exercises: clientExercises })
+                        // Results belong to the block the client is actually doing.
+                        body: JSON.stringify(activeBlock === 'alternative'
+                            ? { alternative: { exercises: clientExercises } }
+                            : { exercises: clientExercises })
                     });
                     if (res.ok) {
                         workout.exercises = clientExercises.map(e => ({ ...e }));
@@ -16021,6 +16350,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
 
+                    <!-- BLOCK TOGGLE — only when the trainer offered a second routine.
+                         Nothing renders for a normal day, so this view is unchanged
+                         for every client who doesn't have an alternative. -->
+                    ${hasAlt ? `
+                    <div class="px-5 pt-4 shrink-0">
+                        <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-2">Elige tu rutina de hoy</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button data-block="main" class="client-block-btn py-2.5 rounded-xl text-xs font-bold border transition ${activeBlock === 'main'
+                                ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
+                                : 'bg-transparent text-[#FFDB89]/60 border-[#FFDB89]/25'}">
+                                ${escHtml(workout.title || 'Entrenamiento')}
+                            </button>
+                            <button data-block="alternative" class="client-block-btn py-2.5 rounded-xl text-xs font-bold border transition ${activeBlock === 'alternative'
+                                ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
+                                : 'bg-transparent text-[#FFDB89]/60 border-[#FFDB89]/25'}">
+                                ${escHtml(workout.alternative?.label || 'Alternativa')}
+                            </button>
+                        </div>
+                    </div>` : ''}
+
                     <!-- Scrollable body -->
                     <div class="overflow-y-auto p-5 space-y-3 flex-1">
                         ${(workout.warmup || warmupItemsHtml) ? `
@@ -16081,6 +16430,34 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         document.getElementById('client-workout-detail-modal').addEventListener('click', (e) => {
             if (e.target === e.currentTarget) e.currentTarget.remove();
+        });
+
+        // ── Switching between the two routines for this day ──────────────────
+        // The choice is persisted before re-rendering, so closing the app and
+        // coming back reopens the routine they actually started. Results already
+        // logged against the other block stay where they are — switching picks a
+        // routine, it never discards work.
+        document.querySelectorAll('.client-block-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const to = btn.dataset.block;
+                if (to === activeBlock) return;
+                const session = loadSession();
+                if (!session?.id) return;
+                try {
+                    const res = await apiFetch(`/api/client-workouts/${session.id}/${workout.date}`, {
+                        method: 'PATCH', body: JSON.stringify({ chosenBlock: to }),
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    // Re-open from the server's copy so the modal shows exactly
+                    // what was stored, including anything logged elsewhere.
+                    const fresh = await res.json();
+                    document.getElementById('client-workout-detail-modal')?.remove();
+                    showClientWorkoutDetail(fresh && fresh._id ? fresh : { ...workout, chosenBlock: to });
+                } catch (err) {
+                    console.warn('[workout] block switch failed:', err.message);
+                    showToast('No se pudo cambiar de rutina.', 'error');
+                }
+            });
         });
 
         // ── Fetch exercise history and populate chips ────────────────────────

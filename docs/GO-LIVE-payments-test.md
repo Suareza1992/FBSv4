@@ -8,11 +8,17 @@ How to configure and prove out the public "pay → account created" flow before 
 
 ## 1. Environment variables (Railway → your service → Variables)
 
-**Stripe** (you likely already have these):
+**Stripe** — verified 2026-09-25: **neither of these is set in Railway**, so
+`POST /api/signup/checkout` returns 503 and nobody can pay. Setting them is step one.
+
 | Var | Value |
 |---|---|
 | `STRIPE_SECRET_KEY` | `sk_live_…` (or `sk_test_…` while testing) |
-| `STRIPE_WEBHOOK_SECRET` | from the Stripe webhook you create in §2 |
+| `STRIPE_WEBHOOK_SECRET` | from the Stripe webhook you create in §2 — **test and live mode have separate endpoints with different signing secrets** |
+
+> You do **not** need to create Products or Prices in the Stripe dashboard. `/api/signup/checkout`
+> builds the line item inline with `price_data` from `SIGNUP_PLANS` in `server.js`, so the plan name
+> and amount come from the code. Generic Stripe guides will tell you to make Products — skip that.
 
 **PayPal** (new):
 | Var | Value |

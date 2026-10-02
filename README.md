@@ -272,6 +272,16 @@ On first boot, if no trainer account exists in the database, the server automati
 
 Change the password immediately after first login.
 
+### Maintenance scripts
+
+| Command | What it does |
+|---|---|
+| `npm start` | Run the server |
+| `npm run build:css` | Rebuild `public/output.css` from Tailwind — run after changing classes in HTML or JS |
+| `npm run lint` / `lint:fix` | ESLint |
+| `npm run check:routes` | Verify the SPA section allowlist in `server.js` agrees with the router's module table in `public/app.js`. **Run this after adding a section** — the two lists live in different files and a mismatch drops the user on a blank frame. No server or database needed. |
+| `SYNC_INDEXES=true npm start` | Create/update MongoDB indexes to match the schemas, then exit (no HTTP listener). **Required after changing any index**, because `autoIndex` is off in production. It also DROPS indexes the schemas no longer declare — read the diff it prints first. |
+
 ---
 
 ## Environment Variables

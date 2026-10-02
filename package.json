@@ -7,6 +7,7 @@
   "scripts": {
     "build:css": "tailwindcss --content './public/**/*.{html,js}' -i ./src/input.css -o ./public/output.css --minify",
     "start": "node server.js",
+    "check:routes": "node scripts/check-routes.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
@@ -14,6 +15,7 @@
     "@anthropic-ai/sdk": "^0.100.1",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.10.0",
+    "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
