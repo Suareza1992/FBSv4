@@ -671,8 +671,15 @@ const ClientWorkoutSchema = new mongoose.Schema({
     // Empty `exercises` = no alternative offered, which is every day that
     // already exists.
     alternative: {
-        label:     { type: String, default: '' },      // e.g. "En casa", "Sin equipo"
+        label:     { type: String, default: '' },      // e.g. "En casa", or a program's name
         exercises: [WorkoutExerciseFields],
+        // Provenance, mirroring the main block's. Set when this slot was filled by
+        // assigning a whole PROGRAM to the alternative, which is how a client ends
+        // up with a gym program and an at-home program over the same dates.
+        sourceProgramId: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', default: null },
+        sourceWeek:      { type: Number, default: null },
+        sourceDayNum:    { type: Number, default: null },
+        manualEdit:      { type: Boolean, default: false },
     },
     // Which block the client actually did. The CLIENT owns this field; the
     // trainer reads it to see whether the session happened as prescribed.
@@ -2100,7 +2107,21 @@ app.get('/api/log/:clientId', authenticateToken, async (req, res) => {
 // --- PROTECTED: Client-Specific Workouts ---
 // ==========================================================================
 
-app.post('/api/client-workouts', authenticateToken, async (req, res) => {
+/**
+ * POST /api/client-workouts — create or replace a day's PRESCRIPTION.
+ *
+ * Trainer-only. The PATCH route below goes to real lengths to stop a client
+ * rewriting what they were prescribed (it merges only results/rpe/isComplete off
+ * the incoming array), but this route was left on `authenticateToken` alone —
+ * and `assertOwnership` passes any client acting on their own id. So a client
+ * could POST their own date and replace the title and every exercise.
+ *
+ * Verified before the fix: a client POSTed over a trainer-written day and got a
+ * 200 with their own content stored. Every real caller is a trainer flow (the
+ * program push, the day editor, copy/paste, and the mobile client-detail screen),
+ * so nothing legitimate loses access.
+ */
+app.post('/api/client-workouts', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     if (!assertOwnership(req, res, req.body.clientId)) return;
     try {
         const {
@@ -2109,7 +2130,38 @@ app.post('/api/client-workouts', authenticateToken, async (req, res) => {
             exercises, alternative,
             cooldown, cooldownVideoUrl, cooldownItems,
             sourceProgramId, sourceWeek, sourceDayNum,
+            slot,
         } = req.body;
+
+        // ── slot: 'alternative' — write ONLY the second block ────────────────
+        // Assigning a second program over dates the client already has must not
+        // disturb the first one. The default path below rebuilds the whole day
+        // from the body (`exercises || []`, `title || ''`), so reusing it with a
+        // partial payload would blank the main block — which is exactly how the
+        // overwrite this feature exists to prevent happens in the first place.
+        // A separate branch is the only way to be sure the main block is untouched.
+        if (slot === 'alternative') {
+            const altSet = {
+                'alternative.label':     (title || '').toString(),
+                'alternative.exercises': Array.isArray(exercises) ? exercises : [],
+                updatedAt: Date.now(),
+            };
+            if (sourceProgramId) {
+                altSet['alternative.sourceProgramId'] = sourceProgramId;
+                altSet['alternative.sourceWeek']      = sourceWeek ?? null;
+                altSet['alternative.sourceDayNum']    = sourceDayNum ?? null;
+                altSet['alternative.manualEdit']      = false;
+            } else if (req.user.role !== 'client') {
+                altSet['alternative.manualEdit'] = true;
+            }
+            // upsert: the alternative may land on a date that has no day yet — the
+            // two programs need not cover exactly the same calendar days.
+            const saved = await ClientWorkout.findOneAndUpdate(
+                { clientId, date }, { $set: altSet }, { new: true, upsert: true }
+            );
+            return res.json(saved);
+        }
+
         const update = {
             title:            title || '',
             isRest:           !!isRest,
@@ -2238,8 +2290,13 @@ app.get('/api/client-workouts/:clientId', authenticateToken, async (req, res) =>
                 { $limit: limit },
                 { $project: {
                     date: 1, title: 1, isRest: 1, restType: 1, isComplete: 1,
-                    isMissed: 1, mood: 1, rpe: 1, sourceProgramId: 1,
+                    isMissed: 1, mood: 1, rpe: 1, sourceProgramId: 1, chosenBlock: 1,
                     exerciseCount: { $size: { $ifNull: ['$exercises', []] } },
+                    // The day's SECOND routine, if the trainer assigned one. Summary
+                    // consumers show a count and a label, never the exercises — so
+                    // they get the same two fields here rather than the whole block.
+                    altLabel: '$alternative.label',
+                    altExerciseCount: { $size: { $ifNull: ['$alternative.exercises', []] } },
                 } },
             ]);
             return res.json(workouts);

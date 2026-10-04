@@ -330,6 +330,44 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     // ─────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Like showConfirm, but with N labelled choices instead of yes/no.
+     * Resolves to the chosen `value`, or null if dismissed.
+     *
+     * Written for "replace vs. add as a second routine", where a plain yes/no
+     * would have had to encode the destructive option as one of the two answers.
+     */
+    window.showChoice = ({ title, body = '', options = [] }) => {
+        return new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.75);padding:16px;';
+            overlay.innerHTML = `
+                <div style="background:#1C1C1E;border:1px solid rgba(255,219,137,0.2);border-radius:16px;padding:24px;max-width:420px;width:100%;">
+                    <p style="color:#FFDB89;font-size:16px;font-weight:700;margin:0 0 6px;">${escHtml(title)}</p>
+                    ${body ? `<p style="color:rgba(229,229,229,0.7);font-size:13px;line-height:1.5;margin:0 0 18px;">${escHtml(body)}</p>` : ''}
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                        ${options.map((o, i) => `
+                        <button data-choice="${i}" style="text-align:left;padding:12px 14px;border-radius:12px;cursor:pointer;
+                            border:1px solid ${o.danger ? 'rgba(248,113,113,0.35)' : 'rgba(255,219,137,0.35)'};
+                            background:${o.danger ? 'rgba(248,113,113,0.08)' : 'rgba(255,219,137,0.08)'};">
+                            <div style="color:${o.danger ? '#f87171' : '#FFDB89'};font-size:14px;font-weight:700;">${escHtml(o.label)}</div>
+                            ${o.hint ? `<div style="color:rgba(229,229,229,0.55);font-size:12px;margin-top:3px;">${escHtml(o.hint)}</div>` : ''}
+                        </button>`).join('')}
+                        <button data-choice="cancel" style="padding:10px 14px;border-radius:10px;cursor:pointer;border:1px solid rgba(255,255,255,0.12);background:transparent;color:rgba(229,229,229,0.6);font-size:13px;">Cancelar</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            const done = v => { overlay.remove(); resolve(v); };
+            overlay.querySelectorAll('[data-choice]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const k = btn.dataset.choice;
+                    done(k === 'cancel' ? null : (options[Number(k)]?.value ?? null));
+                });
+            });
+            overlay.addEventListener('click', e => { if (e.target === overlay) done(null); });
+        });
+    };
+
     // --- DATA STORES ---
     let clientsCache = [];
     let clientsLoadFailed = false;   // true when the last clients fetch errored (vs. genuinely empty)
@@ -3155,26 +3193,47 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const cb = cell.querySelector('.copy-day-checkbox');
                                 if (cb) cb.classList.remove('hidden');
                             } else {
-                                const barColor = workout.isComplete ? '#4ade80' : workout.isMissed ? '#f87171' : '#FFDB89';
-                                const statusBadge = workout.isComplete
-                                    ? `<span class="text-[10px] text-green-400 font-bold flex items-center gap-0.5"><i class="fas fa-check-circle"></i> Completado</span>`
-                                    : workout.isMissed
-                                    ? `<span class="text-[10px] text-red-400 font-bold flex items-center gap-0.5"><i class="fas fa-times-circle"></i> Perdido</span>`
-                                    : '';
-                                area.innerHTML = `
-                                    <div class="workout-card-wrapper">
+                                // ── One card per routine on this day ──────────────────
+                                // A day can carry TWO complete routines — the gym program
+                                // and the at-home one — so the cell renders a card per
+                                // block instead of assuming a single workout. `data-block`
+                                // tells toggleWorkoutExpand() which one it is expanding.
+                                const cardHtml = (block, title, exercises, isAlt) => {
+                                    const barColor = isAlt
+                                        ? '#7DD3FC'                                  // sky: the second routine
+                                        : (workout.isComplete ? '#4ade80' : workout.isMissed ? '#f87171' : '#FFDB89');
+                                    const n = (exercises || []).length;
+                                    const chosen = isAlt
+                                        ? workout.chosenBlock === 'alternative'
+                                        : workout.chosenBlock !== 'alternative';
+                                    // Only worth pointing out which one he picked when there
+                                    // are actually two to pick from.
+                                    const pick = hasAlt && chosen
+                                        ? '<span class="text-[9px] font-bold text-[#FFDB89]/70 bg-[#FFDB89]/10 px-1.5 py-0.5 rounded-full shrink-0">ELEGIDA</span>'
+                                        : '';
+                                    return `
+                                    <div class="workout-card-wrapper" data-block="${block}">
                                         <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk">
                                             <div class="w-1 h-8 rounded-full shrink-0" style="background:${barColor}"></div>
                                             <div class="min-w-0 flex-1">
-                                                <div class="text-sm font-bold truncate" style="color:${barColor}">${workout.title}</div>
-                                                <div class="text-xs text-[#FFDB89]/50 flex items-center gap-2">${workout.exercises.length} ejercicio${workout.exercises.length !== 1 ? 's' : ''}${statusBadge ? ' · ' : ''}${statusBadge}</div>
+                                                <div class="text-sm font-bold truncate" style="color:${barColor}">${escHtml(title || 'Entrenamiento')}</div>
+                                                <div class="text-xs text-[#FFDB89]/50 flex items-center gap-2">${n} ejercicio${n !== 1 ? 's' : ''}</div>
                                             </div>
+                                            ${pick}
                                             <i class="fas fa-chevron-right text-[#FFDB89]/40 text-xs shrink-0 workout-chevron transition-transform duration-200"></i>
                                         </div>
-                                        ${moodBadgeHtml(workout.mood)}
                                         <div class="workout-expand-content hidden mt-1 border-t border-[#FFDB89]/10"></div>
-                                    </div>
-                                `;
+                                    </div>`;
+                                };
+                                const hasAlt = (workout.alternative?.exercises?.length || 0) > 0;
+                                area.innerHTML =
+                                    cardHtml('main', workout.title, workout.exercises, false)
+                                    + (hasAlt
+                                        ? `<div class="mt-1 pt-1 border-t border-[#FFDB89]/10">${
+                                             cardHtml('alternative', workout.alternative.label, workout.alternative.exercises, true)}</div>`
+                                        : '')
+                                    + moodBadgeHtml(workout.mood);
+
                                 // Show copy checkbox on hover for days with workouts
                                 const cb = cell.querySelector('.copy-day-checkbox');
                                 if(cb) cb.classList.remove('hidden');
@@ -7934,6 +7993,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // When set, the FIRST selected day lands on startDate (e.g. start a program from Day 3),
         // and later days keep their spacing. When null (default), every day is assigned as before.
         const selectedKeys = opts.selectedKeys || null;
+        // opts.slot: 'alternative' assigns this program as the day's SECOND routine,
+        // leaving whatever is already there untouched. That is how one client ends
+        // up with a gym program and an at-home program over the same dates.
+        const slot = opts.slot === 'alternative' ? 'alternative' : 'main';
         const startDate = new Date(startDateStr + 'T00:00:00');
         let created = 0, skipped = 0;
         let anchorOffset = selectedKeys ? null : 0; // default: grid day 0 anchors to startDate
@@ -7962,13 +8025,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Exercises take priority — a day with exercises is always a training day,
                         // even if leftover isRest/isActiveRest flags exist from a previous state.
                         if ((dayData.isRest || dayData.isActiveRest) && !dayData.exercises?.length) {
+                            // A rest day has no exercises, and the alternative slot stores
+                            // only a label + exercises — so writing one would store an EMPTY
+                            // alternative, which reads as "no second routine" and would wipe
+                            // one that is already there. Skip it: if the second program rests
+                            // on this day, the day simply shows the first program's routine.
+                            if (slot === 'alternative') { skipped++; continue; }
                             // Push rest / active rest day
                             const restTitle = dayData.isActiveRest ? 'Descanso Activo' : 'Descanso';
                             const restType  = dayData.isActiveRest ? 'active_rest' : 'rest';
                             const res = await apiFetch('/api/client-workouts', {
                                 method: 'POST',
                                 body: JSON.stringify({
-                                    clientId, date: dateStr,
+                                    clientId, date: dateStr, slot,
                                     title: dayData.name || restTitle,
                                     isRest: true, restType,
                                     exercises: [],
@@ -7981,7 +8050,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const res = await apiFetch('/api/client-workouts', {
                                 method: 'POST',
                                 body: JSON.stringify({
-                                    clientId, date: dateStr,
+                                    clientId, date: dateStr, slot,
                                     title: dayData.name || `Semana ${wIdx + 1} — Día ${dayNum}`,
                                     warmup:        dayData.warmup        || '',
                                     warmupVideoUrl: dayData.warmupVideo  || '',
@@ -10423,8 +10492,20 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const workout = window._calendarWorkouts[dateStr];
-        if (!workout) { window.loadWorkoutForEditing(dateStr, currentClientViewId); return; }
+        const stored = window._calendarWorkouts[dateStr];
+        if (!stored) { window.loadWorkoutForEditing(dateStr, currentClientViewId); return; }
+
+        // A day can hold two routines. The card that was clicked says which one it
+        // is, and everything below reads from that block — otherwise expanding the
+        // second program would show the first program's exercises.
+        const block = wrapper.dataset.block === 'alternative' ? 'alternative' : 'main';
+        const workout = block === 'alternative'
+            ? { ...stored, title: stored.alternative?.label || 'Alternativa',
+                exercises: stored.alternative?.exercises || [],
+                // Warm-up and cooldown belong to the day, not to a routine, so the
+                // second card deliberately shows neither rather than repeating them.
+                warmup: '', warmupItems: [], cooldown: '', cooldownItems: [] }
+            : stored;
 
         let html = '';
 
@@ -11097,6 +11178,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    /**
+     * Ask where a program should go when its dates overlap routines the client
+     * already has. Returns 'main', 'alternative', or null to cancel.
+     *
+     * No overlap → no question: returns 'main' without showing anything.
+     */
+    const chooseProgramSlot = async (program, clientId, startDateStr) => {
+        // How many of this program's days land on dates that already have content?
+        const weeks = program.weeks?.length || 0;
+        const start = new Date(startDateStr + 'T00:00:00');
+        let overlap = 0;
+        for (let w = 0; w < weeks; w++) {
+            for (let d = 1; d <= 7; d++) {
+                const dd = program.weeks[w].days?.[String(d)] ?? program.weeks[w].days?.[d];
+                if (!dd) continue;
+                const has = ((dd.isRest || dd.isActiveRest) && !dd.exercises?.length) || (dd.exercises?.length > 0);
+                if (!has) continue;
+                const dt = new Date(start);
+                dt.setDate(start.getDate() + (w * 7 + (d - 1)));
+                const existing = window._calendarWorkouts?.[localDateStr(dt)];
+                if (existing && ((existing.exercises?.length || 0) > 0 || existing.isRest)) overlap++;
+            }
+        }
+        if (!overlap) return 'main';
+
+        const choice = await window.showChoice({
+            title: `${overlap} día${overlap !== 1 ? 's' : ''} ya tienen rutina`,
+            body: 'Este cliente ya tiene entrenamientos en esas fechas. ¿Qué quieres hacer?',
+            options: [
+                { value: 'alternative', label: 'Añadir como segunda rutina',
+                  hint: 'Mantiene lo que ya tiene. El cliente podrá elegir cuál hacer cada día.' },
+                { value: 'main', label: 'Reemplazar lo existente',
+                  hint: 'Borra la rutina que ya está en esos días.', danger: true },
+            ],
+        });
+        return choice;
+    };
+
     window.assignProgramToClient = async (programId, startDate) => {
         try {
             const progResponse = await apiFetch('/api/programs');
@@ -11106,7 +11225,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.getElementById('program-assignment-modal')?.remove();
 
-            const { created, skipped } = await pushProgramToCalendar(program, currentClientViewId, startDate);
+            // ── Does this land on dates that already have a routine? ─────────
+            // Assigning over an existing program used to replace it silently, day
+            // by day, with no warning — a whole month of programming gone on one
+            // click. Now the overlap is counted first and the trainer is told what
+            // is about to happen, with "second routine" as the default because
+            // that is the non-destructive choice.
+            const slot = await chooseProgramSlot(program, currentClientViewId, startDate);
+            if (slot === null) return;   // cancelled
+
+            const { created, skipped } = await pushProgramToCalendar(
+                program, currentClientViewId, startDate, { slot });
 
             const skipNote = skipped > 0 ? ` (${skipped} día${skipped > 1 ? 's' : ''} ya tenían rutina)` : '';
             showToast(`✓ ${program.name} asignado. ${created} día${created !== 1 ? 's' : ''} cargado${created !== 1 ? 's' : ''} al calendario.${skipNote}`, 'success', 5000);

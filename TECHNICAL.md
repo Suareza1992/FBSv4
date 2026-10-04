@@ -2991,3 +2991,92 @@ nothing cascades to the trainer's clients. Plus a regression suite proving ordin
 still works — a trainer deactivating their own client, editing other fields, and the superadmin
 editing any client. Then a browser pass: own row non-clickable, confirm dialog on deactivate,
 no confirm on activate, filter reset, and the database matching the table.
+
+
+---
+
+## 34. Two programs over the same dates
+
+**What happened.** A program was assigned to a client who already had one running over those dates.
+`pushProgramToCalendar` POSTs each day to `/api/client-workouts`, which does
+`findOneAndUpdate({clientId, date}, …, {upsert: true})` — a full replace of the day. A month of
+programming was overwritten, silently, with no warning and no undo. The `isProtectedWorkout` guard
+that exists for program *re-sync* was never on the initial assign path.
+
+### Why not simply allow many workouts per day
+
+The obvious fix is to drop the `{clientId, date}` unique index and let a date hold N workouts. That
+is a large, risky change: nine server-side `findOne({clientId, date})` lookups, ten places where
+the web calendar does `_calendarWorkouts[date] = workout`, five in the mobile app's `byDate[date]`,
+plus program auto-sync, which maps one program day onto one calendar date. Every cell in the
+calendar would also have to become a list.
+
+The day already had somewhere to put a second routine: the `alternative` block (§ 31), built for
+exactly this shape — a gym session and an at-home session on the same day, with the client choosing.
+What was missing was a way to fill it from a whole **program** instead of day by day.
+
+So: a second program now lands in the alternative slot. One `ClientWorkout` still owns the day, the
+unique index stays, and nothing else had to change.
+
+**The limit, stated plainly: two programs per date range, not N.** That covers gym-vs-home, which is
+the actual use case. A third would need the index change above.
+
+### The pieces
+
+**`slot: 'alternative'` on the POST.** A separate branch that writes only
+`alternative.{label,exercises,sourceProgramId,…}`. It could not reuse the normal path: that one
+rebuilds the whole day from the body (`exercises || []`, `title || ''`), so a partial payload would
+blank the main block — the very overwrite this feature exists to prevent.
+
+**Provenance on the alternative.** `sourceProgramId`/`sourceWeek`/`sourceDayNum`/`manualEdit`,
+mirroring the main block, so the slot knows which program filled it.
+
+**A choice before anything is written.** `chooseProgramSlot()` counts how many of the incoming
+program's days land on dates that already have content. No overlap, no question. Overlap, and a
+dialog offers:
+
+- *Añadir como segunda rutina* — keeps what is there; the client picks each day. **Listed first.**
+- *Reemplazar lo existente* — the old behaviour, now red, explicit, and chosen rather than assumed.
+
+Replace affects the **main** routine only; a second routine the trainer set up deliberately is left
+alone. Remove it from the day editor's alternative tab.
+
+**Rest days are skipped in the alternative slot.** The slot stores a label and exercises, so a rest
+day would write an *empty* alternative — which reads as "no second routine" and would wipe one
+already there. If the second program rests on a day, that day simply shows the first program's
+routine.
+
+**The calendar renders one card per routine.** `cardHtml(block, …)` instead of a single hard-coded
+card, with `data-block` so `toggleWorkoutExpand()` expands the right one. Sky blue marks the second
+routine; an `ELEGIDA` badge marks the one the client picked, and only appears when there are two to
+pick from. Warm-up and cooldown belong to the day, not to a routine, so the second card shows
+neither rather than repeating them.
+
+### The hole this uncovered
+
+Writing the `slot` branch meant asking who may POST a workout at all. The answer was: anyone.
+
+`POST /api/client-workouts` ran on `authenticateToken` alone, and `assertOwnership` passes any
+client acting on their own id. **A client could POST their own date and replace the title and every
+exercise they had been prescribed.** The PATCH route guards this carefully — its comments describe
+the exact attack — but POST was missed when that hardening was done.
+
+Verified before the fix: a client POSTed over a trainer-written day and got a 200 with their own
+content stored. Now `authorizeRoles('trainer','admin','superadmin')`; every real caller is a trainer
+flow (program push, day editor, copy/paste, the mobile client-detail screen), so nothing legitimate
+lost access.
+
+### Verified
+
+21 server checks: both slots written independently, assigning B leaving A intact, **re-assigning A
+leaving B intact**, the alternative upserting onto a date the main program skipped, one document per
+day still, the client's write boundary in both directions, and the closed POST hole.
+
+Browser, end to end: Program A assigned; Program B over the same dates raising
+*"3 días ya tienen rutina"*; choosing *second routine* and both surviving in the database; the cell
+showing two independent dropdowns that each expand to their own exercises; the client's view
+offering both program names and persisting the choice; and *Reemplazar* still replacing.
+
+Regression pass on the cell renderer, which is on every existing client's calendar: an ordinary
+one-routine day renders one card with no badge, a rest day is untouched, a two-routine day renders
+two.
