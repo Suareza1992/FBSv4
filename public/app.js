@@ -8457,6 +8457,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const ids = Array.from(selectedClientIds);
 
+            // ── Would this overwrite anybody? ────────────────────────────────
+            // The client-profile assign asks before replacing an existing program
+            // (chooseProgramSlot). This path did not, so a bulk assign silently
+            // replaced whatever those clients already had — the original bug, just
+            // reached from a different screen.
+            //
+            // It cannot reuse chooseProgramSlot: that reads `_calendarWorkouts`,
+            // which only holds the ONE client whose profile is open. Here we ask
+            // the server for each selected client instead, using the summary
+            // projection so it is a count, not a download of every exercise.
+            const progDates = [];
+            {
+                let anchor = selectedKeys ? null : 0;
+                for (let wIdx = 0; wIdx < prog.weeks.length; wIdx++) {
+                    for (let dayNum = 1; dayNum <= 7; dayNum++) {
+                        const gi = wIdx * 7 + (dayNum - 1);
+                        const dd = prog.weeks[wIdx].days?.[String(dayNum)] ?? prog.weeks[wIdx].days?.[dayNum];
+                        if (selectedKeys && !selectedKeys.has(`${wIdx}-${dayNum}`)) continue;
+                        if (!dd) continue;
+                        const has = ((dd.isRest || dd.isActiveRest) && !dd.exercises?.length) || (dd.exercises?.length > 0);
+                        if (!has) continue;
+                        if (anchor === null) anchor = gi;
+                        const dt = new Date(startDateStr + 'T00:00:00');
+                        dt.setDate(dt.getDate() + (gi - anchor));
+                        progDates.push(localDateStr(dt));
+                    }
+                }
+            }
+            let overlapDays = 0, overlapClients = 0;
+            if (progDates.length) {
+                const from = progDates[0], to = progDates[progDates.length - 1];
+                for (const cid of ids) {
+                    try {
+                        const r = await apiFetch(`/api/client-workouts/${cid}?from=${from}&to=${to}&fields=summary`);
+                        if (!r.ok) continue;
+                        const byDate = new Map((await r.json()).map(d => [d.date, d]));
+                        const n = progDates.filter(d => {
+                            const w = byDate.get(d);
+                            return w && ((w.exerciseCount || 0) > 0 || w.isRest);
+                        }).length;
+                        if (n) { overlapDays += n; overlapClients++; }
+                    } catch { /* a failed check must not block the assign */ }
+                }
+            }
+            let bulkSlot = 'main';
+            if (overlapDays) {
+                const picked = await window.showChoice({
+                    title: `${overlapClients} cliente${overlapClients !== 1 ? 's' : ''} ya tienen rutina en esas fechas`,
+                    body: `${overlapDays} día${overlapDays !== 1 ? 's' : ''} en total. ¿Qué quieres hacer?`,
+                    options: [
+                        { value: 'alternative', label: 'Añadir como segunda rutina',
+                          hint: 'Mantiene lo que ya tienen. Cada cliente podrá elegir cuál hacer.' },
+                        { value: 'main', label: 'Reemplazar lo existente',
+                          hint: 'Borra la rutina que ya está en esos días.', danger: true },
+                    ],
+                });
+                if (picked === null) return;
+                bulkSlot = picked;
+            }
+
             // Switch to progress state
             document.getElementById('assign-client-list').classList.add('hidden');
             document.getElementById('assign-progress').classList.remove('hidden');
@@ -8469,13 +8529,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const client = clientsCache.find(c => c._id === cid);
                 if (!client) { failCount++; continue; }
                 try {
-                    const res = await apiFetch(`/api/clients/${cid}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({ program: prog.name })
-                    });
-                    if (!res.ok) { failCount++; continue; }
-                    client.program = prog.name;
-                    await pushProgramToCalendar(prog, cid, startDateStr, { selectedKeys });
+                    // `program` is the client's headline programme label. A SECOND
+                    // routine must not claim it — the client is still on their
+                    // primary programme, with this one as the alternative.
+                    if (bulkSlot !== 'alternative') {
+                        const res = await apiFetch(`/api/clients/${cid}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ program: prog.name })
+                        });
+                        if (!res.ok) { failCount++; continue; }
+                        client.program = prog.name;
+                    }
+                    await pushProgramToCalendar(prog, cid, startDateStr, { selectedKeys, slot: bulkSlot });
                     okCount++;
                 } catch (err) { failCount++; }
             }

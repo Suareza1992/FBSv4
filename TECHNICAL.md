@@ -3171,3 +3171,118 @@ freezing the alternative.
 
 Browser pass: assign Gimnasio, assign En casa as the second routine, both links recorded, then edit
 En casa and watch it reach the client's second slot with the primary untouched.
+
+
+---
+
+## 36. Mobile parity for two programs — and a data-loss bug it exposed
+
+The web got two-programs-per-day in § 34 and the sync fix in § 35. Mobile had the *client* half
+already (the toggle in `hoy.tsx`), but the **trainer** half was missing — and mobile has its own
+program-assignment flow in `cliente/[id].tsx`, which still had the original overwrite bug: it
+POSTed each day with no slot and no overlap check, so assigning a second program replaced the first
+exactly as the web used to.
+
+Brought to parity:
+
+- **The overlap check and chooser**, as a three-button `Alert`: *Añadir como segunda rutina*,
+  *Reemplazar lo existente* (destructive), *Cancelar*. Counted against the history already loaded
+  on that screen, so no extra fetch.
+- **`slot` on every day write and on the auto-sync link** — the link matters as much as the days,
+  because sync visits a client once per link (§ 35).
+- **Rest days skipped** in the alternative slot, same reasoning as the web.
+- **A `Principal` / `<alternativa>` switcher in the day editor**, rebinding the existing exercise
+  list rather than duplicating it, so add, remove and the equipment check work on both blocks.
+- **Historial rows** show `o <nombre> · N ej.` and mark the chosen routine.
+
+### The bug this uncovered
+
+The mobile day editor's save did this:
+
+```js
+const clean = exercises.map((e) => ({ name: …, instructions: … })).filter((e) => e.name);
+```
+
+`BuilderExercise` is typed `{name?, instructions?}`, but the objects it is handed come from the
+server carrying `videoUrl`, `isSuperset`/`supersetHead`, and the client's own `results`,
+`isComplete` and `rpe`. `POST /api/client-workouts` **replaces** the exercises array, so every
+field not in that rebuilt object was deleted.
+
+**Saving any day from the mobile client screen was silently stripping exercise videos, superset
+pairings and the client's logged results.** Pre-existing, unrelated to two programs — but extending
+that `clean` to the second routine would have spread it, including on saves where the trainer never
+opened the second routine at all.
+
+Fixed by spreading (`{ ...e, name: …, instructions: … }`) and widening the type to say what is
+actually riding along. The comment on it is explicit about why `...e` is load-bearing.
+
+Also fixed: the editor refused to save a day whose primary block was empty, which is legitimate
+when the day carries only a second routine.
+
+### Verified
+
+18 checks replaying the exact payloads both mobile flows now produce: both programs landing in
+their own slots, both links recorded, an ordinary hand-edit **not** wiping the second routine, a
+rest-day save preserving it, removing the second routine from the editor working, and — for the
+strip bug — a title-only edit preserving the exercise video, the superset pairing, the client's
+logged results and their per-exercise RPE.
+
+**Not verified visually:** the Expo app cannot be run from here. Typecheck and lint are clean and
+the payloads are proven against a real server, but tap through Clientes → cliente → Historial
+before relying on it.
+
+
+---
+
+## 37. The second program had three assignment paths, and only one asked
+
+Reported as "I assigned two programs and still see one — can the trainer not see them?"
+
+**The trainer can see them.** A read of production settled it in one query:
+
+```
+days with a second routine : 0
+clients with a second link : 0
+```
+
+Nothing was hidden; nothing had been written. That assignment predated § 34 — it was the overwrite
+the feature exists to prevent.
+
+### But the retry would have failed too
+
+`pushProgramToCalendar` had **three** callers, and § 34 only put the chooser in front of one:
+
+| Path | Had the chooser |
+|---|---|
+| Client profile → Asignar programa | yes |
+| **Programas → Asignar a un cliente** (bulk) | **no — silently overwrote** |
+| During new-client creation | n/a, no existing days |
+
+So assigning the second program from the Programas screen still replaced the first, with no
+warning, on code that was supposed to have fixed exactly that. Fixing one entry point and calling
+the behaviour fixed is the mistake here — the guard belonged on the operation, and instead it went
+on one of the buttons that reaches it.
+
+### Why the bulk path could not reuse `chooseProgramSlot`
+
+That function counts overlap from `window._calendarWorkouts`, which only ever holds the ONE client
+whose profile is open. A bulk assign targets several clients, none of them open. It therefore asks
+the server per client, using the `fields=summary` projection (§ 29) so the check is a count rather
+than a download of every exercise:
+
+```js
+const r = await apiFetch(`/api/client-workouts/${cid}?from=${from}&to=${to}&fields=summary`);
+```
+
+It then asks **once** for the whole batch — "1 cliente ya tienen rutina en esas fechas · 2 días en
+total" — rather than once per client.
+
+Also fixed on that path: a second routine no longer overwrites the client's headline `program`
+label. They are still on their primary programme; this one is the alternative.
+
+### Verified
+
+Reproduced Angel's exact situation locally — a client on "Comeback" from Oct 12, then the "At Home"
+program assigned over the same dates from the **Programas** screen. The dialog fires, choosing the
+second routine leaves Comeback intact, both links are recorded, the `program` label stays
+"Comeback", and the trainer's calendar renders two cards for the day.
