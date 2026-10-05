@@ -3019,7 +3019,14 @@ So: a second program now lands in the alternative slot. One `ClientWorkout` stil
 unique index stays, and nothing else had to change.
 
 **The limit, stated plainly: two programs per date range, not N.** That covers gym-vs-home, which is
-the actual use case. A third would need the index change above.
+the actual use case. A third would need the index change above — scoped in
+`docs/N-PROGRAMS-REFACTOR.md`, including why the recommended shape is `routines: []` on one
+document rather than dropping the index, and why doing it before the mobile app reaches the stores
+is materially cheaper.
+
+**Known gap:** program re-sync finds client days by the TOP-LEVEL `sourceProgramId`, so editing a
+program that was assigned to the alternative slot does not propagate to clients already holding it.
+Cheap to fix on its own — see § 6 of that document.
 
 ### The pieces
 
@@ -3080,3 +3087,87 @@ offering both program names and persisting the choice; and *Reemplazar* still re
 Regression pass on the cell renderer, which is on every existing client's calendar: an ordinary
 one-routine day renders one card with no badge, a rest day is untouched, a two-routine day renders
 two.
+
+
+---
+
+## 35. Re-sync had to learn about the second program
+
+Shipping two programs per day (§ 34) left auto-sync behind, in two ways — one annoying, one
+destructive.
+
+### It was not a query bug
+
+The obvious reading was that `syncProgramToClients` matched only the top-level `sourceProgramId`,
+so days holding a program in the alternative slot were never found. True, but not the cause.
+
+Sync iterates **clients**, not workouts:
+
+```js
+const clients = await User.find({ 'assignedProgram.programId': program._id });
+```
+
+and `User.assignedProgram` is a **single object**. A client assigned a second program was never
+linked to it, so sync never visited them at all. Fixing the workout query alone would have changed
+nothing — the first test run proved it, failing six checks that all traced back to this.
+
+The fix is a second link, `assignedProgramAlt`, written by the same route with a `slot` parameter,
+and sync visiting a client for either one. Which link matched also decides two things that used to
+be guessed: the dates to lay the program out on, and the slot its days belong in — so a program
+assigned as the second routine stays the second routine when it later gains a day, instead of
+quietly displacing the client's primary program.
+
+### The destructive half
+
+Step 2 of sync removes days dropped from a program:
+
+```js
+await ClientWorkout.deleteOne({ _id: w._id });
+```
+
+One document owns the day, and after § 34 that document can hold **two** programs. So removing a
+day from Program A deleted the whole document — taking Program B's routine on that date with it.
+An edit to one program silently destroying another program's work, with no warning and no undo.
+
+Now the slot is cleared rather than the document, whenever the other slot still has a routine:
+
+```js
+if ((w.alternative?.exercises?.length || 0) > 0) {
+    w.title = ''; w.exercises = []; /* … clear this program's slot … */
+    w.chosenBlock = 'alternative';   // only one routine left to do
+    await w.save();
+} else {
+    await ClientWorkout.deleteOne({ _id: w._id });
+}
+```
+
+A day that only ever had one routine still deletes outright, exactly as before.
+
+### Why the alternative needs its own protection rule
+
+`isProtectedWorkout()` could not be reused. It reads `isComplete`, `isMissed` and `rpe`, which are
+**day-level** — they mean "the client engaged with the routine they chose". Applying them to the
+alternative would freeze it the moment the client completed the *primary* routine, so edits to the
+second program would stop reaching anyone who had done their first workout that day.
+
+`isAltProtected()` therefore checks the alternative's own `manualEdit` and logged results, and only
+consults the day-level flags when `chosenBlock === 'alternative'`.
+
+### Also
+
+- The **coverage banner** (`/assignment-status`) counts both links. It tells the trainer who
+  receives edits automatically; without this it would have warned about clients who are in fact
+  being kept up to date.
+- The calendar no longer renders an empty "0 ejercicios" card when a day's primary slot was cleared
+  and only the second routine remains.
+
+### Verified
+
+15 checks: editing the second program reaching the client, editing the first still working and
+leaving the second alone, **removing a day from A leaving B's routine intact** (the data-loss
+case), removing a day from B clearing only the alternative, a single-routine day still deleting
+outright, logged results protecting the alternative from a sync, and completing the *primary* not
+freezing the alternative.
+
+Browser pass: assign Gimnasio, assign En casa as the second routine, both links recorded, then edit
+En casa and watch it reach the client's second slot with the primary untouched.

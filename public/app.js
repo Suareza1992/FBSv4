@@ -3226,10 +3226,18 @@ document.addEventListener('DOMContentLoaded', () => {
                                     </div>`;
                                 };
                                 const hasAlt = (workout.alternative?.exercises?.length || 0) > 0;
+                                // A day can end up with ONLY a second routine — the
+                                // primary program dropped that day, or the trainer
+                                // assigned the second program to a date the first one
+                                // skipped. Rendering an empty "0 ejercicios" card for
+                                // the missing primary would just look broken.
+                                const hasMain = (workout.exercises?.length || 0) > 0;
                                 area.innerHTML =
-                                    cardHtml('main', workout.title, workout.exercises, false)
+                                    (hasMain || !hasAlt
+                                        ? cardHtml('main', workout.title, workout.exercises, false)
+                                        : '')
                                     + (hasAlt
-                                        ? `<div class="mt-1 pt-1 border-t border-[#FFDB89]/10">${
+                                        ? `<div class="${hasMain ? 'mt-1 pt-1 border-t border-[#FFDB89]/10' : ''}">${
                                              cardHtml('alternative', workout.alternative.label, workout.alternative.exercises, true)}</div>`
                                         : '')
                                     + moodBadgeHtml(workout.mood);
@@ -8100,7 +8108,10 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await apiFetch(`/api/clients/${clientId}/assigned-program`, {
                     method: 'PUT',
-                    body: JSON.stringify({ programId: prog._id, startDate: startDateStr, anchorOffset: anchorOffset || 0 }),
+                    // `slot` records this as the client's FIRST or SECOND program.
+                    // Without it a second program has no link, and auto-sync — which
+                    // visits clients by link — would never reach anyone holding it.
+                    body: JSON.stringify({ programId: prog._id, startDate: startDateStr, anchorOffset: anchorOffset || 0, slot }),
                 });
             } catch { /* non-critical — calendar still populated */ }
         }

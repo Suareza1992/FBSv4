@@ -385,6 +385,15 @@ const UserSchema = new mongoose.Schema({
         startDate:    { type: String, default: null },  // YYYY-MM-DD that grid day `anchorOffset` mapped to
         anchorOffset: { type: Number, default: 0 },     // global grid index anchored to startDate
     },
+    // The client's SECOND program, when one was assigned to the alternative slot
+    // (the gym programme and the at-home one). Auto-sync visits a client once per
+    // link, so without this a trainer's edits to the second program never reached
+    // anybody — the client was only ever linked to their first.
+    assignedProgramAlt: {
+        programId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Program', default: null },
+        startDate:    { type: String, default: null },
+        anchorOffset: { type: Number, default: 0 },
+    },
     group: { type: String, default: "General" },
     type: { type: String, default: "Remoto" },
     dueDate: { type: String, default: "" },
@@ -5162,6 +5171,34 @@ const isProtectedWorkout = (w) =>
     w.isComplete || w.isMissed || w.manualEdit || w.rpe != null ||
     (Array.isArray(w.exercises) && w.exercises.some(e => (e.results || '').trim() || e.isComplete));
 
+// The alternative slot's equivalent of isProtectedWorkout(). It cannot reuse that
+// one: `isComplete`/`isMissed`/`rpe` are DAY-level, so they only mean "this
+// client engaged with the second routine" when the second routine is the one
+// they chose. Reading them unconditionally would freeze the alternative the
+// moment the client completed the PRIMARY routine.
+const isAltProtected = (w) => {
+    const alt = w.alternative;
+    if (!alt) return false;
+    if (alt.manualEdit) return true;
+    if ((alt.exercises || []).some(e => (e.results || '').trim() || e.isComplete)) return true;
+    if (w.chosenBlock === 'alternative' && (w.isComplete || w.isMissed || w.rpe != null)) return true;
+    return false;
+};
+
+// Write a program day into the alternative slot. The slot stores a label, the
+// exercises and provenance — warm-up and cooldown belong to the day, not to one
+// of its routines, so they are deliberately not copied here.
+const applyAltFields = (w, fields, programId, wIdx, dayNum) => {
+    w.alternative = {
+        label:           fields.title || '',
+        exercises:       fields.exercises || [],
+        sourceProgramId: programId,
+        sourceWeek:      wIdx,
+        sourceDayNum:    dayNum,
+        manualEdit:      false,
+    };
+};
+
 // Map a program day-cell to a ClientWorkout field object (mirrors the client-side
 // pushProgramToCalendar mapping so assigned and synced days are identical).
 const programDayToWorkout = (dd, programId, wIdx, dayNum) => {
@@ -5213,10 +5250,21 @@ const getProgramDay = (week, dayNum) => {
 // trainer's local date (passed from the browser) used as the "future" cutoff.
 const syncProgramToClients = async (program, todayStr) => {
     const summary = { clients: 0, updated: 0, created: 0, removed: 0 };
-    const clients = await User.find({ 'assignedProgram.programId': program._id });
+    const clients = await User.find({
+        $or: [
+            { 'assignedProgram.programId':    program._id },
+            { 'assignedProgramAlt.programId': program._id },
+        ],
+    });
     for (const client of clients) {
-        const startDate    = client.assignedProgram?.startDate;
-        const anchorOffset = client.assignedProgram?.anchorOffset || 0;
+        // Which of the client's two programs is this? That decides both the dates
+        // to lay it out on and the slot its days belong in — a program assigned as
+        // the second routine must stay the second routine when it gains a day,
+        // rather than quietly displacing the client's primary program.
+        const viaAlt = String(client.assignedProgramAlt?.programId || '') === String(program._id);
+        const link = viaAlt ? client.assignedProgramAlt : client.assignedProgram;
+        const startDate    = link?.startDate;
+        const anchorOffset = link?.anchorOffset || 0;
         if (!startDate) continue;
         summary.clients++;
 
@@ -5232,35 +5280,108 @@ const syncProgramToClients = async (program, todayStr) => {
             }
         }
 
-        const existing = await ClientWorkout.find({ clientId: client._id, sourceProgramId: program._id });
-        const existingByKey = new Map(existing.map(w => [`${w.sourceWeek}-${w.sourceDayNum}`, w]));
+        // A day can hold this program in EITHER slot: as the client's primary
+        // routine, or as the second routine alongside another program. Matching
+        // only the top-level `sourceProgramId` meant edits to a program assigned
+        // as a second routine never reached the clients holding it.
+        const existing = await ClientWorkout.find({
+            clientId: client._id,
+            $or: [
+                { sourceProgramId: program._id },
+                { 'alternative.sourceProgramId': program._id },
+            ],
+        });
+        const mainByKey = new Map();
+        const altByKey  = new Map();
+        for (const w of existing) {
+            if (String(w.sourceProgramId || '') === String(program._id)) {
+                mainByKey.set(`${w.sourceWeek}-${w.sourceDayNum}`, w);
+            }
+            if (String(w.alternative?.sourceProgramId || '') === String(program._id)) {
+                altByKey.set(`${w.alternative.sourceWeek}-${w.alternative.sourceDayNum}`, w);
+            }
+        }
+
+        const clientSlot = viaAlt ? 'alternative' : 'main';
 
         // 1) UPDATE existing & CREATE new program days (future, content slots only).
         for (const [key, slot] of slots) {
             if (!slot.hasContent || slot.dateStr < todayStr) continue;
-            const cur = existingByKey.get(key);
             const fields = programDayToWorkout(slot.dd, program._id, slot.wIdx, slot.dayNum);
-            if (cur) {
-                if (isProtectedWorkout(cur)) continue;          // keep client/trainer changes
-                Object.assign(cur, fields);
-                await cur.save();
-                summary.updated++;
-            } else {
-                // New day — never clobber whatever already sits on that date.
+            const curMain = mainByKey.get(key);
+            const curAlt  = altByKey.get(key);
+
+            if (curMain) {
+                if (!isProtectedWorkout(curMain)) {
+                    Object.assign(curMain, fields);
+                    await curMain.save();
+                    summary.updated++;
+                }
+            }
+            if (curAlt) {
+                if (!isAltProtected(curAlt)) {
+                    applyAltFields(curAlt, fields, program._id, slot.wIdx, slot.dayNum);
+                    await curAlt.save();
+                    summary.updated++;
+                }
+            }
+            if (!curMain && !curAlt) {
                 const occupied = await ClientWorkout.findOne({ clientId: client._id, date: slot.dateStr });
-                if (occupied) continue;
-                await ClientWorkout.create({ clientId: client._id, date: slot.dateStr, ...fields });
-                summary.created++;
+                if (clientSlot === 'alternative') {
+                    // The second routine is additive by definition: it may land on a
+                    // date that already has the primary program, or on an empty one.
+                    const doc = occupied || new ClientWorkout({ clientId: client._id, date: slot.dateStr });
+                    if (doc.alternative?.exercises?.length && !isAltProtected(doc)) {
+                        // someone else's second routine already here — leave it alone
+                        if (String(doc.alternative.sourceProgramId || '') !== String(program._id)) continue;
+                    }
+                    applyAltFields(doc, fields, program._id, slot.wIdx, slot.dayNum);
+                    await doc.save();
+                    summary.created++;
+                } else {
+                    // New primary day — never clobber whatever already sits on that date.
+                    if (occupied) continue;
+                    await ClientWorkout.create({ clientId: client._id, date: slot.dateStr, ...fields });
+                    summary.created++;
+                }
             }
         }
 
         // 2) REMOVE days dropped/emptied from the program (future & untouched only).
         for (const w of existing) {
-            const slot = slots.get(`${w.sourceWeek}-${w.sourceDayNum}`);
-            if (slot && slot.hasContent) continue;              // still part of the program
-            if (w.date < todayStr || isProtectedWorkout(w)) continue;
-            await ClientWorkout.deleteOne({ _id: w._id });
-            summary.removed++;
+            const inMain = String(w.sourceProgramId || '') === String(program._id);
+            const inAlt  = String(w.alternative?.sourceProgramId || '') === String(program._id);
+            if (w.date < todayStr) continue;
+
+            if (inMain) {
+                const slot = slots.get(`${w.sourceWeek}-${w.sourceDayNum}`);
+                if (!(slot && slot.hasContent) && !isProtectedWorkout(w)) {
+                    // Deleting the DOCUMENT would take the day's second routine with
+                    // it — another program's work, destroyed by an edit to this one.
+                    // Clear only this program's slot and keep the document alive.
+                    if ((w.alternative?.exercises?.length || 0) > 0) {
+                        w.title = ''; w.exercises = []; w.isRest = false; w.restType = '';
+                        w.warmup = ''; w.warmupItems = []; w.cooldown = ''; w.cooldownItems = [];
+                        w.sourceProgramId = null; w.sourceWeek = null; w.sourceDayNum = null;
+                        w.chosenBlock = 'alternative';   // only one routine left to do
+                        await w.save();
+                    } else {
+                        await ClientWorkout.deleteOne({ _id: w._id });
+                    }
+                    summary.removed++;
+                    continue;
+                }
+            }
+            if (inAlt) {
+                const slot = slots.get(`${w.alternative.sourceWeek}-${w.alternative.sourceDayNum}`);
+                if (!(slot && slot.hasContent) && !isAltProtected(w)) {
+                    w.alternative = { label: '', exercises: [], sourceProgramId: null,
+                                      sourceWeek: null, sourceDayNum: null, manualEdit: false };
+                    if (w.chosenBlock === 'alternative') w.chosenBlock = 'main';
+                    await w.save();
+                    summary.removed++;
+                }
+            }
         }
     }
     return summary;
@@ -5379,13 +5500,21 @@ app.get('/api/programs/:id/assignment-status', authenticateToken, authorizeRoles
         if (!program) return res.status(404).json({ message: 'Program not found' });
 
         const clients = await User.find({ role: 'client', isDeleted: { $ne: true } })
-            .select('name lastName program assignedProgram').lean();
+            .select('name lastName program assignedProgram assignedProgramAlt').lean();
 
         const linked = [], unlinked = [];
         for (const c of clients) {
             const label = `${c.name || ''} ${c.lastName || ''}`.trim() || 'Cliente';
-            if (String(c.assignedProgram?.programId || '') === String(program._id)) {
-                linked.push({ _id: c._id, name: label, startDate: c.assignedProgram?.startDate || null });
+            // Either link counts: auto-sync now visits a client for their primary
+            // program AND for a second one assigned to the alternative slot, so the
+            // banner must say "covered" for both — otherwise it would warn about
+            // clients who are in fact being kept up to date.
+            const viaMain = String(c.assignedProgram?.programId    || '') === String(program._id);
+            const viaAlt  = String(c.assignedProgramAlt?.programId || '') === String(program._id);
+            if (viaMain || viaAlt) {
+                const lk = viaMain ? c.assignedProgram : c.assignedProgramAlt;
+                linked.push({ _id: c._id, name: label, startDate: lk?.startDate || null,
+                              slot: viaMain ? 'main' : 'alternative' });
             } else if (!c.assignedProgram?.programId && c.program && c.program === program.name) {
                 // Same program by name, but no link → auto-sync cannot reach them.
                 unlinked.push({ _id: c._id, name: label });
@@ -5403,13 +5532,16 @@ app.get('/api/programs/:id/assignment-status', authenticateToken, authorizeRoles
 app.put('/api/clients/:clientId/assigned-program', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { clientId } = req.params;
-        const { programId, startDate, anchorOffset } = req.body;
-        const assignedProgram = (programId && startDate)
+        const { programId, startDate, anchorOffset, slot } = req.body;
+        const link = (programId && startDate)
             ? { programId, startDate, anchorOffset: anchorOffset || 0 }
             : { programId: null, startDate: null, anchorOffset: 0 };
-        const user = await User.findByIdAndUpdate(clientId, { assignedProgram }, { new: true });
+        // `slot` mirrors the workout write: 'alternative' records the client's
+        // SECOND program, leaving the first link alone.
+        const field = slot === 'alternative' ? 'assignedProgramAlt' : 'assignedProgram';
+        const user = await User.findByIdAndUpdate(clientId, { [field]: link }, { new: true });
         if (!user) return res.status(404).json({ message: 'Client not found' });
-        res.json({ ok: true, assignedProgram: user.assignedProgram });
+        res.json({ ok: true, assignedProgram: user.assignedProgram, assignedProgramAlt: user.assignedProgramAlt });
     } catch (e) {
         console.error('Error setting assigned program:', e.message);
         res.status(500).json({ message: 'Error setting assigned program' });
