@@ -3286,3 +3286,46 @@ Reproduced Angel's exact situation locally — a client on "Comeback" from Oct 1
 program assigned over the same dates from the **Programas** screen. The dialog fires, choosing the
 second routine leaves Comeback intact, both links are recorded, the `program` label stays
 "Comeback", and the trainer's calendar renders two cards for the day.
+
+
+---
+
+## 38. Primary and Secondary, not two equals
+
+Two routines on a day were rendered as peers: same shape, same weight, distinguished only by a
+colour the client had no key for. That is the wrong model. One of them is what the client **should**
+do; the other is the fallback for the day they cannot.
+
+The vocabulary is now **Principal** and **Secundaria**, used identically in both apps:
+
+| Surface | Before | Now |
+|---|---|---|
+| Client's workout toggle | two identical buttons, program names only | stacked `PRINCIPAL` / `SECUNDARIA` over the name, gold vs sky, plus a one-line hint |
+| Trainer's calendar card | colour only | `N ejercicios · Principal` / `· Secundaria` in the subtitle |
+| Day editor | "Añadir alternativa", "opción B" | "Añadir rutina secundaria", and the secondary tab reads in sky |
+| Mobile Hoy | two identical buttons | same ranked buttons as the web |
+| Mobile Programa / client history | `o <nombre>` | `Secundaria: <nombre>` |
+
+The rank only appears when a day actually has two routines, so every ordinary day is unchanged.
+`ELEGIDA` still marks whichever one the client picked — rank is the trainer's intent, `ELEGIDA` is
+the client's answer, and both are worth seeing at once.
+
+Secondary is `#7DD3FC` in both apps (`SKY2` on mobile), deliberately the same value so the two
+products read as one.
+
+### The trap
+
+`#7DD3FC` is an arbitrary Tailwind value, and arbitrary values only exist in `output.css` if
+something in the scanned source already used them. These were new, so all seven rules —
+`bg-`, `border-`, `border-/25`, `text-/50`, `text-/70`, `hover:text-`, `focus:border-/60` — were
+**missing**, and the secondary buttons would have rendered completely unstyled. `npm run build:css`
+is not optional when introducing a colour.
+
+Verified by reading the computed style off the live page rather than trusting the markup:
+`rgba(125, 211, 252, 0.7)` on the inactive secondary, `rgb(125, 211, 252)` filled when chosen.
+
+### Verified
+
+Client view: both ranks render, the hint reads, switching fills the secondary sky and clears the
+primary. Trainer calendar: `· Principal` and `· Secundaria ELEGIDA` on a two-routine day, no rank
+on an ordinary day, rest days untouched, no console errors.

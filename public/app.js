@@ -3211,13 +3211,20 @@ document.addEventListener('DOMContentLoaded', () => {
                                     const pick = hasAlt && chosen
                                         ? '<span class="text-[9px] font-bold text-[#FFDB89]/70 bg-[#FFDB89]/10 px-1.5 py-0.5 rounded-full shrink-0">ELEGIDA</span>'
                                         : '';
+                                    // Rank, not just colour. Two routines on a day are not
+                                    // equals: one is what the client should do, the other is
+                                    // the fallback — and the trainer needs to see which is
+                                    // which at a glance, without opening the day.
+                                    const rank = hasAlt
+                                        ? `<span class="opacity-70">· ${isAlt ? 'Secundaria' : 'Principal'}</span>`
+                                        : '';
                                     return `
                                     <div class="workout-card-wrapper" data-block="${block}">
                                         <div class="workout-card-header flex items-center gap-3 cursor-pointer py-0.5 group/wk">
                                             <div class="w-1 h-8 rounded-full shrink-0" style="background:${barColor}"></div>
                                             <div class="min-w-0 flex-1">
                                                 <div class="text-sm font-bold truncate" style="color:${barColor}">${escHtml(title || 'Entrenamiento')}</div>
-                                                <div class="text-xs text-[#FFDB89]/50 flex items-center gap-2">${n} ejercicio${n !== 1 ? 's' : ''}</div>
+                                                <div class="text-xs text-[#FFDB89]/50 flex items-center gap-1.5">${n} ejercicio${n !== 1 ? 's' : ''} ${rank}</div>
                                             </div>
                                             ${pick}
                                             <i class="fas fa-chevron-right text-[#FFDB89]/40 text-xs shrink-0 workout-chevron transition-transform duration-200"></i>
@@ -10298,23 +10305,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${(editorAltStash.length || editorBlock === 'alternative') ? `
                     <button onclick="window.switchEditorBlock('alternative')"
                         class="px-3 py-1.5 rounded-lg text-xs font-bold border transition ${editorBlock === 'alternative'
-                            ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
-                            : 'bg-transparent text-[#FFDB89]/60 border-[#FFDB89]/25 hover:text-[#FFDB89]'}">
+                            ? 'bg-[#7DD3FC] text-[#030303] border-[#7DD3FC]'
+                            : 'bg-transparent text-[#7DD3FC]/70 border-[#7DD3FC]/25 hover:text-[#7DD3FC]'}">
                         ${escHtml(editorAltLabel || 'Alternativa')}
                     </button>
                     <input type="text" id="editor-alt-label" value="${(editorAltLabel || '').replace(/"/g,'&quot;')}"
                         oninput="window.updateAltLabel(this.value)" placeholder="Nombre de la alternativa (ej. En casa)"
-                        class="flex-1 min-w-[12rem] bg-white/5 border border-[#FFDB89]/20 rounded-lg px-2.5 py-1.5 text-xs text-[#FFDB89] placeholder-[#FFDB89]/30 outline-none focus:border-[#FFDB89]/50"
+                        class="flex-1 min-w-[12rem] bg-white/5 border border-[#7DD3FC]/25 rounded-lg px-2.5 py-1.5 text-xs text-[#FFDB89] placeholder-[#FFDB89]/30 outline-none focus:border-[#7DD3FC]/60"
                         autocomplete="off" spellcheck="false">
                     <button onclick="window.removeAltBlock()" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-400/60 hover:text-red-400 border border-red-400/25 hover:border-red-400/50 transition" title="Quitar la alternativa">
                         <i class="fas fa-trash-alt text-[10px]"></i>
                     </button>` : `
                     <button onclick="window.addAltBlock()"
                         class="px-3 py-1.5 rounded-lg text-xs font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] border border-dashed border-[#FFDB89]/25 hover:border-[#FFDB89]/50 transition">
-                        <i class="fas fa-plus text-[10px] mr-1"></i>Añadir alternativa
+                        <i class="fas fa-plus text-[10px] mr-1"></i>Añadir rutina secundaria
                     </button>`}
                     ${editorBlock === 'alternative' ? `
-                    <span class="w-full text-[10px] text-[#FFDB89]/40">Esta rutina es la opción B del mismo día — el cliente elige cuál hacer.</span>` : ''}
+                    <span class="w-full text-[10px] text-[#FFDB89]/40">Rutina <strong class="text-[#7DD3FC]/70">secundaria</strong> de este día — la que el cliente hace si no puede con la principal.</span>` : ''}
                 `;
 
     // Both blocks, whichever one happens to be on screen. The visible block lives
@@ -16562,17 +16569,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="px-5 pt-4 shrink-0">
                         <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-2">Elige tu rutina de hoy</p>
                         <div class="grid grid-cols-2 gap-2">
-                            <button data-block="main" class="client-block-btn py-2.5 rounded-xl text-xs font-bold border transition ${activeBlock === 'main'
+                            <button data-block="main" class="client-block-btn px-2 py-2 rounded-xl border transition text-left ${activeBlock === 'main'
                                 ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
-                                : 'bg-transparent text-[#FFDB89]/60 border-[#FFDB89]/25'}">
-                                ${escHtml(workout.title || 'Entrenamiento')}
+                                : 'bg-transparent text-[#FFDB89]/70 border-[#FFDB89]/30'}">
+                                <span class="block text-[9px] font-bold uppercase tracking-wider ${activeBlock === 'main' ? 'opacity-60' : 'text-[#FFDB89]/45'}">Principal</span>
+                                <span class="block text-xs font-bold truncate">${escHtml(workout.title || 'Entrenamiento')}</span>
                             </button>
-                            <button data-block="alternative" class="client-block-btn py-2.5 rounded-xl text-xs font-bold border transition ${activeBlock === 'alternative'
-                                ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
-                                : 'bg-transparent text-[#FFDB89]/60 border-[#FFDB89]/25'}">
-                                ${escHtml(workout.alternative?.label || 'Alternativa')}
+                            <button data-block="alternative" class="client-block-btn px-2 py-2 rounded-xl border transition text-left ${activeBlock === 'alternative'
+                                ? 'bg-[#7DD3FC] text-[#030303] border-[#7DD3FC]'
+                                : 'bg-transparent text-[#7DD3FC]/70 border-[#7DD3FC]/25'}">
+                                <span class="block text-[9px] font-bold uppercase tracking-wider ${activeBlock === 'alternative' ? 'opacity-60' : 'text-[#7DD3FC]/50'}">Secundaria</span>
+                                <span class="block text-xs font-bold truncate">${escHtml(workout.alternative?.label || 'Alternativa')}</span>
                             </button>
                         </div>
+                        <p class="text-[10px] text-[#FFDB89]/35 mt-1.5">Haz la principal cuando puedas. La secundaria es tu alternativa para ese día.</p>
                     </div>` : ''}
 
                     <!-- Scrollable body -->
