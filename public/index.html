@@ -8,7 +8,10 @@
 
   <link rel="stylesheet" href="/output.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Pinned to the exact version production was already receiving. The unpinned
+       URL means "whatever is latest", so a future major release would have landed
+       on every client's phone with no deploy and no warning. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
   <style>
     /* ── Prevent iOS Safari auto-zoom on input focus ───────────────────────── *
@@ -80,7 +83,7 @@
     <div id="auth-screen" class="flex-grow w-full h-full overflow-y-auto scroll-smooth">
 
       <!-- NAV -->
-      <nav class="sticky top-0 z-50 bg-fbs-dark/90 backdrop-blur-md border-b border-fbs-gold/15">
+      <nav class="sticky top-0 z-50 bg-fbs-dark/95 md:bg-fbs-dark/90 md:backdrop-blur-md border-b border-fbs-gold/15">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="flex justify-between items-center py-3 sm:py-4 gap-2">
             <div class="flex items-center gap-2 min-w-0 flex-shrink">

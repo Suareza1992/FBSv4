@@ -576,7 +576,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const who = `${t?.name || ''} ${t?.lastName || ''}`.trim() || 'este entrenador';
         if (currentActive) {
             const ok = await showConfirm(
-                `¿Desactivar a ${escHtml(who)}?<br><span class="text-xs text-[#FFDB89]/60">No podrá recibir llamadas en vivo. Sus clientes y sus datos no se tocan.</span>`,
+                // Only claim the call restriction while calls exist. With live sessions off,
+                // deactivating changes a label and a filter and nothing else, and saying
+                // otherwise would be telling the superadmin something false.
+                `¿Desactivar a ${escHtml(who)}?<br><span class="text-xs text-[#FFDB89]/60">${
+                    window.__liveSessionsEnabled === true ? 'No podrá recibir llamadas en vivo. ' : 'Aparecerá como inactivo. '
+                }Sus clientes y sus datos no se tocan.</span>`,
                 { confirmLabel: 'Desactivar', danger: true }
             );
             if (!ok) return;
@@ -2315,7 +2320,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Deliberately here and not inside LiveSession.start(): a CLIENT never
         // initiates, so a socket opened only when calling would mean an incoming
         // call could never reach them. Both roles connect at login.
-        window.LiveSession?.connect();
+        // Fails CLOSED: `__liveSessionsEnabled` stays false until the server says
+        // otherwise, so every call entry point is hidden and no socket is opened
+        // while the feature is off. Asked fresh at each login rather than read from
+        // the cached `auth_user` blob, which can be stale and never held this flag.
+        window.__liveSessionsEnabled = false;
+        apiGetJSON('/api/me').then((me) => {
+            window.__liveSessionsEnabled = me?.liveSessionsEnabled === true;
+            if (window.__liveSessionsEnabled) window.LiveSession?.connect();
+        }).catch(() => { /* leave it off — a failed check must never open a socket */ });
 
         const dashModule = user.role === 'trainer' ? 'trainer-dashboard' : 'client-dashboard';
         const dashHtml = await loadModule(dashModule);
@@ -2980,6 +2993,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h2 class="text-lg sm:text-2xl font-bold text-[#FFDB89] truncate">${client.name} ${client.lastName}</h2>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
+                        ${window.__liveSessionsEnabled === true ? `
                         <button id="live-session-btn" title="Sesión en vivo"
                                 data-client-id="${escHtml(client._id || client.id)}"
                                 data-client-name="${escHtml(`${client.name || ''} ${client.lastName || ''}`.trim())}"
@@ -2987,6 +3001,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <i class="fas fa-video text-sm"></i>
                             <span class="hidden sm:inline text-xs font-bold">Sesión en vivo</span>
                         </button>
+                        ` : ''}
                         <button id="next-client-btn" title="Siguiente cliente" class="w-9 h-9 flex items-center justify-center rounded-full border border-[#FFDB89]/25 bg-[#FFDB89]/8 text-[#FFDB89]/60 hover:text-[#FFDB89] hover:bg-[#FFDB89]/20 hover:border-[#FFDB89]/50 transition shrink-0">
                             <i class="fas fa-chevron-right text-sm"></i>
                         </button>
@@ -3001,7 +3016,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="photos">Fotos</button>
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="restrictions">Restricciones</button>
                     <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="equipment">Equipo</button>
-                    <button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="sessions">Sesiones</button>
+                    ${window.__liveSessionsEnabled === true ? `<button class="client-detail-tab px-3 sm:px-4 py-3 text-sm font-bold text-[#FFDB89]/50 hover:text-[#FFDB89]/80 border-b-2 border-transparent shrink-0" data-tab="sessions">Sesiones</button>` : ''}
                     <div class="ml-auto flex items-center shrink-0 pl-2 pr-1" id="hoy-btn-wrap">
                         <button class="px-3 py-1 text-sm font-semibold border border-[#FFDB89]/30 bg-[#FFDB89]/10 text-[#FFDB89] rounded hover:bg-[#FFDB89]/20 transition" onclick="document.querySelector('.is-today')?.scrollIntoView({block:'center', behavior:'smooth'})">Hoy</button>
                     </div>
@@ -14368,8 +14383,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             await video.play();
                             setStatus('Buscando código de barras...', 'text-[#FFDB89]/80 animate-pulse');
 
-                            const loop = async () => {
+                            // Detection used to run on EVERY animation frame — up to 60
+                            // times a second against a 720p camera feed, on a phone that
+                            // is already powering its camera and screen. A barcode held
+                            // in front of the lens stays there for seconds, so ~7 attempts
+                            // a second finds it just as fast to the human eye and costs a
+                            // fraction of the heat. (The ZXing fallback below already
+                            // paces itself at one attempt per ~500ms.)
+                            const SCAN_INTERVAL_MS = 140;
+                            let lastScan = 0;
+                            const loop = async (ts) => {
                                 if (!scanActive || !document.getElementById('barcode-video')) return;
+                                if (ts - lastScan < SCAN_INTERVAL_MS) { requestAnimationFrame(loop); return; }
+                                lastScan = ts;
                                 try {
                                     const codes = await detector.detect(video);
                                     if (codes.length > 0) {

@@ -71,6 +71,15 @@
         returned:     'La otra persona volvió.',
         lostForGood:  'Se perdió la conexión. Intenta llamar de nuevo.',
         weak:         'Conexión inestable…',
+        // Exercise tile
+        primary:      'Principal',
+        secondary:    'Secundaria',
+        exWaiting:    'Tu entrenador elegirá el ejercicio.',
+        exNone:       'Sin rutina para hoy.',
+        exLoading:    'Cargando rutina…',
+        exPrev:       'Ejercicio anterior',
+        exNext:       'Siguiente ejercicio',
+        exArea:       'Ejercicio actual',
     };
 
     // getUserMedia rejects with a DOMException whose .name says what went wrong.
@@ -90,7 +99,11 @@
     const INSECURE_MSG = 'Las sesiones en vivo requieren una conexión segura (HTTPS).';
 
     const CONSTRAINTS = {
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        // 960x540 @ 24fps rather than 1280x720 @ 30: about 55% less video to encode and
+        // decode, which is what actually makes a phone hot during a call. Still plenty
+        // to judge a squat or a deadlift from. These are `ideal`, so a device that
+        // cannot do them falls back instead of failing.
+        video: { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 24, max: 30 }, facingMode: 'user' },
         // These three are not optional. Without echoCancellation, a trainer on
         // laptop speakers creates a feedback loop the moment the client unmutes.
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -131,6 +144,12 @@
         lastBytes: 0,
         stallTicks: 0,
         peerBackgrounded: false,
+
+        // ── Current exercise (the trainer advances it; the client just sees it) ──
+        exercise: null,        // what is on the tile: { index, total, name, detail, block, label }
+        exCtx: null,           // TRAINER only: { list, block, label, loading }
+        exInit: false,         // first exercise sent? markConnected() fires on every ICE recovery
+        exBusy: false,         // a step is in flight — ignore double taps
     };
 
     // How long 'disconnected' is tolerated before escalating to an ICE restart.
@@ -160,6 +179,7 @@
         retryTimer: null,
         outbox: [],           // frames queued while the socket is down
         wantOpen: false,
+        role: null,           // from the server's `hello` — see SIGNALS.hello
     };
 
     // ── Media ───────────────────────────────────────────────────────────────
@@ -210,71 +230,151 @@
     const ICON_BTN = 'w-14 h-14 rounded-full flex items-center justify-center text-xl transition ' +
                      'focus:outline-none focus:ring-2 focus:ring-[#FFDB89]/50';
 
+    // ── Layout ───────────────────────────────────────────────────────────────
+    // Three tiles, per docs/DESIGN-GUIDE.md. Shares are of the screen AREA:
+    //
+    //   the other person  ~50%   the biggest thing on screen
+    //   you               ~30%   large on purpose — in a coaching call, watching
+    //                            your own form is the point, like a mirror
+    //   current exercise  ~20%
+    //
+    //   landscape                      portrait (phones)
+    //   ┌───────────┬───────────┐      ┌───────────────────┐
+    //   │ exercise  │           │      │   other person    │  50%
+    //   │   20%     │   other   │      │                   │
+    //   ├───────────┤  person   │      ├─────────┬─────────┤
+    //   │   you     │   50%     │      │   you   │exercise │  50%
+    //   │   30%     │           │      │   30%   │  20%    │
+    //   └───────────┴───────────┘      └─────────┴─────────┘
+    //
+    // Plain CSS in an injected <style>, NOT Tailwind classes: this overlay is built
+    // from a JS string, and anything Tailwind has not already seen is purged from
+    // output.css — the trap that bit § 38. Nothing here depends on a CSS rebuild.
+    //
+    // No backdrop-filter anywhere in here. Blurring a live video behind a control
+    // is re-done every frame, and heat on phones is the thing § 39 was about.
+    const CSS = `
+#fbs-live .fbs-grid{flex:1 1 auto;min-height:0;display:grid;gap:10px;
+  padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))
+          max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+  grid-template-columns:3fr 2fr;grid-template-rows:1fr 1fr;
+  grid-template-areas:"remote remote" "self exercise"}
+@media (orientation:landscape){
+  #fbs-live .fbs-grid{grid-template-columns:1fr 1fr;grid-template-rows:2fr 3fr;
+    grid-template-areas:"exercise remote" "self remote"}}
+#fbs-live .fbs-tile{position:relative;overflow:hidden;min-width:0;min-height:0;
+  border-radius:22px;background:#111113;border:1px solid rgba(255,219,137,.16)}
+#fbs-live .fbs-remote{grid-area:remote}
+#fbs-live .fbs-self{grid-area:self}
+#fbs-live .fbs-exercise{grid-area:exercise;background:#151517}
+#fbs-live .fbs-fill{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111113}
+/* Mirrored like a mirror. Only the PREVIEW is flipped — what the other person
+   receives is the unflipped stream, as on every video-call app. */
+#fbs-live #fbs-live-local{transform:scaleX(-1)}
+#fbs-live .fbs-remote-top{position:absolute;left:0;right:0;top:0;z-index:2;display:flex;
+  align-items:flex-start;justify-content:space-between;gap:8px;padding:12px 12px 28px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.65),transparent)}
+#fbs-live .fbs-controls{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:2;
+  display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:999px;
+  background:rgba(14,14,16,.82);border:1px solid rgba(255,219,137,.14)}
+#fbs-live .fbs-cap{position:absolute;left:10px;bottom:8px;z-index:2;font-size:12px;font-weight:700;
+  color:#FFDB89;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+#fbs-live .fbs-ex{position:absolute;inset:0;display:flex;flex-direction:column;gap:6px;
+  padding:clamp(10px,2.2vmin,18px);overflow:hidden}
+#fbs-live .fbs-ex-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+#fbs-live .fbs-ex-chip{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  padding:3px 8px;border-radius:999px;color:#FFDB89;background:rgba(255,219,137,.12);
+  border:1px solid rgba(255,219,137,.3)}
+#fbs-live .fbs-ex-chip.is-alt{color:#7DD3FC;background:rgba(125,211,252,.1);border-color:rgba(125,211,252,.3)}
+#fbs-live .fbs-ex-count{font-size:12px;font-weight:700;color:rgba(255,219,137,.55);font-variant-numeric:tabular-nums}
+#fbs-live .fbs-ex-label{font-size:11px;color:rgba(255,219,137,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fbs-live .fbs-ex-name{font-size:clamp(14px,2.4vmin,22px);font-weight:800;line-height:1.15;color:#FFDB89;
+  overflow-wrap:anywhere}
+/* The text the trainer wrote under the exercise name, verbatim. pre-line keeps
+   their line breaks without letting stray spaces through. */
+#fbs-live .fbs-ex-detail{flex:1 1 auto;min-height:0;overflow-y:auto;white-space:pre-line;
+  font-size:clamp(12px,1.9vmin,17px);line-height:1.4;color:rgba(255,255,255,.82)}
+#fbs-live .fbs-ex-empty{margin:auto;text-align:center;font-size:13px;color:rgba(255,219,137,.5);padding:0 8px}
+#fbs-live .fbs-ex-nav{display:flex;gap:8px;justify-content:flex-end;flex:0 0 auto}
+#fbs-live .fbs-ex-nav button{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;
+  justify-content:center;color:#FFDB89;background:#1C1C1E;border:1px solid rgba(255,219,137,.25)}
+#fbs-live .fbs-ex-nav button:disabled{opacity:.3}
+`;
+    function ensureStyles() {
+        if (document.getElementById('fbs-live-css')) return;
+        const el = document.createElement('style');
+        el.id = 'fbs-live-css';
+        el.textContent = CSS;
+        document.head.appendChild(el);
+    }
+    ensureStyles();
+
     function overlayHtml(peerName) {
         return `
 <div id="fbs-live" class="fixed inset-0 z-[150] bg-[#030303] flex flex-col" role="dialog"
      aria-modal="true" aria-label="Sesión en vivo">
+  <div class="fbs-grid">
 
-  <!-- Remote video, full bleed. object-cover so it fills without letterboxing. -->
-  <video id="fbs-live-remote" class="absolute inset-0 w-full h-full object-cover bg-[#030303]"
-         autoplay playsinline></video>
+    <!-- The OTHER PERSON — the big tile -->
+    <section class="fbs-tile fbs-remote">
+      <video id="fbs-live-remote" class="fbs-fill" autoplay playsinline></video>
 
-  <!-- Placeholder shown until remote media arrives (Day 5). -->
-  <div id="fbs-live-waiting" class="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-6">
-    <div class="w-24 h-24 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/25 flex items-center justify-center">
-      <i class="fas fa-user text-[#FFDB89]/70 text-4xl"></i>
-    </div>
-    <p class="text-[#FFDB89] text-xl font-bold">${esc(peerName)}</p>
-    <p id="fbs-live-status" class="text-[#FFDB89]/60 text-sm">${T.calling}</p>
-  </div>
+      <!-- Placeholder shown until remote media arrives. -->
+      <div id="fbs-live-waiting" class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-4">
+        <div class="w-20 h-20 rounded-full bg-[#FFDB89]/10 border border-[#FFDB89]/25 flex items-center justify-center">
+          <i class="fas fa-user text-[#FFDB89]/70 text-3xl"></i>
+        </div>
+        <p class="text-[#FFDB89] text-lg font-bold">${esc(peerName)}</p>
+        <p id="fbs-live-status" class="text-[#FFDB89]/60 text-sm">${T.calling}</p>
+      </div>
 
-  <!-- Top bar -->
-  <div class="relative z-10 flex items-start justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]
-              bg-gradient-to-b from-black/70 to-transparent">
-    <div class="min-w-0">
-      <p class="text-[#FFDB89] font-bold text-base truncate">${esc(peerName)}</p>
-      <p id="fbs-live-substatus" class="text-[#FFDB89]/60 text-xs mt-0.5">${T.calling}</p>
-    </div>
-    <button id="fbs-live-min" title="${T.minimise}" aria-label="${T.minimise}"
-            class="shrink-0 w-10 h-10 rounded-full bg-black/50 border border-[#FFDB89]/20
-                   text-[#FFDB89] flex items-center justify-center hover:bg-black/70 transition">
-      <i class="fas fa-compress"></i>
-    </button>
-  </div>
+      <div class="fbs-remote-top">
+        <div class="min-w-0">
+          <p class="text-[#FFDB89] font-bold text-base truncate">${esc(peerName)}</p>
+          <p id="fbs-live-substatus" class="text-[#FFDB89]/60 text-xs mt-0.5">${T.calling}</p>
+        </div>
+        <button id="fbs-live-min" title="${T.minimise}" aria-label="${T.minimise}"
+                class="shrink-0 w-10 h-10 rounded-full bg-black/50 border border-[#FFDB89]/20
+                       text-[#FFDB89] flex items-center justify-center hover:bg-black/70 transition">
+          <i class="fas fa-compress"></i>
+        </button>
+      </div>
 
-  <div class="flex-grow"></div>
+      <div class="fbs-controls">
+        <button id="fbs-live-mute" title="${T.mute}" aria-label="${T.mute}" aria-pressed="false"
+                class="${ICON_BTN} bg-[#1C1C1E] border border-[#FFDB89]/25 text-[#FFDB89] hover:bg-[#2C2C2E]">
+          <i class="fas fa-microphone"></i>
+        </button>
+        <button id="fbs-live-hangup" title="${T.hangUp}" aria-label="${T.hangUp}"
+                class="w-16 h-16 rounded-full flex items-center justify-center text-2xl bg-red-600
+                       hover:bg-red-500 text-white shadow-lg transition focus:outline-none
+                       focus:ring-2 focus:ring-red-400">
+          <i class="fas fa-phone-slash"></i>
+        </button>
+        <button id="fbs-live-cam" title="${T.cameraOff}" aria-label="${T.cameraOff}" aria-pressed="false"
+                class="${ICON_BTN} bg-[#1C1C1E] border border-[#FFDB89]/25 text-[#FFDB89] hover:bg-[#2C2C2E]">
+          <i class="fas fa-video"></i>
+        </button>
+      </div>
+    </section>
 
-  <!-- Local preview (picture-in-picture). MUTED is mandatory: an unmuted local
-       video plays your own microphone back through your speakers. -->
-  <div id="fbs-live-localwrap"
-       class="absolute right-4 w-28 h-40 sm:w-36 sm:h-52 rounded-2xl overflow-hidden
-              border border-[#FFDB89]/25 bg-[#1C1C1E] shadow-2xl z-10"
-       style="bottom: calc(7.5rem + env(safe-area-inset-bottom))">
-    <video id="fbs-live-local" class="w-full h-full object-cover" autoplay playsinline muted></video>
-    <div id="fbs-live-localoff" class="absolute inset-0 hidden flex-col items-center justify-center
-                                        bg-[#1C1C1E] gap-1.5 text-center px-1">
-      <i class="fas fa-video-slash text-[#FFDB89]/50"></i>
-      <span class="text-[#FFDB89]/50 text-[10px] leading-tight">${T.cameraIsOff}</span>
-    </div>
-  </div>
+    <!-- YOU. MUTED is mandatory: an unmuted local video plays your own microphone
+         back through your speakers. -->
+    <section id="fbs-live-localwrap" class="fbs-tile fbs-self">
+      <video id="fbs-live-local" class="fbs-fill" autoplay playsinline muted></video>
+      <div id="fbs-live-localoff" class="absolute inset-0 hidden flex-col items-center justify-center
+                                          bg-[#1C1C1E] gap-1.5 text-center px-1">
+        <i class="fas fa-video-slash text-[#FFDB89]/50"></i>
+        <span class="text-[#FFDB89]/50 text-[10px] leading-tight">${T.cameraIsOff}</span>
+      </div>
+      <span class="fbs-cap">${T.you}</span>
+    </section>
 
-  <!-- Controls -->
-  <div class="relative z-10 flex items-center justify-center gap-4 sm:gap-6 px-4 pt-6
-              pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/80 to-transparent">
-    <button id="fbs-live-mute" title="${T.mute}" aria-label="${T.mute}" aria-pressed="false"
-            class="${ICON_BTN} bg-[#1C1C1E] border border-[#FFDB89]/25 text-[#FFDB89] hover:bg-[#2C2C2E]">
-      <i class="fas fa-microphone"></i>
-    </button>
-    <button id="fbs-live-hangup" title="${T.hangUp}" aria-label="${T.hangUp}"
-            class="w-16 h-16 rounded-full flex items-center justify-center text-2xl bg-red-600
-                   hover:bg-red-500 text-white shadow-lg transition focus:outline-none
-                   focus:ring-2 focus:ring-red-400">
-      <i class="fas fa-phone-slash"></i>
-    </button>
-    <button id="fbs-live-cam" title="${T.cameraOff}" aria-label="${T.cameraOff}" aria-pressed="false"
-            class="${ICON_BTN} bg-[#1C1C1E] border border-[#FFDB89]/25 text-[#FFDB89] hover:bg-[#2C2C2E]">
-      <i class="fas fa-video"></i>
-    </button>
+    <!-- The CURRENT EXERCISE. Filled by renderExercise() from state.exercise. -->
+    <section class="fbs-tile fbs-exercise" aria-label="${T.exArea}">
+      <div id="fbs-ex-body" class="fbs-ex"></div>
+    </section>
+
   </div>
 </div>`;
     }
@@ -335,7 +435,11 @@
             status: $('fbs-live-status'), substatus: $('fbs-live-substatus'),
             mute: $('fbs-live-mute'), cam: $('fbs-live-cam'),
             hangup: $('fbs-live-hangup'), min: $('fbs-live-min'),
+            exBody: $('fbs-ex-body'),
         };
+        // The overlay is rebuilt from scratch on every expand-from-minimised, so the
+        // tile must redraw from STATE every time — the DOM is never the source of truth.
+        renderExercise();
     }
 
     function setStatus(key) {
@@ -343,6 +447,151 @@
         const text = T[key] || key;
         if (state.el.status) state.el.status.textContent = text;
         if (state.el.substatus) state.el.substatus.textContent = text;
+    }
+
+    // ── Current exercise ───────────────────────────────────────
+    // The trainer is coaching, so the trainer advances; the client's tile is
+    // read-only and follows. See docs/DESIGN-GUIDE.md for the layout.
+
+    // Server-verified role from `hello`. Trainer, admin and superadmin all count;
+    // the only thing that is NOT a trainer here is a client.
+    const isTrainer = () => !!sock.role && sock.role !== 'client';
+
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const todayStr = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    };
+
+    /**
+     * TRAINER ONLY. Read the client's workout for today and work out which routine
+     * is on the table — using EXACTLY the rule the client's own screen uses, so the
+     * two can never disagree about which routine "today" is:
+     *
+     *     the second routine, if it exists AND the client chose it; otherwise the main one.
+     *
+     * The client picks because they know where the session is happening (gym or
+     * home). Re-read on every step so a routine switched mid-call is picked up.
+     */
+    async function loadExerciseContext() {
+        const clientId = state.peerId;
+        if (!clientId) return;
+        state.exCtx = { ...(state.exCtx || { list: [], block: 'main', label: '' }), loading: true };
+        try {
+            const r = await fetch(`/api/client-workouts/${encodeURIComponent(clientId)}/${todayStr()}`,
+                { credentials: 'include' });
+            let w = null;
+            if (r.ok) w = await r.json();            // 404 = nothing assigned today, which is normal
+            const hasAlt = (w?.alternative?.exercises?.length || 0) > 0;
+            const block = (hasAlt && w?.chosenBlock === 'alternative') ? 'alternative' : 'main';
+            const src = (block === 'alternative' ? w?.alternative?.exercises : w?.exercises) || [];
+            state.exCtx = {
+                block,
+                label: block === 'alternative' ? (w?.alternative?.label || '') : (w?.title || ''),
+                // `instructions` is what is written under the exercise name — shown as is.
+                list: src
+                    .filter((e) => (e.name || '').trim())
+                    .map((e) => ({ name: e.name.trim(), detail: (e.instructions || '').trim() })),
+                loading: false,
+            };
+        } catch (err) {
+            console.warn('[live-session] could not load the routine:', err.message);
+            // Keep whatever list we already had; a failed refresh must not blank the tile.
+            state.exCtx = { ...(state.exCtx || { list: [], block: 'main', label: '' }), loading: false };
+        }
+    }
+
+    /** TRAINER ONLY. Put exercise `index` on both screens. -1 means "none today". */
+    function publishExercise(index) {
+        const ctx = state.exCtx;
+        const list = ctx?.list || [];
+        const payload = list.length
+            ? { index, total: list.length, name: list[index].name, detail: list[index].detail,
+                block: ctx.block, label: ctx.label || '' }
+            : { index: -1, total: 0, name: '', detail: '', block: ctx?.block || 'main', label: ctx?.label || '' };
+        state.exercise = payload;
+        if (state.callId) sendMsg({ t: 'call:exercise', callId: state.callId, ...payload });
+        renderExercise();
+    }
+
+    /** TRAINER ONLY. Once per call: load the routine and show the first exercise. */
+    async function initExercise() {
+        if (state.exInit || !isTrainer()) return;
+        state.exInit = true;
+        renderExercise();                       // shows "Cargando rutina…"
+        await loadExerciseContext();
+        if (!state.active) return;              // the call ended while we were loading
+        publishExercise(state.exCtx?.list?.length ? 0 : -1);
+    }
+
+    /** TRAINER ONLY. Previous / next. */
+    async function stepExercise(delta) {
+        if (state.exBusy || !isTrainer()) return;
+        state.exBusy = true;
+        try {
+            const before = state.exercise?.block;
+            await loadExerciseContext();
+            if (!state.active) return;
+            const list = state.exCtx?.list || [];
+            if (!list.length) return publishExercise(-1);
+            // The client switched routine since the last tap. "Exercise 3" of the gym
+            // routine and "exercise 3" of the home one are unrelated, so carrying the
+            // position over would land somewhere arbitrary — start the new routine at
+            // its beginning instead.
+            if (before && state.exCtx.block !== before) return publishExercise(0);
+            const cur = Number.isInteger(state.exercise?.index) && state.exercise.index >= 0 ? state.exercise.index : 0;
+            publishExercise(Math.min(list.length - 1, Math.max(0, cur + delta)));
+        } finally { state.exBusy = false; }
+    }
+
+    /** CLIENT: the trainer changed the exercise. Defensive about shape even though the
+     *  server already validated it — this goes straight into the DOM. */
+    function onExerciseSignal(m) {
+        if (isTrainer()) return;                                   // the trainer is the sender
+        if (!state.active || !state.callId || m.callId !== state.callId) return;
+        if (!Number.isInteger(m.index) || !Number.isInteger(m.total)) return;
+        state.exercise = {
+            index: m.index, total: m.total,
+            name: String(m.name ?? ''), detail: String(m.detail ?? ''),
+            block: m.block === 'alternative' ? 'alternative' : 'main',
+            label: String(m.label ?? ''),
+        };
+        renderExercise();
+    }
+
+    function renderExercise() {
+        const box = state.el.exBody;
+        if (!box) return;
+        const ex = state.exercise;
+        const trainer = isTrainer();
+
+        let body;
+        if (!ex) {
+            body = `<p class="fbs-ex-empty">${esc(trainer ? (state.exCtx?.loading ? T.exLoading : T.exNone) : T.exWaiting)}</p>`;
+        } else if (ex.total === 0) {
+            body = `<p class="fbs-ex-empty">${esc(T.exNone)}</p>`;
+        } else {
+            const alt = ex.block === 'alternative';
+            body = `
+  <div class="fbs-ex-head">
+    <span class="fbs-ex-chip ${alt ? 'is-alt' : ''}">${esc(alt ? T.secondary : T.primary)}</span>
+    <span class="fbs-ex-count">${ex.index + 1}/${ex.total}</span>
+  </div>
+  ${ex.label ? `<p class="fbs-ex-label">${esc(ex.label)}</p>` : ''}
+  <p class="fbs-ex-name">${esc(ex.name)}</p>
+  <div class="fbs-ex-detail">${esc(ex.detail)}</div>`;
+        }
+
+        // Only the trainer gets controls, and only when there is something to step through.
+        const nav = (trainer && ex && ex.total > 0) ? `
+  <div class="fbs-ex-nav">
+    <button id="fbs-ex-prev" aria-label="${T.exPrev}" title="${T.exPrev}" ${ex.index <= 0 ? 'disabled' : ''}>
+      <i class="fas fa-chevron-left"></i></button>
+    <button id="fbs-ex-next" aria-label="${T.exNext}" title="${T.exNext}" ${ex.index >= ex.total - 1 ? 'disabled' : ''}>
+      <i class="fas fa-chevron-right"></i></button>
+  </div>` : '';
+
+        box.innerHTML = body + nav;
     }
 
     // ── Controls ────────────────────────────────────────────────────────────
@@ -400,6 +649,10 @@
             cacheEls();
             wireControls();
             attachLocalStream();
+            // The overlay was REMOVED on minimise, taking the remote <video> with it, and
+            // `ontrack` does not fire again. Without this the other person's picture is
+            // gone after expanding — only the local one was being re-attached.
+            attachRemoteStream();
             setStatus(state.status);
             // Re-apply toggles so the buttons match reality after a re-render.
             if (state.muted)     { state.muted = false;     toggleMute(); }
@@ -412,6 +665,13 @@
         state.el.cam?.addEventListener('click', toggleCamera);
         state.el.min?.addEventListener('click', () => setMinimised(true));
         state.el.hangup?.addEventListener('click', () => window.LiveSession.end('hangup'));
+        // One listener on the container, because renderExercise() replaces its contents.
+        state.el.exBody?.addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn || btn.disabled) return;
+            if (btn.id === 'fbs-ex-prev') stepExercise(-1);
+            else if (btn.id === 'fbs-ex-next') stepExercise(1);
+        });
     }
 
     function attachLocalStream() {
@@ -942,7 +1202,9 @@
     // Table, mirroring the server's. An unknown type is ignored, not thrown on:
     // an older tab must not break when the server learns a new message.
     const SIGNALS = {
-        hello: (m) => { sock.socketId = m.socketId; },
+        // `role` is the one the SERVER read off the verified JWT, which is why the
+        // trainer-only controls key off it and not off anything cached in the page.
+        hello: (m) => { sock.socketId = m.socketId; sock.role = m.role || null; },
 
         'call:ringing':  (m) => { state.callId = m.callId; setStatus('ringing'); },
         'call:accepted': (m) => {
@@ -975,6 +1237,9 @@
             else if (state.status === 'weak') { setStatus('connected'); }
         },
         'rtc:ice':    (m) => handleRemoteIce(m.candidate),
+        // The trainer's current exercise. Only a CLIENT acts on it: the server already
+        // refuses this frame from a client, and a trainer's own page ignores it.
+        'call:exercise': (m) => onExerciseSignal(m),
 
         error: (m) => onSignalError(m),
     };
@@ -983,7 +1248,7 @@
     // describe the connection itself.
     const CALL_SCOPED = new Set([
         'call:ringing', 'call:accepted', 'call:declined', 'call:ended', 'call:handled',
-        'call:peerstate', 'rtc:offer', 'rtc:answer', 'rtc:ice',
+        'call:peerstate', 'call:exercise', 'rtc:offer', 'rtc:answer', 'rtc:ice',
     ]);
 
     function handleSignal(msg) {
@@ -1113,6 +1378,7 @@
         state.muted = false; state.cameraOff = false; state.minimised = false;
         state.status = 'idle'; state.answeredAt = null; state.mode = null;
         state.isCaller = false;
+        state.exercise = null; state.exCtx = null; state.exInit = false; state.exBusy = false;
     }
 
     // A tab closing mid-call must not leave the other side staring at a frozen frame
@@ -1286,6 +1552,7 @@
             setStatus('connected');
             state.el.waiting?.classList.add('hidden');
             startDurationTimer();
+            initExercise();     // trainer only, and only the first time — see exInit
         },
 
         /** Hang up. Always tells the server. */
@@ -1322,5 +1589,12 @@
         _toggleCamera: toggleCamera,
         _setMinimised: setMinimised,
         _T: T,
+        _renderExercise: renderExercise,
+        _overlayHtml: overlayHtml,
+        _cacheEls: cacheEls,
+        _wireControls: wireControls,
+        _stepExercise: stepExercise,
+        _initExercise: initExercise,
+        _loadExerciseContext: loadExerciseContext,
     };
 })();

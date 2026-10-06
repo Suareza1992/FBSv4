@@ -87,6 +87,18 @@ const EQUIPMENT_CHECK_DAILY_LIMIT = intEnv(process.env.EQUIPMENT_CHECK_DAILY_LIM
 const FOOD_SCAN_ENABLED     = process.env.FOOD_SCAN_ENABLED !== 'false';
 const FOOD_SCAN_DAILY_LIMIT = intEnv(process.env.FOOD_SCAN_DAILY_LIMIT, 10);
 
+// ── Live sessions (video calls) ──────────────────────────────────────────────
+// OFF unless explicitly set to the string 'true'. Every other flag in this block
+// defaults ON (`!== 'false'`) because those features are cheap and finished; this
+// one is the reverse on purpose. It depends on a paid TURN relay that is not set
+// up yet, it has never carried a real call, and the native app has no call UI at
+// all — so "unset" must mean "nobody can place a call", not "everybody can".
+//
+// To turn it back on: set LIVE_SESSIONS_ENABLED=true in Railway and redeploy.
+// Nothing is deleted while it is off — call history, the code and the schema all
+// stay exactly as they are.
+const LIVE_SESSIONS_ENABLED = process.env.LIVE_SESSIONS_ENABLED === 'true';
+
 // Multer: store file in memory so we can stream the buffer straight to Cloudinary
 const photoUpload = multer({
     storage: multer.memoryStorage(),
@@ -1485,6 +1497,8 @@ app.get('/api/me', authenticateToken, async (req, res) => {
             mealSuggestionEnabled: MEAL_SUGGESTION_ENABLED && !!anthropic,
             foodNlpEnabled:        FOOD_NLP_ENABLED && !!anthropic,
             foodScanEnabled:       FOOD_SCAN_ENABLED && !!anthropic,
+            // The UI hides every call entry point unless this is exactly true.
+            liveSessionsEnabled:   LIVE_SESSIONS_ENABLED,
         });
     } catch (error) {
         console.error('Error fetching profile:', error);
@@ -5663,6 +5677,7 @@ const fetchIceServers = async () => {
  * history* is ordinary data access, so it uses the ordinary rule.
  */
 app.get('/api/calls', authenticateToken, async (req, res) => {
+    if (!LIVE_SESSIONS_ENABLED) return res.status(404).json({ enabled: false, message: 'Las sesiones en vivo están desactivadas.' });
     try {
         const clientId = req.query.clientId || req.user.id;
         if (!mongoose.isValidObjectId(clientId)) {
@@ -5702,6 +5717,9 @@ app.get('/api/calls', authenticateToken, async (req, res) => {
 });
 
 app.get('/api/rtc/ice', authenticateToken, async (req, res) => {
+    // Refuse BEFORE the cache and the provider call: with the feature off this
+    // route must never spend a Metered request or hand out relay credentials.
+    if (!LIVE_SESSIONS_ENABLED) return res.status(404).json({ enabled: false, message: 'Las sesiones en vivo están desactivadas.' });
     // Cache hit — no upstream call, no latency.
     if (iceCache.servers && Date.now() < iceCache.expires) {
         return res.json({ iceServers: iceCache.servers, cached: true });
@@ -7009,7 +7027,15 @@ const server = http.createServer(app);
 // and with ESM hoisting the model would still be undefined at evaluation time.
 // Passing them in is explicit, avoids the cycle, and makes signaling.js testable
 // with fakes (no database needed to exercise the authorization logic).
-attachSignaling(server, { CallSession, resolveCallTarget, createNotification });   // must run BEFORE listen()
+// When live sessions are off the signaling server is not attached AT ALL, which is
+// stronger than attaching it and rejecting inside: no `upgrade` listener, no
+// heartbeat interval, no peer registry. Node closes any WebSocket upgrade on a
+// server that is not listening for one, so /rtc simply does not exist.
+if (LIVE_SESSIONS_ENABLED) {
+    attachSignaling(server, { CallSession, resolveCallTarget, createNotification });   // must run BEFORE listen()
+} else {
+    console.log('Live sessions are OFF (set LIVE_SESSIONS_ENABLED=true to enable) — signaling not attached.');
+}
 // SYNC_INDEXES is a one-off maintenance run, not a server boot: it must not bind a
 // port, because the real app is usually already holding it when you go to run this.
 if (process.env.SYNC_INDEXES === 'true') {

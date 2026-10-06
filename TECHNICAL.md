@@ -3329,3 +3329,307 @@ Verified by reading the computed style off the live page rather than trusting th
 Client view: both ranks render, the hint reads, switching fills the secondary sky and clears the
 primary. Trainer calendar: `· Principal` and `· Secundaria ELEGIDA` on a two-routine day, no rank
 on an ordinary day, rest days untouched, no console errors.
+
+
+---
+
+## 39. Lightening the app: a second heat audit
+
+§ 20 fixed two always-on canvas loops. Clients were still reporting hot phones, so this is a second
+pass — and the first thing to record is what **could not** be established.
+
+### What I could not measure
+
+I tried to measure idle CPU, frame rates and long tasks by instrumenting a phone-sized viewport in
+the dev browser pane. **The pane was hidden, so `requestAnimationFrame` never fired**, and every
+rAF/canvas figure it produced was meaningless — a hidden tab reports "0 fps" for everything and
+looks perfectly clean. Those numbers were discarded. Nothing here is a claim about sustained
+thermal behaviour, which needs a real phone: a 10-minute session with the workout open, the rest
+timer running and the scanner used once, on the device that is actually getting hot.
+
+What the code audit *can* establish is what runs, how often, and what it costs per run.
+
+### Checked and fine
+
+| | Finding |
+|---|---|
+| Topographic canvas | removed on phones since § 20 |
+| Clock dial | redraws only when its driving values change |
+| `setInterval` in the web app | one 60s notification poll |
+| `tip-marquee` infinite animation | defined in CSS, rendered nowhere |
+| Exercise video | on demand, one iframe at a time, and `card.remove()` on close — destroyed, not hidden |
+| Native app | no JS-thread animations, no `Animated.loop`, no always-on timers |
+
+### Changed
+
+**Barcode scanner — the real one.** The native `BarcodeDetector` path called `detect()` on every
+animation frame: up to 60 times a second against a 720p camera feed, on a phone already powering
+its camera and screen. Now throttled to one attempt per 140ms. Driven against the real loop with a
+simulated 60 fps clock: **60/s → 6.7/s (89% fewer)**, a barcode still read 450ms after it appears,
+and zero calls after a successful read. (iPhones use the ZXing fallback, which already paced itself
+at ~500ms — so this was an Android problem.)
+
+**Live-session video.** Requested 1280×720 with no framerate or bitrate cap. Now 960×540 @ 24fps
+(`ideal`, so a device that can't do it falls back rather than failing): ~55% less video to encode
+and decode, which is what makes a phone hot on a call. This is a dial, not a fact — 960×540 is
+plenty to judge a squat but it is a quality trade, and it is easy to move.
+
+**Always-on blur.** `backdrop-filter` re-blurs everything behind it on every scroll frame. Two
+surfaces were permanently on screen: the sticky landing navbar and the fixed bottom bar on the
+Equipo screen. Both now blur only at `md:` and up, with a slightly more opaque solid background on
+phones. Modals blur only while open and were left alone.
+
+**Native stopwatch.** Set React state every 50ms to show `MM:SS` — 20 renders a second, 19 of them
+identical, on a screen clients leave running as a rest timer for a whole workout. Now 200ms.
+Deliberately *not* "update only when the second changes": the stopwatch resumes from the stored
+`elapsed`, so a stale value would silently lose up to a second on every pause/resume.
+
+**Chart.js pinned to 4.5.1.** The unpinned `/npm/chart.js` URL means "latest", so a future v5
+would have landed on every client's phone with no deploy. Pinned to the exact version production
+already receives, so nothing about what loads changes.
+
+### Not changed, and why
+
+- **Chart.js is a parser-blocking script in `<head>`**, so every visitor waits for it before first
+  paint — including someone only opening the landing page. Making it lazy is the right fix, but it
+  has four call sites inside nested functions and a load-order failure would break the Métricas
+  charts. It needs checking visually, which I could not do.
+- **`app.js` is 1.05 MB unminified** (227 KB gzipped). Parsing it is a one-off CPU spike per load,
+  and minifying would roughly halve it. It needs a build step, which changes how Railway deploys.
+- **Font Awesome loads its full CSS and webfonts** from a CDN for a few dozen icons.
+
+### Tailwind
+
+The `md:` rules are new combinations, so `output.css` was rebuilt and all five were confirmed
+present: `.md:backdrop-blur-md`, `.md:bg-fbs-dark/90`, `.bg-fbs-dark/95`, `.md:bg-[#030303]/90`,
+`.bg-[#030303]/95`. As in § 38, `npm run build:css` is not optional when adding a class.
+
+
+---
+
+## 40. Switching live sessions off
+
+Decision: video calls are off until the app relaunches. Done as a switch, not a deletion — the code,
+the schema and every `CallSession` row stay exactly as they were, and turning it back on is one
+setting.
+
+```
+LIVE_SESSIONS_ENABLED=true     # in Railway, then redeploy
+```
+
+### Default OFF, deliberately the opposite of the other flags
+
+Every other flag in `server.js` is `!== 'false'` — on unless disabled — because those features are
+cheap and finished. This one is `=== 'true'`: **unset means off.** Three reasons it should not
+default on: it needs a paid TURN relay that is not signed up for, it has never carried a real call
+(zero `CallSession` rows in production), and the native app cannot take part in one (below). The
+deploy itself therefore turns it off with no change in Railway, and the failure mode of forgetting a
+variable is "feature absent", not "feature half-working".
+
+### What "off" means, layer by layer
+
+| Layer | Off |
+|---|---|
+| `/api/me` | `liveSessionsEnabled: false` — the one signal both clients read |
+| `/api/rtc/ice` | 404, **before** the cache and the provider call, so no Metered request and no relay credentials are ever issued |
+| `/api/calls` | 404 |
+| `/rtc` WebSocket | `attachSignaling()` is **not called at all** |
+| Web: call button, Sesiones tab | not rendered |
+| Web: socket at login | never opened |
+
+The WebSocket line is the one worth understanding. Attaching the signaling server and rejecting
+inside it would have worked, but leaving it unattached is stronger: no `upgrade` listener, no
+heartbeat interval, no peer registry. Node closes a WebSocket upgrade on a server that is not
+listening for one, so `/rtc` is simply not there — a valid, authenticated cookie gets back an
+ordinary HTTP response, not a socket.
+
+### The UI fails closed
+
+Hiding a button proves nothing if the page still opens the socket behind it, so both were checked.
+The web app sets `window.__liveSessionsEnabled = false` and only flips it when `/api/me` says
+`true`; it is asked fresh at every login rather than read from the cached `auth_user` blob, which can
+be stale and never held this flag. If that request fails, the flag stays false and no socket opens.
+Verified on a live page for both roles: no call button, no Sesiones tab, `isConnected()` false, and
+no request to `/rtc`, `/api/rtc/ice` or `/api/calls`.
+
+Re-enabling was verified the same way and restores everything: button, tab, a connected socket, and
+a real WebSocket handshake that returns `hello`.
+
+### Two bits of copy that would have been wrong
+
+The trainer-deactivation confirm said the trainer *"No podrá recibir llamadas en vivo"* (§ 33). With
+calls off, deactivating changes a label and a filter and nothing else, so on both web and mobile that
+sentence now appears only while the flag is on; otherwise it reads "Aparecerá como inactivo".
+
+### The native app has no call UI at all
+
+Worth recording, because "most people will use it on their phones" is the reason to turn it back on
+later, and it is currently the reason it could not work there anyway. The Expo app has no WebRTC
+library, no call button and no socket to `/rtc`; the only live-session trace in it is the icons for
+`live_session_*` notifications. Even with the flag on, a call to a client who is only on the native
+app can ring on nobody's screen.
+
+When the app relaunches, enabling this is therefore **two** jobs, not one:
+
+1. `LIVE_SESSIONS_ENABLED=true` + Metered signup + the go-live script.
+2. Build the native side: `react-native-webrtc`, the call UI, the signaling client, and the
+   permission strings. That requires an EAS development build — Expo Go cannot run native WebRTC
+   modules — and is blocked on the same Apple/Google developer accounts as the store launch.
+
+### One loose end
+
+Trainers make one extra `/api/me` request at login now: `revealSuperadminNav()` already fetches it,
+and the flag check fetches it again. It is small and I left the two independent rather than share a
+module-level cache that could leak one user's flags into the next login on the same page load.
+
+
+---
+
+## 41. The call screen: three tiles, a trainer-driven exercise, and a native call engine
+
+Everything here is built and **switched off** (§ 40). The design is `docs/DESIGN-GUIDE.md`: the
+other person ~50%, you ~30%, the current exercise ~20%; portrait stacks, landscape sits side by
+side.
+
+### The one new message
+
+`call:exercise`, trainer-only, relayed by the server to the other participant:
+
+```
+{ t:'call:exercise', callId, index, total, name, detail, block, label }
+```
+
+- **Trainer-only is enforced by the server**, from the role in the JWT it verified at upgrade
+  time — never from the frame. A client sending it gets `NOT_TRAINER`; a stranger gets
+  `FORBIDDEN`.
+- **Validated and rebuilt field by field.** `index`/`total` must be integers and mutually
+  coherent (`total 0` ⇔ `index -1`); `block` must be `main`/`alternative`; `name` ≤120,
+  `detail` ≤600, `label` ≤80. Unknown keys are dropped and `from` is the verified sender, not
+  what the frame claims. This crosses from one user's browser into another's DOM.
+- **Remembered per call** (`exerciseState`, cleaned in `finishCall`, the single terminal
+  transition) and **replayed to a participant whose socket reconnects**. Without that, a client
+  whose connection blinks mid-call would stare at an empty tile until the trainer next tapped.
+  The sender is never sent its own frame back.
+
+Why a server message rather than a WebRTC data channel: the server can enforce who may send it
+and cap what it carries; a data channel is peer-to-peer and the server sees nothing.
+
+### Which routine, and why the trainer's screen decides what the client sees
+
+The trainer's page reads the client's workout for today and picks the routine by **the rule the
+client's own Hoy screen uses**: the second routine if it exists *and* the client chose it,
+otherwise the main one. It then sends exactly what to display. The client never re-derives it, so
+the two screens cannot disagree even if the trainer edits the routine or the client switches
+mid-call.
+
+The workout is re-read on **every tap**, so a mid-call switch is picked up. When the routine has
+changed, the next tap restarts at the **first** exercise of the new one — "exercise 3" of the gym
+routine and of the home one are unrelated, so carrying the position over landed somewhere
+arbitrary. (That was found by testing it, not by reading the code.)
+
+The tile shows the exercise's `instructions` — the text written under its name — verbatim, with
+line breaks kept.
+
+### Web
+
+`public/live-session.js`: a CSS grid in an injected `<style>` (plain CSS, deliberately not
+Tailwind — the call overlay is built from a JS string and anything Tailwind has not already seen
+is purged, the trap from § 38; nothing here depends on a CSS rebuild). Landscape is
+`exercise|remote / self|remote` with rows `2fr 3fr`; portrait is `remote remote / self exercise`
+with columns `3fr 2fr`. Your own preview is mirrored; what the other person receives is not. No
+`backdrop-filter` anywhere in it (§ 39).
+
+Verified with a **real call between two browser sessions** (trainer on `localhost`, client on
+`127.0.0.1` — different hosts, so separate logins; a canvas stream standing in for the camera).
+Measured shares in a real browser, both orientations; trainer tap → client tile; routine switch;
+socket drop and reconnect; minimise and expand; hang-up teardown; the empty state.
+
+**A bug this surfaced, in code that was already committed:** expanding the call from minimised
+re-attached only *your own* video. Minimise removes the overlay, taking the remote `<video>` with
+it, and `ontrack` does not fire again, so the other person's picture was gone after expanding.
+Fixed with one `attachRemoteStream()` call.
+
+### The phone
+
+Files: `lib/live/protocol.ts` (pure), `lib/live/session.ts` (the engine), `lib/live/webrtc.ts`
+(lazy loader), `lib/live/context.ts` + `LiveProvider.tsx` (React glue), `components/live/*`
+(screens), the button in `cliente/[id].tsx`.
+
+**The engine is a port of the web client, keeping every one of its fixes** — the ICE candidate
+queue, caller-only offers (no glare), the 5s grace on `disconnected`, the stall watchdog,
+`finish()` claiming the transition before any I/O, ignoring frames about a different call. The
+platform (WebRTC, WebSocket, `fetch`) is **injected**, which is what makes it testable: the
+engine runs in plain Node.
+
+**Tests** — what they prove and what they cannot:
+
+| | |
+|---|---|
+| `scripts/test-live-protocol.ts` (mobile) | 69 checks: layout shares, geometry, safe-area, routine selection, frame parsing |
+| `scripts/test-native-call-engine.ts` (web repo) | 66 checks: two engines against the **real server**, fake peer connection |
+
+The second covers a full call (roles from the server, ring, accept, connect, no early-ICE, one
+offer and one answer, no callee offer), the exercise tile through every scenario above, a
+dropped-and-reconnected socket with replay, a callee ICE failure not restarting, a caller failure
+restarting once, `disconnected` waited out versus persisting, the stall watchdog, giving up after
+exactly 3 restarts, hang-up teardown (every track stopped *and* `release()`d, every connection
+closed, exactly one `call:end`), decline, cancel-while-ringing, camera denied on start and on
+accept, and a day with no workout.
+
+The fake peer connection is deliberately strict — it throws on an ICE candidate that arrives
+before the remote description — so the queue is exercised rather than assumed. Its only liberty
+was one I had to fix in the harness: a real browser reports `failed` *again* after a failed ICE
+restart, which is what drives the next attempt; mine did not, and it looked like an engine bug
+until I checked.
+
+**The layout is pinned to the web.** `computeLayout()` on a 375×812 screen gives 45.6 / 26.6 /
+17.7 % of the screen and tiles 207px and 138px wide — the exact numbers the browser measured.
+
+### Expo Go safety
+
+`react-native-webrtc` throws at **import** time when its native half is missing, and Expo Go
+(what the app is tested in) does not have it. A top-level import would crash every launch for
+every user. It is `require`d lazily inside `loadWebrtc()` behind try/catch, and only when the
+server's flag says live sessions exist. Verified: the app bundles with Metro (Hermes bytecode),
+the library is in the bundle, and `loadWebrtc()` returns `null` rather than throwing when it
+cannot load.
+
+### Dependencies and config
+
+`react-native-webrtc@124.0.8`, `@config-plugins/react-native-webrtc@13.0.0` (the line that targets
+Expo 54 — the latest, 15.x, needs Expo 56 and this app is deliberately pinned), `expo-keep-awake`
+(screen stays on in a call; SDK 54 docs checked). `app.json` gained the plugin with Spanish
+camera/microphone wording; the plugin writes the iOS strings at `prebuild` and adds the Android
+camera, microphone and audio permissions. `expo config` for Expo Go still evaluates cleanly.
+
+### What is NOT proven — the first-device checklist
+
+Nothing below can be tested without a development build and a phone. In rough order of how likely
+each is to bite:
+
+1. **Cookie auth on the socket.** The engine opens `wss://…/rtc` with `new WebSocket(url)` and
+   relies on React Native sending the login cookie from the same native store `fetch` uses. I
+   believe it does on both platforms; I cannot prove it. If `/rtc` rejects the upgrade, the
+   fix is a short-lived signed ticket from an authenticated endpoint, accepted on the upgrade.
+2. **Audio route.** WebRTC on iOS defaults to the earpiece. A coaching call is propped on a
+   floor, so speaker output is needed; that is probably `react-native-incall-manager`, another
+   native module.
+3. **`react-native-webrtc` 124 under the New Architecture** (`newArchEnabled` is on). It runs
+   through RN's interop layer; I cannot confirm it for RN 0.81.
+4. **Ringing is vibration-only, and only while the app is open.** There is no ringtone asset and
+   no push/CallKit — a call to a closed app rings nowhere. Push is already on the pending list.
+5. **Landscape is unreachable on phones.** `app.json` locks portrait. Allowing rotation during
+   calls means `orientation: default` plus a runtime lock everywhere else (`expo-screen-orientation`)
+   — a change to every screen's behaviour, so left for a decision.
+6. **A development build** needs `expo-dev-client`, which is **not installed** (`eas.json` already
+   has the profile). Installing it makes `expo start` default to the dev client instead of Expo Go,
+   which changes how the app is tested today — so it was left alone.
+7. **A restart that never gets an answer.** `restarting` is cleared only when an answer arrives.
+   If the callee's socket is up but they never answer the restart offer, the caller sits in
+   "reconnecting" until someone hangs up. Present in the web client too; not fixed in either.
+8. **No network-change listener** on the phone (the web has `online`/`offline`). Recovery relies on
+   ICE state alone.
+9. **The "which day" is the device's local date**, on both sides. Fine in one timezone; a trainer
+   and client either side of midnight would read different days.
+
+Also not built: flipping between front and back camera.

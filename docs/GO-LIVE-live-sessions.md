@@ -21,6 +21,16 @@ Run this before real clients use live sessions. Same shape as
 
 ## 1. Environment
 
+> **Live sessions are switched OFF.** Set this first, or none of the steps below will show you
+> anything — there is no call button, no Sesiones tab, and `/api/rtc/ice` returns 404:
+>
+> ```
+> LIVE_SESSIONS_ENABLED=true
+> ```
+>
+> It defaults off when unset. The native app has no call UI at all (see TECHNICAL.md § 40), so
+> until it does, only web ↔ web calls can work.
+
 In Railway → Variables:
 
 ```

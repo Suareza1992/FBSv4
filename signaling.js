@@ -116,6 +116,36 @@ const isIceCandidate = (v) => !!v && typeof v === 'object'
 // frame with no explanation. This lets the backgrounded side say so.
 const isPeerState = (v) => v === 'background' || v === 'foreground';
 
+// ── The exercise the trainer is currently on ─────────────────────────────────
+// The reference call screen shows the exercise being worked on, and the TRAINER
+// advances it. Rather than the client re-deriving "which exercise" from its own
+// copy of the workout (which can differ from the trainer's if either side edits or
+// the client switches routine mid-call), the trainer sends exactly what to show.
+//
+// Everything is length-capped and rebuilt field by field: this crosses from one
+// user's browser into another's DOM, and `detail` is free text a trainer typed.
+const EXERCISE_LIMITS = { name: 120, detail: 600, label: 80, maxTotal: 200 };
+
+const cleanExercise = (m) => {
+    if (!m || typeof m !== 'object') return null;
+    const { index, total, block } = m;
+    if (!Number.isInteger(total) || total < 0 || total > EXERCISE_LIMITS.maxTotal) return null;
+    if (!Number.isInteger(index) || index < -1 || index >= Math.max(total, 1)) return null;
+    // "no exercise" is total 0 with index -1, and it is the only state where the
+    // two may be empty.
+    if ((total === 0) !== (index === -1)) return null;
+    if (block !== 'main' && block !== 'alternative') return null;
+    const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+    const name = str(m.name, EXERCISE_LIMITS.name);
+    if (total > 0 && !name) return null;
+    return {
+        index, total, block,
+        name,
+        detail: str(m.detail, EXERCISE_LIMITS.detail),
+        label:  str(m.label, EXERCISE_LIMITS.label),
+    };
+};
+
 /** Sliding-window counter. Returns true when the action is allowed. */
 const allow = (store, key, limit, windowMs) => {
     const now = Date.now();
@@ -183,6 +213,22 @@ export const isOnline = (userId) => (peers.get(String(userId))?.size ?? 0) > 0;
 const ringTimers  = new Map();
 const graceTimers = new Map();
 
+// callId -> { from, callerId, calleeId, payload }: the last exercise the trainer
+// showed, so a client whose socket drops and reconnects mid-call gets it back
+// instead of staring at an empty tile. In-process like everything above — a restart
+// ends the calls too, so there is nothing stale to outlive them.
+const exerciseState = new Map();
+
+const replayExerciseTo = (ws) => {
+    if (!exerciseState.size) return;
+    const uid = String(ws.user.id);
+    for (const [callId, e] of exerciseState) {
+        if (uid === e.from) continue;                          // the sender already has it
+        if (uid !== e.callerId && uid !== e.calleeId) continue; // not in this call
+        send(ws, { t: 'call:exercise', callId, from: e.from, ...e.payload, replay: true });
+    }
+};
+
 const clearTimer = (store, callId) => {
     const t = store.get(String(callId));
     if (t) { clearTimeout(t); store.delete(String(callId)); }
@@ -209,6 +255,7 @@ const finishCall = async (callId, { status, endedBy = null, reason = '' }) => {
     const CallSession = deps.CallSession;
     clearTimer(ringTimers, callId);
     clearTimer(graceTimers, callId);
+    exerciseState.delete(String(callId));
 
     // Read first, only to learn answeredAt — duration counts from when the call was
     // ANSWERED, not from when it started ringing. A 45-second ring is not 45 seconds
@@ -321,7 +368,7 @@ const loadAsParticipant = async (ws, callId, { allow = ['ringing', 'active'] } =
  * in the frame. The recipient is told who sent it based on `ws.user.id`, which came
  * from the server's own jwt.verify() at upgrade time.
  */
-const relayToPeer = async (ws, msg, payload) => {
+const relayToPeer = async (ws, msg, payload, opts = {}) => {
     const CallSession = deps.CallSession;
     if (!CallSession) return send(ws, { t: 'error', code: 'NOT_READY', message: 'Signaling not initialised.' });
 
@@ -354,16 +401,24 @@ const relayToPeer = async (ws, msg, payload) => {
         return send(ws, { t: 'error', code: 'CALL_OVER', callId: msg.callId, status: call.status });
     }
 
+    // Some frames are only the trainer's to send. The role comes from the JWT the
+    // server verified at upgrade time, never from anything in the frame.
+    if (opts.trainerOnly && ws.user.role === 'client') {
+        return send(ws, { t: 'error', code: 'NOT_TRAINER', message: 'Solo el entrenador puede hacer esto.' });
+    }
+
     // Rebuild the outgoing frame from an ALLOWLIST. Forwarding the client's object
     // verbatim would pass through any extra keys it invented, straight into the
     // other browser's handler. Only these fields cross.
     const out = { t: msg.t, callId: msg.callId, from: me, ...payload };
 
-    if (!sendToUser(me === caller ? callee : caller, out)) {
+    const delivered = sendToUser(me === caller ? callee : caller, out);
+    if (!delivered && !opts.quietOffline) {
         // The peer has no live socket — a closed laptop, a dropped tunnel. Tell the
         // sender rather than letting them negotiate against silence.
         send(ws, { t: 'error', code: 'PEER_OFFLINE', callId: msg.callId });
     }
+    return { call, delivered };
 };
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
@@ -553,6 +608,23 @@ const HANDLERS = {
         ? relayToPeer(ws, msg, { state: msg.state })
         : send(ws, { t: 'error', code: 'BAD_STATE', message: 'Estado inválido.' }),
 
+    // The trainer advances the exercise. Validated and rebuilt field by field, trainer
+    // only, and REMEMBERED so a peer who reconnects gets it back. `quietOffline`:
+    // a client mid-reconnect is expected, and the cache covers it — an error toast
+    // on the trainer's screen for every tap would be noise.
+    'call:exercise': async (ws, msg) => {
+        const payload = cleanExercise(msg);
+        if (!payload) return send(ws, { t: 'error', code: 'BAD_EXERCISE', message: 'Ejercicio inválido.' });
+        const r = await relayToPeer(ws, msg, payload, { trainerOnly: true, quietOffline: true });
+        if (!r) return;
+        exerciseState.set(String(msg.callId), {
+            from: String(ws.user.id),
+            callerId: String(r.call.callerId),
+            calleeId: String(r.call.calleeId),
+            payload,
+        });
+    },
+
     'call:accept':  onAccept,
     'call:decline': onDecline,
     'call:end':     onEnd,
@@ -732,6 +804,7 @@ export function attachSignaling(server, dependencies = {}) {
         // is belt-and-braces, but it ends the grace period immediately instead of
         // leaving a call in limbo for the remainder of it.
         if (graceTimers.size) cancelGraceFor(uid);
+        replayExerciseTo(ws);   // a reconnecting client gets the trainer's current exercise back
 
         ws._msgHits = new Map();   // per-socket rate window, dies with the socket
 
