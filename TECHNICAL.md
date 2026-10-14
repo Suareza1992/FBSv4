@@ -2622,8 +2622,27 @@ SYNC_INDEXES=true npm start
 ```
 
 which syncs and exits **without binding a port** — the real app is usually already holding it when
-you go to run this. `syncIndexes()` also DROPS indexes the schemas no longer declare, so read the
-diff it prints before running it against production.
+you go to run this. `syncIndexes()` also DROPS indexes the schemas no longer declare, and it only
+tells you *after* it has done so. Hence a preview:
+
+```bash
+SYNC_INDEXES=dry npm start     # lists what would be created / dropped, changes nothing, exits
+SYNC_INDEXES=true npm start    # the real thing
+```
+
+`dry` uses Mongoose's `Model.diffIndexes()` per model and prints each `would CREATE` with the
+schema's options (name, TTL, partial filter — `diffIndexes` itself only reports the key) and each
+`would DROP`. It also forces `autoIndex` off even in development, where Mongoose would otherwise
+create every index the moment the models load and a "preview" would not be one.
+
+**Both are one-off commands, not settings.** Any value of `SYNC_INDEXES` makes the process exit
+instead of listening, so setting it as a permanent Railway variable would make the site fail to come
+up on every deploy.
+
+Verified on an isolated database: dry on an empty DB changes nothing in either `development` or
+`production` mode (0 indexes created); `true` then `dry` reports 0/0; a planted old
+`createdAt` TTL index (the ATH Móvil bug) and a stray index are reported as DROP/CREATE by `dry`,
+still present after it, and removed by `true`; a normal boot still listens.
 
 ### The bug this uncovered — ATH Móvil signups were being deleted
 

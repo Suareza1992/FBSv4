@@ -294,16 +294,51 @@ if (DEBUG) {
 // Off in production: index changes become a deliberate, reviewed migration.
 // Declare the index in the schema, then create it by hand, then deploy.
 const IS_PROD = process.env.NODE_ENV === 'production';
-mongoose.set('autoIndex', !IS_PROD);
+// SYNC_INDEXES = 'true' (apply) | 'dry' (preview only). Anything else is a normal boot.
+const SYNC_MODE = ['true', 'dry'].includes(process.env.SYNC_INDEXES) ? process.env.SYNC_INDEXES : null;
+// A preview must change NOTHING, and outside production autoIndex would quietly create
+// indexes the moment the models load — so it is forced off for either maintenance run.
+mongoose.set('autoIndex', !IS_PROD && !SYNC_MODE);
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/fitbysuarez')
 .then(async () => {
     console.log('MongoDB Conectado');
-    // With autoIndex off, index changes are applied deliberately:
-    //     SYNC_INDEXES=true npm start
+    // With autoIndex off, index changes are applied deliberately, in two steps:
+    //     SYNC_INDEXES=dry  npm start     → PREVIEW: lists what would be created / dropped, changes nothing
+    //     SYNC_INDEXES=true npm start     → APPLY: creates what the schemas declare and DROPS indexes
+    //                                       the schemas no longer declare
+    // Run the preview first and read the "would DROP" list before applying it on prod.
+    if (SYNC_MODE === 'dry') {
+        console.log('SYNC_INDEXES=dry — PREVIEW ONLY. Nothing will be created or dropped.\n');
+        let toCreate = 0, toDrop = 0, failed = 0;
+        for (const [name, Model] of Object.entries(mongoose.models)) {
+            try {
+                const diff = await Model.diffIndexes();
+                const create = diff.toCreate || [], drop = diff.toDrop || [];
+                toCreate += create.length; toDrop += drop.length;
+                if (!create.length && !drop.length) continue;
+                console.log(`${name}  (collection: ${Model.collection.name})`);
+                // diffIndexes only reports the key; the schema holds the options (name, TTL,
+                // unique, partial filter) — and the options are what a reader needs to see.
+                const declared = Model.schema.indexes();
+                for (const ix of create) {
+                    const opts = declared.find(([spec]) => JSON.stringify(spec) === JSON.stringify(ix))?.[1];
+                    console.log(`  would CREATE  ${JSON.stringify(ix)}${opts ? `  ${JSON.stringify(opts)}` : ''}`);
+                }
+                for (const ix of drop)   console.log(`  would DROP    ${ix}`);
+            } catch (e) {
+                failed++;
+                console.log(`${name}: could not compare (${e.message})`);
+            }
+        }
+        console.log(`\nPreview complete: ${toCreate} to create, ${toDrop} to drop${failed ? `, ${failed} model(s) could not be checked` : ''}.`);
+        console.log(toDrop ? 'Read the DROP lines above before running SYNC_INDEXES=true.' : 'Nothing would be dropped.');
+        console.log('Nothing was changed. Exiting.');
+        process.exit(0);
+    }
     // syncIndexes() creates what the schemas declare and DROPS indexes the schemas
-    // no longer declare, so read the diff it prints before running it on prod.
-    if (process.env.SYNC_INDEXES === 'true') {
+    // no longer declare — which is why SYNC_INDEXES=dry exists.
+    if (SYNC_MODE === 'true') {
         console.log('SYNC_INDEXES=true — syncing schema indexes…');
         const result = await mongoose.syncIndexes();
         for (const [model, dropped] of Object.entries(result)) {
@@ -7074,8 +7109,8 @@ if (LIVE_SESSIONS_ENABLED) {
 }
 // SYNC_INDEXES is a one-off maintenance run, not a server boot: it must not bind a
 // port, because the real app is usually already holding it when you go to run this.
-if (process.env.SYNC_INDEXES === 'true') {
-    console.log('SYNC_INDEXES=true — maintenance run, not starting the HTTP listener.');
+if (SYNC_MODE) {
+    console.log(`SYNC_INDEXES=${SYNC_MODE} — maintenance run, not starting the HTTP listener.`);
 } else {
     server.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); });
 }
