@@ -2325,10 +2325,23 @@ document.addEventListener('DOMContentLoaded', () => {
         // while the feature is off. Asked fresh at each login rather than read from
         // the cached `auth_user` blob, which can be stale and never held this flag.
         window.__liveSessionsEnabled = false;
-        apiGetJSON('/api/me').then((me) => {
+        const mePromise = apiGetJSON('/api/me');
+        mePromise.then((me) => {
             window.__liveSessionsEnabled = me?.liveSessionsEnabled === true;
             if (window.__liveSessionsEnabled) window.LiveSession?.connect();
         }).catch(() => { /* leave it off — a failed check must never open a socket */ });
+
+        // A DEACTIVATED client signs in fine (they must be able to pay) but gets the
+        // "contact your trainer" page instead of the app. The server refuses their other
+        // requests anyway (middleware/auth.js); this just stops the dashboard loading into
+        // a wall of failures. If the check itself fails we carry on: the fetch wrapper in
+        // account-inactive.js will still raise the page on the first 403.
+        if (user.role === 'client') {
+            try {
+                const me = await mePromise;
+                if (me?.accountInactive) { window.AccountInactive?.show(me); return; }
+            } catch { /* handled by the 403 wrapper */ }
+        }
 
         const dashModule = user.role === 'trainer' ? 'trainer-dashboard' : 'client-dashboard';
         const dashHtml = await loadModule(dashModule);

@@ -16,7 +16,7 @@ import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { authenticateToken, authorizeRoles } from './middleware/auth.js';
+import { authenticateToken, authorizeRoles, setAccountGate, clearAccountGateCache } from './middleware/auth.js';
 import { attachSignaling } from './signaling.js';   // live sessions: WebRTC signaling over WS
 import Stripe from 'stripe';
 import { v2 as cloudinary } from 'cloudinary';
@@ -1204,6 +1204,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
                 role: user.role,
                 isSuperadmin: !!user.isSuperadmin,
                 isFirstLogin: user.isFirstLogin,
+                isActive: user.isActive !== false,
                 profilePicture: user.profilePicture || ''
             }
         });
@@ -1487,13 +1488,45 @@ app.post('/api/send-welcome', authenticateToken, authorizeRoles('trainer', 'admi
 // --- PROTECTED: User Profile (Any authenticated user) ---
 // ==========================================================================
 
+// Tell the auth middleware how to ask "is this client deactivated?" (see middleware/auth.js).
+// `=== false`, not `!isActive`: accounts that predate the field have it undefined and are active.
+setAccountGate(async (id) => !!(await User.exists({ _id: id, isActive: false })));
+
+// Who a deactivated client should contact, and how they can still pay. Env-overridable;
+// the defaults are the same WhatsApp number the dashboards already link to.
+const CONTACT_WHATSAPP = (process.env.CONTACT_WHATSAPP || '17875010725').replace(/\D/g, '');
+const CONTACT_EMAIL    = process.env.CONTACT_EMAIL || 'suarezangel.se@gmail.com';
+
 app.get('/api/me', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password -resetPasswordToken -resetPasswordExpires');
         if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // A deactivated client is shown a "contact your trainer" page instead of the app.
+        // Everything that page needs rides on this response, because /api/me is one of
+        // only two routes the auth middleware still lets them call.
+        let inactiveExtras = {};
+        if (user.role === 'client' && user.isActive === false) {
+            const trainer = user.trainerId
+                ? await User.findById(user.trainerId).select('paymentHandles').lean()
+                : null;
+            const h = trainer?.paymentHandles || {};
+            inactiveExtras = {
+                accountInactive: true,
+                contact: { whatsapp: CONTACT_WHATSAPP, email: CONTACT_EMAIL },
+                payHandles: {
+                    athMovil:      (h.athMovilBusiness || h.athMovil || '').trim(),
+                    athMovilPhone: (h.athMovilPhone || '').trim(),
+                    venmo:         (h.venmo || '').trim(),
+                    paypal:        (h.paypal || '').trim(),
+                },
+            };
+        }
+
         // Surface which AI features are live, so the client UI can hide their entry points.
         res.json({
             ...user.toObject(),
+            ...inactiveExtras,
             mealSuggestionEnabled: MEAL_SUGGESTION_ENABLED && !!anthropic,
             foodNlpEnabled:        FOOD_NLP_ENABLED && !!anthropic,
             foodScanEnabled:       FOOD_SCAN_ENABLED && !!anthropic,
@@ -1922,6 +1955,9 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
         }
         const updatedClient = await User.findByIdAndUpdate(id, updates, { new: true })
             .select(CLIENT_SAFE_SELECT);
+        // The auth gate caches a client's active flag for a few seconds; (de)activating
+        // must take effect now, not after the cache expires.
+        if (updates.isActive !== undefined) clearAccountGateCache(id);
 
         // Notify trainer if program was assigned or changed
         if (updates.program && updates.program !== 'Sin Asignar' &&

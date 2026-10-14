@@ -2961,6 +2961,7 @@ Worth stating plainly, because it is less than it sounds, and it is the **same**
 | Shows as Inactivo, filterable in the list | yes |
 | Cannot be called in a live session (`TARGET_INACTIVE`) | yes |
 | **Blocked from logging in** | **no** |
+| **A deactivated CLIENT** is locked out of everything except paying (§ 42) | yes — clients only; trainers are not gated |
 | Their clients reassigned, or data touched | no — nothing cascades |
 
 `POST /api/auth/login` checks the password and nothing else: not `isActive`, not `isDeleted`. So
@@ -3633,3 +3634,109 @@ each is to bite:
    and client either side of midnight would read different days.
 
 Also not built: flipping between front and back camera.
+
+
+---
+
+## 42. Deactivated clients: they can sign in, but only to pay
+
+Decision (Angel, 2026-10-11): deactivating a client must **not** block login. A client who is behind
+on payment has to be able to reach the payments view and pay; locking the door would make the lock
+permanent. Instead, a deactivated client sees one page — *"Please contact your trainer to regain
+access to the platform"* — with their invoices, the trainer's payment handles, a WhatsApp button
+and an email link.
+
+Before this, `isActive` gated nothing for clients (§ 33): the "Inactivo" badge was a label.
+
+### The rule lives in one place: `authenticateToken`
+
+`middleware/auth.js`. After the JWT verifies, if the role is `client` the middleware asks "is this
+account deactivated?" and, if so, answers **403 `{ code: 'ACCOUNT_INACTIVE' }`** to every request
+except an exact allow-list:
+
+```
+GET /api/me              who am I — also how the UI learns it is locked
+GET /api/payments/mine   my invoices
+```
+
+(Logout is not behind auth, so it always works.) Putting it in the middleware instead of on routes
+means it **fails closed**: a route added next year is closed to deactivated clients by default,
+rather than open until someone remembers to guard it. The allow-list is matched on method + exact
+path, so `/api/me/active`, `/api/me/x` and `/api/payments/mine/x` are not covered by `/api/me` /
+`/api/payments/mine`; the query string is ignored (`/api/me?x=1` is `/api/me`).
+
+- **Only clients are gated.** A deactivated *trainer* still passes (the superadmin toggle in § 33
+  is unchanged: badge + no live calls). Gating trainers would also need a story for their clients.
+- **`isActive === false` is "inactive".** Accounts that predate the field have it `undefined` and
+  count as active — a `!isActive` check would have locked out every legacy client.
+- **A 15-second cache.** Without it every client request would cost a second database read. With
+  it, a burst costs one. `PUT /api/clients/:id` clears the entry when `isActive` is in the body, so
+  deactivating and *re*activating both take effect immediately for changes made through the app.
+  A change made directly in the database (not through the API) can take up to 15 s to be noticed.
+- **Fails closed on a database error** (503), because failing open would hand a possibly-deactivated
+  account the whole API. Every handler needs the database anyway.
+- **`req.user` is the token, not the database.** `isActive` is deliberately NOT in the JWT: a
+  deactivation would otherwise not bite until the 7-day token expired.
+
+### What `/api/me` returns for a locked client
+
+Because `/api/me` is one of the two routes still open, everything the page needs rides on it:
+
+```
+accountInactive: true
+contact:    { whatsapp: '17875010725', email: 'suarezangel.se@gmail.com' }
+payHandles: { athMovil, athMovilPhone, venmo, paypal }      // the client's TRAINER's handles
+```
+
+`contact` comes from `CONTACT_WHATSAPP` / `CONTACT_EMAIL` (env, optional). The defaults are the
+number the dashboards already link to and the professional address. For an active client none of
+these fields exist. The login response also gained `isActive`.
+
+### The page
+
+- **Web:** `public/account-inactive.js`, loaded before `app.js`. A full-screen overlay on
+  `document.body`, so no navigation removes it. Two ways in: (1) at sign-in the router asks
+  `/api/me` and calls `AccountInactive.show()` *instead of* loading the dashboard; (2) a small
+  `window.fetch` wrapper raises it when **any** request comes back 403 `ACCOUNT_INACTIVE` — so a
+  client deactivated while the app is open gets the page on their next click, with no call site
+  needing to know. Spanish by default, English if the visitor's language is English (same
+  `fbs_lang` keys as the landing page).
+- **App:** `components/InactiveAccount.tsx`. `app/_layout.tsx` renders it **instead of** the
+  navigator when `user.accountInactive` is true. `lib/api.ts#onAccountInactive` is the
+  mobile equivalent of the fetch wrapper: `AuthProvider` subscribes, and on a refused request it
+  re-reads `/api/me`, which flips the root. The live-call engine is not created for a locked user.
+- Payment links are only rendered if they are `https://`; everything from the server is escaped
+  (web) or rendered as plain `Text` (app) — a stored invoice label of `<b>…` shows literally.
+- "Ya me reactivaron / I've been reactivated" re-reads `/api/me` and returns to the app if the
+  trainer has switched the account back on.
+
+### Tests
+
+`scripts/test-inactive-gate.mjs` — **39 checks** against an isolated server and database (the
+header says how; it refuses to run unless the database name looks like a test one). It covers:
+nothing blocked while active; the same requests 403 the instant a trainer deactivates (which also
+proves the cache is cleared on the flip); the allow-list is exact; `/api/me` extras and no leaked
+secrets; the trainer's handles; invoices incl. pay link; logout; other clients, legacy clients with
+no `isActive`, trainers and deactivated trainers untouched; reactivation immediate; garbage/missing
+token still 401. Mobile: `scripts/test-inactive-hook.ts` — 8 checks of the detection hook.
+
+Also verified in a real browser with a deactivated test client: the page after sign-in, the
+payments panel (overdue invoice has "Pagar", paid one does not, a `<b>` in a label is shown
+literally), the WhatsApp/email links, English, phone width, reactivation from the page, and
+deactivation **mid-session** (a click after the cache expired raised the page).
+
+### Known gaps
+
+1. **The app screen has never been run on a phone** — typechecked, linted and bundled by Metro, and
+   the detection hook is unit-tested, but the screen itself has not been seen on a device.
+2. **The live-call WebSocket does not check it.** `signaling.js` verifies the JWT itself, so a
+   deactivated client's socket could still connect when live sessions are on. Calls *to* them are
+   already refused (`TARGET_INACTIVE`); calls *from* them are not. Live sessions are off, so
+   dormant — fix before switching them on.
+3. **Web sign-in still prefetches** the library/programs/groups for a deactivated client; those
+   get 403 and log red lines in the console for a moment before the page covers them. Harmless.
+4. **Stripe pay links only exist on Stripe-created invoices.** A manual invoice has no link; the
+   client sees the trainer's ATH Móvil / Venmo / PayPal handles (if set in Ajustes) and the
+   WhatsApp button instead.
+5. **Mobile "Pagos" screen** (`app/(app)/pagos.tsx`) is unchanged and still has no pay buttons; the
+   inactive page is the only place invoices carry a pay link.

@@ -182,6 +182,7 @@ These features are **fully implemented but kept dark behind feature flags** unti
 | Feature | Flag | Status |
 |---|---|---|
 | 🤖 **AI meal recommender ("¿Qué como?")** — suggests meals to close the day's remaining macros, respecting allergies/preferences; every macro is DB-verified | `MEAL_SUGGESTION_ENABLED` | Built, dormant |
+| `CONTACT_WHATSAPP` / `CONTACT_EMAIL` | No | `17875010725` / `suarezangel.se@gmail.com` | Shown to a **deactivated client** on the "contact your trainer" page (WhatsApp button and email link). Digits only for the number. See TECHNICAL.md § 42. |
 | 🤖 **AI food logging by text ("Describir")** — client describes a meal in plain Spanish; the AI parses it into foods with macros to review and adjust before saving | `FOOD_NLP_ENABLED` | Built, dormant |
 | 🤖 **AI equipment check ("Revisar equipo")** — trainer-only button in the workout editor that uses AI to flag any exercise needing equipment the client doesn't own, or any prescribed weight that exceeds what they have (parsed from the free-text instructions); advisory only, never blocks saving | `EQUIPMENT_CHECK_ENABLED` | Built, dormant |
 
@@ -281,6 +282,7 @@ Change the password immediately after first login.
 | `npm run lint` / `lint:fix` | ESLint |
 | `npm run check:routes` | Verify the SPA section allowlist in `server.js` agrees with the router's module table in `public/app.js`. **Run this after adding a section** — the two lists live in different files and a mismatch drops the user on a blank frame. No server or database needed. |
 | `SYNC_INDEXES=true npm start` | Create/update MongoDB indexes to match the schemas, then exit (no HTTP listener). **Required after changing any index**, because `autoIndex` is off in production. It also DROPS indexes the schemas no longer declare — read the diff it prints first. |
+| `node scripts/test-inactive-gate.mjs` | Integration test for the deactivated-client gate (39 checks). Needs an **isolated** server + database — the header explains how; it refuses to run against anything not named like a test DB. |
 
 ---
 
