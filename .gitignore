@@ -3,4 +3,5 @@ node_modules/
 __pycache__/
 .DS_Store
 .claude/
+.claire/
 seed-test-client.js
