@@ -12870,12 +12870,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         (meal.foods || []).forEach(food => {
                             if (!food.name?.trim()) return;
                             const key = food.name.toLowerCase().trim();
+                            // Remember what amount the numbers are FOR (so re-picking this food
+                            // restores "10 oz", not a reset 100 g). Entries logged before servings
+                            // were stored are read from the name ("10 oz Medalla Light") when it
+                            // starts with a recognised amount; otherwise the amount is unknown.
+                            const b = window.FoodScale.baseOf(food);
                             if (!seen.has(key)) seen.set(key, {
-                                name:     food.name,
+                                name:     b.name || food.name,
                                 calories: parseFloat(food.calories) || 0,
                                 protein:  parseFloat(food.protein)  || 0,
                                 carbs:    parseFloat(food.carbs)    || 0,
-                                fat:      parseFloat(food.fat)      || 0
+                                fat:      parseFloat(food.fat)      || 0,
+                                servingAmount: b.known ? b.amount : 0,
+                                servingUnit:   b.known ? b.unit   : ''
                             });
                         });
                     });
@@ -13179,7 +13186,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </div>
                                 <div class="flex items-center justify-between gap-2">
                                     <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                        ${hasServing ? `<span class="text-[10px] text-[#FFDB89]/30">${food.servingAmount}${food.servingUnit} ·</span>` : ''}
+                                        ${hasServing ? `<span class="text-[10px] text-[#FFDB89]/30">${escHtml(window.FoodScale.fmtAmount(food.servingAmount) || food.servingAmount)} ${escHtml(food.servingUnit)} ·</span>` : ''}
                                         <span class="text-[10px] text-red-400/70">P:${pro}g</span>
                                         <span class="text-[10px] text-yellow-400/70">C:${carb}g</span>
                                         <span class="text-[10px] text-orange-400/70">G:${fat}g</span>
@@ -13247,6 +13254,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const food = mealsData[mi]?.foods?.[fi];
             if (!food) return;
             document.getElementById('edit-food-modal')?.remove();
+            // What the entry's numbers are FOR — its stored serving, or read from a legacy name,
+            // or the generic "1 porción". Editing the amount rescales from the numbers it has now.
+            ensureUnitList();
+            const efBase = window.FoodScale.baseOf(food);
             const modal = document.createElement('div');
             modal.id = 'edit-food-modal';
             modal.className = 'fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-4';
@@ -13261,8 +13272,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="text" id="ef-name" value="${(food.name||'').replace(/"/g,'&quot;')}"
                             class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/30 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]">
                     </div>
+ <div class="flex items-end gap-2">
+                        <div class="flex flex-col"><label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider mb-1">Cantidad</label>
+                            <input type="number" id="ef-qty" step="any" value="${window.FoodScale.fmtAmount(efBase.amount)}"
+                                class="w-20 p-2 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-[#FFDB89] font-black text-sm text-center outline-none focus:ring-2 focus:ring-[#FFDB89]"></div>
+                        <div class="flex-1 flex flex-col"><label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider mb-1">Unidad</label>
+                            <input type="text" id="ef-unit" list="serving-units" value="${(efBase.unit || '').replace(/"/g,'&quot;')}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+                                class="w-full p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89]"></div>
+                    </div>
+                    <p id="ef-hint" class="hidden text-[11px] text-yellow-300/80 leading-snug -mt-2"></p>
                     <div>
-                        <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-2">Macros (totales):</p>
+                        <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-2">Macros para esa cantidad:</p>
                         <div class="grid grid-cols-2 gap-2">
                             <div><label class="text-xs text-[#FFDB89]/60 block mb-1">Calorías</label>
                             <input type="number" id="ef-cal" value="${parseFloat(food.calories)||0}"
@@ -13293,14 +13313,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
             document.body.appendChild(modal);
 
+            const efQty = document.getElementById('ef-qty'), efUnit = document.getElementById('ef-unit');
+            const efMacros = { calories: document.getElementById('ef-cal'), protein: document.getElementById('ef-pro'),
+                               carbs: document.getElementById('ef-carb'), fat: document.getElementById('ef-fat') };
+            const efSync = makeAmountSync({
+                qtyEl: efQty, unitEl: efUnit, macroEls: efMacros, hintEl: document.getElementById('ef-hint'),
+                base: { amount: efBase.amount, unit: efBase.unit, calories: parseFloat(food.calories) || 0,
+                        protein: parseFloat(food.protein) || 0, carbs: parseFloat(food.carbs) || 0, fat: parseFloat(food.fat) || 0 },
+            });
+            Object.values(efMacros).forEach(el => el.addEventListener('input', () => efSync.macrosEdited()));
+            efQty.addEventListener('input', () => efSync.qtyEdited());
+            efUnit.addEventListener('change', () => efSync.unitCommitted());
+
             document.getElementById('ef-save').addEventListener('click', async () => {
+                const efAmt = parseFloat(efQty.value), efU = efUnit.value.trim();
+                // Only record an amount that means something: one the entry already had, or one the
+                // person actually typed (not the generic "1 porción" the box was pre-filled with).
+                const hasAmt = efAmt > 0 && efU && (efBase.known || efAmt !== efBase.amount || efU !== efBase.unit);
                 const newFood = {
                     ...mealsData[mi].foods[fi],
                     name:     document.getElementById('ef-name').value.trim() || food.name,
                     calories: document.getElementById('ef-cal').value,
                     protein:  document.getElementById('ef-pro').value,
                     carbs:    document.getElementById('ef-carb').value,
-                    fat:      document.getElementById('ef-fat').value
+                    fat:      document.getElementById('ef-fat').value,
+                    // The numbers are FOR this amount; store it so re-picking the food restores it.
+                    servingAmount: hasAmt ? efAmt : (food.servingAmount ?? null),
+                    servingUnit:   hasAmt ? efU   : (food.servingUnit ?? null)
                 };
                 mealsData[mi].foods[fi] = newFood;
 
@@ -13315,8 +13354,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 protein: Number(newFood.protein) || 0,
                                 carbs: Number(newFood.carbs) || 0,
                                 fat: Number(newFood.fat) || 0,
-                                servingSize: 100,
-                                servingUnit: 'g'
+                                // The numbers are FOR the amount in this entry. (This used to say
+                                // 100 g for EVERY saved food, whatever was actually eaten.)
+                                servingSize: hasAmt ? efAmt : 1,
+                                servingUnit: hasAmt ? efU : 'porción'
                             })
                         });
                         if (res.ok) {
@@ -13350,7 +13391,82 @@ document.addEventListener('DOMContentLoaded', () => {
         // ============================================================
         // ADD FOOD MODAL — 3 tabs: Manual | Buscar | Escanear
         // ============================================================
+        // Suggestions for every unit box (the unit stays free text: "huevos", "rebanadas"…).
+        const ensureUnitList = () => {
+            if (document.getElementById('serving-units')) return;
+            const dl = document.createElement('datalist');
+            dl.id = 'serving-units';
+            dl.innerHTML = ['g', 'oz', 'lb', 'kg', 'ml', 'fl oz', 'taza', 'cda', 'cdta', 'porción'].map(u => `<option value="${u}">`).join('');
+            document.body.appendChild(dl);
+        };
+
+        // A saved personal food's amount. Its serving defaults to "100 g" in the database, and
+        // the old edit screen saved EVERY food as exactly that regardless of what was eaten, so
+        // the pair 100 + g is indistinguishable from "never set" — treated as unknown (the
+        // numbers are used as they are, as 1 porción) rather than trusted as a real per-100 g.
+        const pfServing = (pf) => {
+            const a = Number(pf && pf.servingSize), u = String((pf && pf.servingUnit) || '').trim();
+            if (!(a > 0) || !u || (a === 100 && u.toLowerCase() === 'g')) return { amount: 0, unit: '' };
+            return { amount: a, unit: u };
+        };
+
+        // ── "Macros are FOR an amount" — keeps an amount box and the macro boxes in step ──
+        // The rule (see public/food-scale.js): the numbers describe the amount in the amount
+        // box. Change the amount and they scale from the BASE (never from a previous result,
+        // so rounding cannot compound). Type a macro yourself and that becomes the new base:
+        // "these numbers are for this amount". Used by the Manual tab and the edit-food modal.
+        //
+        // Quantity scales live while typing. The UNIT only acts when it is committed (blur /
+        // picking from the list): typing "oz" passes through "o", which is a different unit,
+        // and must not be mistaken for a change of food amount.
+        const makeAmountSync = ({ qtyEl, unitEl, macroEls, hintEl, base, onChange }) => {
+            const FS = window.FoodScale;
+            let b = base || null;   // { amount, unit, calories, protein, carbs, fat }
+            const readMacros = () => ({
+                calories: macroEls.calories.value, protein: macroEls.protein.value,
+                carbs: macroEls.carbs.value, fat: macroEls.fat.value,
+            });
+            const readAmt = () => ({ amount: parseFloat(String(qtyEl.value).replace(',', '.')), unit: unitEl.value.trim() });
+            const setHint = (t) => { if (!hintEl) return; hintEl.textContent = t || ''; hintEl.classList.toggle('hidden', !t); };
+            const anchor = () => { const a = readAmt(); b = { amount: a.amount > 0 ? a.amount : 1, unit: a.unit, ...readMacros() }; };
+            const write = (m) => {
+                macroEls.calories.value = m.calories; macroEls.protein.value = m.protein;
+                macroEls.carbs.value = m.carbs;       macroEls.fat.value = m.fat;
+            };
+            const rescale = (a) => {
+                const f = FS.factor(b, a);
+                if (!f.ok) return false;
+                write(FS.scaleMacros(b, f.factor));
+                setHint('');
+                return true;
+            };
+            return {
+                setBase(nb) { b = nb; setHint(''); },
+                macrosEdited() { anchor(); setHint(''); onChange && onChange(); },
+                qtyEdited() {
+                    const a = readAmt();
+                    if (a.amount > 0) {
+                        if (!b || !b.unit) anchor();      // no unit yet: nothing to scale from, just follow
+                        else if (a.unit) rescale(a);      // a unit that is mid-edit simply does not scale
+                    }
+                    onChange && onChange();
+                },
+                unitCommitted() {
+                    const a = readAmt();
+                    if (a.unit && a.amount > 0) {
+                        if (!b || !b.unit) anchor();
+                        else if (!rescale(a)) {           // different kind of unit: the person is restating
+                            anchor();
+                            setHint(`Cambiaste a «${a.unit}»: revisa que los macros sean para ${FS.fmtAmount(a.amount)} ${a.unit}.`);
+                        }
+                    }
+                    onChange && onChange();
+                },
+            };
+        };
+
         window._openAddFoodModal = (mealIndex) => {
+            ensureUnitList();
             document.getElementById('add-food-modal')?.remove();
 
             // Per-modal state
@@ -13358,6 +13474,11 @@ document.addEventListener('DOMContentLoaded', () => {
             let baseNutrients  = null;   // per-100g values from search/scan (for serving scaling)
             let servingG       = 100;    // always in grams internally
             let modalUnit      = servingUnit; // inherit current global unit
+            // A food picked from something the person logged / saved before. Its numbers are FOR
+            // base.amount base.unit; the footer's amount boxes scale them (see food-scale.js).
+            // null = the older per-100 g path (database search results) is in charge instead.
+            let ctx            = null;   // { name, base:{amount,unit,calories,protein,carbs,fat}, amount, unit }
+            let pendingServing = null;   // { amount, unit } for the Manual tab's entry
             let zxingReader    = null;
             let scanStream     = null;   // MediaStream for native BarcodeDetector path
             let scanActive     = false;  // flag to stop the rAF scan loop
@@ -13401,10 +13522,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div><p class="text-yellow-400/70 mb-0.5">Carbs</p><p class="font-bold text-yellow-400" id="preview-carb">0g</p></div>
                                 <div><p class="text-orange-400/70 mb-0.5">Grasas</p><p class="font-bold text-orange-400" id="preview-fat">0g</p></div>
                             </div>
-                            <div id="serving-row" class="hidden mt-3 flex items-center gap-2">
-                                <label class="text-xs text-[#FFDB89]/60 shrink-0">Porción:</label>
-                                <input type="number" id="serving-input" value="100" step="0.1" class="w-20 p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]">
+                            <div id="serving-row" class="hidden mt-3 flex items-center gap-2 flex-wrap">
+                                <label class="text-xs text-[#FFDB89]/60 shrink-0">Cantidad:</label>
+                                <input type="number" id="serving-input" value="100" step="any" class="w-20 p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]">
                                 <button id="modal-unit-btn" class="px-2 py-1 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89] text-xs font-bold hover:bg-[#FFDB89]/10 transition min-w-[2.5rem]">g</button>
+                                <input type="text" id="serving-unit-input" list="serving-units" placeholder="unidad" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" class="hidden flex-1 min-w-[5rem] p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89]">
+                                <p id="serving-hint" class="hidden basis-full text-[11px] text-yellow-300/80 leading-snug"></p>
                             </div>
                         </div>
                         <button id="confirm-add-food" disabled
@@ -13419,8 +13542,49 @@ document.addEventListener('DOMContentLoaded', () => {
             const syncServingDisplay = () => {
                 const si = document.getElementById('serving-input');
                 const ub = document.getElementById('modal-unit-btn');
+                const ui = document.getElementById('serving-unit-input');
+                if (ctx) {
+                    // Amount + free unit. Never rewrite a box the person is typing in.
+                    if (si && document.activeElement !== si) si.value = window.FoodScale.fmtAmount(ctx.amount);
+                    if (ui && document.activeElement !== ui) ui.value = ctx.unit;
+                    ub?.classList.add('hidden'); ui?.classList.remove('hidden');
+                    return;
+                }
+                ub?.classList.remove('hidden'); ui?.classList.add('hidden');
                 if (si) si.value = modalUnit === 'oz' ? gToOz(servingG) : Math.round(servingG);
                 if (ub) ub.textContent = modalUnit;
+            };
+
+            // ── A picked food whose numbers are FOR an amount (history, library, saved) ──
+            // Shows the amount it was logged with and scales from there when the amount changes.
+            const renderCtxPreview = () => {
+                const hint = document.getElementById('serving-hint');
+                const btn  = document.getElementById('confirm-add-food');
+                const f = window.FoodScale.factor(ctx.base, { amount: ctx.amount, unit: ctx.unit });
+                if (!f.ok) {
+                    const msg = f.reason === 'units'
+                        ? `No sé convertir ${ctx.base.unit} a ${ctx.unit}. Usa ${ctx.base.unit} (u otra unidad del mismo tipo), o añade el alimento en la pestaña Manual con sus macros.`
+                        : 'Escribe una cantidad mayor que 0 y su unidad.';
+                    if (hint) { hint.textContent = msg; hint.classList.remove('hidden'); }
+                    if (btn) btn.disabled = true;
+                    return;
+                }
+                if (hint) hint.classList.add('hidden');
+                const m = window.FoodScale.scaleMacros(ctx.base, f.factor);
+                setPreview({ name: ctx.name, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat }, true);
+            };
+            const startCtx = (food) => {
+                const b = window.FoodScale.baseOf(food);
+                baseNutrients = null; servingG = 100;
+                ctx = {
+                    name: b.name || food.name,
+                    base: { amount: b.amount, unit: b.unit,
+                            calories: parseFloat(food.calories) || 0, protein: parseFloat(food.protein) || 0,
+                            carbs: parseFloat(food.carbs) || 0, fat: parseFloat(food.fat) || 0 },
+                    amount: b.amount, unit: b.unit,
+                };
+                renderCtxPreview();
+                syncServingDisplay();
             };
 
             const setPreview = (food, showServing = false) => {
@@ -13429,6 +13593,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // null means clear/reset the preview
                 if (!food) {
                     pending = { name: '', calories: '', protein: '', carbs: '', fat: '' };
+                    ctx = null; pendingServing = null;
                     if (pv) pv.classList.add('hidden');
                     if (btn) btn.disabled = true;
                     document.getElementById('serving-row')?.classList.add('hidden');
@@ -13451,6 +13616,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Wire modal unit button
             modal.addEventListener('click', e => {
                 if (e.target.id !== 'modal-unit-btn' && !e.target.closest('#modal-unit-btn')) return;
+                if (ctx) return;   // an amount with its own unit box: the g/oz toggle does not apply
                 modalUnit = modalUnit === 'g' ? 'oz' : 'g';
                 syncServingDisplay();
                 // Recalculate preview (servingG unchanged, just display flips)
@@ -13486,13 +13652,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                             <div class="flex-1 flex flex-col">
                                 <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider mb-1">Unidad <span class="text-red-400">*</span></label>
-                                <input type="text" id="food-unit-input" placeholder="ej: huevos, rebanadas, tazas, g, oz..."
-                                    class="w-full p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89] placeholder-[#FFDB89]/20" autocorrect="off" autocapitalize="none" spellcheck="false">
+                                <input type="text" id="food-unit-input" list="serving-units" placeholder="ej: huevos, rebanadas, tazas, g, oz..."
+                                    class="w-full p-2 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89] placeholder-[#FFDB89]/20" autocorrect="off" autocapitalize="none" spellcheck="false" autocomplete="off">
                             </div>
                         </div>
+                        <p id="food-amount-hint" class="hidden text-[11px] text-yellow-300/80 leading-snug -mt-2"></p>
                         <!-- Macros totales -->
                         <div>
-                            <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-2">Macros totales:</p>
+                            <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-1">Macros para esa cantidad:</p>
+                            <p class="text-[10px] text-[#FFDB89]/30 mb-2 leading-snug">Si cambias la cantidad, los macros se ajustan solos. Si escribes un macro, ese número es el de la cantidad indicada.</p>
                             <div class="grid grid-cols-2 gap-2">
                                 <div><label class="text-xs text-[#FFDB89]/60 block mb-1">Calorías</label>
                                 <input type="number" id="food-cal-input" placeholder="0" class="w-full p-2.5 bg-white/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] font-bold text-sm text-center outline-none focus:ring-1 focus:ring-[#FFDB89]"></div>
@@ -13520,37 +13688,51 @@ document.addEventListener('DOMContentLoaded', () => {
                     const qty  = parseFloat(qtyInput.value) || 1;
                     const unit = unitInput.value.trim();
                     const baseName = nameInput.value.trim();
-                    // Unit is now required — always reflect "qty unit name" in the display name.
-                    const displayName = baseName
-                        ? `${qty}${unit ? ' ' + unit : ''} ${baseName}`
-                        : '';
-                    // Macros are stored exactly as entered — qty only affects the display name.
+                    // The entry keeps the CLEAN name and the amount separately: the amount is what
+                    // the macros are for, and it is what restores "10 oz" the next time this food
+                    // is picked. (It used to be glued into the name — "10 oz Medalla Light" — which
+                    // is why the app could not tell what the numbers were for.)
+                    const r1 = (v) => Math.round((parseFloat(v) || 0) * 10) / 10;
                     const f = {
-                        name:     displayName,
-                        calories: Math.round(parseFloat(calInput.value)  || 0),
-                        protein:  Math.round(parseFloat(proInput.value)  || 0),
-                        carbs:    Math.round(parseFloat(carbInput.value) || 0),
-                        fat:      Math.round(parseFloat(fatInput.value)  || 0)
+                        name:     baseName,
+                        calories: Math.round(parseFloat(calInput.value) || 0),
+                        protein:  r1(proInput.value),
+                        carbs:    r1(carbInput.value),
+                        fat:      r1(fatInput.value)
                     };
-                    if (baseName) setPreview(f, false);
+                    pendingServing = unit ? { amount: qty, unit } : null;
+                    if (baseName) {
+                        setPreview(f, false);
+                        // The preview still reads naturally: "10 oz Medalla Light".
+                        document.getElementById('preview-name').textContent = `${window.FoodScale.fmtAmount(qty)}${unit ? ' ' + unit : ''} ${baseName}`;
+                    }
                     // Require both a name AND a unit before the food can be added.
                     const btn = document.getElementById('confirm-add-food');
                     if (btn) btn.disabled = !baseName || !unit;
                 };
 
-                [calInput, proInput, carbInput, fatInput, qtyInput, unitInput].forEach(el => el?.addEventListener('input', syncPreview));
+                const amt = makeAmountSync({
+                    qtyEl: qtyInput, unitEl: unitInput,
+                    macroEls: { calories: calInput, protein: proInput, carbs: carbInput, fat: fatInput },
+                    hintEl: document.getElementById('food-amount-hint'),
+                    onChange: syncPreview,
+                });
+                [calInput, proInput, carbInput, fatInput].forEach(el => el?.addEventListener('input', () => amt.macrosEdited()));
+                qtyInput?.addEventListener('input', () => amt.qtyEdited());
+                unitInput?.addEventListener('input', syncPreview);          // text follows; scaling waits for the commit
+                unitInput?.addEventListener('change', () => amt.unitCommitted());
                 qtyInput?.addEventListener('focus', () => qtyInput.select());
 
                 // Render the unified suggestion list (local history + shared library)
                 const renderSuggestions = (localMatches, libMatches) => {
                     const renderRow = (f) => `
                         <button class="food-suggest-item w-full text-left px-4 py-2.5 hover:bg-[#FFDB89]/10 transition border-b border-[#FFDB89]/10 last:border-0"
-                            data-name="${f.name.replace(/"/g,'&quot;')}" data-cal="${f.calories}" data-pro="${f.protein}" data-carb="${f.carbs}" data-fat="${f.fat}">
+                            data-name="${f.name.replace(/"/g,'&quot;')}" data-cal="${f.calories}" data-pro="${f.protein}" data-carb="${f.carbs}" data-fat="${f.fat}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}">
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 <span class="text-sm text-white font-medium">${escHtml(f.name)}</span>
                                 ${f.fromLibrary ? '<span class="text-[8px] font-bold text-[#FFDB89]/30 uppercase tracking-wider border border-[#FFDB89]/20 rounded px-1">comunidad</span>' : ''}
                             </div>
-                            <span class="text-xs text-[#FFDB89]/50">${f.calories} cal &middot; P:${f.protein}g C:${f.carbs}g G:${f.fat}g</span>
+                            <span class="text-xs text-[#FFDB89]/50">${f.servingAmount && f.servingUnit ? `${window.FoodScale.fmtAmount(f.servingAmount)} ${escHtml(f.servingUnit)}: ` : ''}${f.calories} cal &middot; P:${f.protein}g C:${f.carbs}g G:${f.fat}g</span>
                         </button>`;
                     const all = [...localMatches, ...libMatches.map(f => ({...f, fromLibrary: true}))];
                     if (!all.length) { suggestions.classList.add('hidden'); return; }
@@ -13588,13 +13770,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 suggestions?.addEventListener('click', e => {
                     const item = e.target.closest('.food-suggest-item');
                     if (!item) return;
-                    nameInput.value  = item.dataset.name;
+                    // Restore what the numbers were for ("10 oz"), not a reset "1 porción". Foods
+                    // with no recorded amount fall back to 1 porción (and a unit is required).
+                    const b = window.FoodScale.baseOf({ name: item.dataset.name, servingAmount: item.dataset.sa, servingUnit: item.dataset.su });
+                    nameInput.value  = b.name || item.dataset.name;
                     calInput.value   = item.dataset.cal;
                     proInput.value   = item.dataset.pro;
                     carbInput.value  = item.dataset.carb;
                     fatInput.value   = item.dataset.fat;
-                    qtyInput.value   = 1;
-                    unitInput.value  = 'porción';   // satisfy the required unit; user can edit
+                    qtyInput.value   = window.FoodScale.fmtAmount(b.amount);
+                    unitInput.value  = b.unit;
+                    amt.setBase({ amount: b.amount, unit: b.unit, calories: item.dataset.cal, protein: item.dataset.pro, carbs: item.dataset.carb, fat: item.dataset.fat });
                     suggestions.classList.add('hidden');
                     syncPreview();
                 });
@@ -13630,12 +13816,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="text-[10px] text-[#FFDB89]/30 uppercase tracking-wider font-bold px-1 pb-1">Usados recientemente</p>
                         ${recent.map(f => `
                         <button class="history-food-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition"
-                            data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}">
+                            data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}">
                             <div class="flex justify-between items-center gap-2">
                                 <p class="text-sm font-semibold text-white leading-tight truncate">${(f.name||'').replace(/</g,'&lt;')}</p>
                                 <span class="text-sm font-black text-[#FFDB89] shrink-0">${f.calories||0} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
                             </div>
-                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">P:${f.protein||0}g · C:${f.carbs||0}g · G:${f.fat||0}g</p>
+                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">${f.servingAmount && f.servingUnit ? `${window.FoodScale.fmtAmount(f.servingAmount)} ${(f.servingUnit||'').replace(/</g,'&lt;')} · ` : ''}P:${f.protein||0}g · C:${f.carbs||0}g · G:${f.fat||0}g</p>
                         </button>`).join('')}` : '';
 
                     // Show skeleton while fetching popular foods
@@ -13652,18 +13838,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Wire up history item clicks
                     resultsDiv.querySelectorAll('.history-food-item').forEach(btn => {
                         btn.addEventListener('click', () => {
-                            const cal  = parseFloat(btn.dataset.cal)  || 0;
-                            const pro  = parseFloat(btn.dataset.pro)  || 0;
-                            const carb = parseFloat(btn.dataset.carb) || 0;
-                            const fat  = parseFloat(btn.dataset.fat)  || 0;
-                            baseNutrients = {
+                            startCtx({
                                 name: btn.dataset.name,
-                                calories_100g: cal, protein_100g: pro,
-                                carbs_100g: carb, fat_100g: fat
-                            };
-                            servingG = 100;
-                            setPreview({ name: btn.dataset.name, calories: cal, protein: pro, carbs: carb, fat: fat }, true);
-                            syncServingDisplay();
+                                calories: btn.dataset.cal, protein: btn.dataset.pro,
+                                carbs: btn.dataset.carb, fat: btn.dataset.fat,
+                                servingAmount: btn.dataset.sa, servingUnit: btn.dataset.su,
+                            });
                         });
                     });
 
@@ -13676,7 +13856,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (popular.length) {
                                 loadingEl.outerHTML = popular.map(f => `
                                 <button class="pop-food-item w-full text-left p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/10 rounded-xl transition flex items-center gap-2"
-                                    data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}">
+                                    data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}">
                                     <i class="fas fa-fire-alt text-[#FFDB89]/30 text-[10px] shrink-0"></i>
                                     <div class="flex-1 min-w-0">
                                         <p class="text-xs font-semibold text-white/80 leading-tight truncate">${(f.name||'').replace(/</g,'&lt;')}</p>
@@ -13687,18 +13867,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 // Wire up popular food clicks
                                 resultsDiv.querySelectorAll('.pop-food-item').forEach(btn => {
                                     btn.addEventListener('click', () => {
-                                        const cal  = parseFloat(btn.dataset.cal)  || 0;
-                                        const pro  = parseFloat(btn.dataset.pro)  || 0;
-                                        const carb = parseFloat(btn.dataset.carb) || 0;
-                                        const fat  = parseFloat(btn.dataset.fat)  || 0;
-                                        baseNutrients = {
+                                        startCtx({
                                             name: btn.dataset.name,
-                                            calories_100g: cal, protein_100g: pro,
-                                            carbs_100g: carb, fat_100g: fat
-                                        };
-                                        servingG = 100;
-                                        setPreview({ name: btn.dataset.name, calories: cal, protein: pro, carbs: carb, fat: fat }, true);
-                                        syncServingDisplay();
+                                            calories: btn.dataset.cal, protein: btn.dataset.pro,
+                                            carbs: btn.dataset.carb, fat: btn.dataset.fat,
+                                            servingAmount: btn.dataset.sa, servingUnit: btn.dataset.su,
+                                        });
                                     });
                                 });
                             } else {
@@ -13739,16 +13913,25 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <p class="text-sm font-semibold text-white leading-tight truncate">${p.name}</p>
                                     ${communityBadge}
                                 </div>
-                                <span class="text-sm font-black text-[#FFDB89] shrink-0">${p.cal100} <span class="text-[10px] font-normal text-[#FFDB89]/40">kcal</span></span>
+                                <span class="text-sm font-black text-[#FFDB89] shrink-0">${p.fromLibrary && p.baseAmount ? p.calories : p.cal100} <span class="text-[10px] font-normal text-[#FFDB89]/40">kcal</span></span>
                             </div>
-                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">${brand}P:${p.p100}g · C:${p.c100}g · G:${p.f100}g</p>
+                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">${brand}${p.fromLibrary && p.baseAmount ? `${window.FoodScale.fmtAmount(p.baseAmount)} ${escNutri(p.baseUnit || '')}: ${p.calories} cal · P:${p.protein}g · C:${p.carbs}g · G:${p.fat}g` : `P:${p.p100}g · C:${p.c100}g · G:${p.f100}g`}</p>
                         </button>`;
                     }).join('');
 
                     resultsDiv.querySelectorAll('.off-result-item').forEach(btn => {
                         btn.addEventListener('click', () => {
                             const p = lastProducts[parseInt(btn.dataset.idx)];
-                            if (p) showQtyPicker(p);
+                            if (!p) return;
+                            // A community-library food holds the numbers for whatever amount it was
+                            // logged with — never "per 100 g" — so it starts from THAT amount.
+                            if (p.fromLibrary) {
+                                startCtx({ name: p.name, calories: p.calories, protein: p.protein, carbs: p.carbs, fat: p.fat,
+                                           servingAmount: p.baseAmount, servingUnit: p.baseUnit });
+                                return;
+                            }
+                            ctx = null;
+                            showQtyPicker(p);
                         });
                     });
                     // "Search the internet" + "Add manually" fallbacks at the bottom of results
@@ -14481,7 +14664,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const foodsList = document.getElementById('library-foods-list');
                     foodsList.innerHTML = personalFoods.map(pf => `
                         <button class="library-food-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition"
-                            data-name="${(pf.name||'').replace(/"/g,'&quot;')}" data-cal="${pf.calories||0}" data-pro="${pf.protein||0}" data-carb="${pf.carbs||0}" data-fat="${pf.fat||0}">
+                            data-name="${(pf.name||'').replace(/"/g,'&quot;')}" data-cal="${pf.calories||0}" data-pro="${pf.protein||0}" data-carb="${pf.carbs||0}" data-fat="${pf.fat||0}" data-sa="${pfServing(pf).amount}" data-su="${pfServing(pf).unit.replace(/"/g,'&quot;')}">
                             <div class="flex justify-between items-center gap-2">
                                 <p class="text-sm font-semibold text-white leading-tight truncate">${(pf.name||'').replace(/</g,'&lt;')}</p>
                                 <span class="text-sm font-black text-[#FFDB89] shrink-0">${pf.calories||0} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
@@ -14491,18 +14674,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     foodsList.querySelectorAll('.library-food-item').forEach(btn => {
                         btn.addEventListener('click', () => {
-                            const cal  = parseFloat(btn.dataset.cal)  || 0;
-                            const pro  = parseFloat(btn.dataset.pro)  || 0;
-                            const carb = parseFloat(btn.dataset.carb) || 0;
-                            const fat  = parseFloat(btn.dataset.fat)  || 0;
-                            pending = { name: btn.dataset.name, calories: cal, protein: pro, carbs: carb, fat: fat };
-                            baseNutrients = {
+                            startCtx({
                                 name: btn.dataset.name,
-                                calories_100g: cal, protein_100g: pro,
-                                carbs_100g: carb, fat_100g: fat
-                            };
-                            servingG = 100;
-                            setPreview({ name: btn.dataset.name, calories: cal, protein: pro, carbs: carb, fat: fat }, false);
+                                calories: btn.dataset.cal, protein: btn.dataset.pro,
+                                carbs: btn.dataset.carb, fat: btn.dataset.fat,
+                                servingAmount: btn.dataset.sa, servingUnit: btn.dataset.su,
+                            });
                         });
                     });
                 }
@@ -14662,6 +14839,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (e.target.id === 'serving-input') e.target.select();
             });
             modal.addEventListener('input', e => {
+                if (ctx && (e.target.id === 'serving-input' || e.target.id === 'serving-unit-input')) {
+                    // Amount: live. Unit: the text follows but only scales once committed (change).
+                    if (e.target.id === 'serving-input') {
+                        const v = parseFloat(e.target.value);
+                        if (!(v > 0)) return;     // empty / mid-edit: leave the numbers alone
+                        ctx.amount = v;
+                        renderCtxPreview();
+                    } else {
+                        ctx.unit = e.target.value.trim();
+                    }
+                    return;
+                }
                 if (e.target.id !== 'serving-input' || !baseNutrients) return;
                 const inputVal = parseFloat(e.target.value);
                 // Don't snap to a default while the user is mid-edit (field empty or partial)
@@ -14675,6 +14864,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     carbs:    Math.round(baseNutrients.carbs_100g    * scale),
                     fat:      Math.round(baseNutrients.fat_100g      * scale)
                 }, true);
+            });
+
+            modal.addEventListener('change', e => {
+                if (ctx && e.target.id === 'serving-unit-input') {
+                    ctx.unit = e.target.value.trim();
+                    renderCtxPreview();
+                    syncServingDisplay();
+                }
             });
 
             // ---- Confirm: add food to meal ----
@@ -14703,10 +14900,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!mealsData[mealIndex].foods) mealsData[mealIndex].foods = [];
 
-                // Capture serving info for display
-                const servingAmt = baseNutrients
-                    ? (modalUnit === 'oz' ? gToOz(servingG) : Math.round(servingG))
-                    : null;
+                // WHAT AMOUNT the numbers are for. Stored with the entry, the history and the
+                // community library, so picking this food again restores it instead of
+                // guessing "per 100 g". Three sources, one rule: the numbers are FOR this amount.
+                let serving = null;                                    // { amount, unit }
+                if (ctx) serving = { amount: ctx.amount, unit: ctx.unit };            // history / library pick
+                else if (baseNutrients) {                                             // database search (g / oz)
+                    const amt = modalUnit === 'oz' ? gToOz(servingG) : Math.round(servingG);
+                    if (amt) serving = { amount: amt, unit: modalUnit };
+                } else if (pendingServing) serving = pendingServing;                  // Manual tab
 
                 const pendingItem = {
                     name:          pending.name,
@@ -14714,14 +14916,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     protein:       pending.protein  || '',
                     carbs:         pending.carbs    || '',
                     fat:           pending.fat      || '',
-                    servingAmount: servingAmt,
-                    servingUnit:   servingAmt ? modalUnit : null
+                    servingAmount: serving ? serving.amount : null,
+                    servingUnit:   serving ? serving.unit   : null
                 };
                 // Add to live foodHistory so it appears next time without refresh
                 const key = pending.name.toLowerCase().trim();
-                if (!foodHistory.find(f => f.name.toLowerCase().trim() === key)) {
-                    foodHistory.push({ name: pending.name, calories: pending.calories || 0, protein: pending.protein || 0, carbs: pending.carbs || 0, fat: pending.fat || 0 });
-                }
+                const histEntry = { name: pending.name, calories: pending.calories || 0, protein: pending.protein || 0, carbs: pending.carbs || 0, fat: pending.fat || 0,
+                                    servingAmount: serving ? serving.amount : 0, servingUnit: serving ? serving.unit : '' };
+                const histIdx = foodHistory.findIndex(f => f.name.toLowerCase().trim() === key);
+                if (histIdx === -1) foodHistory.push(histEntry);
+                else foodHistory[histIdx] = histEntry;   // newest amount + numbers win, as in the library
                 // Persist to the shared platform food library (fire-and-forget)
                 apiFetch('/api/food-library', {
                     method: 'POST',
@@ -14731,7 +14935,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         calories: pending.calories || 0,
                         protein:  pending.protein  || 0,
                         carbs:    pending.carbs    || 0,
-                        fat:      pending.fat      || 0
+                        fat:      pending.fat      || 0,
+                        servingAmount: serving ? serving.amount : 0,
+                        servingUnit:   serving ? serving.unit   : ''
                     })
                 }).catch(() => {}); // non-blocking — never fails the user's log
                 stopScanner();
@@ -14983,8 +15189,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     protein: +((pf.protein || 0) * qty).toFixed(1),
                     carbs: +((pf.carbs || 0) * qty).toFixed(1),
                     fat: +((pf.fat || 0) * qty).toFixed(1),
-                    servingAmount: pf.servingSize ? pf.servingSize * qty : null,
-                    servingUnit: pf.servingUnit || 'g',
+                    servingAmount: pfServing(pf).amount ? pfServing(pf).amount * qty : null,
+                    servingUnit: pfServing(pf).amount ? pfServing(pf).unit : null,
                 };
                 close();
                 appendFoodsToMeal(targetIdx, item, { toast: `✓ "${pf.name}" añadido.` });
@@ -14994,6 +15200,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window._editPersonalFood = (id) => {
             const pf = personalFoods.find(f => f._id === id);
             if (!pf) return;
+            ensureUnitList();
             const modal = document.createElement('div');
             modal.id = 'edit-personal-food-modal';
             modal.className = 'fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-4';
@@ -15014,8 +15221,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <input id="epf-cal" type="number" step="1" min="0" value="${Math.round(pf.calories || 0)}" class="w-full p-2 bg-white/10 border border-[#FFDB89]/25 rounded text-white text-sm outline-none text-center">
                             </div>
                             <div>
-                                <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Porción (${pf.servingUnit || 'g'})</label>
-                                <input id="epf-serving" type="number" step="0.5" min="0.5" value="${pf.servingSize || 100}" class="w-full p-2 bg-white/10 border border-[#FFDB89]/25 rounded text-white text-sm outline-none text-center">
+                                <label class="text-[10px] text-[#FFDB89]/50 uppercase tracking-wider block mb-1">Los macros son para</label>
+                                <div class="flex gap-1">
+                                    <input id="epf-serving" type="number" step="any" min="0" value="${window.FoodScale.fmtAmount(pfServing(pf).amount || 1)}" class="w-14 p-2 bg-white/10 border border-[#FFDB89]/25 rounded text-white text-sm outline-none text-center">
+                                    <input id="epf-unit" type="text" list="serving-units" value="${escHtml(pfServing(pf).unit || 'porción')}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" class="flex-1 min-w-0 p-2 bg-white/10 border border-[#FFDB89]/25 rounded text-white text-sm outline-none">
+                                </div>
                             </div>
                         </div>
                         <div class="grid grid-cols-3 gap-2">
@@ -15066,8 +15276,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             protein: Number(modal.querySelector('#epf-pro').value) || 0,
                             carbs: Number(modal.querySelector('#epf-carb').value) || 0,
                             fat: Number(modal.querySelector('#epf-fat').value) || 0,
-                            servingSize: Number(modal.querySelector('#epf-serving').value) || 100,
-                            servingUnit: pf.servingUnit || 'g',
+                            servingSize: Number(modal.querySelector('#epf-serving').value) > 0 ? Number(modal.querySelector('#epf-serving').value) : 1,
+                            servingUnit: (modal.querySelector('#epf-unit').value || '').trim() || 'porción',
                         })
                     });
                     if (!res.ok) throw new Error();

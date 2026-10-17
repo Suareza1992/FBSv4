@@ -3759,3 +3759,119 @@ deactivation **mid-session** (a click after the cache expired raised the page).
    WhatsApp button instead.
 5. **Mobile "Pagos" screen** (`app/(app)/pagos.tsx`) is unchanged and still has no pay buttons; the
    inactive page is the only place invoices carry a pay link.
+
+
+---
+
+## 43. A food remembers what its numbers are FOR
+
+**The report.** A client logged "1 Medalla Light de 10 oz", then added it again: the app reset the
+amount to 3.5 oz while the numbers stayed the 10 oz numbers, and typing 10 oz scaled them up a
+*second* time, "altering the macros". He asked for: write the amount, let the app work out the macros.
+
+### Root cause (found by reading the code, then confirmed in a browser)
+
+The app had two incompatible ideas of what a food's numbers mean:
+
+| Where the food came from | What the numbers were treated as |
+|---|---|
+| Database / internet search | **per 100 g** (correct — that is what those sources give) |
+| Something already logged: Usados recientemente, Manual suggestions, "Populares", the community library, a saved personal food | **also per 100 g** — but they are the numbers for *whatever amount was eaten* |
+
+A logged food stored name + macros and **nothing about the amount**. Picking it again reset the
+amount to 100 g (= 3.5 oz) and scaled from there. The community library (`FoodLibrary`) had the same
+hole, and `/api/food-search` served library foods as `cal100`, so other people were affected too.
+The web's "Guardar a Mis alimentos" hard-coded `100 g` for every food it saved. The Manual tab went
+the other way: it ignored the amount completely (it was only pasted into the name).
+
+### The model
+
+Every food carries **the amount its numbers are for** (`servingAmount` + `servingUnit`: "99 cal FOR
+10 oz"). A different amount scales the numbers in proportion:
+
+- `public/food-scale.js` (web) and `FitBySuarez-mobile/lib/foodScale.ts` (app): the same logic, tested
+  against the **same** cases (`scripts/food-scale-cases.json`) — they cannot drift apart unnoticed.
+- Units convert only inside one kind: **mass** (g, oz, lb, kg), **volume** (ml, fl oz, cup, l, tbsp, tsp),
+  or the **same counted word** (huevo = huevos). Anything else — oz to ml, g to huevos — is *not
+  convertible* and the screen says so; it never guesses.
+- **`oz` is mass.** Fluid ounces must be written `fl oz`. A beer typed as "10 oz" scales against other
+  `oz`/`g`, not against `ml`.
+- **Calories are scaled on their own and never recomputed from protein/carbs/fat** — a beer's calories
+  are mostly alcohol, which appears in none of the three.
+- **Always scale from the stored base, never from a previous result**, so a long series of edits can't
+  drift: returning to the base amount returns the base numbers exactly.
+- An unknown amount is the generic **1 porción** (numbers used as they are; 2 porciones doubles them).
+  That is never *wrong* — just less specific than a real amount.
+
+### What each screen does now
+
+- **Picking a logged / library / saved food** shows the amount it was logged with ("10 oz", 99 cal);
+  typing 5 → 50 cal, 20 → 198, back to 10 → exactly 99. (Web: a footer box with amount + free-text unit;
+  app: the form's amount boxes.)
+- **Manual entry** has Cantidad + Unidad *and* macros "for that amount". Change the amount and the
+  macros scale; **type a macro and that number becomes the new base**. The amount scales live; the
+  **unit acts only when committed** (leaving the box): typing "oz" passes through "o", a different unit.
+  Changing to a different *kind* of unit is read as restating ("these macros are for 4 huevos") and a
+  hint says so. If no unit has been typed yet, nothing can be scaled from, so the box just follows.
+- **Database search** is unchanged (it already had a quantity + unit picker). On the app, a database
+  result now starts at 100 g and any amount scales — before, the per-100 g numbers were dumped into the
+  form with no amount at all.
+- **Community-library results** start from *their* amount. They also no longer arrive as `cal100`.
+- **Edit-food** (web) gained Cantidad/Unidad with the same scaling. **Editing a saved personal food**
+  can now change its unit (it was fixed).
+- **Names are kept clean**: the entry stores "Medalla Light" and, separately, "10 oz" — it used to glue
+  them into the name ("10 oz Medalla Light"), which is why the app could not tell what the numbers were
+  for. The meal row shows the amount next to the numbers (the app gained that line too).
+
+### Server
+
+- `FoodLibrary` gained `servingAmount` / `servingUnit` (0 / '' = unknown — every entry saved before
+  today, and any saved by an older app). `POST /api/food-library` validates both (positive, ≤ 100,000,
+  unit ≤ 30 chars, **both or neither**) and **always writes them, even when absent**: that call replaces
+  the macros, and macros from an older app must not keep the previous writer's amount.
+- `GET /api/food-library` returns them. `/api/food-search` maps a library food: if its amount is a
+  **mass**, it is converted to a true per-100 g (so older apps that only read `cal100` are *also* fixed);
+  otherwise it ships the absolute numbers with `baseAmount`/`baseUnit` and `cal100` stays the raw number
+  — exactly what older apps always did.
+- A personal food submitted to the community now carries its serving.
+- `servingAmount`/`servingUnit` on logged foods needed no schema change (`meals` is `Mixed`).
+
+### Existing data
+
+Nothing is migrated. Old library rows and old logged foods have no amount, so they behave as "1 porción"
+**unless the name starts with a recognised amount** ("10 oz Medalla Light" is read as 10 oz of
+"Medalla Light"; "5 huevos" is deliberately *not* guessed). The community library heals itself: each
+new log of a food writes its amount, and the newest writer wins (as its macros already did).
+Saved personal foods with serving **100 g** are treated as unknown, because the old edit screen saved
+*every* food as 100 g — that pair cannot be told apart from "never set".
+
+### Tests
+
+| | |
+|---|---|
+| `node scripts/test-food-scale.mjs` | 49 — the web helper against the shared cases, plus properties (monotone, round-trip, no drift) |
+| `npx -y tsx scripts/test-food-scale.ts` (mobile) | 66 — the app helper against the **same cases**, plus the form's step-by-step logic replaying the scenarios below |
+| `scripts/test-food-serving.mjs` | 23 — isolated server: library serving stored / returned / validated / cleared by an older writer, search normalisation, personal→community, logged foods keep the serving |
+
+Verified in a real browser with a test client (the reported case end to end): pick "Medalla Light" →
+**10 oz, 99 cal** (not 3.5 oz); 5 → 50; 10 → 99 exactly; 20 → 198; unit g → scales; unit huevos →
+"No sé convertir oz a huevos" and the add button disables; add 7 oz → stored `servingAmount:7,
+servingUnit:'oz'` and written to the library; Manual: amount-first and macros-first flows, restating,
+suggestion restores the amount; a 12 oz community beer → 6 oz = 75 cal; a normal database result still
+uses the old picker (200 g → 330 cal); edit-food rescales.
+
+### Known gaps
+
+1. **The app screens have never been run on a phone.** The logic is unit-tested (66 checks, replaying the
+   browser scenarios) and the app bundles; the form itself has not been seen on a device.
+2. **No automatic lookup yet.** The client still types the macros once (or finds the food in search /
+   history / the label scanner / "Describir"). Typing only "Medalla Light 10 oz" and having the app find
+   the numbers is the next step. Not Google itself (no usable search API for this) but: the existing
+   database/internet search, the AI "Describir" tab, and optionally the Claude API's server-side web-search
+   tool (`web_search_*`, with `allowed_domains` and `max_uses`; billed per search on top of tokens, so it
+   needs a usage cap like the other AI features — confirm current pricing and the model's tool version
+   before building).
+3. **Old data is "1 porción"** until it is logged again (above).
+4. **Volume vs weight** is not bridged: oz ↔ ml needs the food's density, which we do not have.
+5. **Trainers' views are unaffected** (they read day totals, not food names), but a manual entry's name
+   no longer contains its amount; the amount is the separate field shown on the client's own screens.

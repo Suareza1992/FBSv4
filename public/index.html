@@ -1373,6 +1373,8 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
   <!-- Loads BEFORE app.js so its fetch wrapper is in place for every request app.js makes
        (it catches a mid-session deactivation). Shows the "account inactive" page. -->
   <script src="account-inactive.js"></script>
+  <!-- Food amount scaling ("macros are FOR an amount") — used by the nutrition screen in app.js. -->
+  <script src="food-scale.js"></script>
   <script src="app.js"></script>
   <!-- Sesiones en vivo (WebRTC). Loads AFTER app.js because it calls showToast().
        It attaches its UI to document.body, never to mainContentArea, so a page

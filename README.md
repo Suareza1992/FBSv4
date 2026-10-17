@@ -284,6 +284,8 @@ Change the password immediately after first login.
 | `SYNC_INDEXES=dry npm start` | **Preview** of the index sync: prints what *would* be created and dropped (with each index's options), changes nothing, exits. **Run this first**, and read the DROP lines. It is a one-off command — never set `SYNC_INDEXES` as a permanent environment variable, or the server will exit on every boot instead of listening. |
 | `SYNC_INDEXES=true npm start` | Create/update MongoDB indexes to match the schemas, then exit (no HTTP listener). **Required after changing any index**, because `autoIndex` is off in production. It also DROPS indexes the schemas no longer declare — preview with `SYNC_INDEXES=dry` first. |
 | `node scripts/test-inactive-gate.mjs` | Integration test for the deactivated-client gate (39 checks). Needs an **isolated** server + database — the header explains how; it refuses to run against anything not named like a test DB. |
+| `node scripts/test-food-scale.mjs` | Food amount scaling (49 checks): `public/food-scale.js` against `scripts/food-scale-cases.json`. No server needed. The phone's copy is tested against the same file. |
+| `node scripts/test-food-serving.mjs` | Library servings on the server (23 checks). Needs an **isolated** server + database — the header explains how; it refuses to run against anything not named like a test DB. |
 
 ---
 

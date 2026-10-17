@@ -1,0 +1,57 @@
+{
+  "_about": "Shared by the web test (scripts/test-food-scale.mjs) and the phone test (FitBySuarez-mobile/scripts/test-food-scale.ts). Both implementations must satisfy every case. Edit here, run both.",
+  "factor": [
+    { "label": "same unit, half", "base": [10, "oz"], "want": [5, "oz"], "factor": 0.5 },
+    { "label": "same unit, double", "base": [10, "oz"], "want": [20, "oz"], "factor": 2 },
+    { "label": "identical amount is exactly 1", "base": [10, "oz"], "want": [10, "oz"], "factor": 1 },
+    { "label": "oz to g", "base": [10, "oz"], "want": [283.495, "g"], "factor": 1 },
+    { "label": "100 g shown in oz", "base": [100, "g"], "want": [3.5, "oz"], "factor": 0.9922 },
+    { "label": "Spanish aliases (onzas / gramos)", "base": [2, "Onzas"], "want": [56.699, "gramos"], "factor": 1 },
+    { "label": "lb to oz", "base": [1, "lb"], "want": [8, "oz"], "factor": 0.5 },
+    { "label": "kg to g", "base": [0.5, "kg"], "want": [250, "g"], "factor": 0.5 },
+    { "label": "counted word, plural vs singular", "base": [5, "huevos"], "want": [3, "huevo"], "factor": 0.6 },
+    { "label": "counted word ignores case and accents", "base": [1, "Rebanada"], "want": [2, "rebanadas"], "factor": 2 },
+    { "label": "porción and serving are the same generic unit", "base": [1, "porción"], "want": [3, "serving"], "factor": 3 },
+    { "label": "unidad counts as the generic unit", "base": [1, "porcion"], "want": [2, "unidades"], "factor": 2 },
+    { "label": "fl oz to ml", "base": [10, "fl oz"], "want": [295.735, "ml"], "factor": 1 },
+    { "label": "cup to ml", "base": [1, "taza"], "want": [236.588, "ml"], "factor": 1 },
+    { "label": "decimal comma", "base": ["1,5", "oz"], "want": ["3", "oz"], "factor": 2 },
+    { "label": "oz is MASS: not convertible to ml", "base": [10, "oz"], "want": [300, "ml"], "ok": false },
+    { "label": "mass to a counted word", "base": [100, "g"], "want": [2, "huevos"], "ok": false },
+    { "label": "two different counted words", "base": [2, "huevos"], "want": [2, "latas"], "ok": false },
+    { "label": "generic porción to a counted word", "base": [1, "porción"], "want": [2, "huevos"], "ok": false },
+    { "label": "zero amount", "base": [10, "oz"], "want": [0, "oz"], "ok": false },
+    { "label": "negative amount", "base": [10, "oz"], "want": [-1, "oz"], "ok": false },
+    { "label": "empty amount", "base": [10, "oz"], "want": ["", "oz"], "ok": false },
+    { "label": "non-numeric amount", "base": [10, "oz"], "want": ["abc", "oz"], "ok": false },
+    { "label": "empty unit", "base": [10, "oz"], "want": [5, ""], "ok": false },
+    { "label": "base amount zero", "base": [0, "oz"], "want": [5, "oz"], "ok": false }
+  ],
+  "scale": [
+    { "label": "the reported case: 10 oz -> 10 oz changes nothing", "macros": { "calories": 99, "protein": 1, "carbs": 6, "fat": 0 }, "factor": 1, "expect": { "calories": 99, "protein": 1, "carbs": 6, "fat": 0 } },
+    { "label": "half", "macros": { "calories": 99, "protein": 1, "carbs": 6, "fat": 0 }, "factor": 0.5, "expect": { "calories": 50, "protein": 0.5, "carbs": 3, "fat": 0 } },
+    { "label": "calories are NOT derived from macros (beer: alcohol calories)", "macros": { "calories": 99, "protein": 0, "carbs": 0, "fat": 0 }, "factor": 2, "expect": { "calories": 198, "protein": 0, "carbs": 0, "fat": 0 } },
+    { "label": "strings from inputs", "macros": { "calories": "200", "protein": "12.5", "carbs": "", "fat": "7" }, "factor": 1.5, "expect": { "calories": 300, "protein": 18.8, "carbs": 0, "fat": 10.5 } },
+    { "label": "missing fields count as 0", "macros": { "calories": 100 }, "factor": 3, "expect": { "calories": 300, "protein": 0, "carbs": 0, "fat": 0 } }
+  ],
+  "parseLeading": [
+    { "text": "10 oz Medalla Light", "expect": { "amount": 10, "unit": "oz", "name": "Medalla Light" } },
+    { "text": "1 porción Arroz blanco", "expect": { "amount": 1, "unit": "porción", "name": "Arroz blanco" } },
+    { "text": "2,5 onzas Pechuga", "expect": { "amount": 2.5, "unit": "onzas", "name": "Pechuga" } },
+    { "text": "12 fl oz Cerveza", "expect": { "amount": 12, "unit": "fl oz", "name": "Cerveza" } },
+    { "text": "5 huevos", "expect": null },
+    { "text": "5 huevos fritos", "expect": null },
+    { "text": "Medalla Light", "expect": null },
+    { "text": "10 oz", "expect": null },
+    { "text": "0 oz Algo", "expect": null },
+    { "text": "", "expect": null }
+  ],
+  "baseOf": [
+    { "label": "explicit serving wins", "food": { "name": "Avena", "servingAmount": 40, "servingUnit": "g" }, "expect": { "amount": 40, "unit": "g", "known": true } },
+    { "label": "library-style fields", "food": { "name": "Avena", "baseAmount": 1, "baseUnit": "taza" }, "expect": { "amount": 1, "unit": "taza", "known": true } },
+    { "label": "legacy: read it from the name", "food": { "name": "10 oz Medalla Light" }, "expect": { "amount": 10, "unit": "oz", "known": true } },
+    { "label": "nothing known: generic 1 porción", "food": { "name": "Medalla Light" }, "expect": { "amount": 1, "unit": "porción", "known": false } },
+    { "label": "half-filled serving falls through", "food": { "name": "Pan", "servingAmount": 30 }, "expect": { "amount": 1, "unit": "porción", "known": false } },
+    { "label": "zero serving falls through", "food": { "name": "Pan", "servingAmount": 0, "servingUnit": "g" }, "expect": { "amount": 1, "unit": "porción", "known": false } }
+  ]
+}

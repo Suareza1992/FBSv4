@@ -955,10 +955,16 @@ const ProgressPhoto = mongoose.model('ProgressPhoto', ProgressPhotoSchema);
 const FoodLibrarySchema = new mongoose.Schema({
     name:      { type: String, required: true },
     nameNorm:  { type: String, required: true },   // accent-stripped lowercase, used for dedup + search
-    calories:  { type: Number, default: 0 },        // macros per unit / per serving as logged
+    calories:  { type: Number, default: 0 },        // the macros FOR servingAmount servingUnit (below)
     protein:   { type: Number, default: 0 },
     carbs:     { type: Number, default: 0 },
     fat:       { type: Number, default: 0 },
+    // What amount the numbers above describe ("99 cal" FOR 10 oz). Without it a library
+    // food was re-read as "per 100 g" no matter how it had been logged — the cause of
+    // "I picked 10 oz and it showed 3.5 oz with the same numbers". 0 / '' = not known
+    // (every entry saved before this field existed, and any saved by an older app).
+    servingAmount: { type: Number, default: 0 },
+    servingUnit:   { type: String, default: '' },
     timesUsed: { type: Number, default: 1 },       // popularity counter
     updatedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
@@ -3219,6 +3225,9 @@ app.post('/api/personal-foods/:id/submit-community', authenticateToken, async (r
                     protein: food.protein,
                     carbs: food.carbs,
                     fat: food.fat,
+                    // The personal food's numbers are FOR servingSize servingUnit; share that too,
+                    // or the community copy would be read back as "per 100 g".
+                    ...cleanServing(food.servingSize, food.servingUnit),
                     updatedAt: new Date()
                 },
                 $inc: { timesUsed: 1 }
@@ -4388,16 +4397,30 @@ async function resolveIngredientMacros(query) {
 }
 
 // POST /api/food-library — upsert a food into the shared platform library
+// The amount a food's numbers describe, from untrusted input. Both halves or neither:
+// "10" with no unit, or a unit with no amount, says nothing usable, so it is stored as unknown.
+const cleanServing = (amount, unit) => {
+    const a = Number(amount);
+    const u = typeof unit === 'string' ? unit.trim().slice(0, 30) : '';
+    return (Number.isFinite(a) && a > 0 && a <= 100000 && u)
+        ? { servingAmount: Math.round(a * 100) / 100, servingUnit: u }
+        : { servingAmount: 0, servingUnit: '' };
+};
+
 app.post('/api/food-library', authenticateToken, async (req, res) => {
     try {
         const { name, calories, protein, carbs, fat } = req.body;
         if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
         const nameNorm = normalizeStr(name.trim());
+        // The serving is ALWAYS written, even when absent: this call replaces the macros, and
+        // macros from an older app (no serving) must not keep a stale serving from the
+        // previous writer — that would pair new numbers with an old amount.
+        const serving = cleanServing(req.body.servingAmount, req.body.servingUnit);
         await FoodLibrary.findOneAndUpdate(
             { nameNorm },
             {
                 $set: { name: name.trim(), calories: +calories || 0, protein: +protein || 0,
-                        carbs: +carbs || 0, fat: +fat || 0, updatedAt: new Date() },
+                        carbs: +carbs || 0, fat: +fat || 0, ...serving, updatedAt: new Date() },
                 $inc: { timesUsed: 1 }
             },
             { upsert: true, new: true }
@@ -4425,12 +4448,45 @@ app.get('/api/food-library', authenticateToken, async (req, res) => {
             results = await FoodLibrary.find({ nameNorm: regex }).sort({ timesUsed: -1 }).limit(10);
         }
         res.json(results.map(f => ({
-            name: f.name, calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat
+            name: f.name, calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat,
+            servingAmount: f.servingAmount || 0, servingUnit: f.servingUnit || '',
         })));
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
+
+// A community-library food as a /api/food-search result.
+//
+// Search results are "per 100 g" (cal100…), but a library food holds the numbers for
+// whatever amount its last logger ate. Passing them through as cal100 was the bug: a
+// food logged as 10 oz showed up as "per 100 g". Now:
+//   · base is a MASS (g / oz / lb / kg): converted to a true per-100 g, so every client —
+//     including older apps that only read cal100 — scales it correctly;
+//   · base is anything else (5 huevos, 1 taza) or unknown: it cannot be expressed per 100 g,
+//     so the absolute numbers go out with the amount they are for (baseAmount/baseUnit) and
+//     a client that understands them scales from there. cal100 is still the raw number, which
+//     is exactly what older apps always did with it.
+const MASS_G = { g: 1, gr: 1, gramo: 1, gramos: 1, oz: 28.3495, onza: 28.3495, onzas: 28.3495,
+                 lb: 453.592, lbs: 453.592, libra: 453.592, libras: 453.592, kg: 1000, kilo: 1000, kilos: 1000 };
+const libraryFoodToSearchResult = (f) => {
+    const amt = f.servingAmount || 0;
+    const unit = (f.servingUnit || '').trim();
+    const gPer = MASS_G[normalizeStr(unit).replace(/\./g, '')];
+    const out = { name: f.name, brand: null, serving: 100, fromLibrary: true,
+                  calories: f.calories || 0, protein: f.protein || 0, carbs: f.carbs || 0, fat: f.fat || 0 };
+    if (amt > 0 && unit) { out.baseAmount = amt; out.baseUnit = unit; }
+    if (amt > 0 && gPer) {
+        const k = 100 / (amt * gPer);
+        out.cal100 = Math.round((f.calories || 0) * k);
+        out.p100 = Math.round((f.protein || 0) * k * 10) / 10;
+        out.c100 = Math.round((f.carbs || 0) * k * 10) / 10;
+        out.f100 = Math.round((f.fat || 0) * k * 10) / 10;
+    } else {
+        out.cal100 = f.calories || 0; out.p100 = f.protein || 0; out.c100 = f.carbs || 0; out.f100 = f.fat || 0;
+    }
+    return out;
+};
 
 app.get('/api/food-search', authenticateToken, async (req, res) => {
     const q = (req.query.q || '').trim();
@@ -4450,12 +4506,7 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
             .sort({ timesUsed: -1 }).limit(8);
         libraryMatches = libDocs
             .filter(f => !seenNames.has(normalizeStr(f.name)))
-            .map(f => ({
-                name: f.name, brand: null, serving: 100,
-                cal100: f.calories || 0, p100: f.protein || 0,
-                c100: f.carbs || 0, f100: f.fat || 0,
-                fromLibrary: true
-            }));
+            .map(f => libraryFoodToSearchResult(f));
         libraryMatches.forEach(f => seenNames.add(normalizeStr(f.name)));
     } catch (_) { /* non-blocking */ }
 
