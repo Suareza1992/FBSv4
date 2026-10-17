@@ -3971,3 +3971,47 @@ looked-up base), back to 10 oz → 82.
 3. **A brand without a generic equivalent, or one the AI cannot name, is "not found"** and the client types it.
 4. **`oz` is mass** (§ 43), so a beer typed "10 oz" is weighed as 283 g; 10 *fluid* oz is 296 g, a 4% difference.
 5. Nutritionix (used by `/api/food-search` when keys exist) is not consulted by the lookup.
+
+
+---
+
+## 45. Client screen: invite button, double-click guard (recovered from an old worktree)
+
+While cleaning up the leftover `.claude/worktrees/` folders, one of them
+(`youthful-hodgkin-9fb1a9`) held **uncommitted work from 23 April** that existed nowhere else: four small
+fixes to the add / edit client modal, written against the April code. `app.js` has changed a lot since, so the
+file was not copied back; the four changes were **re-applied by hand to the current code** and tested.
+
+1. **"Guardar cliente" cannot be double-clicked.** Saving is a network round trip and the button stayed live
+   throughout it, so a second click posted the same client twice. The old `handleSaveClient` body is now
+   `saveClientCore`, wrapped by a `handleSaveClient` that locks the button ("Guardando…") for the whole save and
+   unlocks it on **every** outcome — success, failed validation, server error, dropped connection. (The
+   success path resets the label itself; only a label still showing the spinner is put back.)
+   Verified: two calls in the same tick created exactly **one** client.
+2. **The footer invite control reflects the account.** Editing a client who has never logged in shows
+   **"Reenviar invitación"** (enabled); one who has shows **"Cuenta activa"** (greyed, disabled). Creating shows
+   "Enviar invitación", as before.
+3. **The invite button does something.** It had no click handler at all. Editing: it re-sends the invite
+   (`resendClientInvite`) and shows the activation link. Creating: it says the invite goes out automatically on
+   save (or how to turn it on).
+4. **After loading a program for a NEW client, the invite result is shown too** (the "Solo guardar" path already
+   did), so the trainer sees the activation link.
+
+### What the old version missed
+
+Toggling the invite switch re-enabled the button, which for an already-active account would have un-greyed
+"Cuenta activa". The toggle handler now leaves an active account's button alone (`data-account-active`).
+
+### Verified (real browser, isolated database, email sending switched off)
+
+New client: button reads "Enviar invitación", clicking shows the "se enviará automáticamente" notice; empty
+save → button unlocks; double save → one client; edit pending → "Reenviar invitación", clicking opens the
+invite modal ("Invitación generada … comparte el enlace"); edit active → "Cuenta activa", disabled, and the
+toggle cannot re-enable it; new client with a program → load workouts → the invite-result modal appears.
+
+### Known gaps
+
+- Web only: the app has its own client screen, and none of this was ported there (it never had the April
+  version either).
+- The invite switch still moves on an already-active client's edit screen; it has no effect there (invites are
+  only sent when creating), it just no longer changes the button.

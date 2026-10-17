@@ -5090,6 +5090,33 @@ document.addEventListener('DOMContentLoaded', () => {
         setToggle(1, client.emailPreferences?.incompleteRoutine);
         setToggle(2, client.hideFromDashboard);
 
+        // The footer invite control reflects the account: a client who has never logged in can be
+        // re-invited; one who has is already active, so there is nothing to send. (Before this the
+        // button stayed a generic "Enviar invitación" for every client and did nothing when clicked.)
+        const invBtnFooter = document.getElementById('send-invite-btn');
+        const invTogFooter = document.getElementById('send-invite-toggle');
+        if (invBtnFooter) {
+            const pending = !!client.isFirstLogin;
+            invBtnFooter.dataset.accountActive = pending ? 'false' : 'true';
+            invBtnFooter.innerHTML = pending
+                ? '<i class="fas fa-paper-plane mr-2"></i>Reenviar invitación'
+                : '<i class="fas fa-check mr-2"></i>Cuenta activa';
+            invBtnFooter.disabled = !pending;
+            invBtnFooter.classList.toggle('opacity-40', !pending);
+            invBtnFooter.classList.toggle('cursor-not-allowed', !pending);
+            invBtnFooter.classList.toggle('bg-gray-600', !pending);
+            invBtnFooter.classList.toggle('bg-green-500', pending);
+            invBtnFooter.classList.toggle('hover:bg-green-600', pending);
+            if (invTogFooter) {
+                invTogFooter.dataset.on = pending ? 'true' : 'false';
+                invTogFooter.classList.toggle('bg-[#FFDB89]/20', pending);
+                invTogFooter.classList.toggle('bg-white/10', !pending);
+                const thumb = invTogFooter.querySelector('div');
+                thumb?.classList.toggle('translate-x-5', pending);
+                thumb?.classList.toggle('translate-x-0', !pending);
+            }
+        }
+
         wireHeartRateCalc();
     };
 
@@ -5252,7 +5279,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    window.handleSaveClient = async () => {
+    const saveClientCore = async () => {
         const firstName = document.getElementById('new-client-name')?.value;
         const lastName = document.getElementById('new-client-lastname')?.value;
         const email = document.getElementById('new-client-email')?.value;
@@ -5393,6 +5420,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const { created, skipped } = await pushProgramToCalendar(prog, savedClientId, startDate);
                                 const skipNote = skipped > 0 ? ` (${skipped} día${skipped > 1 ? 's' : ''} ya tenían rutina)` : '';
                                 showToast(`✓ ${prog.name} cargado. ${created} día${created !== 1 ? 's' : ''} agregado${created !== 1 ? 's' : ''} al calendario.${skipNote}`, 'success', 5000);
+                                // A NEW client was just created: show the invite result too, so the trainer
+                                // sees the activation link (the "Solo guardar" path already did).
+                                if (payload.sendInvite !== undefined) showInviteResultModal(savedClient, email, payload.sendInvite);
                             } catch(e) {
                                 showToast('Error cargando el programa al calendario.', 'error');
                             }
@@ -5412,6 +5442,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast(err.message || "Error al guardar", 'error');
             }
         } catch (error) { console.error(error); showToast('Error de conexión con el servidor.', 'error'); }
+    };
+
+    // Saving a client is a network round trip, and the button stayed live throughout it — a second
+    // click (or a double-click) posted the same client twice. The button now locks itself for the
+    // whole save and unlocks on every outcome: success, a failed validation, a server error, a dropped
+    // connection. (The success path resets the label itself; only a label still showing the spinner
+    // is put back.)
+    window.handleSaveClient = async () => {
+        const saveBtn = document.getElementById('save-new-client-btn');
+        if (saveBtn?.disabled) return;   // a save is already running
+        const originalBtnHTML = saveBtn?.innerHTML ?? 'Guardar cliente';
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Guardando...'; }
+        try {
+            await saveClientCore();
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                if (saveBtn.innerHTML.includes('fa-spin')) saveBtn.innerHTML = originalBtnHTML;
+            }
+        }
     };
 
     // RENDER CLIENTS TABLE (with search + status filter support)
@@ -11506,6 +11556,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'close-exercise-modal-x' || target.id === 'cancel-exercise-btn') { document.getElementById('add-exercise-modal').classList.add('hidden'); return; }
         if (target.id === 'save-exercise-db-btn') { window.handleSaveNewExercise(); return; }
         if (target.id === 'save-new-client-btn') { window.handleSaveClient(); return; }
+        if (target.id === 'send-invite-btn') {
+            if (target.disabled) return;
+            if (currentClientViewId) {
+                // Editing: send the invite again to this client.
+                window.resendClientInvite(currentClientViewId);
+            } else {
+                // Creating: the invite goes out by itself when the client is saved — say so.
+                const toggleOn = document.getElementById('send-invite-toggle')?.dataset.on === 'true';
+                showToast(
+                    toggleOn
+                        ? 'La invitación se enviará automáticamente al guardar el cliente.'
+                        : 'Activa el toggle para que la invitación se envíe al guardar.',
+                    'info'
+                );
+            }
+            return;
+        }
         if (target.id === 'close-add-client-modal' || target.id === 'cancel-add-client') { document.getElementById('add-client-modal').classList.add('hidden'); return; }
         if (target.id === 'open-add-client-modal') {
             currentClientViewId = null;
@@ -11537,6 +11604,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (invBtn) {
                 invBtn.disabled = false;
+                invBtn.dataset.accountActive = 'false';
+                invBtn.innerHTML = '<i class="fas fa-envelope"></i> Enviar invitación';
                 invBtn.classList.remove('opacity-40', 'cursor-not-allowed', 'bg-gray-600');
                 invBtn.classList.add('bg-green-500', 'hover:bg-green-600');
             }
@@ -11886,7 +11955,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // If this is the invite toggle, update the invite button state
             if (target.id === 'send-invite-toggle') {
                 const inviteBtn = document.getElementById('send-invite-btn');
-                if (inviteBtn) {
+                // An already-active account has nothing to invite: its button stays "Cuenta activa".
+                if (inviteBtn && inviteBtn.dataset.accountActive !== 'true') {
                     const nowOn = target.dataset.on === 'true';
                     inviteBtn.disabled = !nowOn;
                     inviteBtn.classList.toggle('opacity-40', !nowOn);
