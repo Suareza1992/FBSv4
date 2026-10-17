@@ -10,6 +10,7 @@ import helmet from 'helmet';                        // H-5: Security headers
 import rateLimit from 'express-rate-limit';         // H-4: Brute-force protection
 import compression from 'compression';               // gzip every response — see below
 import path from 'path';
+import fs from 'fs';
 import http from 'http';                             // live sessions: raw server for the WS upgrade
 import { fileURLToPath } from 'url';
 // nodemailer removed — email is sent via Resend HTTP API (SMTP blocked by Railway)
@@ -4361,9 +4362,13 @@ async function resolveIngredientMacros(query) {
     try {
         const terms   = normalizeStr(q).split(/\s+/).filter(Boolean);
         const pattern = terms.map(t => `(?=.*${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`).join('');
-        const doc = await FoodLibrary.findOne({ nameNorm: new RegExp(pattern, 'i') }).sort({ timesUsed: -1 });
-        if (doc) {
-            return { name: doc.name, per100: { cal: doc.calories || 0, protein: doc.protein || 0, carbs: doc.carbs || 0, fat: doc.fat || 0 } };
+        // A library food's numbers are FOR the amount it was logged with, not per 100 g. Only one with
+        // a MASS amount ("10 oz") can be turned into a true per-100 g; anything else ("5 huevos", or no
+        // recorded amount) cannot, and is skipped here rather than inflating the caller's gram maths.
+        const docs = await FoodLibrary.find({ nameNorm: new RegExp(pattern, 'i') }).sort({ timesUsed: -1 }).limit(5);
+        for (const doc of docs) {
+            const b = libraryBasis(doc);
+            if (b.kind === 'per100') return { name: doc.name, per100: b.per100 };
         }
     } catch (_) { /* non-blocking */ }
 
@@ -4687,6 +4692,306 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
     const fallback = [...localMatches, ...libraryMatches];
     if (fallback.length) return res.json(fallback);
     res.status(502).json({ error: 'Food search unavailable. Use manual entry.' });
+});
+
+// ==========================================================================
+// --- PROTECTED: "Calcular macros" — type a food and an amount, get the macros ---
+// ==========================================================================
+// The client types "Medalla Light", "10", "oz". This finds the food and works out the macros for THAT
+// amount, which the form then shows for the client to check and edit before anything is saved.
+//
+// The rule that keeps it trustworthy: **macros only ever come from a food database.** Never from a
+// model. The AI (when used at all) is asked ONE thing — "how many grams is 2 huevos?" — and only when
+// the amount is a counted unit that no database knows the weight of. Everything else is arithmetic.
+//
+//   candidates: curated local DB  ->  community library  ->  USDA  ->  Open Food Facts
+//   matching:   EVERY word of the name must appear in the candidate (so "Medalla Light" never
+//               matches "Papa John's"); best name match first
+//   amount:     mass -> exact · volume -> millilitres ≈ grams (approximate, said so) ·
+//               counted unit -> the food's own known unit weight, else the AI's gram estimate
+const FoodScale = (() => {
+    const sandbox = {};
+    // The same file the browser runs, so the server and the screens cannot disagree on units.
+    new Function('self', fs.readFileSync(path.join(__dirname, 'public', 'food-scale.js'), 'utf8'))(sandbox);
+    return sandbox.FoodScale;
+})();
+
+const FOOD_LOOKUP_ENABLED = process.env.FOOD_LOOKUP_ENABLED !== 'false';
+// Cheap lookups (database arithmetic) are only rate-limited; the AI weight estimate has its own
+// daily cap per client and shares the global monthly cap above.
+const FOOD_LOOKUP_AI_DAILY_LIMIT = intEnv(process.env.FOOD_LOOKUP_AI_DAILY_LIMIT, 30);
+const lookupLimiter = rateLimit({
+    windowMs: 60 * 1000, max: intEnv(process.env.FOOD_LOOKUP_RATE_PER_MIN, 20), standardHeaders: true, legacyHeaders: false,
+    keyGenerator: (req) => String(req.user?.id || 'anon'),   // runs after authenticateToken
+    message: { message: 'Demasiadas búsquedas seguidas. Espera un momento.' },
+});
+
+const LOOKUP_STOPWORDS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'con', 'y', 'en', 'al', 'a', 'un', 'una', 'of', 'the', 'and', 'with']);
+const lookupStem = (t) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t);
+const lookupTokens = (s) => normalizeStr(String(s || '')).split(/[^a-z0-9ñ]+/).filter(t => t && !LOOKUP_STOPWORDS.has(t)).map(lookupStem);
+
+/** A library food as { kind:'per100', per100 } (mass amount) or { kind:'amount', base, macros }. */
+const libraryBasis = (doc) => {
+    const macros = { calories: doc.calories || 0, protein: doc.protein || 0, carbs: doc.carbs || 0, fat: doc.fat || 0 };
+    const amt = doc.servingAmount || 0, unit = (doc.servingUnit || '').trim();
+    if (amt > 0 && unit) {
+        const u = FoodScale.parseUnit(unit);
+        if (u && u.family === 'mass') {
+            const k = 100 / (amt * u.f);
+            return { kind: 'per100', per100: { cal: macros.calories * k, protein: macros.protein * k, carbs: macros.carbs * k, fat: macros.fat * k } };
+        }
+        return { kind: 'amount', base: { amount: amt, unit }, macros };
+    }
+    return { kind: 'amount', base: { amount: 1, unit: 'porción' }, macros, unknownBase: true };
+};
+
+const fetchOffCandidates = async (q) => {
+    const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=12&fields=product_name,nutriments,brands,serving_quantity`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const data = await r.json();
+    return (data.hits || []).filter(p => p.product_name?.trim()).map(p => {
+        const nu = p.nutriments || {};
+        const cal = Math.round(nu['energy-kcal_100g'] || nu['energy-kcal'] || (nu['energy-kj_100g'] ? nu['energy-kj_100g'] / 4.184 : 0));
+        return {
+            source: 'openfoodfacts', name: p.product_name.trim(),
+            brand: (Array.isArray(p.brands) ? p.brands[0] : p.brands?.split(',')[0])?.trim() || null,
+            kind: 'per100', per100: { cal, protein: nu.proteins_100g || 0, carbs: nu.carbohydrates_100g || 0, fat: nu.fat_100g || 0 },
+            unitGrams: parseFloat(p.serving_quantity) > 0 ? parseFloat(p.serving_quantity) : null,
+        };
+    }).filter(c => c.per100.cal > 0);
+};
+
+const fetchUsdaCandidates = async (q) => {
+    const key = process.env.USDA_API_KEY || 'DEMO_KEY';
+    const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}&query=${encodeURIComponent(q)}&pageSize=10&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS),Branded&nutrients=1008,1003,1005,1004`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const data = await r.json();
+    return (data.foods || []).filter(f => f.description?.trim()).map(f => {
+        const get = (id) => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
+        return {
+            source: 'usda', name: f.description.trim(), brand: f.brandOwner || f.brandName || null,
+            kind: 'per100', per100: { cal: get(1008), protein: get(1003), carbs: get(1005), fat: get(1004) }, unitGrams: null,
+        };
+    }).filter(c => c.per100.cal > 0);
+};
+
+/** Every candidate for a name, best first. Only foods whose name contains every word of the query. */
+async function gatherFoodCandidates(name) {
+    const need = lookupTokens(name);
+    if (!need.length) return [];
+    const matches = (c) => {
+        const hay = lookupTokens(`${c.name} ${c.brand || ''}`);
+        return need.every(t => hay.some(h => h.includes(t)));
+    };
+    const exact = (c) => lookupTokens(c.name).join(' ') === need.join(' ');
+    const rank = (arr) => arr.filter(matches)
+        .map(c => ({ c, score: exact(c) ? 3 : lookupTokens(c.name).join(' ').startsWith(need.join(' ')) ? 2 : 1 }))
+        .sort((a, b) => b.score - a.score).map(x => x.c);
+
+    // 1 ── curated local DB
+    const local = rank(searchLocalFoods(name).map(f => ({
+        source: 'local', name: f.name, brand: f.brand || null, kind: 'per100',
+        per100: { cal: f.cal100, protein: f.p100, carbs: f.c100, fat: f.f100 },
+        // 100 means "per 100 g", not "one of these weighs 100 g": only a real unit weight is trusted
+        unitGrams: f.serving && f.serving !== 100 ? f.serving : null,
+    })));
+
+    // 2 ── community library
+    let library = [];
+    try {
+        const pattern = normalizeStr(name).split(/\s+/).filter(Boolean)
+            .map(t => `(?=.*${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`).join('');
+        const docs = await FoodLibrary.find({ nameNorm: new RegExp(pattern, 'i') }).sort({ timesUsed: -1 }).limit(8);
+        library = rank(docs.map(d => ({ source: 'library', name: d.name, brand: null, ...libraryBasis(d) })));
+    } catch (_) { /* non-blocking */ }
+
+    // 3 + 4 ── USDA and Open Food Facts, in parallel; either may fail without failing the lookup
+    const [usda, off] = await Promise.allSettled([fetchUsdaCandidates(name), fetchOffCandidates(name)]);
+    return [
+        ...local, ...library,
+        ...rank(usda.status === 'fulfilled' ? usda.value : []),
+        ...rank(off.status === 'fulfilled' ? off.value : []),
+    ];
+}
+
+const FOOD_WEIGHT_SCHEMA = {
+    type: 'object', additionalProperties: false,
+    properties: { grams: { type: 'number', description: 'Peso total estimado en gramos de la cantidad pedida' } },
+    required: ['grams'],
+};
+
+/** AI: the weight, in grams, of a counted amount ("2 huevos"). It never sees or produces macros. */
+async function estimateGrams(name, amount, unit) {
+    const resp = await anthropic.messages.create({
+        model: 'claude-haiku-4-5', max_tokens: 200,
+        system: 'Estimas el PESO en gramos de una cantidad de comida. Usa la porción comestible (sin hueso ni cáscara), peso cocido si el alimento normalmente se come cocido, y un tamaño TÍPICO, no el más grande. Referencias: 1 huevo ≈ 50 g, 1 rebanada de pan ≈ 30 g, 1 plátano ≈ 120 g, 1 papa mediana ≈ 150 g, 1 taza de líquido ≈ 240 g, 1 taza de arroz o avena cocidos ≈ 150 g, 1 pechuga de pollo ≈ 150 g, 1 cucharada ≈ 15 g. Devuelve solo el peso total. No calcules calorías ni macros.',
+        messages: [{ role: 'user', content: `Alimento: "${name}". Cantidad: ${amount} ${unit}. ¿Cuántos gramos pesa en total?` }],
+        output_config: { format: { type: 'json_schema', schema: FOOD_WEIGHT_SCHEMA } },
+    }, { timeout: 15000, maxRetries: 1 });
+    const block = resp.content.find(b => b.type === 'text');
+    const g = Number(JSON.parse(block?.text || '{}').grams);
+    return Number.isFinite(g) && g > 0 && g < 100000 ? g : null;
+}
+
+const FOOD_GENERIC_SCHEMA = {
+    type: 'object', additionalProperties: false,
+    properties: {
+        confident: { type: 'boolean', description: 'true solo si es un alimento o bebida reconocible y existe un equivalente genérico razonable' },
+        generic_es: { type: 'string', description: 'Nombre del alimento genérico más cercano, sin marca, en español' },
+        generic_en: { type: 'string', description: 'El mismo alimento genérico en inglés (como aparece en bases de datos como USDA)' },
+    },
+    required: ['confident', 'generic_es', 'generic_en'],
+};
+
+/** AI: the closest GENERIC food to a brand or local dish no database has ("Medalla Light" -> light beer).
+ *  It only names a category; the macros still come from the database. */
+async function suggestGenericFood(name) {
+    const resp = await anthropic.messages.create({
+        model: 'claude-haiku-4-5', max_tokens: 200,
+        system: 'El usuario escribió un alimento o bebida (a menudo una marca o plato local) que no está en la base de datos de nutrición. Devuelve el alimento GENÉRICO más cercano, sin marca ni preparación especial, en español y en inglés. Ejemplos: "Medalla Light" -> cerveza light / light beer; "Malta India" -> malta / malt beverage; "Quesito" -> pastelito de queso / cheese pastry. Si no es una comida o bebida reconocible, o no hay un equivalente genérico razonable, devuelve confident=false. No calcules calorías ni macros.',
+        messages: [{ role: 'user', content: `Alimento: "${name}"` }],
+        output_config: { format: { type: 'json_schema', schema: FOOD_GENERIC_SCHEMA } },
+    }, { timeout: 15000, maxRetries: 1 });
+    const block = resp.content.find(b => b.type === 'text');
+    const j = JSON.parse(block?.text || '{}');
+    const es = typeof j.generic_es === 'string' ? j.generic_es.trim().slice(0, 80) : '';
+    const en = typeof j.generic_en === 'string' ? j.generic_en.trim().slice(0, 80) : '';
+    return j.confident === true && (es || en) ? { es, en } : null;
+}
+
+/**
+ * Run one capped AI call for a client. The two AI uses here (weigh an amount; name a generic food) share
+ * the client's daily cap and the global monthly cap. Returns { value } or { skipped: 'off'|'cap'|'error' }.
+ */
+async function withLookupAi(userId, run) {
+    if (!FOOD_NLP_ENABLED || !anthropic) return { skipped: 'off' };
+    const now = new Date(), month = now.toISOString().slice(0, 7), day = now.toISOString().slice(0, 10);
+    const [globalUse, clientUse] = await Promise.all([
+        AiUsage.findOne({ scope: 'global', clientId: null, period: month }),
+        AiUsage.findOne({ scope: 'client_lookup', clientId: userId, period: day }),
+    ]);
+    if ((globalUse?.count || 0) >= MEAL_MONTHLY_LIMIT || (clientUse?.count || 0) >= FOOD_LOOKUP_AI_DAILY_LIMIT) return { skipped: 'cap' };
+    try {
+        const value = await run();
+        await Promise.all([
+            AiUsage.updateOne({ scope: 'global', clientId: null, period: month }, { $inc: { count: 1 } }, { upsert: true }),
+            AiUsage.updateOne({ scope: 'client_lookup', clientId: userId, period: day }, { $inc: { count: 1 } }, { upsert: true }),
+        ]);
+        return { value };
+    } catch (e) {
+        console.error('Food lookup AI error:', e.message);
+        return { skipped: 'error' };
+    }
+}
+const AI_SKIP_ADVICE = {
+    off: 'Pon la cantidad en gramos u onzas.',
+    cap: 'Llegaste al límite de estimaciones de hoy. Pon la cantidad en gramos u onzas.',
+    error: 'No pude estimar el peso ahora. Pon la cantidad en gramos u onzas.',
+};
+
+const SOURCE_LABELS = { local: 'Base de datos de FitBySuárez', library: 'Alimentos de la comunidad', usda: 'USDA FoodData Central', openfoodfacts: 'Open Food Facts' };
+
+/**
+ * Macros of candidate `c` for the requested amount, or null when it cannot be worked out.
+ * `grams` is the AI's weight estimate for a counted amount (null if none was made).
+ */
+function macrosForCandidate(c, req, grams) {
+    const ru = FoodScale.parseUnit(req.unit);
+    if (!ru) return null;
+    if (c.kind === 'amount') {
+        const f = FoodScale.factor(c.base, req);
+        if (!f.ok) return null;
+        return { macros: FoodScale.scaleMacros(c.macros, f.factor), approx: !!c.unknownBase, note: c.unknownBase ? 'La comunidad no anotó la cantidad de este alimento: lo tomé como 1 porción.' : '' };
+    }
+    let g = null, approx = false, note = '';
+    if (ru.family === 'mass') g = req.amount * ru.f;
+    // Only liquid measures can be taken at water's density. A cup or spoonful of a SOLID (rice, oats,
+    // flour) weighs anything from a third to a full cup of water, so those are weighed like a counted
+    // amount instead (AI estimate, or refused) — 240 g of rice would be ~50% too many calories.
+    else if (ru.family === 'volume' && ['ml', 'l', 'floz'].includes(ru.key)) { g = req.amount * ru.f; approx = true; note = 'Estimado: asumí que 1 ml pesa 1 g (como el agua).'; }
+    else if (c.unitGrams && (ru.key === 'serving' || lookupTokens(c.name).includes(ru.key))) {
+        g = req.amount * c.unitGrams; approx = true; note = `Estimado con el peso por unidad de la base de datos (${Math.round(c.unitGrams)} g).`;
+    } else if (grams) { g = grams; approx = true; note = `Estimado: ${Math.round(grams)} g en total (peso aproximado calculado por IA; los macros salen de la base de datos).`; }
+    if (!(g > 0)) return null;
+    const k = g / 100;
+    return {
+        macros: FoodScale.scaleMacros({ calories: c.per100.cal, protein: c.per100.protein, carbs: c.per100.carbs, fat: c.per100.fat }, k),
+        approx, note, grams: Math.round(g),
+    };
+}
+
+app.post('/api/food-lookup', authenticateToken, lookupLimiter, async (req, res) => {
+    if (!FOOD_LOOKUP_ENABLED) return res.status(503).json({ message: 'Calcular macros no está disponible por ahora.' });
+    try {
+        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+        const unit = typeof req.body?.unit === 'string' ? req.body.unit.trim() : '';
+        const amount = Number(req.body?.amount);
+        if (name.length < 2 || name.length > 120) return res.status(400).json({ message: 'Escribe el nombre del alimento.' });
+        if (!(amount > 0) || amount > 100000) return res.status(400).json({ message: 'Escribe una cantidad mayor que 0.' });
+        if (!unit || unit.length > 30) return res.status(400).json({ message: 'Escribe la unidad (oz, g, huevos…).' });
+        const request = { amount, unit };
+        const ru = FoodScale.parseUnit(unit);
+
+        let candidates = await gatherFoodCandidates(name);
+
+        // Nothing under that name. Brands and local dishes (a "Medalla Light") are often in no database,
+        // so ask the AI for the CLOSEST GENERIC food ("cerveza light") and look THAT up — clearly labelled
+        // as an approximation. The AI only names a category; the numbers still come from the database.
+        let genericUsed = null;
+        if (!candidates.length) {
+            const g = await withLookupAi(req.user.id, () => suggestGenericFood(name));
+            if (g.value) {
+                const found = [...await gatherFoodCandidates(g.value.es || g.value.en), ...(g.value.en && g.value.en !== g.value.es ? await gatherFoodCandidates(g.value.en) : [])];
+                const seen = new Set();
+                // Spanish and English results arrive in separate batches; put the most trustworthy SOURCE
+                // first again (curated, community, USDA, then Open Food Facts — whose crowd-sourced
+                // entries are the least reliable), keeping the name-match order inside each source.
+                const priority = { local: 0, library: 1, usda: 2, openfoodfacts: 3 };
+                candidates = found.filter(c => { const k = `${c.source}|${c.name}`; if (seen.has(k)) return false; seen.add(k); return true; })
+                    .sort((a, b) => (priority[a.source] ?? 9) - (priority[b.source] ?? 9));
+                if (candidates.length) genericUsed = g.value.es || g.value.en;
+            }
+        }
+        if (!candidates.length) {
+            return res.json({ found: false, reason: 'not_found', message: `No encontré «${name}». Escribe los macros a mano, o prueba otro nombre.` });
+        }
+
+        // A counted or kitchen-measure amount ("2 huevos", "1 taza") that nothing in the databases can
+        // weigh: ask the AI for the weight ONLY (once, shared by every candidate), within its caps.
+        let grams = null, aiNote = '';
+        const needsWeight = ru.family !== 'mass' && !(ru.family === 'volume' && ['ml', 'l', 'floz'].includes(ru.key))
+            && !candidates.some(c => c.kind === 'per100' && c.unitGrams && (ru.key === 'serving' || lookupTokens(c.name).includes(ru.key)))
+            && !candidates.some(c => c.kind === 'amount' && FoodScale.factor(c.base, request).ok);
+        if (needsWeight) {
+            const w = await withLookupAi(req.user.id, () => estimateGrams(name, amount, unit));
+            if (w.value) grams = w.value;
+            else aiNote = `No sé cuánto pesa esa cantidad. ${AI_SKIP_ADVICE[w.skipped] || AI_SKIP_ADVICE.off}`;
+        }
+
+        const results = [];
+        for (const c of candidates) {
+            const r = macrosForCandidate(c, request, grams);
+            if (!r) continue;
+            const genericNote = genericUsed ? `No encontré «${name}»; usé «${genericUsed}» (genérico) como aproximación.` : '';
+            results.push({
+                name: c.name, brand: c.brand, source: c.source, sourceLabel: SOURCE_LABELS[c.source] || c.source,
+                macros: r.macros, approx: r.approx || !!genericUsed, note: [genericNote, r.note].filter(Boolean).join(' '), grams: r.grams ?? null,
+                generic: !!genericUsed,
+            });
+            if (results.length >= 5) break;
+        }
+        if (!results.length) {
+            return res.json({
+                found: false, reason: 'cannot_convert',
+                message: `Encontré «${candidates[0].name}», pero no puedo calcular «${amount} ${unit}». ${aiNote || 'Prueba con gramos u onzas.'}`,
+            });
+        }
+        const [best, ...alternatives] = results;
+        res.json({ found: true, amount, unit, ...best, alternatives });
+    } catch (e) {
+        console.error('Food lookup error:', e.message);
+        res.status(500).json({ message: 'No se pudo calcular. Intenta de nuevo.' });
+    }
 });
 
 // ==========================================================================

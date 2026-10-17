@@ -3864,7 +3864,7 @@ uses the old picker (200 g → 330 cal); edit-food rescales.
 
 1. **The app screens have never been run on a phone.** The logic is unit-tested (66 checks, replaying the
    browser scenarios) and the app bundles; the form itself has not been seen on a device.
-2. **No automatic lookup yet.** The client still types the macros once (or finds the food in search /
+2. **(Built in § 44.) No automatic lookup.** The client still typed the macros once (or finds the food in search /
    history / the label scanner / "Describir"). Typing only "Medalla Light 10 oz" and having the app find
    the numbers is the next step. Not Google itself (no usable search API for this) but: the existing
    database/internet search, the AI "Describir" tab, and optionally the Claude API's server-side web-search
@@ -3875,3 +3875,99 @@ uses the old picker (200 g → 330 cal); edit-food rescales.
 4. **Volume vs weight** is not bridged: oz ↔ ml needs the food's density, which we do not have.
 5. **Trainers' views are unaffected** (they read day totals, not food names), but a manual entry's name
    no longer contains its amount; the amount is the separate field shown on the client's own screens.
+
+
+---
+
+## 44. "Calcular macros": type a food and an amount, get the numbers
+
+**The ask.** "Let the user write the amounts and let the app look up or calculate the numbers." Built on
+top of § 43: the client types the food, the amount and the unit, presses **Calcular macros**, and the macro
+boxes fill in for that amount. They are a **pre-fill for the client to check and edit — never saved on their
+own.** Web: Manual tab. App: the manual form. Both call `POST /api/food-lookup`.
+
+### The rule that keeps it trustworthy
+
+**Macros only ever come from a food database. Never from a model.** The AI is used for at most two narrow
+jobs, and only when the databases cannot answer: (1) *"how many grams is 2 huevos / 1 taza?"* and (2) *"what
+is the closest generic food to this brand?"*. It never sees or produces calories or macros.
+
+### How a lookup runs (`server.js`, "Calcular macros" section)
+
+1. **Candidates**, best source first: curated local DB → community library → USDA FoodData Central → Open
+   Food Facts. A candidate is accepted only if **every word of the typed name appears in it** ("Medalla
+   Light" never matches "Papa John's"); the best name match comes first inside each source.
+2. **The amount** is turned into macros by arithmetic:
+   - **mass** (g, oz, lb, kg): exact;
+   - **liquid measures** (ml, l, fl oz): 1 ml ≈ 1 g (water), flagged *estimado*;
+   - **kitchen measures and counted units** (cup, tbsp, "2 huevos", "1 porción"): the food's own known unit
+     weight if the database has a real one; otherwise **one AI call that returns only a weight in grams**
+     (flagged *estimado*, and the macros still come from the database); otherwise refused with "pon la
+     cantidad en gramos u onzas".
+   - **library foods** scale from the amount they were logged with (§ 43); a counted-base food can't be
+     converted to grams and says so.
+3. **Nothing found under that name** → one AI call asks for the **closest generic food** ("Medalla Light" →
+   "cerveza light" / "light beer"), that is looked up instead, and the result is labelled an approximation:
+   *"No encontré «Medalla Light»; usé «cerveza light» (genérico) como aproximación."* Spanish and English
+   names are both tried, because USDA is English; results are re-ordered by source trust afterwards.
+4. The response has the best match, its source and any note, and up to 4 **alternatives** the client can tap.
+
+### Why a cup is not 240 g (a bug caught while testing)
+
+The first version treated every volume as water. 1 cup of cooked rice came back as 308 cal — about 50% too
+many, because a cup of rice weighs ~150 g, not 240 g. Only ml / l / fl oz use water density now; cups and
+spoons go through the weight path above (the AI said 150 g → 195 cal).
+
+### Honest limits (verified, not assumed)
+
+- **"Medalla Light" is in no database.** Open Food Facts has "Cerveza · Medalla" with no calories; USDA has no
+  Medalla at all. So the lookup cannot find the client's exact beer — it finds generic light beer:
+  **82 cal for 10 oz** (USDA "Beer, light"). That is a *reasonable approximation, labelled as one*, not the
+  brand's real number. The precise path for a local brand is the **label scanner** (photo of the Nutrition
+  Facts), or typing the number once — after which the community library remembers it with its amount (§ 43).
+- Open Food Facts is crowd-sourced and sometimes wrong (one "Light Beer" entry said 269 cal for 10 oz); that
+  is why USDA and the community library are ranked above it.
+- A third step — the Claude API's **web-search tool**, restricted to allowed domains and capped per request —
+  could find brand data (e.g. a manufacturer's page). **Not built**: it bills per search on top of tokens and
+  would need its own caps; add it only if the generic fallback proves too coarse.
+
+### Cost and abuse controls
+
+- Lookups are rate-limited **per signed-in user** (default 20/min, `FOOD_LOOKUP_RATE_PER_MIN`).
+- The AI is only reached when needed, **once per lookup per job**, behind its own **daily cap per client**
+  (`FOOD_LOOKUP_AI_DAILY_LIMIT`, default 30) **and the shared global monthly cap** (`MEAL_MONTHLY_LIMIT`).
+  It uses Haiku with a tiny prompt (about 200 output tokens), a fraction of a cent per call.
+- `FOOD_LOOKUP_ENABLED=false` switches the endpoint off (the button then shows "no está disponible por ahora").
+- Input is validated: name 2–120 chars, amount > 0 and ≤ 100,000, unit ≤ 30 chars, strings only. Nothing the
+  user types is placed in a URL except as an encoded search term.
+
+### A bug this fixed elsewhere
+
+`resolveIngredientMacros()` — used by the "Describir" parser and the meal recommender — read a community
+library food's numbers as **per 100 g**, the same § 43 mislabel. A food logged as "10 oz" inflated any gram
+calculation built on it. It now uses a library food only when its amount is a mass (converted to a true per
+100 g) and skips the rest, falling through to USDA.
+
+### Tests
+
+| | |
+|---|---|
+| `scripts/test-food-lookup.mjs` | **35** checks against an isolated server **with the AI off**: mass maths (g, oz, case/spelling), liquid vs kitchen measures, a unit with a real weight, an unweighable amount refused rather than guessed, library foods (mass / counted / unknown base), strict name matching, gibberish, response shape, input validation (9 cases + an object-as-name injection), 401 without login, rate limiting |
+| the AI paths | **verified live, not in the automated tests** (they would spend money and not be deterministic): "Medalla Light 10 oz" → generic light beer, 82 cal, labelled; "1 taza arroz blanco cocido" → AI weight 150 g → 195 cal; gibberish → not found. About six Haiku calls in total. |
+
+The test **refuses to run if the server's AI is on** (it reads `foodNlpEnabled` from `/api/me`). That guard
+exists because a mistyped environment variable (zsh does not word-split unquoted variables) left the AI on in
+two runs while this was being built and made a few real calls.
+
+Browser-verified on the web: empty form → "Escribe primero el nombre"; Medalla Light 10 oz → 82 cal, the
+generic-approximation note and 4 alternatives; changing the amount to 5 oz → 41 cal (it scales from the
+looked-up base), back to 10 oz → 82.
+
+### Known gaps
+
+1. **The app's button has never been run on a phone.** Typechecked, linted and bundled; the endpoint it calls
+   is tested with the same JSON shape.
+2. **No test for the AI paths in CI** (above) — if a model or schema changes, re-check by hand.
+3. **A brand without a generic equivalent, or one the AI cannot name, is "not found"** and the client types it.
+4. **`oz` is mass** (§ 43), so a beer typed "10 oz" is weighed as 283 g; 10 *fluid* oz is 296 g, a 4% difference.
+5. Nutritionix (used by `/api/food-search` when keys exist) is not consulted by the lookup.

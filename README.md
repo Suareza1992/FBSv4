@@ -183,6 +183,7 @@ These features are **fully implemented but kept dark behind feature flags** unti
 |---|---|---|
 | 🤖 **AI meal recommender ("¿Qué como?")** — suggests meals to close the day's remaining macros, respecting allergies/preferences; every macro is DB-verified | `MEAL_SUGGESTION_ENABLED` | Built, dormant |
 | `CONTACT_WHATSAPP` / `CONTACT_EMAIL` | No | `17875010725` / `suarezangel.se@gmail.com` | Shown to a **deactivated client** on the "contact your trainer" page (WhatsApp button and email link). Digits only for the number. See TECHNICAL.md § 42. |
+| `FOOD_LOOKUP_ENABLED` / `FOOD_LOOKUP_AI_DAILY_LIMIT` / `FOOD_LOOKUP_RATE_PER_MIN` | No | `true` / `30` / `20` | "Calcular macros" (TECHNICAL.md § 44): the on/off switch, the per-client daily cap on its two small AI jobs (weighing an amount, naming a generic food — it shares the global `MEAL_MONTHLY_LIMIT`), and lookups allowed per user per minute. Macros always come from a food database, never from the AI. |
 | 🤖 **AI food logging by text ("Describir")** — client describes a meal in plain Spanish; the AI parses it into foods with macros to review and adjust before saving | `FOOD_NLP_ENABLED` | Built, dormant |
 | 🤖 **AI equipment check ("Revisar equipo")** — trainer-only button in the workout editor that uses AI to flag any exercise needing equipment the client doesn't own, or any prescribed weight that exceeds what they have (parsed from the free-text instructions); advisory only, never blocks saving | `EQUIPMENT_CHECK_ENABLED` | Built, dormant |
 
@@ -286,6 +287,7 @@ Change the password immediately after first login.
 | `node scripts/test-inactive-gate.mjs` | Integration test for the deactivated-client gate (39 checks). Needs an **isolated** server + database — the header explains how; it refuses to run against anything not named like a test DB. |
 | `node scripts/test-food-scale.mjs` | Food amount scaling (49 checks): `public/food-scale.js` against `scripts/food-scale-cases.json`. No server needed. The phone's copy is tested against the same file. |
 | `node scripts/test-food-serving.mjs` | Library servings on the server (23 checks). Needs an **isolated** server + database — the header explains how; it refuses to run against anything not named like a test DB. |
+| `node scripts/test-food-lookup.mjs` | "Calcular macros" endpoint (35 checks). Isolated server + database, **with `FOOD_NLP_ENABLED=false`** (the test refuses to run if the AI is on) — the header has the exact command. |
 
 ---
 

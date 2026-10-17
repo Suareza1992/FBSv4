@@ -13657,6 +13657,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                         <p id="food-amount-hint" class="hidden text-[11px] text-yellow-300/80 leading-snug -mt-2"></p>
+                        <!-- Calcular macros: type the food + amount, get the numbers (checked by you before saving) -->
+                        <div class="space-y-2">
+                            <button type="button" id="food-lookup-btn" class="w-full py-2.5 rounded-xl border border-[#FFDB89]/40 text-[#FFDB89] text-sm font-bold hover:bg-[#FFDB89]/10 transition flex items-center justify-center gap-2 disabled:opacity-50">
+                                <i class="fas fa-calculator"></i><span id="food-lookup-label">Calcular macros</span>
+                            </button>
+                            <div id="food-lookup-msg" class="hidden text-xs leading-snug rounded-lg px-3 py-2" role="status"></div>
+                            <div id="food-lookup-alts" class="hidden flex flex-wrap gap-1.5"></div>
+                        </div>
                         <!-- Macros totales -->
                         <div>
                             <p class="text-[10px] text-[#FFDB89]/40 uppercase tracking-wider mb-1">Macros para esa cantidad:</p>
@@ -13722,6 +13730,68 @@ document.addEventListener('DOMContentLoaded', () => {
                 unitInput?.addEventListener('input', syncPreview);          // text follows; scaling waits for the commit
                 unitInput?.addEventListener('change', () => amt.unitCommitted());
                 qtyInput?.addEventListener('focus', () => qtyInput.select());
+
+                // ── Calcular macros ─────────────────────────────────────────────────────
+                // Looks the food up (/api/food-lookup) and fills the macro boxes for the amount typed
+                // above. The numbers always come from a food database; they are a pre-fill for the
+                // person to check and edit, never saved on their own. Filling them makes them the base
+                // for this amount, so changing the amount afterwards scales them (makeAmountSync).
+                const lookupBtn = document.getElementById('food-lookup-btn');
+                const lookupLabel = document.getElementById('food-lookup-label');
+                const lookupMsg = document.getElementById('food-lookup-msg');
+                const lookupAlts = document.getElementById('food-lookup-alts');
+                const showLookupMsg = (text, tone) => {
+                    lookupMsg.textContent = text;
+                    lookupMsg.className = 'text-xs leading-snug rounded-lg px-3 py-2 ' + (tone === 'ok'
+                        ? 'bg-green-500/10 text-green-300 border border-green-400/20'
+                        : tone === 'err' ? 'bg-red-500/10 text-red-300 border border-red-400/20'
+                        : 'bg-yellow-500/10 text-yellow-200 border border-yellow-400/20');
+                };
+                const applyLookup = (r) => {
+                    calInput.value = r.macros.calories; proInput.value = r.macros.protein;
+                    carbInput.value = r.macros.carbs;   fatInput.value = r.macros.fat;
+                    amt.macrosEdited();   // "these numbers are for this amount"
+                    const bits = [`${r.sourceLabel}: ${r.name}${r.brand ? ' · ' + r.brand : ''}`];
+                    if (r.note) bits.push(r.note);
+                    showLookupMsg('✓ ' + bits.join(' — ') + ' Revisa los números antes de añadir.', r.approx ? 'info' : 'ok');
+                };
+                const runLookup = async () => {
+                    const name = nameInput.value.trim();
+                    const amount = parseFloat(String(qtyInput.value).replace(',', '.'));
+                    const unit = unitInput.value.trim();
+                    lookupAlts.classList.add('hidden'); lookupAlts.innerHTML = '';
+                    lookupMsg.classList.remove('hidden');
+                    if (name.length < 2) { showLookupMsg('Escribe primero el nombre del alimento.', 'info'); return; }
+                    if (!(amount > 0)) { showLookupMsg('Escribe una cantidad mayor que 0.', 'info'); return; }
+                    if (!unit) { showLookupMsg('Escribe la unidad (oz, g, huevos, taza…).', 'info'); return; }
+                    lookupBtn.disabled = true; lookupLabel.textContent = 'Buscando…';
+                    showLookupMsg('Buscando «' + name + '»…', 'info');
+                    try {
+                        const res = await apiFetch('/api/food-lookup', { method: 'POST', body: JSON.stringify({ name, amount, unit }) });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) { showLookupMsg(data.message || 'No se pudo calcular. Intenta de nuevo.', 'err'); return; }
+                        if (!data.found) { showLookupMsg(data.message || 'No encontré ese alimento.', 'info'); return; }
+                        applyLookup(data);
+                        const alts = (data.alternatives || []).slice(0, 4);
+                        if (alts.length) {
+                            lookupAlts.innerHTML = '<span class="basis-full text-[10px] text-[#FFDB89]/40 uppercase tracking-wider">Otros resultados</span>';
+                            alts.forEach((a) => {
+                                const b = document.createElement('button');
+                                b.type = 'button';
+                                b.className = 'text-[11px] px-2.5 py-1.5 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/80 hover:bg-[#FFDB89]/10 transition text-left max-w-full truncate';
+                                b.textContent = `${a.name} · ${a.macros.calories} cal`;
+                                b.addEventListener('click', () => applyLookup(a));
+                                lookupAlts.appendChild(b);
+                            });
+                            lookupAlts.classList.remove('hidden');
+                        }
+                    } catch (e) {
+                        showLookupMsg('No se pudo conectar. Revisa tu internet e intenta de nuevo.', 'err');
+                    } finally {
+                        lookupBtn.disabled = false; lookupLabel.textContent = 'Calcular macros';
+                    }
+                };
+                lookupBtn?.addEventListener('click', runLookup);
 
                 // Render the unified suggestion list (local history + shared library)
                 const renderSuggestions = (localMatches, libMatches) => {
