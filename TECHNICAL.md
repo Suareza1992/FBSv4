@@ -4138,11 +4138,16 @@ the slot stays, stored totals drop to 1100. No script errors.
 **The phone app never had this bug.** Its add dialog always lists every meal as a chip, so a client can
 pick "Desayuno" whether or not the day already has one; there is no per-row button that can disappear.
 
-### Known gap
+### The two apps now offer the same meals
 
-The two apps disagree on the snack names: the web has **Merienda AM** and **Merienda PM**, the app has a
-single **Merienda**. A client using both ends up with separate groups for what they think is one meal.
-Harmless to the totals, confusing to read — worth settling on one list.
+They disagreed: the web had **Merienda AM** / **Merienda PM**, the app a single **Merienda**, so a client
+using both ended up with separate groups for one meal. The app was brought up to the web's list rather than
+the other way round — two snack slots is the more useful model for a coach reading the day, and it was the
+web that already had it. `MEALS` (mobile `nutricion.tsx`) now mirrors `mealNames` exactly.
+
+Meals already logged as plain "Merienda" are untouched and still display on both sides: the web keeps a name
+it does not recognise as a custom row (§ 47), the app renders whatever the day holds, and a saved combo is
+sent back to its own slot whatever it is called.
 
 
 ---
