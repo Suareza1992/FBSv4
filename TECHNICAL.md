@@ -4259,3 +4259,90 @@ the food is actually measured in instead of suggesting the one the client just t
 The web path itself was verified by hand against the live API (a handful of billed searches): the tool
 works on `claude-haiku-4-5` with structured outputs, a failed search returns a 200 with an error block
 rather than throwing, and the browser shows the reading, the warning colour, the domain and the source link.
+
+
+---
+
+## 50. Dependency audit, and a CSS rebuild that was overdue
+
+### The audit
+
+`npm audit` reported 16 advisories. The severity words describe the worst case for *any* app using a
+library, so the only question that matters is **whether a stranger's request can reach it**:
+
+| Reaches the server | Build-time only (this Mac) |
+|---|---|
+| `proxy-addr`, `qs`, `body-parser` (via express), `multer`, `mongoose` | `postcss`, `braces`, `nanoid`, `source-map-js`, `micromatch`, `fast-glob`, `chokidar`, `brace-expansion`, `postcss-selector-parser` — all via **tailwindcss** and **eslint**, which never ship |
+
+`npm audit fix` (Angel ran it; **never** `--force`, which would install Tailwind 4 and break the CSS build)
+patched all five that matter — express 4.22.2 → 4.22.3, multer 2.2.0 → 2.4.0, mongoose 8.24.0 → 8.24.5,
+proxy-addr 2.0.8, qs 6.16.1, body-parser 1.20.8 — and left 7, every one of them inside Tailwind's build
+chain. `package.json` was not touched; only the lockfile moved.
+
+### Testing after the upgrade
+
+**273 automated checks**, all passing: routes 59, food scaling 49, deactivated-client gate 39, library
+servings 23, Calcular macros 37, and the WebRTC signalling engine 66 (that last one specifically because
+`ws` moved to 8.21.3).
+
+**multer got its own pass**, as the largest jump and the one handling uploads: no file → 400; a real image
+→ parsed and handed to Cloudinary (which failed only because the credentials were deliberately blanked,
+proving the file arrived); a non-image → rejected by the filter with a clean 400, not an HTML error page.
+
+**In a browser:** login, logging a food, and a food search (200, 14 results) — exercising express, qs,
+body-parser and mongoose end to end. Tailwind's own build still runs.
+
+### The thing the audit accidentally caught
+
+Rebuilding the CSS to check Tailwind still worked produced a **changed `output.css`** — and the diff was not
+noise. Seven classes used by UI shipped earlier that night were **missing from the committed file**:
+
+```
+-mt-2  basis-full  disabled:opacity-50  hover:opacity-100
+min-w-[5rem]  text-yellow-200  text-yellow-300/80
+```
+
+That is § 38's purge trap, and I walked into it: classes were added to `app.js` and `npm run build:css` was
+never run, so in production the amount hints were not yellow, the Calcular macros button did not dim while
+disabled, and the unit box had no minimum width. Cosmetic, but live. **Any change that introduces a Tailwind
+class needs `npm run build:css` in the same commit.**
+
+---
+
+## 51. What IP does the server actually see?
+
+`GET /api/health/ip` — **superadmin only**, read-only. It reports `req.ip`, `req.ips`, the socket address,
+the proxy headers, the value the rate limiters would bucket on, and a plain-language verdict.
+
+### Why it exists
+
+Railway puts a proxy in front of the app, and Express only believes the proxy's `X-Forwarded-For` header
+when `trust proxy` is set. **This app has never set it** (`trustProxySetting: false`), so `req.ip` is
+whatever opened the TCP connection — behind a proxy, the proxy, *identical for every visitor*.
+
+`express-rate-limit` keys on `req.ip` unless given a `keyGenerator`. Three limiters rely on that default:
+
+| Limiter | Window | Max |
+|---|---|---|
+| `authLimiter` (login, password reset) | 15 min | 10 |
+| `inviteLimiter` | 1 hour | 20 |
+| `contactLimiter` | 1 hour | 5 |
+
+If every request looks like one IP, those are not per person — they are **platform-wide**. Ten failed logins
+from anyone would lock out every client for fifteen minutes. (`lookupLimiter` is unaffected; it keys on the
+signed-in user id.)
+
+This also decides whether the `proxy-addr` advisory in § 50 applied: it is about spoofing through a trusted
+subnet, and nothing was trusted, so it did not.
+
+### Verified
+
+Superadmin 200, ordinary trainer 403, client 403, signed out 401. Called directly it reports the real
+caller and says nothing needs fixing. Called with an `X-Forwarded-For` header — simulating Railway — it
+reports `behindProxy: true`, shows the rate-limit key is still the socket address, and says so.
+
+### Not changed
+
+`trust proxy` is **still unset**. Setting it wrongly is its own vulnerability: trust more hops than exist
+and a client can forge `X-Forwarded-For` and bypass the limiters entirely. Run the endpoint on the live
+server first, read the verdict, and set it to the real number of proxies (Railway is normally `1`).

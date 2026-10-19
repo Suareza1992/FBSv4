@@ -289,6 +289,7 @@ Change the password immediately after first login.
 | `node scripts/test-food-scale.mjs` | Food amount scaling (49 checks): `public/food-scale.js` against `scripts/food-scale-cases.json`. No server needed. The phone's copy is tested against the same file. |
 | `node scripts/test-food-serving.mjs` | Library servings on the server (23 checks). Needs an **isolated** server + database — the header explains how; it refuses to run against anything not named like a test DB. |
 | `node scripts/test-food-lookup.mjs` | "Calcular macros" endpoint (35 checks). Isolated server + database, **with `FOOD_NLP_ENABLED=false`** (the test refuses to run if the AI is on) — the header has the exact command. |
+| `GET /api/health/ip` (superadmin) | Not a script — a read-only endpoint. Reports what IP the server sees, what the rate limiters bucket on, and whether `trust proxy` needs setting. See TECHNICAL.md § 51. |
 
 ---
 

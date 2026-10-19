@@ -1696,6 +1696,50 @@ app.post('/api/me/profile-picture', authenticateToken, photoUpload.single('photo
 const CLIENT_SAFE_SELECT = '-password -resetPasswordToken -resetPasswordExpires -inviteToken -inviteExpires';
 
 // Get all trainers (superadmin only)
+/**
+ * GET /api/health/ip — what IP does this server actually see?
+ *
+ * Railway puts a proxy in front of the app. Express only believes the proxy's
+ * X-Forwarded-For header if `trust proxy` is set, and this app has never set it, so
+ * `req.ip` is the address of whatever opened the TCP connection — in front of a proxy,
+ * the PROXY, identical for every visitor on earth.
+ *
+ * That matters because express-rate-limit keys on `req.ip` by default. If every request
+ * carries the same IP, the login limiter's "10 attempts per 15 minutes" is not per person,
+ * it is TEN FOR THE WHOLE PLATFORM: a few bad attempts anywhere lock out every client.
+ *
+ * Superadmin only. It reports request headers, which is not something to hand to the public.
+ * Read-only; it changes nothing.
+ */
+app.get('/api/health/ip', authenticateToken, requireSuperadmin, (req, res) => {
+    const trust      = req.app.get('trust proxy');
+    const socketAddr = req.socket?.remoteAddress || null;
+    const xff        = req.headers['x-forwarded-for'] || null;
+    const behindProxy = !!xff;
+    // The limiters that do NOT set a keyGenerator bucket by this value.
+    const rateLimitKey = req.ip;
+    const sharedBucket = behindProxy && rateLimitKey === socketAddr;
+
+    res.json({
+        trustProxySetting: trust,          // Express's own default is false — i.e. "do not trust".
+        reqIp: req.ip,
+        reqIps: req.ips,                       // populated only when trust proxy is on
+        socketRemoteAddress: socketAddr,
+        headers: {
+            'x-forwarded-for': xff,
+            'x-real-ip': req.headers['x-real-ip'] || null,
+            'x-forwarded-proto': req.headers['x-forwarded-proto'] || null,
+        },
+        rateLimitKey,
+        behindProxy,
+        verdict: !behindProxy
+            ? 'No proxy header on this request — req.ip is the real caller. Nothing to fix (this is what you see locally).'
+            : sharedBucket
+                ? 'BEHIND A PROXY AND NOT TRUSTING IT: every visitor shares one rate-limit bucket, so the login limiter applies to everyone at once. Set trust proxy to the number of proxies in front of the app (Railway: 1).'
+                : 'Behind a proxy and trusting it: req.ip is the visitor, so the rate limiters count per person. Correct.',
+    });
+});
+
 app.get('/api/trainers', authenticateToken, requireSuperadmin, async (req, res) => {
     try {
         const trainers = await User.find({ role: 'trainer', isDeleted: { $ne: true } })
