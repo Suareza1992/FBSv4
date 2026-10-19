@@ -103,6 +103,8 @@ try {
     check(r.body.found && near(r.body.macros?.calories, 700), 'library, counted base: 5 huevos = 350 cal -> 10 huevos = 700', JSON.stringify(r.body.macros));
     r = await look(eggs, 100, 'g');
     check(r.body.found === false && r.body.reason === 'cannot_convert', '  grams of a counted-base food cannot be converted', r.body.message);
+    check(/5 huevos/.test(r.body.message || ''), '  and the message names the unit the food IS measured in', r.body.message);
+    check(!/Prueba con gramos u onzas/.test(r.body.message || ''), '  without telling them to use the unit they already typed');
     r = await look(unknown, 2, 'porción');
     check(r.body.found && near(r.body.macros?.calories, 240) && r.body.approx === true, 'library, no recorded amount: taken as 1 porción, flagged', JSON.stringify(r.body.macros));
     r = await look(unknown, 100, 'g');

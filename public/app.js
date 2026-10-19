@@ -13914,6 +13914,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const bits = [`${r.sourceLabel}: ${r.name}${r.brand ? ' · ' + r.brand : ''}`];
                     if (r.note) bits.push(r.note);
                     showLookupMsg('✓ ' + bits.join(' — ') + ' Revisa los números antes de añadir.', r.approx ? 'info' : 'ok');
+                    // A reading taken off the web carries the page it came from, so the client can
+                    // check it. Built as a real element rather than HTML in the message: the URL
+                    // comes from a web page the model read, and it is never trusted as markup.
+                    if (typeof r.sourceUrl === 'string' && /^https:\/\//i.test(r.sourceUrl)) {
+                        const a = document.createElement('a');
+                        a.href = r.sourceUrl; a.target = '_blank'; a.rel = 'noopener noreferrer';
+                        a.className = 'block mt-1 underline text-[11px] opacity-80 hover:opacity-100';
+                        a.textContent = 'Ver la fuente';
+                        lookupMsg.appendChild(a);
+                    }
                 };
                 const runLookup = async () => {
                     const name = nameInput.value.trim();

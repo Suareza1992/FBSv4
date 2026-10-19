@@ -4720,6 +4720,11 @@ const FOOD_LOOKUP_ENABLED = process.env.FOOD_LOOKUP_ENABLED !== 'false';
 // Cheap lookups (database arithmetic) are only rate-limited; the AI weight estimate has its own
 // daily cap per client and shares the global monthly cap above.
 const FOOD_LOOKUP_AI_DAILY_LIMIT = intEnv(process.env.FOOD_LOOKUP_AI_DAILY_LIMIT, 30);
+// Last-resort web search, for a brand no database knows and that has no sensible generic
+// equivalent either. It is billed PER SEARCH on top of tokens, so it gets its own, much tighter
+// daily cap and runs at most a couple of searches per lookup. Set to 'false' to switch it off.
+const FOOD_LOOKUP_WEB_SEARCH     = process.env.FOOD_LOOKUP_WEB_SEARCH !== 'false';
+const FOOD_LOOKUP_WEB_DAILY_LIMIT = intEnv(process.env.FOOD_LOOKUP_WEB_DAILY_LIMIT, 5);
 const lookupLimiter = rateLimit({
     windowMs: 60 * 1000, max: intEnv(process.env.FOOD_LOOKUP_RATE_PER_MIN, 20), standardHeaders: true, legacyHeaders: false,
     keyGenerator: (req) => String(req.user?.id || 'anon'),   // runs after authenticateToken
@@ -4860,22 +4865,26 @@ async function suggestGenericFood(name) {
 }
 
 /**
- * Run one capped AI call for a client. The two AI uses here (weigh an amount; name a generic food) share
- * the client's daily cap and the global monthly cap. Returns { value } or { skipped: 'off'|'cap'|'error' }.
+ * Run one capped AI call for a client, counting it against the global monthly cap and a per-client
+ * daily cap. Returns { value } or { skipped: 'off'|'cap'|'error' }.
+ *
+ * `scope` keeps the counters separate: the cheap token-only calls (weigh an amount, name a generic
+ * food) share one allowance, and web search — billed per search on top of tokens — has its own,
+ * much smaller one. A caller must never be able to spend the expensive budget on a cheap job.
  */
-async function withLookupAi(userId, run) {
+async function withLookupAi(userId, run, { scope = 'client_lookup', limit = FOOD_LOOKUP_AI_DAILY_LIMIT } = {}) {
     if (!FOOD_NLP_ENABLED || !anthropic) return { skipped: 'off' };
     const now = new Date(), month = now.toISOString().slice(0, 7), day = now.toISOString().slice(0, 10);
     const [globalUse, clientUse] = await Promise.all([
         AiUsage.findOne({ scope: 'global', clientId: null, period: month }),
-        AiUsage.findOne({ scope: 'client_lookup', clientId: userId, period: day }),
+        AiUsage.findOne({ scope, clientId: userId, period: day }),
     ]);
-    if ((globalUse?.count || 0) >= MEAL_MONTHLY_LIMIT || (clientUse?.count || 0) >= FOOD_LOOKUP_AI_DAILY_LIMIT) return { skipped: 'cap' };
+    if ((globalUse?.count || 0) >= MEAL_MONTHLY_LIMIT || (clientUse?.count || 0) >= limit) return { skipped: 'cap' };
     try {
         const value = await run();
         await Promise.all([
             AiUsage.updateOne({ scope: 'global', clientId: null, period: month }, { $inc: { count: 1 } }, { upsert: true }),
-            AiUsage.updateOne({ scope: 'client_lookup', clientId: userId, period: day }, { $inc: { count: 1 } }, { upsert: true }),
+            AiUsage.updateOne({ scope, clientId: userId, period: day }, { $inc: { count: 1 } }, { upsert: true }),
         ]);
         return { value };
     } catch (e) {
@@ -4889,7 +4898,81 @@ const AI_SKIP_ADVICE = {
     error: 'No pude estimar el peso ahora. Pon la cantidad en gramos u onzas.',
 };
 
-const SOURCE_LABELS = { local: 'Base de datos de FitBySuárez', library: 'Alimentos de la comunidad', usda: 'USDA FoodData Central', openfoodfacts: 'Open Food Facts' };
+const SOURCE_LABELS = { local: 'Base de datos de FitBySuárez', library: 'Alimentos de la comunidad', usda: 'USDA FoodData Central', openfoodfacts: 'Open Food Facts', web: 'Búsqueda en internet' };
+
+// ── Last resort: read the brand's own numbers off the web ────────────────────
+//
+// Everything above this point obeys one rule — macros come from a food database, never from a
+// model (§ 44). This step is the documented exception, for a product no database knows and that
+// has no sensible generic either (a local brand like "Malta India"). The numbers come from a web
+// page the model read, so they are NOT database-verified: the result is labelled as coming from
+// the internet, carries the page it came from, and is always marked approximate so the client
+// checks it before saving. It only ever pre-fills the form — nothing is written on its own.
+//
+// Cost: web search is billed per search, so max_uses is 2 and the whole step sits behind its own
+// small daily cap per client plus the global monthly cap.
+const FOOD_WEB_SCHEMA = {
+    type: 'object', additionalProperties: false,
+    properties: {
+        found:        { type: 'boolean', description: 'true solo si encontraste información nutricional real de ESTE producto' },
+        name:         { type: 'string',  description: 'Nombre del producto tal como aparece en la fuente; vacío si found=false' },
+        basis:        { type: 'string',  enum: ['per100', 'serving', 'none'], description: 'per100 si los valores son por 100 g o 100 ml; serving si son por porción; none si no encontraste nada' },
+        servingAmount:{ type: 'number',  description: 'Tamaño de la porción cuando basis=serving (0 en otro caso)' },
+        servingUnit:  { type: 'string',  description: 'Unidad de esa porción: g, ml, oz, fl oz, galletas, porción… (vacío si no aplica)' },
+        servingGrams: { type: 'number',  description: 'Peso en gramos (o ml) de esa porción si la fuente lo indica, ej. "4 galletas (30 g)" -> 30. 0 si no se indica.' },
+        calories:     { type: 'number',  description: 'Calorías para la base indicada' },
+        protein:      { type: 'number',  description: 'Proteína en gramos para la base indicada' },
+        carbs:        { type: 'number',  description: 'Carbohidratos en gramos para la base indicada' },
+        fat:          { type: 'number',  description: 'Grasa en gramos para la base indicada' },
+        sourceUrl:    { type: 'string',  description: 'URL de la página de donde salieron los valores; vacío si found=false' },
+    },
+    required: ['found', 'name', 'basis', 'servingAmount', 'servingUnit', 'servingGrams', 'calories', 'protein', 'carbs', 'fat', 'sourceUrl'],
+};
+
+/** Ask the model to look the product up on the web. Returns a candidate, or null. */
+async function searchWebForFood(name) {
+    const resp = await anthropic.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1500,
+        system: 'Buscas en internet la información nutricional de un producto de marca que no está en las bases de datos. Usa la página del fabricante o una fuente nutricional confiable. Copia los valores TAL COMO están publicados: no los inventes, no los estimes y no los promedies con otros productos. Si solo encuentras valores por porción, usa basis="serving" e indica el tamaño de esa porción. Si no encuentras información real de ESTE producto, devuelve found=false y basis="none" — es correcto no encontrar nada.',
+        messages: [{ role: 'user', content: `Información nutricional de: "${name}". Devuelve los valores publicados y la URL de donde los sacaste.` }],
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+        output_config: { format: { type: 'json_schema', schema: FOOD_WEB_SCHEMA } },
+    }, { timeout: 40000, maxRetries: 1 });
+
+    // A server tool that fails comes back as a normal 200 with an error block, not an exception.
+    const toolErr = resp.content.find(b => b.type === 'web_search_tool_result' && !Array.isArray(b.content));
+    if (toolErr) { console.warn('Food web search tool error:', toolErr.content?.error_code); return null; }
+
+    const block = resp.content.filter(b => b.type === 'text').pop();
+    let j; try { j = JSON.parse(block?.text || '{}'); } catch { return null; }
+    if (j.found !== true || j.basis === 'none') return null;
+
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : 0; };
+    const cal = num(j.calories);
+    if (!(cal > 0)) return null;                       // a product with no calories is not a reading
+    const macros = { calories: cal, protein: num(j.protein), carbs: num(j.carbs), fat: num(j.fat) };
+    const url = typeof j.sourceUrl === 'string' && /^https?:\/\//i.test(j.sourceUrl) ? j.sourceUrl : '';
+    let host = '';
+    try { host = url ? new URL(url).hostname.replace(/^www\./, '') : ''; } catch { host = ''; }
+    const base = { source: 'web', name: String(j.name || name).trim().slice(0, 120) || name, brand: null, sourceUrl: url, sourceHost: host };
+
+    if (j.basis === 'per100') {
+        return { ...base, kind: 'per100', per100: { cal: macros.calories, protein: macros.protein, carbs: macros.carbs, fat: macros.fat }, unitGrams: null };
+    }
+    const amt = num(j.servingAmount), unit = String(j.servingUnit || '').trim();
+    const grams = num(j.servingGrams);
+    // A serving the label also gives a weight for ("4 galletas (30 g)") becomes a per-100 g reading,
+    // so the client can ask for it in grams or ounces like any other food. Without that weight the
+    // numbers can only be scaled in the serving's own unit.
+    if (grams > 0) {
+        const k = 100 / grams;
+        return { ...base, kind: 'per100', unitGrams: amt > 0 ? grams / amt : null,
+                 per100: { cal: macros.calories * k, protein: macros.protein * k, carbs: macros.carbs * k, fat: macros.fat * k } };
+    }
+    if (!(amt > 0) || !unit) return null;
+    return { ...base, kind: 'amount', base: { amount: amt, unit }, macros };
+}
 
 /**
  * Macros of candidate `c` for the requested amount, or null when it cannot be worked out.
@@ -4934,9 +5017,28 @@ app.post('/api/food-lookup', authenticateToken, lookupLimiter, async (req, res) 
 
         let candidates = await gatherFoodCandidates(name);
 
-        // Nothing under that name. Brands and local dishes (a "Medalla Light") are often in no database,
-        // so ask the AI for the CLOSEST GENERIC food ("cerveza light") and look THAT up — clearly labelled
-        // as an approximation. The AI only names a category; the numbers still come from the database.
+        // Nothing under that name — the databases do not carry most brands. Two fallbacks, in this
+        // order, because they are not equally good:
+        //
+        //   1. THE WEB, for the product itself. Real published numbers for the actual brand.
+        //   2. A GENERIC equivalent, as an approximation.
+        //
+        // The generic step used to come first and it is too eager to be trusted with a brand: asked
+        // for "Export Sodas Royal Border" (a cracker) it answered "refresco" — it read "Sodas" as a
+        // soft drink — and returned 12 cal for 30 g of something that is about 130. A wrong food
+        // labelled "aproximación" still reads as an answer. The web found the real product, so the
+        // web goes first and the generic is what is left when even that finds nothing.
+        //
+        // Cost: the web step is billed per search, so it only runs when every database missed, at
+        // most twice per lookup, behind its own small daily cap (FOOD_LOOKUP_WEB_DAILY_LIMIT).
+        if (!candidates.length && FOOD_LOOKUP_WEB_SEARCH) {
+            const w = await withLookupAi(req.user.id, () => searchWebForFood(name),
+                { scope: 'client_lookup_web', limit: FOOD_LOOKUP_WEB_DAILY_LIMIT });
+            if (w.value) candidates = [w.value];
+        }
+
+        // Still nothing: fall back to the closest generic food and say so. The AI only names a
+        // category here — the numbers still come from a database.
         let genericUsed = null;
         if (!candidates.length) {
             const g = await withLookupAi(req.user.id, () => suggestGenericFood(name));
@@ -4973,17 +5075,29 @@ app.post('/api/food-lookup', authenticateToken, lookupLimiter, async (req, res) 
             const r = macrosForCandidate(c, request, grams);
             if (!r) continue;
             const genericNote = genericUsed ? `No encontré «${name}»; usé «${genericUsed}» (genérico) como aproximación.` : '';
+            const webNote = c.source === 'web'
+                ? `Tomado de internet${c.sourceHost ? ` (${c.sourceHost})` : ''}, no de una base de datos verificada. Revísalo contra el empaque.`
+                : '';
             results.push({
                 name: c.name, brand: c.brand, source: c.source, sourceLabel: SOURCE_LABELS[c.source] || c.source,
-                macros: r.macros, approx: r.approx || !!genericUsed, note: [genericNote, r.note].filter(Boolean).join(' '), grams: r.grams ?? null,
+                // A web reading says so plainly: not checked against a food database.
+                macros: r.macros, approx: r.approx || !!genericUsed || c.source === 'web',
+                note: [genericNote, webNote, r.note].filter(Boolean).join(' '), grams: r.grams ?? null,
                 generic: !!genericUsed,
+                sourceUrl: c.sourceUrl || null,
             });
             if (results.length >= 5) break;
         }
         if (!results.length) {
+            // Be specific about WHY. Telling someone who typed "30 g" to "try grams" is no help:
+            // the real reason is that the food we found is measured in something else.
+            const top = candidates[0];
+            const inOwnUnit = top?.kind === 'amount' && top.base?.unit
+                ? `Sus valores están por «${FoodScale.fmtAmount(top.base.amount)} ${top.base.unit}»: pide la cantidad en esa unidad.`
+                : '';
             return res.json({
                 found: false, reason: 'cannot_convert',
-                message: `Encontré «${candidates[0].name}», pero no puedo calcular «${amount} ${unit}». ${aiNote || 'Prueba con gramos u onzas.'}`,
+                message: `Encontré «${top.name}», pero no puedo calcular «${amount} ${unit}». ${inOwnUnit || aiNote || 'Prueba con gramos u onzas.'}`,
             });
         }
         const [best, ...alternatives] = results;

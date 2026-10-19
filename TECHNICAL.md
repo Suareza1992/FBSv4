@@ -3927,9 +3927,7 @@ spoons go through the weight path above (the AI said 150 g → 195 cal).
   Facts), or typing the number once — after which the community library remembers it with its amount (§ 43).
 - Open Food Facts is crowd-sourced and sometimes wrong (one "Light Beer" entry said 269 cal for 10 oz); that
   is why USDA and the community library are ranked above it.
-- A third step — the Claude API's **web-search tool**, restricted to allowed domains and capped per request —
-  could find brand data (e.g. a manufacturer's page). **Not built**: it bills per search on top of tokens and
-  would need its own caps; add it only if the generic fallback proves too coarse.
+- A third step — the Claude API's **web-search tool** — now runs for exactly this case. See § 49.
 
 ### Cost and abuse controls
 
@@ -4193,3 +4191,71 @@ Week 2 / Day 1 → preview reads "SEMANA 2 · DÍA 1", the button carries `week=
 on **S2D1 Espalda** with its exercise. Renaming and saving wrote to **week 2 day 1 only** — week 1 day 1
 was untouched, which is exactly what the global-assignment fault would have corrupted. Week 1 / Day 3 opens
 **S1D3 Pierna**. No console errors.
+
+
+---
+
+## 49. Reading a brand's numbers off the web
+
+The generic fallback (§ 44) answers "Medalla Light" with *generic light beer*. Useful, but it is not the
+product. This step looks the product itself up on the web when **no database has it**.
+
+### Order, and why it changed
+
+Built first as the last resort — web search only when there was no generic equivalent, which is what was
+asked for. Testing showed that ordering is close to useless, and worse, it leaves a wrong answer standing:
+
+> **"Export Sodas Royal Border"** — a cracker. The generic step read "Sodas" as a soft drink, answered
+> *refresco*, and returned **12 cal for 30 g**. The real product is around ten times that. A wrong food
+> labelled "aproximación" still reads like an answer, and because the generic step almost always returns
+> *something*, the web step would almost never have run.
+
+So the order is now: **databases → the web (the real product) → a generic (an approximation)**. With that,
+Export Sodas resolves to "Royal Borinquen Export Sodas Crackers" and Medalla Light to "Medalla Light Beer".
+Flipping back is one block move, and the reasoning is in the code comment.
+
+### What it does
+
+`searchWebForFood()` — `claude-haiku-4-5` with the `web_search_20250305` server tool, `max_uses: 2`, and a
+structured-output schema. It asks only for **published** values plus the page they came from, and accepts
+`found: false` as a correct answer. The reply is turned into a normal candidate and goes through the same
+`macrosForCandidate()` scaling as every other source, so units, counted amounts and the § 43 amount model
+all behave identically.
+
+A serving that also carries a weight ("4 galletas (30 g)") is converted to a true per-100 g, so the client
+can then ask for it in grams or ounces. Without that weight it can only be scaled in the serving's own unit.
+
+### This is the documented exception to the "no model numbers" rule
+
+Everything else obeys § 44's rule: **macros come from a food database, never from a model.** These numbers
+come from a web page the model read, so they are not database-verified, and the result says so:
+
+- source reads **"Búsqueda en internet"**, never a database name;
+- always `approx: true`, so the screen shows it in the warning colour, not the success colour;
+- the note names the domain and says *"Revísalo contra el empaque"*;
+- a **"Ver la fuente"** link to the page, on both the web and the app. Built as a real element with
+  `rel="noopener noreferrer"`, never interpolated into HTML — the URL came from a page a model read;
+- it only ever pre-fills the form. Nothing is saved until the client presses add.
+
+**Accuracy, honestly:** in spot checks it found the right product every time, but the numbers vary by
+source — Medalla Light came back as 98 cal from one page and 97 with different carbs from another, and
+Export Sodas looked low against a typical cracker panel. Treat it as a good starting point, not a label
+reading. The exact route for a local brand is still the **label scanner**, and once anyone logs that
+product its numbers live in the community library (§ 43) and the web is never consulted again.
+
+### Cost control
+
+Billed **per search** on top of tokens, so: it runs only when every database missed, at most 2 searches per
+lookup, behind its **own** daily cap per client (`FOOD_LOOKUP_WEB_DAILY_LIMIT`, default 5) kept separate
+from the cheap token-only calls so one can never spend the other's budget, plus the global monthly cap.
+`FOOD_LOOKUP_WEB_SEARCH=false` switches it off; `FOOD_NLP_ENABLED=false` switches it off with the rest.
+
+### Tests
+
+`scripts/test-food-lookup.mjs` is now **37 checks** and still runs with the AI off, so it stays free and
+deterministic — the two added checks cover the clearer "cannot convert" message, which now names the unit
+the food is actually measured in instead of suggesting the one the client just typed.
+
+The web path itself was verified by hand against the live API (a handful of billed searches): the tool
+works on `claude-haiku-4-5` with structured outputs, a failed search returns a 200 with an error block
+rather than throwing, and the browser shows the reading, the warning colour, the domain and the source link.
