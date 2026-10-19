@@ -3,29 +3,15 @@
         display: none !important;
         opacity: 0;
     }
-    .autocomplete-list {
-        position: absolute;
-        top: calc(100% + 4px);
-        left: 0;
-        right: 40px;
-        background: #111113;
-        border: 1px solid rgba(255, 219, 137, 0.25);
-        border-radius: 10px;
-        z-index: 100;
-        overflow: hidden;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
-    }
-    .autocomplete-item {
-        padding: 10px 14px;
-        font-size: 13px;
-        color: rgba(255, 219, 137, 0.7);
-        cursor: pointer;
-        border-bottom: 1px solid rgba(255, 219, 137, 0.06);
-        transition: background 0.15s, color 0.15s;
-    }
-    .autocomplete-item:last-child { border-bottom: none; }
-    .autocomplete-item:hover { background: rgba(255, 219, 137, 0.08); color: #FFDB89; }
-    .autocomplete-item strong { color: #FFDB89; font-weight: 700; }
+    /* The exercise-name autocomplete is styled ONCE, globally, in app.js
+       (injectGlobalStyles → #dynamic-styles). It used to be redefined here too, and
+       because this fragment is injected into the DOM after that block, its copy won
+       the cascade — including an `overflow: hidden` that replaced the global
+       `overflow-y: auto`. The list was then clipped at its max height with no way to
+       scroll: with 8 suggestions, 245px of the list was simply unreachable.
+       The list is a portal on <body> and is shared by the routine builder, the
+       warmup/cooldown rows and the calendar day editor, so it must not be restyled
+       per section. Do not re-add .autocomplete-list / .autocomplete-item here. */
     .category-pill.selected {
         background: rgba(255, 219, 137, 0.18);
         border-color: rgba(255, 219, 137, 0.5);

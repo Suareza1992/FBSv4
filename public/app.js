@@ -1873,7 +1873,11 @@ document.addEventListener('DOMContentLoaded', () => {
         style.innerHTML = `
             .exercise-name-input::-webkit-calendar-picker-indicator { display: none !important; opacity: 0 !important; }
             .exercise-name-input { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: none !important; }
-            .autocomplete-list { background-color: #1C1C1E; border: 1px solid rgba(255,219,137,0.2); border-radius: 0.625rem; max-height: 220px; overflow-y: auto; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+            /* The one definition of the exercise-name autocomplete (a portal on <body>, shared by the
+               routine builder, the warmup/cooldown rows and the calendar day editor). overflow-x is
+               pinned to hidden because setting overflow-y alone makes the browser compute overflow-x
+               as auto, which can add a horizontal scrollbar under a long exercise name. */
+            .autocomplete-list { background-color: #1C1C1E; border: 1px solid rgba(255,219,137,0.2); border-radius: 0.625rem; max-height: 220px; overflow-y: auto; overflow-x: hidden; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
             .autocomplete-item { padding: 0.6rem 0.875rem; cursor: pointer; color: rgba(255,219,137,0.7); font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(255,219,137,0.06); }
             .autocomplete-item:last-child { border-bottom: none; }
             .autocomplete-item:first-child { border-radius: 0.625rem 0.625rem 0 0; }
@@ -13173,6 +13177,69 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- RENDER MEALS ---
         const mealNames = ['Desayuno', 'Merienda AM', 'Almuerzo', 'Merienda PM', 'Cena', 'Snack'];
+        // The slots a day starts with. The rest are added from the "Añadir comida" chooser.
+        const DEFAULT_MEAL_SLOTS = mealNames.slice(0, 3);
+
+        /**
+         * The meal rows the client SEES, rebuilt from what the server stores.
+         *
+         * The server only keeps groups that actually contain food, so adopting its array
+         * wholesale deleted the empty rows the client still needed. Writing tomorrow's
+         * lunch on a fresh day left "Almuerzo" as the ONLY row: breakfast had no row to
+         * add to, and "Añadir comida" picked names by row count, so it offered
+         * "Merienda AM" and then a SECOND "Almuerzo". The client was locked out of his
+         * own breakfast — reported 2026-10-18.
+         *
+         * Each slot is independent. The stored groups own the food (they are the
+         * authority, which is what stops one device clobbering another); the standard
+         * slots are always present to add to; a slot the client added, or one the server
+         * has under a custom name, is kept. Only the totals combine them.
+         *
+         * `keepCurrentRows` is false when loading a different day — otherwise yesterday's
+         * rows would follow the client across dates.
+         */
+        const mergeMealRows = (serverMeals, { keepCurrentRows = true } = {}) => {
+            const incoming = Array.isArray(serverMeals)
+                ? serverMeals
+                : (serverMeals && typeof serverMeals === 'object' ? Object.values(serverMeals) : []);
+
+            const byName = new Map();
+            const order  = [];
+            const add = (m) => {
+                const name = String(m?.name || '').trim() || 'Comida';
+                byName.set(name, { ...m, name, foods: Array.isArray(m?.foods) ? m.foods : [] });
+                order.push(name);
+            };
+
+            // 1. What the server stores. It is the authority on FOOD, so these go in first
+            //    and nothing below may change their contents. A name stored twice (older
+            //    client versions could create a second "Almuerzo") is folded into one row
+            //    rather than dropped, so no logged food disappears from view.
+            incoming.forEach((m) => {
+                const name = String(m?.name || '').trim() || 'Comida';
+                const prev = byName.get(name);
+                if (prev) { prev.foods = [...prev.foods, ...(Array.isArray(m?.foods) ? m.foods : [])]; return; }
+                add(m);
+            });
+            // 2. Rows the client is already showing, for their NAME only — a row the server
+            //    also has is left exactly as the server sent it. (Adding food pushes it into
+            //    the local row optimistically and the server returns it too; taking both
+            //    would count the same meal twice.)
+            if (keepCurrentRows) mealsData.forEach((m) => {
+                if (!byName.has(String(m?.name || '').trim() || 'Comida')) add(m);
+            });
+            // 3. The standard slots are always offered, even on an untouched day.
+            DEFAULT_MEAL_SLOTS.forEach(n => { if (!byName.has(n)) add({ name: n, foods: [] }); });
+
+            // Standard slots in their natural order, then custom ones as they were seen.
+            // Ranks are resolved BEFORE sorting: reading positions out of an array while
+            // sort() reorders it gives a different answer on every comparison.
+            const rank = new Map(order.map((n, i) => {
+                const std = mealNames.indexOf(n);
+                return [n, std === -1 ? mealNames.length + i : std];
+            }));
+            return [...order].sort((a, b) => rank.get(a) - rank.get(b)).map(n => byName.get(n));
+        };
 
         // --- EXERCISE (extra calories burned) ---
         const renderExercise = () => {
@@ -13233,7 +13300,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h4 class="font-bold text-white text-sm">${meal.name}</h4>
                         <div class="flex items-center gap-3">
                             <span class="text-sm font-black text-[#FFDB89]">${Math.round((meal.foods||[]).reduce((s,f)=>s+(parseFloat(f.calories)||0),0))} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
-                            ${mealsData.length > 1 ? `<button class="text-red-400/30 hover:text-red-400 transition text-xs" onclick="window._nutriRemoveMeal(${mi})" title="Eliminar comida"><i class="fas fa-trash-alt"></i></button>` : ''}
+                            ${((meal.foods || []).length > 0 || !mealNames.includes(meal.name)) ? `<button class="text-red-400/30 hover:text-red-400 transition text-xs" onclick="window._nutriRemoveMeal(${mi})" title="${(meal.foods || []).length ? 'Vaciar esta comida' : 'Eliminar comida'}"><i class="fas fa-trash-alt"></i></button>` : ''}
                         </div>
                     </div>
                     <div class="px-4 pt-2 pb-3">
@@ -13315,6 +13382,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         window._nutriRemoveMeal = (mi) => {
             mealsData.splice(mi, 1);
+            // Deleting one of the day's standard meals clears its food; the slot itself
+            // stays, empty, so the client can log that meal again without hunting for it.
+            // A custom row is removed outright.
+            mealsData = mergeMealRows([], { keepCurrentRows: true });
             renderMeals();
             recalcTotals();
             doSaveNutrition({ silent: true });
@@ -15094,13 +15165,38 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- ADD MEAL ---
         const addMealBtn = document.getElementById('add-meal-btn');
         if (addMealBtn) {
-            addMealBtn.addEventListener('click', () => {
-                if (mealsData.length >= 6) return;
-                const name = mealNames[mealsData.length] || `Comida ${mealsData.length + 1}`;
+            // Ask WHICH meal to add instead of guessing from the row count. The old version
+            // used mealNames[mealsData.length], so on a day whose only row was "Almuerzo" it
+            // offered "Merienda AM" and then a second "Almuerzo" — and never breakfast.
+            addMealBtn.addEventListener('click', async () => {
+                const used = new Set(mealsData.map(m => String(m?.name || '').trim()));
+                const free = mealNames.filter(n => !used.has(n));
+                const options = [
+                    ...free.map(n => ({ value: n, label: n })),
+                    { value: '__other__', label: 'Otra comida', hint: 'Una comida extra, aparte de las de arriba.' },
+                ];
+                const picked = await window.showChoice({
+                    title: 'Añadir comida',
+                    body: free.length ? '¿Cuál quieres añadir al día?' : 'Ya tienes todas las comidas del día.',
+                    options,
+                });
+                if (!picked) return;
+                let name = picked;
+                if (picked === '__other__') {
+                    let n = mealsData.length + 1;
+                    while (used.has(`Comida ${n}`)) n++;
+                    name = `Comida ${n}`;
+                }
+                if (used.has(name)) return;
                 mealsData.push({ name, foods: [] });
+                // Deliberately NOT saved here. An empty row is a place to add food, not
+                // data; it becomes real on the server when the first food lands (the
+                // append route creates the group). This also avoids a full-document
+                // rewrite — the operation this screen works hard to avoid — for a row
+                // that holds nothing.
+                mealsData = mergeMealRows([], { keepCurrentRows: true });
                 renderMeals();
                 recalcTotals();
-                doSaveNutrition({ silent: true });
             });
         }
 
@@ -15221,7 +15317,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const log = logs.find(l => l.date === dateStr);
                 if (log) {
                     nutritionRev = log.rev ?? 0;
-                    mealsData = log.meals ? (Array.isArray(log.meals) ? log.meals : Object.values(log.meals)) : [];
+                    // A stored day holds only the groups with food; the standard slots are
+                    // added back so every meal stays reachable after a reload too.
+                    mealsData = mergeMealRows(log.meals, { keepCurrentRows: false });
                     exerciseData = Array.isArray(log.exercise) ? log.exercise : [];
                     // DB is authoritative — use its value, then sync localStorage with it
                     waterOz = log.water || 0;
@@ -15231,7 +15329,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // (Goals come from macroSettings on /api/me, not from the consumed log values)
                 } else {
-                    mealsData = mealNames.slice(0, 3).map(name => ({ name, foods: [] }));
+                    mealsData = mergeMealRows([], { keepCurrentRows: false });
                     exerciseData = [];
                     // No DB entry yet — check localStorage for any unsaved click state
                     const cached = loadWaterLocal(dateStr);
@@ -15770,7 +15868,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Adopt the server's version — this is what makes a concurrent add
                 // from another device show up rather than get overwritten.
                 if (Array.isArray(saved?.meals)) {
-                    mealsData = saved.meals;
+                    // Merge, never replace — see mergeMealRows().
+                    mealsData = mergeMealRows(saved.meals);
                     nutritionRev = saved.rev ?? nutritionRev;
                     renderMeals();
                     recalcTotals();
@@ -15807,7 +15906,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         clientId: session.id, date: dateStr,
                         calories: Math.round(calories), protein: Math.round(protein),
                         carbs: Math.round(carbs), fat: Math.round(fat),
-                        water: waterOz, notes, meals: mealsData,
+                        // Only groups that hold food are stored, which is the same thing the
+                        // append route does. An empty row is a place to add food, not data:
+                        // persisting the day's blank slots would put them in every client's
+                        // document and in the trainer's view of it.
+                        water: waterOz, notes, meals: mealsData.filter(m => (m.foods || []).length > 0),
                         exercise: exerciseData, exerciseCalories,
                         // Tells the server which version we edited. Stale -> 409.
                         baseRev: nutritionRev,
@@ -15820,7 +15923,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.status === 409) {
                     const conflict = await res.json();
                     if (conflict?.current) {
-                        mealsData    = Array.isArray(conflict.current.meals) ? conflict.current.meals : mealsData;
+                        mealsData    = mergeMealRows(conflict.current.meals);
                         exerciseData = Array.isArray(conflict.current.exercise) ? conflict.current.exercise : exerciseData;
                         nutritionRev = conflict.current.rev ?? nutritionRev;
                         renderMeals();

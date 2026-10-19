@@ -4015,3 +4015,139 @@ toggle cannot re-enable it; new client with a program → load workouts → the 
   version either).
 - The invite switch still moves on an already-active client's edit screen; it has no effect there (invites are
   only sent when creating), it just no longer changes the button.
+
+
+---
+
+## 46. The exercise autocomplete could not be scrolled
+
+**The report.** In the routine editor, typing part of an exercise name shows the suggestion list, but
+the list is cut off and **the rest of it cannot be reached** — no scrollbar, no wheel scrolling.
+
+### Cause: a duplicated CSS rule that won the cascade
+
+The autocomplete is a single element (`_exAcPortal`) attached to `<body>`, shared by three screens: the
+routine builder's exercise rows, the warmup/cooldown item rows, and the calendar day editor. It is styled
+globally in `app.js` → `injectGlobalStyles()` (`#dynamic-styles`), which sets `max-height: 220px` **and**
+`overflow-y: auto`.
+
+`public/programas_content.html` defined `.autocomplete-list` **a second time**, with `overflow: hidden`.
+That fragment is injected into the DOM when the Programas section loads — *after* `#dynamic-styles` — so at
+equal specificity the later rule won. The JS still clamped the height, so the list was cut off at its max
+height and the overflow was clipped with no scroll container.
+
+Measured before the fix, with 8 suggestions: `overflow-y: hidden`, `clientHeight` 78, `scrollHeight` 323 —
+**245px of the list unreachable**. After: `overflow-y: auto`, scrolls to the last item.
+
+The duplicate was dead weight as well as harmful: its `.autocomplete-item` had no `display: flex` (the rows
+rely on it) and it styled `<strong>`, while the one row builder every call site uses emits `<mark>`.
+
+### The fix
+
+- The duplicate block is **removed** from `programas_content.html`, with a comment saying why it must not
+  come back. The global block is now the only definition.
+- `overflow-x: hidden` is pinned explicitly on the global rule: setting only `overflow-y` makes the browser
+  compute `overflow-x` as `auto`, which can add a horizontal scrollbar under a long exercise name.
+
+**Rule of thumb this encodes:** the autocomplete is a body-level portal shared by several sections, so it
+must never be restyled inside a section fragment. A fragment's `<style>` applies document-wide once loaded,
+and loads last.
+
+### Verified in a real browser
+
+With 10 "Stretch" exercises seeded: the cooldown input's list shows 8 suggestions, `overflow-y: auto`,
+`overflow-x: hidden`, and a **real wheel scroll** reaches the last item. The exercise-row autocomplete in the
+same modal behaves identically. Styling is intact — background, 1px border, 10px radius, flex rows, and the
+typed fragment highlighted via `<mark>`.
+
+### Found while testing, NOT fixed (separate bug)
+
+The **"Editar" button in the day-preview modal is broken** (`app.js` ~6848). Its inline `onclick` calls
+`openExerciseBuilder(...)`, but that is a closure `const` (~6868) and inline handlers run in global scope, so
+it throws `openExerciseBuilder is not defined`. The handler removes the preview modal first, so the modal
+closes and nothing opens. The same assignment problem applies to `currentEditingWeekIndex` /
+`currentEditingDay`, which the inline code sets as new globals rather than the closure's variables — so
+exposing the function alone would not be enough. The day card's own edit action goes through a delegated
+handler inside the closure and works, which is why the editor is still reachable.
+
+
+---
+
+## 47. A client was locked out of his own breakfast
+
+**The report (2026-10-18).** A client wrote tomorrow's lunch and then could not add his breakfast —
+"either it's locked, or the one he wrote got overwritten".
+
+Nothing was overwritten and nothing was locked. **The breakfast row stopped existing.**
+
+### What actually happened
+
+The server only stores meal groups that contain food — an empty "Desayuno" is not data, so it is never
+written. The client screen, however, adopted the server's array *wholesale* after every add:
+
+```js
+mealsData = saved.meals;   // the day is now ONLY what the server stores
+```
+
+So on a fresh day:
+
+| Step | Rows on screen |
+|---|---|
+| Open tomorrow | Desayuno · Merienda AM · Almuerzo |
+| Add lunch | **Almuerzo** — and nothing else |
+
+Breakfast had no row to add food to. Worse, the way out was booby-trapped: "Añadir comida" named the new
+row by **row count** (`mealNames[mealsData.length]`), so on a day whose only row was "Almuerzo" the first
+click produced "Merienda AM" and the second produced a **second "Almuerzo"**. Breakfast was never offered.
+
+Reproduced end to end before touching anything, and the row counts above are the measured result.
+
+### The model now: slots are independent, food is not
+
+A meal slot is **a place to put food**, not data. Food is data. The two are kept apart:
+
+- **The server owns the food.** Its stored groups are the authority — that is what stops one device's
+  save erasing another's, and it is unchanged.
+- **The client owns the slots.** `mergeMealRows()` rebuilds the day's rows on every adopt: the stored
+  groups supply the food, the standard slots are always present to add to, any row the client added is
+  kept, and anything custom survives. Rows come out in the natural order of the day, with custom ones last.
+- **Only the totals combine them.** Each row's numbers are its own; the rings and bars sum across.
+
+It is used in all four places the day used to be replaced: after an add, on a 409 (another device wrote
+first), on load, and on an untouched day. Loading a *different* date passes `keepCurrentRows: false`, or
+yesterday's rows would follow the client around.
+
+**"Añadir comida" now asks** which meal to add, listing the ones the day does not have yet, plus "Otra
+comida". No more guessing by row count, and no more duplicate "Almuerzo".
+
+**Deleting** a standard meal clears its food and leaves the empty slot, so that meal can be logged again;
+a custom row is removed outright. An empty row is never saved — it becomes real on the server when the
+first food arrives, which is exactly what the append route already did.
+
+### A bug introduced while fixing it, and caught by re-testing
+
+The first version of `mergeMealRows()` concatenated the food of any duplicate name. Adding food pushes it
+into the local row optimistically **and** the server returns it, so the same meal was counted twice: lunch
+read **1200 cal instead of 600**. Now the server's groups go in first and are never modified by a later
+pass; local rows contribute a **name only** when the server has no group under it. Duplicate names *within*
+the server's own array are still folded together, because older clients could create a second "Almuerzo"
+and that food must not vanish.
+
+### Verified in a real browser
+
+Fresh future day → three slots. Add lunch → **600 cal, and Desayuno is still there**. Add breakfast → 300,
+lunch still 600, protein total 20. Stored: two independent groups, totals 900, **no empty groups written**.
+Reload → both meals and the empty slot come back. The chooser offers exactly Merienda PM / Cena / Snack /
+Otra comida. Add Cena → lands in the right position, 500 cal, independent. Delete Desayuno → its food goes,
+the slot stays, stored totals drop to 1100. No script errors.
+
+### Not affected
+
+**The phone app never had this bug.** Its add dialog always lists every meal as a chip, so a client can
+pick "Desayuno" whether or not the day already has one; there is no per-row button that can disappear.
+
+### Known gap
+
+The two apps disagree on the snack names: the web has **Merienda AM** and **Merienda PM**, the app has a
+single **Merienda**. A client using both ends up with separate groups for what they think is one meal.
+Harmless to the totals, confusing to read — worth settling on one list.
