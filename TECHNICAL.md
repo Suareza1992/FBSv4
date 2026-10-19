@@ -4060,15 +4060,7 @@ With 10 "Stretch" exercises seeded: the cooldown input's list shows 8 suggestion
 same modal behaves identically. Styling is intact — background, 1px border, 10px radius, flex rows, and the
 typed fragment highlighted via `<mark>`.
 
-### Found while testing, NOT fixed (separate bug)
-
-The **"Editar" button in the day-preview modal is broken** (`app.js` ~6848). Its inline `onclick` calls
-`openExerciseBuilder(...)`, but that is a closure `const` (~6868) and inline handlers run in global scope, so
-it throws `openExerciseBuilder is not defined`. The handler removes the preview modal first, so the modal
-closes and nothing opens. The same assignment problem applies to `currentEditingWeekIndex` /
-`currentEditingDay`, which the inline code sets as new globals rather than the closure's variables — so
-exposing the function alone would not be enough. The day card's own edit action goes through a delegated
-handler inside the closure and works, which is why the editor is still reachable.
+### Found while testing: the "Editar" button in the day preview (fixed, § 48)
 
 
 ---
@@ -4151,3 +4143,48 @@ pick "Desayuno" whether or not the day already has one; there is no per-row butt
 The two apps disagree on the snack names: the web has **Merienda AM** and **Merienda PM**, the app has a
 single **Merienda**. A client using both ends up with separate groups for what they think is one meal.
 Harmless to the totals, confusing to read — worth settling on one list.
+
+
+---
+
+## 48. "Editar" in the day preview opened nothing — and would have edited the wrong week
+
+Found while testing § 46. Clicking **Editar** in the program day-preview modal closed the preview and
+opened nothing at all.
+
+### Two faults, one line
+
+The button was an inline `onclick`:
+
+```js
+onclick="document.getElementById('program-day-view-modal').remove();
+         currentEditingWeekIndex=${weekIndex}; currentEditingDay=${dayNum};
+         openExerciseBuilder(${dayNum});"
+```
+
+**Inline handlers run in global scope.** Everything it needs lives inside this file's closure, so:
+
+1. `openExerciseBuilder` is a closure `const` and is not on `window` → `ReferenceError:
+   openExerciseBuilder is not defined`. The preview had already been removed by then, so the modal
+   vanished and nothing replaced it.
+2. The two assignments did **not** set the closure's `currentEditingWeekIndex` / `currentEditingDay`.
+   With no declaration they created *new globals* of the same name, leaving the real ones at whatever
+   they were. So simply putting the function on `window` would have opened — and then **saved** — the
+   wrong week: the editor writes to `prog.weeks[currentEditingWeekIndex].days[currentEditingDay]`.
+
+That second fault is the dangerous one. It would have silently overwritten another week's routine, which
+is why the fix is a handler and not a one-line export.
+
+### The fix
+
+The button now carries `class="day-view-edit-btn"` with `data-week` / `data-day`, and is handled by the
+delegated click handler **inside the closure** — the same pattern the working `action-add` path uses. The
+week comes from the button because the preview modal is detached from the `.week-block` elements the other
+path measures against.
+
+### Verified in a real browser, on a two-week program
+
+Week 2 / Day 1 → preview reads "SEMANA 2 · DÍA 1", the button carries `week="1" day="1"`, the editor opens
+on **S2D1 Espalda** with its exercise. Renaming and saving wrote to **week 2 day 1 only** — week 1 day 1
+was untouched, which is exactly what the global-assignment fault would have corrupted. Week 1 / Day 3 opens
+**S1D3 Pierna**. No console errors.

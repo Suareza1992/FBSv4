@@ -6849,8 +6849,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h3 class="text-lg font-black text-[#FFDB89] mt-0.5">${day?.name || dayLabel}</h3>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="document.getElementById('program-day-view-modal').remove(); const wb=Array.from(document.querySelectorAll('.week-block')); currentEditingWeekIndex=${weekIndex}; currentEditingDay=${dayNum}; openExerciseBuilder(${dayNum});"
-                            class="px-3 py-1.5 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89]/70 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 text-xs font-bold transition flex items-center gap-1.5">
+                        <!-- Handled by the delegated click handler, NOT an inline onclick: this
+                             button needs openExerciseBuilder and currentEditingWeekIndex /
+                             currentEditingDay, all of which live inside this file's closure.
+                             An inline handler runs in global scope and can reach none of them. -->
+                        <button class="day-view-edit-btn px-3 py-1.5 rounded-lg border border-[#FFDB89]/30 text-[#FFDB89]/70 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 text-xs font-bold transition flex items-center gap-1.5"
+                            data-week="${weekIndex}" data-day="${dayNum}">
                             <i class="fas fa-edit text-xs"></i>Editar
                         </button>
                         <button id="close-day-view-modal" class="text-[#FFDB89]/40 hover:text-[#FFDB89] transition text-xl leading-none">
@@ -11679,6 +11683,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.classList.contains('action-add')) {
             const weekBlocks = Array.from(document.querySelectorAll('.week-block'));
             currentEditingWeekIndex = weekBlocks.indexOf(target.closest('.week-block'));
+            currentEditingDay = target.dataset.day;
+            openExerciseBuilder(target.dataset.day);
+            return;
+        }
+        // "Editar" inside the day-preview modal. It used to be an inline onclick that called
+        // openExerciseBuilder() and assigned currentEditingWeekIndex / currentEditingDay —
+        // but inline handlers run in GLOBAL scope, where none of those exist. It threw
+        // "openExerciseBuilder is not defined" after already removing the preview modal, so
+        // the preview closed and the editor never opened. The two assignments silently
+        // created window globals instead of setting the ones the builder reads, so exposing
+        // the function alone would have opened the editor on the wrong day.
+        // The modal is detached from the week blocks, so the week comes from the button.
+        if (target.classList.contains('day-view-edit-btn')) {
+            document.getElementById('program-day-view-modal')?.remove();
+            currentEditingWeekIndex = parseInt(target.dataset.week, 10) || 0;
             currentEditingDay = target.dataset.day;
             openExerciseBuilder(target.dataset.day);
             return;
