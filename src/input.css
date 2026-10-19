@@ -125,3 +125,26 @@ input:focus:not(:focus-visible), select:focus:not(:focus-visible) {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 219, 137, 0.10);
 }
+
+/* Centred number inputs
+   -------------------------------------------------------------------------
+   Chrome and Safari reserve room on the RIGHT of an <input type="number"> for
+   the little spinner arrows, even while they are invisible. The browser then
+   centres the value inside what is left, so a `text-center` number sits
+   noticeably left of the box's real centre — which is what the Distribución
+   percentages looked like.
+
+   Every number input the app centres is typed into directly; none of them is
+   driven by the arrows. So where the app asks for centring, take the arrows
+   away and give the value the whole box. Number inputs that are NOT centred
+   keep their spinners. */
+input[type="number"].text-center::-webkit-outer-spin-button,
+input[type="number"].text-center::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+input[type="number"].text-center {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

@@ -4346,3 +4346,112 @@ reports `behindProxy: true`, shows the rate-limit key is still the socket addres
 `trust proxy` is **still unset**. Setting it wrongly is its own vulnerability: trust more hops than exist
 and a client can forge `X-Forwarded-For` and bypass the limiters entirely. Run the endpoint on the live
 server first, read the verdict, and set it to the real number of proxies (Railway is normally `1`).
+
+---
+
+## 52. "Macros de hoy" / "Macros de esta semana"
+
+The rings on the client screen and on the client's Inicio now have a switch. **Hoy** is what was always
+there. **Esta semana** rolls the same four rings up Monday → Sunday and adds a band that answers the
+question the daily numbers never could.
+
+### Why the week is the real unit
+
+The plan is written in calories per day, but fat is lost by the week. A **−250 kcal/day** deficit is
+**1,750 kcal** over seven days — half a pound. **−500** is **3,500** — a pound. A client can land every
+single day "close enough" and still miss the week, or eat 1,200 extra on one Saturday and never see why
+the scale did not move. The daily ring hides both.
+
+**The weekly number is never typed in anywhere.** It is whichever deficit/surplus pill is selected in
+*Macros Recomendados*, times seven:
+
+| Objetivo | Per day | Per week | Roughly |
+|---|---|---|---|
+| Mantener | 0 | 0 | hold |
+| Déficit −250 | −250 | **−1,750** | ≈ 0.5 lbs |
+| Déficit −500 | −500 | **−3,500** | ≈ 1 lb |
+| Superávit +250 | +250 | +1,750 | ≈ 0.5 lbs |
+| Superávit +500 | +500 | +3,500 | ≈ 1 lb |
+
+Change the pill and the weekly target changes with it. Nothing else to configure.
+
+### What the band shows
+
+```
+BALANCE DE LA SEMANA                                   META SEMANAL
+−1,750 kcal                                            −1,750 kcal
+≈ 0.5 lbs · mantenimiento 2,598 kcal/día               Déficit −250 × 7 días
+[██████████████████████████████████████████████████]
+Semana cerrada con un déficit de 1,750 kcal (≈0.5 lbs). Meta cumplida.
+7 de 7 días registrados
+```
+
+- **The big number is what has actually been banked** — Σ (eaten − maintenance) over the logged days — and
+  the bar tracks that same number, so the two can never disagree.
+- **The sentence carries the projection.** Mid-week it reads *"Al ritmo de esta semana llegas a −1,988
+  kcal"*. Once the week is closed it stops projecting and reports the real total.
+- Green = on plan, gold = short of it, red = going the other way.
+- Maintenance is the calculator's own figure (`lean mass × 11 + 800`) from the latest evaluation, or is
+  backed out of the saved target when there is no measurement on file. With no measurement **and** no
+  target, the band is replaced by one line asking for an evaluation — the rings still work.
+
+### The four rules that keep the number honest
+
+1. **Monday → Sunday**, the same week the Inicio stats already use.
+2. **Only today and earlier count.** A client who pre-writes tomorrow's lunch (see § 47 — they do) must
+   not see it inflate this week.
+3. **A day with no calories on it is not "ate nothing".** Counting it would invent a whole maintenance
+   day of fake deficit. Such days drop out of the balance, and the card says *"5 de 7 días registrados ·
+   2 días sin registrar no cuentan en el balance"* so the number can be read for what it is. Their water
+   still counts toward the water ring. A week with **nothing** logged reports *unknown*, not a flat zero.
+4. **Maintenance is rounded before it is used**, to the whole number the card prints. Without that, a
+   client who ate their prescribed 2,348 kcal every single day was told they missed the week by 3 kcal —
+   the error being the half-calorie the formula carries, not anything they did.
+
+### Where the code lives
+
+| File | What it is |
+|---|---|
+| `public/macro-week.js` | the whole calculation — `weekRange`, `summarise`, `verdict`, `maintenanceFrom`; a browser global, loaded before `app.js` |
+| `FitBySuarez-mobile/lib/macroWeek.ts` | the phone's mirror of the same |
+| `scripts/macro-week-cases.json` | the cases **both** are run against, so they cannot drift apart (§ 43's rule) |
+| `scripts/test-macro-week.mjs` | `node scripts/test-macro-week.mjs` — 119 checks |
+| `FitBySuarez-mobile/scripts/test-macro-week.ts` | `npx -y tsx scripts/test-macro-week.ts` — 118 checks |
+| `renderMacroRangeCard()` in `public/app.js` | the card itself, drawn identically on the trainer's client screen and the client's Inicio |
+
+The choice of Hoy/Esta semana is remembered in `localStorage` under `macroRange`, so it follows the user
+between the two screens. On the phone it is component state and resets with the app.
+
+`client_inicio.html` used to carry ~130 lines of hand-written ring markup plus a `setRing()` helper in
+`app.js`; both are gone, replaced by one `<div id="macro-range-card">`. The trainer screen's private
+`ringCol()` is gone the same way. **One renderer, two screens** — a change to the card can no longer land
+on one and miss the other.
+
+### Verified
+
+119 + 118 automated checks, plus the card driven in a browser against a throwaway local database (never
+production) with three seeded clients: a week eaten exactly on plan (green, *Meta cumplida*), a week that
+drifted into surplus on a cut (red), and a bulk week with two days never logged (gold, *te quedaste a
+1,000 de la meta*). Checked on the trainer's client screen, on the client's Inicio, at phone width, and on
+the phone app itself. No new console errors; `npm run build:css` run (§ 38).
+
+### Also in *Macros Recomendados*
+
+**"Meta calórica semanal", next to the daily one.** The objective is chosen on that panel, so the week it
+implies belongs there too — no one should have to open the weekly card to see it:
+
+```
+Meta calórica diaria  2,348 kcal      Meta calórica semanal  16,436 kcal
+                                      Déficit −1,750 kcal/semana ≈ 0.5 lbs
+```
+
+It is the daily target × 7, and the line under it is the chosen pill × 7 in the pill's own colour, with
+what that weighs (3,500 kcal ≈ 1 lb). Both update live as the objective or the ratios change, before
+anything is saved. "Mantener" says *"Mantenimiento · sin déficit ni superávit"* instead of a figure.
+
+**The percentage boxes were not centred.** Chrome and Safari reserve room on the right of an
+`<input type="number">` for the spinner arrows even while they are invisible, then centre the value in
+what is left — so `40` sat noticeably left of the box's middle. `src/input.css` now strips the arrows from
+number inputs **the app has explicitly centred** (`input[type="number"].text-center`), which is all 18 of
+them; number inputs that are not centred keep their spinners. One rule, no markup changes, and it fixes
+every box of this kind in the app rather than the three that were reported.

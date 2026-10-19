@@ -4153,10 +4153,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             <!-- Meta total + save -->
             <div class="px-6 py-4 flex items-center justify-between flex-wrap gap-3">
-                <div>
-                    <span class="text-xs text-[#FFDB89]/40">Meta calórica diaria</span>
-                    <span class="ml-2 text-xl font-black text-[#FFDB89]" id="mc-total-cal">—</span>
-                    <span class="text-xs text-[#FFDB89]/40 ml-1">kcal</span>
+                <div class="flex flex-wrap items-start gap-x-8 gap-y-3">
+                    <div>
+                        <span class="text-xs text-[#FFDB89]/40">Meta calórica diaria</span>
+                        <span class="ml-2 text-xl font-black text-[#FFDB89]" id="mc-total-cal">—</span>
+                        <span class="text-xs text-[#FFDB89]/40 ml-1">kcal</span>
+                    </div>
+                    <!-- The same goal read the way the plan is actually judged. Fat is lost by
+                         the week, not the day: −250/día IS 1,750 a week. Kept here so the number
+                         is in front of whoever sets the objective, without opening the
+                         "Esta semana" card (TECHNICAL.md § 52). -->
+                    <div>
+                        <span class="text-xs text-[#FFDB89]/40">Meta calórica semanal</span>
+                        <span class="ml-2 text-xl font-black text-[#FFDB89]" id="mc-total-cal-week">—</span>
+                        <span class="text-xs text-[#FFDB89]/40 ml-1">kcal</span>
+                        <p class="text-[10px] mt-1" id="mc-week-delta">&nbsp;</p>
+                    </div>
                 </div>
                 ${!readOnly
                     ? `<button id="mc-save-btn" class="px-5 py-2.5 bg-[#FFDB89] text-[#030303] rounded-xl text-sm font-black hover:bg-[#FFDB89]/80 transition flex items-center gap-2">
@@ -4204,6 +4216,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
             set('mc-total-cal', Math.round(targetCal).toLocaleString());
+            set('mc-total-cal-week', (Math.round(targetCal) * 7).toLocaleString());
+
+            // What that week is FOR: the chosen deficit/surplus × 7, and what it weighs.
+            // 3,500 kcal ≈ one pound, so −250/día ≈ half a pound a week.
+            const weekDeltaEl = $('mc-week-delta');
+            if (weekDeltaEl) {
+                const weekDelta = delta * 7;
+                if (weekDelta === 0) {
+                    weekDeltaEl.textContent = 'Mantenimiento · sin déficit ni superávit';
+                    weekDeltaEl.style.color = 'rgba(255,219,137,0.35)';
+                } else {
+                    const word = weekDelta < 0 ? 'Déficit' : 'Superávit';
+                    const sign = weekDelta < 0 ? '−' : '+';
+                    const lbs  = (Math.abs(weekDelta) / 3500).toFixed(1);
+                    weekDeltaEl.textContent = `${word} ${sign}${Math.abs(weekDelta).toLocaleString()} kcal/semana ≈ ${lbs} lbs`;
+                    weekDeltaEl.style.color = goalColors[currentGoal] || 'rgba(255,219,137,0.35)';
+                }
+            }
             set('mc-cal-pro',   Math.round(calPro).toLocaleString());
             set('mc-g-pro',     `${Math.round(calPro / 4)} g`);
             set('mc-cal-fat',   Math.round(calFat).toLocaleString());
@@ -4321,6 +4351,160 @@ document.addEventListener('DOMContentLoaded', () => {
         recompute();
     };
 
+    // ── "Macros de hoy" / "Macros de esta semana" ────────────────────────────────
+    // One card, used both on the trainer's client screen and on the client's Inicio,
+    // so the two always read the week the same way.
+    //
+    // The daily rings cannot answer the question the plan is written around: a −250
+    // kcal/day deficit is 1,750 kcal over the week and −500 is 3,500 — half a pound
+    // and a pound. The weekly target is never typed in anywhere; it is whichever
+    // deficit/surplus pill is selected in "Macros Recomendados", times seven. The
+    // arithmetic lives in public/macro-week.js (shared with the phone and tested in
+    // scripts/test-macro-week.mjs); this function only draws it.
+    const MACRO_RANGE_KEY = 'macroRange';
+
+    const renderMacroRangeCard = (container, data) => {
+        if (!container || !window.MacroWeek) return;
+        const MW       = window.MacroWeek;
+        const n        = (v) => { const x = parseFloat(v); return Number.isFinite(x) ? x : 0; };
+        const logs     = Array.isArray(data.logs) ? data.logs : [];
+        const todayStr = data.todayStr;
+        const daily    = data.goals || {};          // per-day goals: calories/protein/carbs/fat/water
+        const week     = MW.summarise({ logs, today: todayStr, dailyGoals: daily, maintenance: data.maintenance, goal: data.goal });
+        const todayLog = logs.find((l) => l.date === todayStr) || {};
+
+        const C = 251.33;                            // 2π × r(40)
+        // The ring is drawn empty and filled on the next frame, so the sweep animates.
+        const ringCol = (color, trackRgba, label, val, goalVal, unit) => {
+            const rawPct = goalVal > 0 ? val / goalVal : 0;
+            const off    = (C * (1 - Math.min(1, rawPct))).toFixed(2);
+            const pctTxt = goalVal > 0 ? Math.round(rawPct * 100) + '%' : '--';
+            const subTxt = goalVal > 0 ? `${val.toLocaleString()} / ${goalVal.toLocaleString()}${unit}` : `${val.toLocaleString()}${unit}`;
+            const stroke = goalVal > 0 && val > goalVal ? '#22c55e' : color;   // green once the goal is passed
+            return `
+                <div class="flex flex-col items-center gap-1.5">
+                    <div class="relative w-full aspect-square max-w-[92px]">
+                        <svg viewBox="0 0 100 100" class="w-full h-full" style="transform:rotate(-90deg)">
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="${trackRgba}" stroke-width="9"/>
+                            <circle class="macro-ring" data-off="${off}" cx="50" cy="50" r="40" fill="none" stroke="${stroke}" stroke-width="9"
+                                stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33"
+                                style="transition:stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)"/>
+                        </svg>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                            <p class="text-xs font-black leading-none" style="color:${stroke}">${val.toLocaleString()}${unit}</p>
+                            <p class="text-[8px] mt-0.5" style="color:${stroke};opacity:.55">${pctTxt}</p>
+                        </div>
+                    </div>
+                    <p class="text-[9px] font-bold uppercase tracking-wider" style="color:${color};opacity:.7">${label}</p>
+                    <p class="text-[9px] text-[#FFDB89]/30 leading-none">${subTxt}</p>
+                </div>`;
+        };
+
+        const STATUS_COLOR = { met: '#34D399', short: '#FFDB89', reverse: '#F87171', drifting: '#F87171', unknown: 'rgba(255,219,137,0.45)' };
+
+        // The weekly balance band — only in weekly mode, and only when there is an
+        // evaluation to compute maintenance from.
+        const balanceBand = () => {
+            const b = week.balance;
+            if (!b) return `
+                <div class="mt-4 pt-4 border-t border-[#FFDB89]/10">
+                    <p class="text-xs text-[#FFDB89]/40"><i class="fas fa-circle-info mr-1.5"></i>${MW.verdict(week)}</p>
+                </div>`;
+            const color   = STATUS_COLOR[b.status] || STATUS_COLOR.unknown;
+            const pillTxt = b.target === 0 ? 'Mantener'
+                : `${b.target < 0 ? 'Déficit' : 'Superávit'} ${MW.fmtSigned(b.dailyDelta)} × 7 días`;
+            // The bar tracks what has ACTUALLY been banked so far, so it always matches
+            // the big number above it; the sentence below carries the projection.
+            // Eating in the wrong direction reads as 0%.
+            const pct = (b.target === 0 || b.actual === 0 || (b.actual > 0) !== (b.target > 0))
+                ? 0 : Math.min(100, Math.round((b.actual / b.target) * 100));
+            return `
+                <div class="mt-4 pt-4 border-t border-[#FFDB89]/10">
+                    <div class="flex flex-wrap items-end justify-between gap-3 mb-2">
+                        <div>
+                            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-0.5">
+                                ${b.complete ? 'Balance de la semana' : 'Balance hasta hoy'}
+                            </p>
+                            <p class="text-2xl font-black leading-none" style="color:${color}">
+                                ${MW.fmtSigned(b.actual)} <span class="text-sm font-bold opacity-60">kcal</span>
+                            </p>
+                            <p class="text-[10px] text-[#FFDB89]/35 mt-1">
+                                ≈ ${Math.abs(MW.pounds(b.actual)).toFixed(1)} lbs · mantenimiento ${MW.fmtKcal(b.maintenance)} kcal/día
+                            </p>
+                        </div>
+                        <div class="text-left sm:text-right">
+                            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-0.5">Meta semanal</p>
+                            <p class="text-lg font-black text-[#FFDB89] leading-none">
+                                ${MW.fmtSigned(b.target)} <span class="text-xs font-bold opacity-50">kcal</span>
+                            </p>
+                            <p class="text-[10px] text-[#FFDB89]/35 mt-1">${pillTxt}</p>
+                        </div>
+                    </div>
+                    ${b.target === 0 ? '' : `
+                    <div class="h-2 rounded-full bg-[#FFDB89]/10 overflow-hidden">
+                        <div class="h-full rounded-full" style="width:${pct}%;background:${color};transition:width .9s cubic-bezier(.4,0,.2,1)"></div>
+                    </div>`}
+                    <p class="text-xs mt-2 font-medium" style="color:${color}">${MW.verdict(week)}</p>
+                    <p class="text-[10px] text-[#FFDB89]/30 mt-1">
+                        ${week.loggedDays} de 7 días registrados${week.missingDays > 0 ? ` · ${week.missingDays} día${week.missingDays === 1 ? '' : 's'} sin registrar no cuenta${week.missingDays === 1 ? '' : 'n'} en el balance` : ''}
+                    </p>
+                </div>`;
+        };
+
+        const draw = () => {
+            const range  = localStorage.getItem(MACRO_RANGE_KEY) === 'week' ? 'week' : 'today';
+            const isWeek = range === 'week';
+            const vals   = isWeek ? week.totals : {
+                calories: Math.round(n(todayLog.calories) || 0), protein: Math.round(n(todayLog.protein) || 0),
+                carbs: Math.round(n(todayLog.carbs) || 0), fat: Math.round(n(todayLog.fat) || 0),
+                water: Math.round(n(todayLog.water) || 0)
+            };
+            const g = isWeek ? week.goals : {
+                calories: Math.round(n(daily.calories) || 0), protein: Math.round(n(daily.protein) || 0),
+                carbs: Math.round(n(daily.carbs) || 0), fat: Math.round(n(daily.fat) || 0),
+                water: Math.round(n(daily.water) || 0)
+            };
+            const pill = (key, label) => `
+                <button type="button" data-range="${key}" class="macro-range-btn px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest transition ${
+                    range === key ? 'bg-[#FFDB89] text-[#030303]' : 'text-[#FFDB89]/40 hover:text-[#FFDB89]/70'}">${label}</button>`;
+
+            container.innerHTML = `
+                <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-2xl p-4 sm:p-5">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <div class="inline-flex gap-0.5 p-0.5 rounded-lg bg-[#FFDB89]/5 border border-[#FFDB89]/10">
+                                ${pill('today', 'Hoy')}${pill('week', 'Esta semana')}
+                            </div>
+                            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest">${isWeek ? week.label : todayStr}</p>
+                        </div>
+                        ${g.calories
+                            ? `<p class="text-xs text-[#FFDB89]/50"><span class="font-black text-[#FFDB89]">${vals.calories.toLocaleString()}</span> / ${g.calories.toLocaleString()} kcal</p>`
+                            : `<p class="text-xs font-black text-[#FFDB89]">${vals.calories.toLocaleString()} kcal</p>`}
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                        ${ringCol('#f87171', 'rgba(248,113,113,0.30)', 'Proteína', vals.protein, g.protein, 'g')}
+                        ${ringCol('#facc15', 'rgba(250,204,21,0.30)',  'Carbos',   vals.carbs,   g.carbs,   'g')}
+                        ${ringCol('#fb923c', 'rgba(251,146,60,0.30)',  'Grasas',   vals.fat,     g.fat,     'g')}
+                        ${ringCol('#38bdf8', 'rgba(56,189,248,0.30)',  'Agua',     vals.water,   g.water,   ' oz')}
+                    </div>
+                    ${isWeek ? balanceBand() : ''}
+                </div>`;
+
+            // Double rAF so the CSS transition fires after the rings are painted.
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                container.querySelectorAll('.macro-ring').forEach((c) => { c.style.strokeDashoffset = c.dataset.off; });
+            }));
+            container.querySelectorAll('.macro-range-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    localStorage.setItem(MACRO_RANGE_KEY, btn.dataset.range);
+                    draw();
+                });
+            });
+        };
+
+        draw();
+    };
+
     const loadClientNutrition = async (clientId) => {
         const container = document.getElementById('tab-nutrition');
         if (!container) return;
@@ -4335,48 +4519,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const clientData   = clientsCache.find(c => c._id === clientId) || {};
             const latest       = measurements.length ? measurements[measurements.length - 1] : null;
 
-            // Today's log + client macro goals for the rings
-            const todayLog  = logs.find(l => l.date === todayStr) || {};
+            // Daily macro goals for the rings — the weekly view multiplies them by 7.
             const ms        = clientData.macroSettings || {};
-            const tProtein  = Math.round(todayLog.protein || 0);
-            const tCarbs    = Math.round(todayLog.carbs   || 0);
-            const tFat      = Math.round(todayLog.fat     || 0);
-            const tWater    = Math.round(todayLog.water   || 0);
-            const tCal      = Math.round(todayLog.calories || 0);
-            const goalPro   = ms.goalProtein || 0;
-            const goalCarbs = ms.goalCarbs   || 0;
-            const goalFat   = ms.goalFat     || 0;
-            const goalCal   = ms.targetCal   || 0;
-            const goalWater = clientData.waterGoal || 64; // trainer-set or default 8×8oz
-
-            // Helper: build one SVG ring column
-            const ringCol = (id, color, trackRgba, label, val, goal, unit) => {
-                const C   = 251.33;
-                const rawPct = goal > 0 ? val / goal : 0;
-                const pct    = Math.min(1, rawPct);
-                const off = (C * (1 - pct)).toFixed(2);
-                const pctTxt = goal > 0 ? Math.round(rawPct * 100) + '%' : '--';
-                const subTxt = goal > 0 ? `${val} / ${goal}${unit}` : `${val}${unit}`;
-                const overGoal = goal > 0 && val > goal;
-                const strokeColor = overGoal ? '#22c55e' : color; // green when goal met/exceeded
-                return `
-                <div class="flex flex-col items-center gap-1.5">
-                    <div class="relative w-full aspect-square max-w-[92px]">
-                        <svg viewBox="0 0 100 100" class="w-full h-full" style="transform:rotate(-90deg)">
-                            <circle cx="50" cy="50" r="40" fill="none" stroke="${trackRgba}" stroke-width="9"/>
-                            <circle cx="50" cy="50" r="40" fill="none" stroke="${strokeColor}" stroke-width="9"
-                                stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="${off}"
-                                style="transition:stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)"/>
-                        </svg>
-                        <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                            <p class="text-xs font-black leading-none" style="color:${strokeColor}">${val}${unit}</p>
-                            <p class="text-[8px] mt-0.5" style="color:${strokeColor};opacity:.55">${pctTxt}</p>
-                        </div>
-                    </div>
-                    <p class="text-[9px] font-bold uppercase tracking-wider" style="color:${color};opacity:.7">${label}</p>
-                    <p class="text-[9px] text-[#FFDB89]/30 leading-none">${subTxt}</p>
-                </div>`;
+            const dailyGoals = {
+                calories: ms.targetCal    || 0,
+                protein:  ms.goalProtein  || 0,
+                carbs:    ms.goalCarbs    || 0,
+                fat:      ms.goalFat      || 0,
+                water:    clientData.waterGoal || 64   // trainer-set or default 8×8oz
             };
+            // Maintenance for the weekly balance: straight from the latest evaluation,
+            // or backed out of a saved target when there is no measurement on file.
+            const maintenance = (latest && window.MacroWeek
+                    ? window.MacroWeek.maintenanceFrom(parseMeasurement(latest.weight), parseMeasurement(latest.bodyFat))
+                    : null)
+                || (ms.targetCal && ms.goal && window.MacroWeek
+                    ? ms.targetCal - (window.MacroWeek.DAILY_DELTA[ms.goal] ?? 0)
+                    : null);
 
             // Build macro calc data from latest measurement + client profile
             const macroData = latest
@@ -4387,19 +4546,8 @@ document.addEventListener('DOMContentLoaded', () => {
             container.innerHTML = `
                 <div class="space-y-6 max-w-4xl mx-auto">
 
-                    <!-- ── Today's macro rings ───────────────────────────────── -->
-                    <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-2xl p-4 sm:p-5">
-                        <div class="flex flex-wrap items-center justify-between gap-1 mb-4">
-                            <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest">Macros de hoy · ${todayStr}</p>
-                            ${goalCal ? `<p class="text-xs text-[#FFDB89]/50"><span class="font-black text-[#FFDB89]">${tCal}</span> / ${goalCal} kcal</p>` : `<p class="text-xs font-black text-[#FFDB89]">${tCal} kcal</p>`}
-                        </div>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                            ${ringCol('rp', '#f87171', 'rgba(248,113,113,0.30)', 'Proteína', tProtein, goalPro,   'g')}
-                            ${ringCol('rc', '#facc15', 'rgba(250,204,21,0.30)',  'Carbos',   tCarbs,   goalCarbs, 'g')}
-                            ${ringCol('rf', '#fb923c', 'rgba(251,146,60,0.30)', 'Grasas',   tFat,     goalFat,   'g')}
-                            ${ringCol('rw', '#38bdf8', 'rgba(56,189,248,0.30)', 'Agua',     tWater,   goalWater, ' oz')}
-                        </div>
-                    </div>
+                    <!-- ── Macro rings: today or this week ───────────────────── -->
+                    <div id="macro-range-card"></div>
 
                     <!-- ── Macro calculator ──────────────────────────────────── -->
                     <div id="macro-calc-wrapper"></div>
@@ -4448,6 +4596,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
             `;
+            renderMacroRangeCard(document.getElementById('macro-range-card'), {
+                logs, todayStr, goals: dailyGoals, maintenance, goal: ms.goal || null
+            });
+
             // Inject macro calculator into its wrapper
             const calcWrapper = document.getElementById('macro-calc-wrapper');
             if (calcWrapper && macroData) renderMacroCalculator(calcWrapper, macroData, clientId, false);
@@ -12293,56 +12445,40 @@ document.addEventListener('DOMContentLoaded', () => {
             tipEl.textContent = tips[dayOfYear % tips.length];
         }
 
-        // ── Macro rings — fetch today's nutrition log + goals ──────────────────
+        // ── Macro card — today's rings, or the whole week against the plan ────
         try {
-            const [nutRes, meRes] = await Promise.all([
+            const [nutRes, meRes, measRes] = await Promise.all([
                 apiFetch(`/api/nutrition-logs/${session.id}`),
-                apiFetch('/api/me')
+                apiFetch('/api/me'),
+                apiFetch(`/api/body-measurements/${session.id}`)
             ]);
             const logs = nutRes.ok ? await nutRes.json() : [];
-            const me   = meRes.ok ? await meRes.json() : {};
+            const me   = meRes.ok  ? await meRes.json()  : {};
+            const meas = measRes.ok ? await measRes.json() : [];
+            const ms   = me.macroSettings || {};
+            const latest = Array.isArray(meas) && meas.length ? meas[meas.length - 1] : null;
 
-            const todayLog = logs.find(l => l.date === todayStr) || {};
-            const ms       = me.macroSettings || {};
+            // Maintenance for the weekly balance: from the latest evaluation, or backed
+            // out of the saved target when there is no measurement on file.
+            const maintenance = (latest && window.MacroWeek
+                    ? window.MacroWeek.maintenanceFrom(parseMeasurement(latest.weight), parseMeasurement(latest.bodyFat))
+                    : null)
+                || (ms.targetCal && ms.goal && window.MacroWeek
+                    ? ms.targetCal - (window.MacroWeek.DAILY_DELTA[ms.goal] ?? 0)
+                    : null);
 
-            const protein = Math.round(todayLog.protein || 0);
-            const carbs   = Math.round(todayLog.carbs   || 0);
-            const fat     = Math.round(todayLog.fat     || 0);
-            const water   = Math.round(todayLog.water   || 0);
-
-            const goalPro   = ms.goalProtein || 0;
-            const goalCarbs = ms.goalCarbs   || 0;
-            const goalFat   = ms.goalFat     || 0;
-            const goalWater = me.waterGoal   || 64; // oz — trainer-set or default 8 × 8oz
-
-            const C = 251.33; // circumference: 2π × r(40)
-
-            const setRing = (ringId, valId, pctId, subId, current, goal, unit) => {
-                const pct    = goal > 0 ? current / goal : 0;
-                const filled = pct >= 1;                              // at or over goal
-                const clampedPct = Math.min(1, pct);
-                const offset = (C * (1 - clampedPct)).toFixed(2);
-                const ring   = document.getElementById(ringId);
-                const valEl  = document.getElementById(valId);
-                const pctEl  = document.getElementById(pctId);
-                const subEl  = document.getElementById(subId);
-                // Double rAF so the CSS transition fires after the element is painted
-                if (ring) requestAnimationFrame(() => requestAnimationFrame(() => {
-                    ring.style.strokeDashoffset = offset;
-                    // Keep solid color at 100%; turn green when over goal
-                    if (filled && goal > 0) {
-                        ring.style.stroke = current > goal ? '#22c55e' : ring.getAttribute('stroke');
-                    }
-                }));
-                if (valEl) valEl.textContent = current + unit;
-                if (pctEl) pctEl.textContent = goal > 0 ? Math.round(pct * 100) + '%' : '--';
-                if (subEl) subEl.textContent = goal > 0 ? `${current} / ${goal}${unit}` : `${current}${unit}`;
-            };
-
-            setRing('ring-protein', 'ring-protein-val', 'ring-protein-pct', 'ring-protein-sub', protein, goalPro,   'g');
-            setRing('ring-carbs',   'ring-carbs-val',   'ring-carbs-pct',   'ring-carbs-sub',   carbs,   goalCarbs, 'g');
-            setRing('ring-fat',     'ring-fat-val',     'ring-fat-pct',     'ring-fat-sub',     fat,     goalFat,   'g');
-            setRing('ring-water',   'ring-water-val',   'ring-water-pct',   'ring-water-sub',   water,   goalWater, ' oz');
+            renderMacroRangeCard(document.getElementById('macro-range-card'), {
+                logs, todayStr,
+                goals: {
+                    calories: ms.targetCal   || 0,
+                    protein:  ms.goalProtein || 0,
+                    carbs:    ms.goalCarbs   || 0,
+                    fat:      ms.goalFat     || 0,
+                    water:    me.waterGoal   || 64   // oz — trainer-set or default 8 × 8oz
+                },
+                maintenance,
+                goal: ms.goal || null
+            });
         } catch (e) { console.error('Error loading macro rings:', e); }
     };
 

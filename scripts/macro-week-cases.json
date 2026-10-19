@@ -1,0 +1,257 @@
+{
+  "_readme": "Shared cases for the weekly macro roll-up. The web (public/macro-week.js) and the phone (FitBySuarez-mobile/lib/macroWeek.ts) are both run against this file so they cannot drift apart. Logs are [date, calories, protein, carbs, fat, water]; missing entries are 0. Maintenance is given explicitly so the arithmetic in `expect` can be checked by hand.",
+
+  "weekRange": [
+    { "label": "Monday starts its own week",        "today": "2026-10-19", "start": "2026-10-19", "end": "2026-10-25", "rangeLabel": "19 – 25 oct" },
+    { "label": "Sunday closes the week before",     "today": "2026-10-18", "start": "2026-10-12", "end": "2026-10-18", "rangeLabel": "12 – 18 oct" },
+    { "label": "mid-week lands on the same Monday", "today": "2026-10-15", "start": "2026-10-12", "end": "2026-10-18", "rangeLabel": "12 – 18 oct" },
+    { "label": "a week across two months",          "today": "2026-09-29", "start": "2026-09-28", "end": "2026-10-04", "rangeLabel": "28 sep – 4 oct" },
+    { "label": "a week across two years",           "today": "2026-01-01", "start": "2025-12-29", "end": "2026-01-04", "rangeLabel": "29 dic – 4 ene" }
+  ],
+
+  "maintenanceFrom": [
+    { "label": "Gabriel: 225.4 lbs at 27.5%",        "weight": 225.4, "bodyFat": 27.5,  "expect": 2597.565 },
+    { "label": "body fat stored as a decimal",       "weight": 225.4, "bodyFat": 0.275, "expect": 2597.565 },
+    { "label": "no weight means no maintenance",     "weight": 0,     "bodyFat": 27.5,  "expect": null },
+    { "label": "no body fat means no maintenance",   "weight": 225.4, "bodyFat": 0,     "expect": null },
+    { "label": "a nonsense body fat is refused",     "weight": 200,   "bodyFat": 120,   "expect": null }
+  ],
+
+  "summarise": [
+    {
+      "label": "a full week exactly on a −250/day plan",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "cut250",
+      "dailyGoals": { "calories": 2348, "protein": 235, "carbs": 176, "fat": 78, "water": 64 },
+      "logs": [
+        ["2026-10-12", 2348, 235, 176, 78, 64], ["2026-10-13", 2348, 235, 176, 78, 64],
+        ["2026-10-14", 2348, 235, 176, 78, 64], ["2026-10-15", 2348, 235, 176, 78, 64],
+        ["2026-10-16", 2348, 235, 176, 78, 64], ["2026-10-17", 2348, 235, 176, 78, 64],
+        ["2026-10-18", 2348, 235, 176, 78, 64]
+      ],
+      "expect": {
+        "elapsed": 7, "loggedDays": 7, "missingDays": 0, "label": "12 – 18 oct",
+        "totals": { "calories": 16436, "protein": 1645, "carbs": 1232, "fat": 546, "water": 448 },
+        "goals":  { "calories": 16436, "protein": 1645, "carbs": 1232, "fat": 546, "water": 448 },
+        "balance": { "target": -1750, "actual": -1750, "projected": -1750, "reference": -1750, "complete": true, "status": "met", "gap": 0, "pounds": -0.5, "targetPounds": -0.5, "maintenance": 2598 }
+      },
+      "verdict": "Semana cerrada con un déficit de 1,750 kcal (≈0.5 lbs). Meta cumplida."
+    },
+    {
+      "label": "the half-calorie in the maintenance formula never costs the client the week",
+      "today": "2026-10-18", "maintenance": 2597.565, "goal": "cut250",
+      "dailyGoals": { "calories": 2348 },
+      "logs": [
+        ["2026-10-12", 2348], ["2026-10-13", 2348], ["2026-10-14", 2348], ["2026-10-15", 2348],
+        ["2026-10-16", 2348], ["2026-10-17", 2348], ["2026-10-18", 2348]
+      ],
+      "expect": {
+        "balance": { "target": -1750, "actual": -1750, "reference": -1750, "complete": true, "status": "met", "gap": 0, "maintenance": 2598 }
+      },
+      "verdict": "Semana cerrada con un déficit de 1,750 kcal (≈0.5 lbs). Meta cumplida."
+    },
+    {
+      "label": "four days in, on pace for the 1,750",
+      "today": "2026-10-15", "maintenance": 2598, "goal": "cut250",
+      "dailyGoals": { "calories": 2348, "protein": 235, "carbs": 176, "fat": 78, "water": 64 },
+      "logs": [
+        ["2026-10-12", 2348, 235, 176, 78, 64], ["2026-10-13", 2348, 235, 176, 78, 64],
+        ["2026-10-14", 2348, 235, 176, 78, 64], ["2026-10-15", 2348, 235, 176, 78, 64]
+      ],
+      "expect": {
+        "elapsed": 4, "loggedDays": 4, "missingDays": 0, "label": "12 – 18 oct",
+        "totals": { "calories": 9392, "protein": 940, "carbs": 704, "fat": 312, "water": 256 },
+        "goals":  { "calories": 16436, "protein": 1645, "carbs": 1232, "fat": 546, "water": 448 },
+        "balance": { "target": -1750, "actual": -1000, "projected": -1750, "reference": -1750, "complete": false, "status": "met", "gap": 0, "pounds": -0.5, "targetPounds": -0.5, "maintenance": 2598 }
+      },
+      "verdict": "Al ritmo de esta semana llegas a −1,750 kcal. Meta: −1,750."
+    },
+    {
+      "label": "a closed week that fell short of the deficit",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "cut250",
+      "dailyGoals": { "calories": 2348 },
+      "logs": [
+        ["2026-10-12", 2500], ["2026-10-13", 2500], ["2026-10-14", 2500], ["2026-10-15", 2500],
+        ["2026-10-16", 2500], ["2026-10-17", 2500], ["2026-10-18", 2500]
+      ],
+      "expect": {
+        "elapsed": 7, "loggedDays": 7, "missingDays": 0,
+        "totals": { "calories": 17500, "protein": 0, "carbs": 0, "fat": 0, "water": 0 },
+        "goals":  { "calories": 16436, "protein": 0, "carbs": 0, "fat": 0, "water": 0 },
+        "balance": { "target": -1750, "actual": -686, "projected": -686, "reference": -686, "complete": true, "status": "short", "gap": 1064, "pounds": -0.2, "targetPounds": -0.5, "maintenance": 2598 }
+      },
+      "verdict": "Semana cerrada con un déficit de 686 kcal. Te quedaste a 1,064 de la meta."
+    },
+    {
+      "label": "a closed week that went the other way",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "cut250", "dailyGoals": { "calories": 2348 },
+      "logs": [
+        ["2026-10-12", 2800], ["2026-10-13", 2800], ["2026-10-14", 2800], ["2026-10-15", 2800],
+        ["2026-10-16", 2800], ["2026-10-17", 2800], ["2026-10-18", 2800]
+      ],
+      "expect": {
+        "elapsed": 7, "loggedDays": 7, "missingDays": 0,
+        "balance": { "target": -1750, "actual": 1414, "projected": 1414, "reference": 1414, "complete": true, "status": "reverse", "gap": 3164, "pounds": 0.4, "targetPounds": -0.5, "maintenance": 2598 }
+      },
+      "verdict": "Semana cerrada con un superávit de 1,414 kcal. La meta era un déficit de 1,750."
+    },
+    {
+      "label": "a closed week with four days never logged counts only what was logged",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "cut250", "dailyGoals": { "calories": 2348 },
+      "logs": [["2026-10-12", 2348], ["2026-10-13", 2348], ["2026-10-14", 2348]],
+      "expect": {
+        "elapsed": 7, "loggedDays": 3, "missingDays": 4,
+        "totals": { "calories": 7044, "protein": 0, "carbs": 0, "fat": 0, "water": 0 },
+        "balance": { "target": -1750, "actual": -750, "projected": -1750, "reference": -750, "complete": true, "status": "short", "gap": 1000, "pounds": -0.2, "targetPounds": -0.5, "maintenance": 2598 }
+      },
+      "verdict": "Semana cerrada con un déficit de 750 kcal. Te quedaste a 1,000 de la meta."
+    },
+    {
+      "label": "nothing logged yet this week",
+      "today": "2026-10-19", "maintenance": 2598, "goal": "cut250", "dailyGoals": { "calories": 2348 },
+      "logs": [],
+      "expect": {
+        "elapsed": 1, "loggedDays": 0, "missingDays": 1, "label": "19 – 25 oct",
+        "totals": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "water": 0 },
+        "balance": { "target": -1750, "actual": 0, "projected": null, "reference": null, "complete": false, "status": "unknown", "gap": null, "pounds": null, "targetPounds": -0.5, "maintenance": 2598 }
+      },
+      "verdict": "Registra tus comidas para ver el balance de la semana."
+    },
+    {
+      "label": "a closed week with nothing logged is unknown, not a flat zero",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "cut250", "dailyGoals": { "calories": 2348 },
+      "logs": [],
+      "expect": {
+        "elapsed": 7, "loggedDays": 0, "missingDays": 7,
+        "totals": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "water": 0 },
+        "balance": { "target": -1750, "actual": 0, "projected": null, "reference": null, "complete": true, "status": "unknown", "gap": null, "pounds": null }
+      },
+      "verdict": "Registra tus comidas para ver el balance de la semana."
+    },
+    {
+      "label": "maintain: inside the tolerance counts as held",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "maintain", "dailyGoals": { "calories": 2598 },
+      "logs": [
+        ["2026-10-12", 2650], ["2026-10-13", 2650], ["2026-10-14", 2650], ["2026-10-15", 2650],
+        ["2026-10-16", 2650], ["2026-10-17", 2650], ["2026-10-18", 2650]
+      ],
+      "expect": { "balance": { "target": 0, "actual": 364, "reference": 364, "complete": true, "status": "met", "gap": 364, "targetPounds": 0 } },
+      "verdict": "Te mantuviste: 364 kcal de diferencia en la semana."
+    },
+    {
+      "label": "maintain: drifting above maintenance",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "maintain", "dailyGoals": { "calories": 2598 },
+      "logs": [
+        ["2026-10-12", 2800], ["2026-10-13", 2800], ["2026-10-14", 2800], ["2026-10-15", 2800],
+        ["2026-10-16", 2800], ["2026-10-17", 2800], ["2026-10-18", 2800]
+      ],
+      "expect": { "balance": { "target": 0, "actual": 1414, "reference": 1414, "status": "drifting" } },
+      "verdict": "Vas 1,414 kcal por encima del mantenimiento."
+    },
+    {
+      "label": "maintain: drifting below maintenance",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "maintain", "dailyGoals": { "calories": 2598 },
+      "logs": [
+        ["2026-10-12", 2300], ["2026-10-13", 2300], ["2026-10-14", 2300], ["2026-10-15", 2300],
+        ["2026-10-16", 2300], ["2026-10-17", 2300], ["2026-10-18", 2300]
+      ],
+      "expect": { "balance": { "target": 0, "actual": -2086, "reference": -2086, "status": "drifting" } },
+      "verdict": "Vas 2,086 kcal por debajo del mantenimiento."
+    },
+    {
+      "label": "bulk +500: a full 3,500 kcal surplus week",
+      "today": "2026-10-18", "maintenance": 2598, "goal": "bulk500", "dailyGoals": { "calories": 3098 },
+      "logs": [
+        ["2026-10-12", 3098], ["2026-10-13", 3098], ["2026-10-14", 3098], ["2026-10-15", 3098],
+        ["2026-10-16", 3098], ["2026-10-17", 3098], ["2026-10-18", 3098]
+      ],
+      "expect": { "balance": { "target": 3500, "actual": 3500, "reference": 3500, "complete": true, "status": "met", "gap": 0, "pounds": 1, "targetPounds": 1 } },
+      "verdict": "Semana cerrada con un superávit de 3,500 kcal (≈1.0 lbs). Meta cumplida."
+    },
+    {
+      "label": "bulk +250: three days in and eating too little",
+      "today": "2026-10-14", "maintenance": 2598, "goal": "bulk250", "dailyGoals": { "calories": 2848 },
+      "logs": [["2026-10-12", 2700], ["2026-10-13", 2700], ["2026-10-14", 2700]],
+      "expect": {
+        "elapsed": 3, "loggedDays": 3, "missingDays": 0,
+        "balance": { "target": 1750, "actual": 306, "projected": 714, "reference": 714, "complete": false, "status": "short", "gap": 1036, "pounds": 0.2, "targetPounds": 0.5 }
+      },
+      "verdict": "Al ritmo de esta semana llegas a +714 kcal. Te faltan 1,036 para la meta."
+    },
+    {
+      "label": "bulk +250 but in a deficit: the wrong direction entirely",
+      "today": "2026-10-14", "maintenance": 2598, "goal": "bulk250", "dailyGoals": { "calories": 2848 },
+      "logs": [["2026-10-12", 2360], ["2026-10-13", 2360], ["2026-10-14", 2360]],
+      "expect": { "balance": { "target": 1750, "actual": -714, "projected": -1666, "reference": -1666, "status": "reverse" } },
+      "verdict": "Vas en déficit de 1,666 kcal. La meta era un superávit de 1,750."
+    },
+    {
+      "label": "cut −500 but in a surplus: the wrong direction entirely",
+      "today": "2026-10-14", "maintenance": 2598, "goal": "cut500", "dailyGoals": { "calories": 2098 },
+      "logs": [["2026-10-12", 2700], ["2026-10-13", 2700], ["2026-10-14", 2700]],
+      "expect": { "balance": { "target": -3500, "actual": 306, "projected": 714, "reference": 714, "status": "reverse" } },
+      "verdict": "Vas en superávit de 714 kcal. La meta era un déficit de 3,500."
+    },
+    {
+      "label": "a lunch written for tomorrow never counts toward this week",
+      "today": "2026-10-14", "maintenance": 2598, "goal": "cut250", "dailyGoals": { "calories": 2348 },
+      "logs": [
+        ["2026-10-12", 2348], ["2026-10-13", 2348], ["2026-10-14", 2348],
+        ["2026-10-15", 900], ["2026-10-16", 4000]
+      ],
+      "expect": {
+        "elapsed": 3, "loggedDays": 3, "missingDays": 0,
+        "totals": { "calories": 7044, "protein": 0, "carbs": 0, "fat": 0, "water": 0 },
+        "balance": { "target": -1750, "actual": -750, "projected": -1750, "reference": -1750, "status": "met" }
+      },
+      "verdict": "Al ritmo de esta semana llegas a −1,750 kcal. Meta: −1,750."
+    },
+    {
+      "label": "an empty day is not a logged day",
+      "today": "2026-10-13", "maintenance": 2598, "goal": "cut250", "dailyGoals": { "calories": 2348 },
+      "logs": [["2026-10-12", 0, 0, 0, 0, 0], ["2026-10-13", 2348]],
+      "expect": {
+        "elapsed": 2, "loggedDays": 1, "missingDays": 1,
+        "totals": { "calories": 2348, "protein": 0, "carbs": 0, "fat": 0, "water": 0 },
+        "balance": { "target": -1750, "actual": -250, "projected": -1750, "reference": -1750, "status": "met" }
+      },
+      "verdict": "Al ritmo de esta semana llegas a −1,750 kcal. Meta: −1,750."
+    },
+    {
+      "label": "last week's Sunday blowout stays in last week",
+      "today": "2026-10-13", "maintenance": 2598, "goal": "cut250", "dailyGoals": { "calories": 2348 },
+      "logs": [["2026-10-11", 5000], ["2026-10-13", 2348]],
+      "expect": {
+        "elapsed": 2, "loggedDays": 1, "missingDays": 1,
+        "totals": { "calories": 2348, "protein": 0, "carbs": 0, "fat": 0, "water": 0 },
+        "balance": { "target": -1750, "actual": -250, "reference": -1750, "status": "met" }
+      },
+      "verdict": "Al ritmo de esta semana llegas a −1,750 kcal. Meta: −1,750."
+    },
+    {
+      "label": "a water-only day never invents a maintenance-sized deficit",
+      "today": "2026-10-13", "maintenance": 2598, "goal": "cut250", "dailyGoals": { "calories": 2348, "water": 64 },
+      "logs": [["2026-10-12", 0, 0, 0, 0, 48], ["2026-10-13", 2348, 0, 0, 0, 64]],
+      "expect": {
+        "elapsed": 2, "loggedDays": 1, "missingDays": 1,
+        "totals": { "calories": 2348, "protein": 0, "carbs": 0, "fat": 0, "water": 112 },
+        "goals": { "calories": 16436, "protein": 0, "carbs": 0, "fat": 0, "water": 448 },
+        "balance": { "target": -1750, "actual": -250, "projected": -1750, "reference": -1750, "status": "met" }
+      },
+      "verdict": "Al ritmo de esta semana llegas a −1,750 kcal. Meta: −1,750."
+    },
+    {
+      "label": "no evaluation on file means no weekly balance at all",
+      "today": "2026-10-18", "maintenance": null, "goal": "cut250", "dailyGoals": { "calories": 2348 },
+      "logs": [["2026-10-12", 2348], ["2026-10-13", 2348]],
+      "expect": { "loggedDays": 2, "balance": null },
+      "verdict": "Agrega una evaluación para comparar la semana con tu meta."
+    },
+    {
+      "label": "no objective chosen means no weekly balance either",
+      "today": "2026-10-18", "maintenance": 2598, "goal": null, "dailyGoals": { "calories": 2348 },
+      "logs": [["2026-10-12", 2348]],
+      "expect": { "loggedDays": 1, "balance": null },
+      "verdict": "Agrega una evaluación para comparar la semana con tu meta."
+    }
+  ]
+}
