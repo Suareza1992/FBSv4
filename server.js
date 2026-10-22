@@ -30,6 +30,30 @@ import Anthropic from '@anthropic-ai/sdk';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+
+// ── How many proxies sit in front of this app ────────────────────────────────
+// Express ignores X-Forwarded-For unless this is set, so req.ip was the PROXY's
+// address — identical for every visitor on the planet. express-rate-limit keys on
+// req.ip, so the login, invite and contact limiters were not per person at all:
+// ten failed logins by anyone locked out every client for fifteen minutes.
+//
+// The number is the real hop count measured on the live server with
+// GET /api/health/ip (TECHNICAL.md § 51), NOT Railway's generic advice of 1:
+//
+//   x-forwarded-for: 24.41.250.44, 79.127.217.66      ← client, then Railway's edge
+//   socket:          ::ffff:100.64.0.3                 ← Railway's internal proxy
+//
+// Two hops: the edge (on Datacamp/CDN77 metal, which is where Railway's network
+// runs) and the internal proxy. With 2, req.ip is the client. Setting it to 1
+// would have bucketed everyone behind the edge together instead.
+//
+// Why a bigger number is NOT safer: a client can put anything in X-Forwarded-For.
+// Trusting more hops than really exist means trusting the part of the header the
+// CLIENT wrote, and the limiters could be bypassed by forging it. Trusting exactly
+// the real hops ignores anything the client prepends — /api/health/ip proves this
+// on every call, and says so if the count ever stops matching.
+const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY_HOPS ?? 2);
+app.set('trust proxy', TRUST_PROXY_HOPS);
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION'; // NEW: JWT secret from env
 // SECURITY: a missing/default JWT secret means anyone can forge admin tokens.
 // Refuse to boot in production; warn loudly elsewhere so it gets fixed.
@@ -1711,32 +1735,80 @@ const CLIENT_SAFE_SELECT = '-password -resetPasswordToken -resetPasswordExpires 
  * Superadmin only. It reports request headers, which is not something to hand to the public.
  * Read-only; it changes nothing.
  */
+// Which address Express picks for a given hop count, by the same rule proxy-addr
+// uses: the candidates are the socket address followed by X-Forwarded-For read
+// right-to-left, the first `hops` of them are trusted, and the next one along is the
+// answer (or the furthest one if the chain is shorter than that).
+const pickForwardedIp = (socketAddr, xffHeader, hops) => {
+    const chain = String(xffHeader || '').split(',').map((v) => v.trim()).filter(Boolean);
+    const candidates = [socketAddr, ...chain.reverse()];
+    return candidates[Math.min(hops, candidates.length - 1)] || null;
+};
+
 app.get('/api/health/ip', authenticateToken, requireSuperadmin, (req, res) => {
     const trust      = req.app.get('trust proxy');
     const socketAddr = req.socket?.remoteAddress || null;
     const xff        = req.headers['x-forwarded-for'] || null;
+    const realIp     = req.headers['x-real-ip'] || null;
     const behindProxy = !!xff;
-    // The limiters that do NOT set a keyGenerator bucket by this value.
+    const hops = Array.isArray(trust) ? null : Number(trust) || 0;
+
+    // The limiters that do NOT set their own keyGenerator bucket by this value.
     const rateLimitKey = req.ip;
     const sharedBucket = behindProxy && rateLimitKey === socketAddr;
 
+    const chainLength = String(xff || '').split(',').filter((v) => v.trim()).length;
+
+    // Could a visitor pick their own bucket? Prepend a fake entry to this very
+    // request's chain — exactly what a forged header looks like — and re-run the
+    // pick. If the answer does not move, the forgery is being ignored. This runs on
+    // every call, so a change in Railway's topology shows up here instead of
+    // quietly reopening the hole.
+    const FAKE = '203.0.113.7';                       // TEST-NET-3, never a real client
+    const spoofedKey = hops === null ? null
+        : pickForwardedIp(socketAddr, xff ? `${FAKE}, ${xff}` : FAKE, hops);
+    const spoofable = spoofedKey === FAKE;
+
+    // Railway's edge sets x-real-ip from the connection it actually accepted, which
+    // is an independent read on who the visitor is. The two agreeing is the signal
+    // that the hop count is right; disagreeing is the signal that it drifted.
+    const agreesWithRealIp = !realIp || !rateLimitKey ? null
+        : String(rateLimitKey).replace(/^::ffff:/, '') === String(realIp).replace(/^::ffff:/, '');
+
+    let verdict;
+    if (!behindProxy && !hops) {
+        verdict = 'No proxy header on this request and no hops trusted — req.ip is the real caller. Nothing to fix (this is what you see locally).';
+    } else if (!behindProxy) {
+        // Harmless on a laptop, a hole on the live server: with hops trusted and
+        // nothing actually forwarding, the only X-Forwarded-For that can appear is
+        // one the CLIENT wrote.
+        verdict = `Trust proxy is ${hops} but this request carried no X-Forwarded-For. Expected when you run the server directly; on the live server it would mean a forged header picks the bucket, so check why the proxy stopped forwarding.`;
+    } else if (sharedBucket) {
+        verdict = `BEHIND A PROXY AND NOT TRUSTING IT: every visitor shares one rate-limit bucket, so the login limiter applies to everyone at once. This chain has ${chainLength} forwarded hop(s) — set trust proxy to that number.`;
+    } else if (spoofable) {
+        verdict = `TRUSTING TOO MANY HOPS: trust proxy is ${hops} but the chain only carries ${chainLength}, so a visitor could put any address in X-Forwarded-For and pick their own rate-limit bucket. Lower it to ${chainLength}.`;
+    } else if (agreesWithRealIp === false) {
+        verdict = `Behind a proxy and not spoofable, BUT req.ip (${rateLimitKey}) does not match x-real-ip (${realIp}) — the proxy chain probably changed. Re-check the hop count.`;
+    } else {
+        verdict = `Behind a proxy and trusting exactly ${hops} hop(s): req.ip is the visitor, the rate limiters count per person, and a forged X-Forwarded-For is ignored. Correct.`;
+    }
+
     res.json({
-        trustProxySetting: trust,          // Express's own default is false — i.e. "do not trust".
+        trustProxySetting: trust,
         reqIp: req.ip,
         reqIps: req.ips,                       // populated only when trust proxy is on
         socketRemoteAddress: socketAddr,
         headers: {
             'x-forwarded-for': xff,
-            'x-real-ip': req.headers['x-real-ip'] || null,
+            'x-real-ip': realIp,
             'x-forwarded-proto': req.headers['x-forwarded-proto'] || null,
         },
         rateLimitKey,
         behindProxy,
-        verdict: !behindProxy
-            ? 'No proxy header on this request — req.ip is the real caller. Nothing to fix (this is what you see locally).'
-            : sharedBucket
-                ? 'BEHIND A PROXY AND NOT TRUSTING IT: every visitor shares one rate-limit bucket, so the login limiter applies to everyone at once. Set trust proxy to the number of proxies in front of the app (Railway: 1).'
-                : 'Behind a proxy and trusting it: req.ip is the visitor, so the rate limiters count per person. Correct.',
+        forwardedHops: chainLength,
+        spoofable,                             // true = a visitor could choose their own bucket
+        agreesWithRealIp,
+        verdict,
     });
 });
 

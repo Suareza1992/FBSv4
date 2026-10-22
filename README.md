@@ -291,7 +291,7 @@ Change the password immediately after first login.
 | `node scripts/test-macro-week.mjs` | Weekly macro roll-up (119 checks): `public/macro-week.js` against `scripts/macro-week-cases.json` — week boundaries, the deficit/surplus × 7 target, projections, unlogged days. No server needed. The phone's copy is tested against the same file. |
 | `node scripts/test-food-serving.mjs` | Library servings on the server (23 checks). Needs an **isolated** server + database — the header explains how; it refuses to run against anything not named like a test DB. |
 | `node scripts/test-food-lookup.mjs` | "Calcular macros" endpoint (35 checks). Isolated server + database, **with `FOOD_NLP_ENABLED=false`** (the test refuses to run if the AI is on) — the header has the exact command. |
-| `GET /api/health/ip` (superadmin) | Not a script — a read-only endpoint. Reports what IP the server sees, what the rate limiters bucket on, and whether `trust proxy` needs setting. See TECHNICAL.md § 51. |
+| `GET /api/health/ip` (superadmin) | Not a script — a read-only endpoint. Reports what IP the server sees, what the rate limiters bucket on, the real forwarded hop count, and whether the current `trust proxy` value could be **forged** by a visitor. Run it after any hosting change. See TECHNICAL.md § 51. |
 
 ---
 

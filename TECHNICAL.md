@@ -4341,11 +4341,62 @@ Superadmin 200, ordinary trainer 403, client 403, signed out 401. Called directl
 caller and says nothing needs fixing. Called with an `X-Forwarded-For` header — simulating Railway — it
 reports `behindProxy: true`, shows the rate-limit key is still the socket address, and says so.
 
-### Not changed
+### Answered: `trust proxy` is 2, not 1
 
-`trust proxy` is **still unset**. Setting it wrongly is its own vulnerability: trust more hops than exist
-and a client can forge `X-Forwarded-For` and bypass the limiters entirely. Run the endpoint on the live
-server first, read the verdict, and set it to the real number of proxies (Railway is normally `1`).
+The live server was read on 2026-10-21 and reported exactly the predicted hole:
+
+```
+x-forwarded-for:  24.41.250.44, 79.127.217.66
+x-real-ip:        24.41.250.44
+socket:           ::ffff:100.64.0.3        (100.64.0.0/10 — carrier-grade NAT)
+reqIp:            ::ffff:100.64.0.3        ← the proxy, for every visitor alike
+verdict:          BEHIND A PROXY AND NOT TRUSTING IT
+```
+
+**Two forwarded hops, not one.** `79.127.217.66` is Datacamp/CDN77 San Jose, which is where Railway's
+edge network runs; `100.64.0.0/10` is their internal proxy. So the chain is client → edge → internal
+proxy → app. Railway's generic advice of `1` would have bucketed everyone behind the edge together —
+better than one global bucket, still wrong.
+
+`server.js` now sets `trust proxy` to **2** (overridable with `TRUST_PROXY_HOPS`, should the topology
+ever change). With 2, `req.ip` is the visitor and the three default-keyed limiters count per person.
+
+### Why 2 cannot be forged — and why 3 could
+
+`proxy-addr` lists the socket address followed by `X-Forwarded-For` read right-to-left, trusts the first
+`n`, and takes the next one along. A client who prepends a fake entry only makes the list **longer on the
+left**, so with the hop count set to the real number, the fake never reaches the chosen position:
+
+| `X-Forwarded-For` | `req.ip` with `trust proxy = 2` |
+|---|---|
+| `24.41.250.44, 79.127.217.66` (normal) | `24.41.250.44` ✓ |
+| `203.0.113.7, 24.41.250.44, 79.127.217.66` (client forged a hop) | `24.41.250.44` ✓ — forgery ignored |
+| `24.41.250.44` (only one real hop) | `203.0.113.7` ✗ — **this is why a bigger number is not safer** |
+
+The last row is the danger: trusting more hops than exist means trusting the part of the header the
+client wrote.
+
+### The endpoint now proves it on every call
+
+`/api/health/ip` no longer just reports — it re-runs the pick with a fake entry prepended to the real
+chain and reports `spoofable`, plus `forwardedHops` and `agreesWithRealIp` (Railway's `x-real-ip` is an
+independent read on who the visitor is). If Railway ever changes its topology, the verdict says
+*"TRUSTING TOO MANY HOPS … lower it to N"* instead of the hole quietly reopening.
+
+### Verified
+
+Against an isolated local server, with the chain simulated by hand:
+
+| Request | Result |
+|---|---|
+| Real 2-hop shape | `reqIp` = the client, `spoofable: false`, agrees with `x-real-ip` |
+| Client prepends `203.0.113.7` | `reqIp` **unchanged** — the forgery is ignored |
+| Chain shrinks to 1 hop | flagged `spoofable: true`, *"lower it to 1"* |
+| No `X-Forwarded-For` at all | flagged, rather than hidden behind "nothing to fix" |
+
+And end to end on the limiter itself: 10 failed logins from one client IP, 11th → **429**; a *different*
+client behind the same proxy → **400**, not locked out; the first client still **429**. Before this, the
+11th failed login from anyone locked out every client for fifteen minutes.
 
 ---
 
