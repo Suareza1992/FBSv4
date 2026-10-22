@@ -8820,13 +8820,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const snapshotDayToHistory = (prog, weekIndex, dayNum) => {
         const existing = prog?.weeks?.[weekIndex]?.days?.[String(dayNum)];
         if (!existing) return null;
-        const hasContent = existing.exercises?.length > 0
-            || existing.warmup?.trim()
-            || existing.cooldown?.trim()
-            || existing.warmupItems?.length > 0
-            || existing.cooldownItems?.length > 0
-            || existing.isRest;
-        if (!hasContent) return null;
+        if (!dayHasContent(existing)) return null;
 
         const now  = Date.now();
         const snap = {
@@ -9006,6 +9000,139 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     // ═══════════════════════════════════════════════════════════════════════════
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // "¿Aplicar también a las otras semanas?"
+    //
+    // A program is built by writing one week and pasting it into the rest. Then the
+    // trainer refines a day — swaps an exercise, fixes the sets — and every copy of
+    // that day in the other weeks is now stale, to be fixed by hand, one at a time,
+    // from memory. That is where routines silently drift out of sync.
+    //
+    // Nothing records that two days are "copies" of each other, and nothing can:
+    // the programs already built carry no lineage. But a copy is recognisable
+    // without it — before the edit, the copies were IDENTICAL to the day being
+    // edited. So the twins are found by comparing each day's content against what
+    // the edited day looked like a moment ago. That works on every program already
+    // in the database, not just ones built from here on.
+    //
+    // Deliberately conservative:
+    //   • A day that was already different is NOT a copy. It was changed on purpose,
+    //     and it is left alone.
+    //   • A day that is already identical to the NEW version needs nothing, so it is
+    //     not offered either.
+    //   • A day that was EMPTY before the edit has no copies worth speaking of —
+    //     otherwise filling in a blank day would offer to fill every blank day.
+    //   • Nothing is applied without being asked, the days are listed by name, and
+    //     each one can be unticked.
+    const PROPAGATE_KEY = 'fbs_routine_propagation';
+    const PROPAGATE_TTL = 24 * 60 * 60 * 1000;  // an undo is for today, not forever
+    const PROPAGATE_MAX = 10;
+
+    // The matching rules live in public/routine-twins.js — a plain browser global,
+    // shared so they can be tested without a server (scripts/test-routine-twins.mjs).
+    // Read that file's header before changing how two days are judged to be copies.
+    const dayHasContent    = (day) => !!window.RoutineTwins && window.RoutineTwins.dayHasContent(day);
+    const planRoutineTwins = (prog, weekIdx, dayNum, before, after) => (window.RoutineTwins
+        ? window.RoutineTwins.plan(prog, weekIdx, dayNum, before, after)
+        : { offer: false, twins: [] });
+
+    /**
+     * Ask which of the twins to update. Resolves to the chosen subset, or [] for
+     * "only this day" — dismissing the dialog means the same thing, because by the
+     * time it opens the edit itself is already a decision the trainer made.
+     */
+    const askToPropagateRoutine = (targets) => new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.78);padding:16px;';
+        const plural = targets.length === 1;
+        overlay.innerHTML = `
+            <div style="background:#1C1C1E;border:1px solid rgba(255,219,137,0.2);border-radius:16px;padding:24px;max-width:470px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.7);">
+                <p style="color:#FFDB89;font-size:16px;font-weight:700;margin:0 0 6px;">¿Aplicar el cambio a las otras semanas?</p>
+                <p style="color:rgba(229,229,229,0.7);font-size:13px;line-height:1.5;margin:0 0 14px;">
+                    ${plural ? 'Otro día tenía' : `Otros ${targets.length} días tenían`} esta misma rutina antes de tu cambio.
+                    Desmarca ${plural ? 'el que no quieras' : 'los que no quieras'} actualizar.
+                </p>
+                <div style="overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:16px;min-height:0;">
+                    ${targets.map((t, i) => `
+                    <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:rgba(255,219,137,0.06);border:1px solid rgba(255,219,137,0.15);cursor:pointer;">
+                        <input type="checkbox" class="pr-chk" data-i="${i}" checked style="accent-color:#FFDB89;width:16px;height:16px;flex:none;">
+                        <span style="color:#FFDB89;font-size:13px;font-weight:700;white-space:nowrap;">Semana ${t.weekNumber} · Día ${t.dayNum}</span>
+                        <span style="color:rgba(229,229,229,0.45);font-size:12px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(t.name)}</span>
+                    </label>`).join('')}
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button id="pr-skip" style="flex:1;padding:11px;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:rgba(229,229,229,0.65);font-size:13px;cursor:pointer;">Solo este día</button>
+                    <button id="pr-apply" style="flex:1.5;padding:11px;border-radius:10px;border:1px solid rgba(255,219,137,0.45);background:rgba(255,219,137,0.14);color:#FFDB89;font-weight:700;font-size:13px;cursor:pointer;">Aplicar a <span id="pr-count">${targets.length}</span> <span id="pr-word">${plural ? 'día' : 'días'}</span></button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        const boxes   = Array.from(overlay.querySelectorAll('.pr-chk'));
+        const applyEl = overlay.querySelector('#pr-apply');
+        const countEl = overlay.querySelector('#pr-count');
+        const wordEl  = overlay.querySelector('#pr-word');
+        const refresh = () => {
+            const n = boxes.filter((b) => b.checked).length;
+            countEl.textContent = n;
+            wordEl.textContent  = n === 1 ? 'día' : 'días';
+            applyEl.disabled = n === 0;
+            applyEl.style.opacity = n === 0 ? '0.4' : '1';
+            applyEl.style.cursor  = n === 0 ? 'not-allowed' : 'pointer';
+        };
+        boxes.forEach((b) => b.addEventListener('change', refresh));
+
+        const done = (val) => { overlay.remove(); resolve(val); };
+        applyEl.addEventListener('click', () => {
+            if (applyEl.disabled) return;
+            done(boxes.filter((b) => b.checked).map((b) => targets[Number(b.dataset.i)]));
+        });
+        overlay.querySelector('#pr-skip').addEventListener('click', () => done([]));
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) done([]); });
+    });
+
+    /** Remember what the updated days looked like, so one click can put them all back. */
+    const storePropagation = (record) => {
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem(PROPAGATE_KEY) || '[]'); } catch (_) {}
+        list = list.filter((r) => r.expiresAt > Date.now());
+        list.unshift(record);
+        if (list.length > PROPAGATE_MAX) list = list.slice(0, PROPAGATE_MAX);
+        try { localStorage.setItem(PROPAGATE_KEY, JSON.stringify(list)); } catch (_) {
+            try { localStorage.setItem(PROPAGATE_KEY, JSON.stringify([record])); } catch (_2) {}
+        }
+    };
+
+    // Undo the COPY, not the edit: the day the trainer actually worked on keeps its
+    // new version, and every day the change was carried to goes back to what it was.
+    window.undoRoutinePropagation = async (id) => {
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem(PROPAGATE_KEY) || '[]'); } catch (_) {}
+        const rec = list.find((r) => r.id === id && r.expiresAt > Date.now());
+        if (!rec) { showToast('Ya no se puede deshacer ese cambio.', 'info'); return; }
+
+        const prog = programsCache.find((p) => (p._id == rec.programId) || (p.id == rec.programId));
+        if (!prog) { showToast('Programa no encontrado.', 'error'); return; }
+        rec.days.forEach((d) => {
+            if (!prog.weeks[d.weekIdx]) prog.weeks[d.weekIdx] = { weekNumber: d.weekIdx + 1, days: {} };
+            if (!prog.weeks[d.weekIdx].days) prog.weeks[d.weekIdx].days = {};
+            prog.weeks[d.weekIdx].days[String(d.dayNum)] = JSON.parse(JSON.stringify(d.before));
+        });
+        try {
+            const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, { method: 'PUT', body: JSON.stringify(prog) });
+            if (!res.ok) { showToast('Error al deshacer.', 'error'); return; }
+            const updated = await res.json();
+            delete updated._sync;
+            const idx = programsCache.findIndex((p) => (p._id == rec.programId) || (p.id == rec.programId));
+            if (idx > -1) programsCache[idx] = updated;
+            if (String(currentProgramId) === String(rec.programId)) renderProgramBuilder(updated);
+            try {
+                localStorage.setItem(PROPAGATE_KEY, JSON.stringify(list.filter((r) => r.id !== id)));
+            } catch (_) {}
+            showToast(`✓ Deshecho en ${rec.days.length} día${rec.days.length === 1 ? '' : 's'}.`, 'success');
+        } catch (e) { showToast('Error de conexión.', 'error'); }
+    };
+    // ═══════════════════════════════════════════════════════════════════════════
+
     const saveRoutine = async () => {
         const name = document.getElementById('routine-name-input').value;
         const exercises = [];
@@ -9052,6 +9179,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Preserve any existing fields (e.g. nutrition) — only overwrite routine fields
                 const existing = prog.weeks[currentEditingWeekIndex].days[currentEditingDay] || {};
+                // What this day looked like a moment ago is the only way to recognise
+                // the copies of it sitting in the other weeks. Captured before the
+                // overwrite, compared after it.
+                const dayBefore = JSON.parse(JSON.stringify(existing));
                 const dayData = {
                     ...existing,
                     name:          name,
@@ -9068,6 +9199,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 prog.weeks[currentEditingWeekIndex].days[currentEditingDay] = dayData;
 
+                // ── Carry the same edit to the other copies of this routine ───
+                // Asked BEFORE the save, so the whole program — this day and every
+                // day it is applied to — goes up in one request and the assigned
+                // clients are re-synced once, not twice.
+                let propagation = null;
+                {
+                    const { offer, twins } = planRoutineTwins(prog, currentEditingWeekIndex, currentEditingDay, dayBefore, dayData);
+                    if (offer) {
+                        const chosen = await askToPropagateRoutine(twins);
+                        if (chosen && chosen.length) {
+                            propagation = {
+                                id:        `prop_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                                programId: String(prog._id || prog.id || ''),
+                                savedAt:   Date.now(),
+                                expiresAt: Date.now() + PROPAGATE_TTL,
+                                days:      [],
+                            };
+                            chosen.forEach(t => {
+                                const prev = prog.weeks[t.weekIdx].days[t.dayNum] || {};
+                                propagation.days.push({
+                                    weekIdx: t.weekIdx,
+                                    dayNum:  t.dayNum,
+                                    before:  JSON.parse(JSON.stringify(prev)),
+                                });
+                                // The routine is copied; the day's own nutrition stays its
+                                // own, exactly as pasting a day already behaves.
+                                prog.weeks[t.weekIdx].days[t.dayNum] = {
+                                    ...JSON.parse(JSON.stringify(dayData)),
+                                    nutrition: prev.nutrition,
+                                };
+                            });
+                        }
+                    }
+                }
+
                 // SAVE TO DATABASE
                 try {
                     const res = await apiFetch(`/api/programs/${prog._id || prog.id}`, {
@@ -9083,6 +9249,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         delete updated._sync;
                         const idx = programsCache.findIndex(p => (p._id == currentProgramId) || (p.id == currentProgramId));
                         if (idx > -1) programsCache[idx] = updated;
+                        if (propagation) {
+                            // Only remembered once the server has it, so "Deshacer" can
+                            // never offer to undo something that was never saved.
+                            storePropagation(propagation);
+                            const n = propagation.days.length;
+                            showToast(
+                                `✓ Rutina aplicada a ${n} día${n === 1 ? '' : 's'} más. <a href="#" onclick="event.preventDefault(); window.undoRoutinePropagation('${propagation.id}')" class="underline decoration-dotted hover:text-white">Deshacer</a>`,
+                                // Longer than the usual toast: this one changed several
+                                // weeks at once, and the trainer is reading the grid to
+                                // see what moved before deciding to keep it.
+                                'success', 12000
+                            );
+                        }
                     } else {
                         showToast('Error al guardar la rutina.', 'error');
                     }

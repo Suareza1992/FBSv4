@@ -4455,3 +4455,107 @@ what is left — so `40` sat noticeably left of the box's middle. `src/input.css
 number inputs **the app has explicitly centred** (`input[type="number"].text-center`), which is all 18 of
 them; number inputs that are not centred keep their spinners. One rule, no markup changes, and it fixes
 every box of this kind in the app rather than the three that were reported.
+
+---
+
+## 53. "¿Aplicar el cambio a las otras semanas?"
+
+A program is built by writing one week and pasting it into the rest. Then the day gets refined — an
+exercise swapped, sets fixed — and every copy of it in the other weeks is quietly stale, to be fixed by
+hand, one at a time, from memory. That is how a twelve-week program drifts out of sync with itself.
+
+Now, when a day is saved in the program builder, the other days that held **the same routine** are found
+and offered:
+
+```
+¿Aplicar el cambio a las otras semanas?
+Otros 2 días tenían esta misma rutina antes de tu cambio.
+Desmarca los que no quieras actualizar.
+
+  ☑ Semana 2 · Día 1          Core, Chest & Back
+  ☑ Semana 4 · Día 1          Core, Chest & Back
+
+  [ Solo este día ]      [ Aplicar a 2 días ]
+```
+
+### How a "copy" is recognised without any lineage
+
+Nothing in the data says two days are copies of each other, and nothing can: the programs already in the
+database carry no such record, and adding one now would only help programs built from tomorrow on.
+
+But a copy is recognisable without lineage — **before the edit, the copies were identical to the day being
+edited.** So the day's content is captured *before* the overwrite and compared against every other day in
+the program. This works on every program already saved, which is the whole point.
+
+### The rules, and why each one is a refusal
+
+The wrong answer here overwrites a trainer's work, so most of the logic is about what *not* to offer:
+
+| Rule | Why |
+|---|---|
+| A day that was **already different** is never offered | It was made different on purpose |
+| A day already holding the **new** version is never offered | Nothing to do |
+| A day that was **blank** before the edit offers nothing | Otherwise filling one blank day would offer to fill every blank day in the program |
+| Saving with **no change** asks nothing | There is nothing to carry |
+| Case and runs of whitespace are ignored | "Press  de Banca" still matches "Press de banca" |
+| A demo **video** makes two days different | One copy with a video and one without are not interchangeable. The website stores a clip on `video` and the phone on `videoUrl`; **both are read**, or a day edited on one surface would look identical to a day edited on the other |
+| Item ids and the day's **nutrition** are ignored | Neither is part of the routine; nutrition stays with its own day, exactly as pasting a day already behaves |
+
+Exercise order, sets/reps, superset flags, warmup/cooldown text and items, and rest vs. active rest all
+count as part of the routine.
+
+### One request, one sync
+
+The question is asked **before** the save, not after, so the edited day and every day it is applied to go
+up in a single `PUT /api/programs/:id`. Assigned clients are therefore re-synced once, and the existing
+`_sync` toast reports the real total.
+
+### Undo
+
+The toast carries **Deshacer** for 12 seconds — longer than the usual toast, because this one changed
+several weeks at once and the trainer is still reading the grid. It undoes **the copy, not the edit**: the
+day actually worked on keeps its new version, and every day the change was carried to goes back to what it
+was. The record lives in `localStorage` (`fbs_routine_propagation`, 24 h, last 10), so it survives a
+reload, and it is written only *after* the server confirms the save — "Deshacer" can never offer to undo
+something that was never stored.
+
+### Where the code lives
+
+| File | What it is |
+|---|---|
+| `public/routine-twins.js` | all of the matching logic — `signature`, `find`, `plan`, `dayHasContent`; a browser global, loaded before `app.js` |
+| `FitBySuarez-mobile/lib/routineTwins.ts` | the phone's mirror of the same |
+| `scripts/routine-twins-cases.json` | the cases **both** are run against, so they cannot drift apart |
+| `scripts/test-routine-twins.mjs` | `node scripts/test-routine-twins.mjs` — 53 checks, no server |
+| `FitBySuarez-mobile/scripts/test-routine-twins.ts` | `npx -y tsx scripts/test-routine-twins.ts` — 53 checks |
+| `askToPropagateRoutine()` in `public/app.js` | the tick-list dialog |
+| `saveRoutine()` in `public/app.js` | captures the "before", asks, applies, and stores the undo |
+| `window.undoRoutinePropagation()` | restores every carried-to day in one request |
+| `ApplyToOtherWeeks` in the phone's `programa-builder.tsx` | the same prompt on the phone |
+
+`snapshotDayToHistory()` now shares `dayHasContent()` with this module, so "is this day blank" has one
+definition instead of two.
+
+### Verified
+
+39 automated checks, plus the flow driven in a browser against a throwaway local database (never
+production) on a 4-week program whose Día 1 was identical in weeks 1, 2 and 4 while **week 3 had been
+tailored by hand**:
+
+- the dialog offered weeks 2 and 4 and never week 3;
+- unticking a week updated the button to "Aplicar a 1 día" (singular);
+- applying wrote weeks 1, 2 and 4 and left week 3 byte-for-byte untouched, in **one** PUT;
+- **Deshacer** restored only the carried-to week, leaving the deliberate edit in place;
+- editing a one-of-a-kind day showed no dialog at all.
+
+No new console errors.
+
+### On the phone too
+
+The phone has a full program builder (`programa-builder.tsx`), so the same prompt lives there: edit a day,
+press **Guardar día**, and the copies in the other weeks are offered in a tick-list sheet with the same
+wording and the same refusals. Applying writes the day and its copies in **one** `PUT`, exactly as on the
+website, and the confirmation carries a **Deshacer** that restores only the carried-to days.
+
+Without this, the help existed on the laptop and not in the trainer's pocket, and the same program would
+behave differently depending on which one was in hand.

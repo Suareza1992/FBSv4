@@ -1,0 +1,241 @@
+{
+  "_readme": "Shared cases for finding the copies of a routine across a program's weeks. The web (public/routine-twins.js) and the phone (FitBySuarez-mobile/lib/routineTwins.ts) are both run against this file so they cannot drift apart. `weeks` lists each week as {dayNumber: fixtureName}; `twins` are the expected hits as \"weekIndex:dayNumber\". The wrong answer here overwrites a trainer's work, so most of these cases are about what must NOT be offered.",
+
+  "fixtures": {
+    "push": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushEdited": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "Barbell Bench Press", "stats": "4 x 8", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushSpaced": {
+      "name": "  core,   CHEST & back ",
+      "exercises": [
+        { "name": "Cable  Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "incline dumbbell press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushTailored": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false },
+        { "name": "Face Pull", "stats": "3 x 15", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushWithVideoWeb": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "https://youtu.be/abc", "isSuperset": false },
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushWithVideoPhone": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "videoUrl": "https://youtu.be/abc", "isSuperset": false },
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushSuperset": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": true },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushReordered": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushWithNutrition": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false,
+      "nutrition": { "cal": 2200, "meals": [{ "name": "Avena" }] }
+    },
+    "pushWarmupItemA": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [{ "id": 991, "name": "Movilidad de cadera", "videoUrl": "" }],
+      "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "pushWarmupItemB": {
+      "name": "Core, Chest & Back",
+      "exercises": [
+        { "name": "Cable Weighted Crunch", "stats": "4 x 12", "video": "", "isSuperset": false },
+        { "name": "Incline Dumbbell Press", "stats": "4 x 10", "video": "", "isSuperset": false },
+        { "name": "Machine Chest Supported Row", "stats": "3 x 12", "video": "", "isSuperset": false }
+      ],
+      "warmup": "Bici 5 min", "cooldown": "Estiramiento",
+      "warmupItems": [{ "id": 772, "name": "Movilidad de cadera", "videoUrl": "" }],
+      "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "legs": {
+      "name": "Core & Lower Body Strength",
+      "exercises": [
+        { "name": "Weighted Swiss Ball", "stats": "3 x 15", "video": "", "isSuperset": false },
+        { "name": "Quad Biased Step Down", "stats": "3 x 10", "video": "", "isSuperset": false }
+      ],
+      "warmup": "", "cooldown": "", "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "legsEdited": {
+      "name": "Core & Lower Body Strength",
+      "exercises": [
+        { "name": "Bulgarian Split Squat", "stats": "3 x 10", "video": "", "isSuperset": false },
+        { "name": "Quad Biased Step Down", "stats": "3 x 10", "video": "", "isSuperset": false }
+      ],
+      "warmup": "", "cooldown": "", "warmupItems": [], "cooldownItems": [], "isRest": false, "isActiveRest": false
+    },
+    "rest":       { "name": "Descanso", "exercises": [], "isRest": true, "isActiveRest": false },
+    "activeRest": { "name": "Descanso Activo", "exercises": [], "isRest": true, "isActiveRest": true },
+    "blank":      {},
+    "nameOnly":   { "name": "Día 3", "exercises": [] },
+    "whitespace": { "warmup": "   " },
+    "warmupOnly": { "warmup": "Bici 5 min" },
+    "cooldownItemOnly": { "cooldownItems": [{ "name": "Estiramiento" }] }
+  },
+
+  "sameRoutine": [
+    { "label": "case and extra spaces do not break a match",       "a": "push", "b": "pushSpaced",          "same": true },
+    { "label": "generated item ids are not part of the routine",   "a": "pushWarmupItemA", "b": "pushWarmupItemB", "same": true },
+    { "label": "a day's nutrition is not part of the routine",     "a": "push", "b": "pushWithNutrition",   "same": true },
+    { "label": "a demo video makes two days different",            "a": "push", "b": "pushWithVideoWeb",    "same": false },
+    { "label": "the phone's videoUrl counts the same as the web's video", "a": "pushWithVideoWeb", "b": "pushWithVideoPhone", "same": true },
+    { "label": "a warmup item IS part of the routine",             "a": "push", "b": "pushWarmupItemA",     "same": false },
+    { "label": "a superset flag changes the routine",              "a": "push", "b": "pushSuperset",        "same": false },
+    { "label": "reordering the exercises changes the routine",     "a": "push", "b": "pushReordered",       "same": false },
+    { "label": "swapping an exercise changes the routine",         "a": "push", "b": "pushEdited",          "same": false },
+    { "label": "rest and active rest are different days",          "a": "rest", "b": "activeRest",          "same": false }
+  ],
+
+  "hasContent": [
+    { "label": "a routine counts as content",        "day": "push",             "expect": true  },
+    { "label": "a rest day counts as content",       "day": "rest",             "expect": true  },
+    { "label": "a warmup alone is content",          "day": "warmupOnly",       "expect": true  },
+    { "label": "a cooldown item alone is content",   "day": "cooldownItemOnly", "expect": true  },
+    { "label": "an empty object is blank",           "day": "blank",            "expect": false },
+    { "label": "a name alone is blank",              "day": "nameOnly",         "expect": false },
+    { "label": "whitespace is blank",                "day": "whitespace",       "expect": false }
+  ],
+
+  "plan": [
+    {
+      "label": "the edit is carried to the other weeks",
+      "weeks": [{ "1": "push", "4": "legs", "6": "rest", "7": "rest" }, { "1": "push", "4": "legs" }, { "1": "push", "4": "legs" }, { "1": "push", "4": "legs" }],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "pushEdited",
+      "offer": true, "twins": ["1:1", "2:1", "3:1"]
+    },
+    {
+      "label": "a day already changed on purpose is never touched",
+      "weeks": [{ "1": "push" }, { "1": "push" }, { "1": "pushTailored" }, { "1": "push" }],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "pushEdited",
+      "offer": true, "twins": ["1:1", "3:1"]
+    },
+    {
+      "label": "a day already holding the new version is not offered",
+      "weeks": [{ "1": "push" }, { "1": "push" }, { "1": "pushEdited" }],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "pushEdited",
+      "offer": true, "twins": ["1:1"]
+    },
+    {
+      "label": "filling a blank day offers nothing",
+      "weeks": [{ "1": "push", "3": "blank" }, { "1": "push", "3": "blank" }],
+      "editWeek": 0, "editDay": "3", "before": "blank", "after": "push",
+      "offer": false, "twins": []
+    },
+    {
+      "label": "saving an unchanged day asks nothing",
+      "weeks": [{ "1": "push" }, { "1": "push" }],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "push",
+      "offer": false, "twins": []
+    },
+    {
+      "label": "editing leg day finds only the leg days",
+      "weeks": [{ "1": "push", "4": "legs" }, { "1": "push", "4": "legs" }, { "1": "push", "4": "legs" }],
+      "editWeek": 0, "editDay": "4", "before": "legs", "after": "legsEdited",
+      "offer": true, "twins": ["1:4", "2:4"]
+    },
+    {
+      "label": "a one-week program offers nothing",
+      "weeks": [{ "1": "push" }],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "pushEdited",
+      "offer": false, "twins": []
+    },
+    {
+      "label": "a program with no weeks offers nothing",
+      "weeks": [],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "pushEdited",
+      "offer": false, "twins": []
+    },
+    {
+      "label": "a spacing-only difference still counts as the same routine",
+      "weeks": [{ "1": "push" }, { "1": "pushSpaced" }],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "pushEdited",
+      "offer": true, "twins": ["1:1"]
+    },
+    {
+      "label": "a copy carrying a demo video is left alone",
+      "weeks": [{ "1": "push" }, { "1": "pushWithVideoWeb" }, { "1": "push" }],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "pushEdited",
+      "offer": true, "twins": ["2:1"]
+    },
+    {
+      "label": "rest days are copies too",
+      "weeks": [{ "6": "rest" }, { "6": "rest" }, { "6": "activeRest" }],
+      "editWeek": 0, "editDay": "6", "before": "rest", "after": "activeRest",
+      "offer": true, "twins": ["1:6"]
+    },
+    {
+      "label": "the same routine on a different weekday is still a copy",
+      "weeks": [{ "1": "push", "5": "push" }, { "1": "push" }],
+      "editWeek": 0, "editDay": "1", "before": "push", "after": "pushEdited",
+      "offer": true, "twins": ["0:5", "1:1"]
+    }
+  ]
+}

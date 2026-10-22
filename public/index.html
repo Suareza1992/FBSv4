@@ -1378,6 +1378,9 @@ Hoy día, no solo me siento mejor físicamente, sino también más segura, disci
   <!-- Weekly macro roll-up ("did the week hit the 1,750 / 3,500?") — used by the
        "Hoy / Esta semana" card in app.js. -->
   <script src="macro-week.js"></script>
+  <!-- Finding the copies of a routine across a program's weeks — used when a day is
+       saved in the program builder, to offer the same edit to its twins. -->
+  <script src="routine-twins.js"></script>
   <script src="app.js"></script>
   <!-- Sesiones en vivo (WebRTC). Loads AFTER app.js because it calls showToast().
        It attaches its UI to document.body, never to mainContentArea, so a page
