@@ -50,6 +50,9 @@
                 <button id="tab-videos" class="px-3 sm:px-4 py-2 rounded-lg font-bold transition text-sm lib-tab-inactive shrink-0">
                     <i class="fas fa-video mr-1.5"></i>Videos
                 </button>
+                <button id="tab-recetas" class="px-3 sm:px-4 py-2 rounded-lg font-bold transition text-sm lib-tab-inactive shrink-0">
+                    <i class="fas fa-bowl-food mr-1.5"></i>Recetas
+                </button>
             </div>
             <!-- Context-aware action button -->
             <button id="add-new-item-btn" class="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-xl transition text-sm shrink-0">
@@ -86,6 +89,25 @@
         </div>
         <div id="exercise-library-list" class="bg-[#111113] border border-[#FFDB89]/10 rounded-xl overflow-hidden min-h-[200px]">
             <div class="p-8 text-center text-[#FFDB89]/30">Cargando ejercicios...</div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         TAB: RECETAS — the trainer's recipe book. What a client sees in their
+         Nutrición page and can put straight into their diary.
+    ══════════════════════════════════════════ -->
+    <div id="recetas-panel" class="hidden space-y-4">
+        <div class="relative max-w-sm">
+            <input type="text" id="recipe-search-input" autocomplete="off" autocorrect="off" spellcheck="false"
+                class="w-full pl-10 pr-4 py-2.5 bg-[#0D0D0D] border border-[#FFDB89]/20 rounded-xl text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 focus:border-[#FFDB89]/50 outline-none transition"
+                placeholder="Buscar receta...">
+            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-[#FFDB89]/30 text-sm"></i>
+        </div>
+        <div id="recipe-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div class="col-span-full text-center py-16 text-[#FFDB89]/30">
+                <i class="fas fa-bowl-food text-4xl mb-3 block"></i>
+                <p class="font-bold">Cargando recetas...</p>
+            </div>
         </div>
     </div>
 
@@ -168,6 +190,102 @@
     </div>
 </div>
 
+
+<!-- ══════════════════════════════════════════
+     MODAL: RECIPE EDITOR
+     Photo, ingredients and what they add up to. No method — these exist so a
+     client can see an idea and put it in their diary, not to be cooked from.
+══════════════════════════════════════════ -->
+<div id="recipe-modal" class="fixed inset-0 bg-black/80 z-[60] flex justify-center items-end md:items-center hidden backdrop-blur-sm p-0 md:p-4">
+    <div class="bg-[#030303] border border-[#FFDB89]/20 w-full max-w-3xl rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col relative my-0 md:my-10" style="max-height:92dvh;max-height:92vh">
+        <div class="px-6 py-4 border-b border-[#FFDB89]/20 flex justify-between items-center shrink-0">
+            <h3 id="recipe-modal-title" class="text-xl font-bold text-[#FFDB89]"><i class="fas fa-bowl-food mr-2"></i>Nueva receta</h3>
+            <button id="close-recipe-modal" class="text-[#FFDB89]/50 hover:text-red-400 transition"><i class="fas fa-times text-2xl"></i></button>
+        </div>
+
+        <div class="flex-grow p-6 space-y-5 overflow-y-auto min-h-0">
+            <!-- Photo -->
+            <div>
+                <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Foto</label>
+                <div id="recipe-photo-drop" class="relative h-44 rounded-xl border border-dashed border-[#FFDB89]/25 bg-[#FFDB89]/5 overflow-hidden cursor-pointer hover:border-[#FFDB89]/50 transition">
+                    <img id="recipe-photo-preview" alt="" class="absolute inset-0 w-full h-full object-cover hidden">
+                    <div id="recipe-photo-empty" class="absolute inset-0 flex flex-col items-center justify-center text-[#FFDB89]/35 gap-2">
+                        <i class="fas fa-camera text-2xl"></i>
+                        <p class="text-xs font-bold">Toca para subir una foto</p>
+                        <p class="text-[10px]">Opcional · JPG o PNG</p>
+                    </div>
+                    <div id="recipe-photo-busy" class="absolute inset-0 hidden items-center justify-center bg-black/60 text-[#FFDB89] text-sm font-bold">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Subiendo...
+                    </div>
+                </div>
+                <input type="file" id="recipe-photo-input" accept="image/*" class="hidden">
+                <button id="recipe-photo-clear" class="hidden mt-1.5 text-[11px] text-red-400/70 hover:text-red-400 transition"><i class="fas fa-times mr-1"></i>Quitar foto</button>
+            </div>
+
+            <!-- Name + slot + servings -->
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Nombre</label>
+                    <input type="text" id="recipe-name" autocomplete="off" placeholder="Ej: Avena con proteína"
+                        class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Comida</label>
+                    <select id="recipe-meal-slot" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:ring-2 focus:ring-[#FFDB89]/40">
+                        <option value="">Cualquiera</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Porciones</label>
+                    <input type="number" id="recipe-servings" min="1" max="50" value="1"
+                        class="w-full p-3 text-center bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] font-black outline-none focus:ring-2 focus:ring-[#FFDB89]/40">
+                </div>
+            </div>
+
+            <!-- Tags -->
+            <div>
+                <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Etiquetas</label>
+                <div id="recipe-tag-pills" class="flex flex-wrap gap-2 mb-2"></div>
+                <div class="flex gap-2">
+                    <input type="text" id="recipe-tag-input" autocomplete="off" placeholder="Añade una etiqueta y presiona Enter"
+                        class="flex-grow p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 outline-none">
+                </div>
+                <div id="recipe-tag-suggestions" class="flex flex-wrap gap-1.5 mt-2"></div>
+            </div>
+
+            <!-- Ingredients -->
+            <div>
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Ingredientes</label>
+                    <span class="text-[10px] text-[#FFDB89]/35">Busca el alimento y los macros se llenan solos</span>
+                </div>
+                <div id="recipe-ingredients" class="space-y-2"></div>
+                <button id="recipe-add-ingredient" class="mt-2 px-3 py-2 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 border border-[#FFDB89]/25 text-[#FFDB89] rounded-lg text-xs font-bold transition">
+                    <i class="fas fa-plus mr-1.5"></i>Añadir ingrediente
+                </button>
+            </div>
+
+            <!-- Live totals -->
+            <div class="bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-xl p-4">
+                <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-2">Por porción</p>
+                <div class="grid grid-cols-4 gap-2 text-center">
+                    <div><p class="text-xl font-black text-[#FFDB89]" id="recipe-tot-cal">0</p><p class="text-[10px] text-[#FFDB89]/40">kcal</p></div>
+                    <div><p class="text-xl font-black text-[#F87171]" id="recipe-tot-pro">0</p><p class="text-[10px] text-[#F87171]/50">proteína g</p></div>
+                    <div><p class="text-xl font-black text-yellow-400" id="recipe-tot-carb">0</p><p class="text-[10px] text-yellow-400/50">carbos g</p></div>
+                    <div><p class="text-xl font-black text-orange-400" id="recipe-tot-fat">0</p><p class="text-[10px] text-orange-400/50">grasas g</p></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-[#FFDB89]/20 flex justify-between items-center gap-3 shrink-0">
+            <button id="recipe-delete-btn" class="hidden px-4 py-2 text-red-400/70 hover:text-red-400 text-sm font-bold transition"><i class="fas fa-trash-alt mr-1.5"></i>Eliminar</button>
+            <div class="flex gap-3 ml-auto">
+                <button id="cancel-recipe-modal" class="px-6 py-2 bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 text-[#FFDB89] rounded-lg font-bold transition">Cancelar</button>
+                <button id="save-recipe-btn" class="px-6 py-2 bg-[#FFDB89] text-[#030303] rounded-lg font-black transition hover:bg-[#FFDB89]/80">Guardar receta</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ══════════════════════════════════════════
      MODAL: IMPORT ROUTINE FROM TEXT

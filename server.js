@@ -12,6 +12,7 @@ import compression from 'compression';               // gzip every response — 
 import path from 'path';
 import fs from 'fs';
 import http from 'http';                             // live sessions: raw server for the WS upgrade
+import { execSync } from 'node:child_process';       // only to read the git SHA at boot when the host does not provide one
 import { fileURLToPath } from 'url';
 // nodemailer removed — email is sent via Resend HTTP API (SMTP blocked by Railway)
 import bcrypt from 'bcryptjs';
@@ -52,6 +53,50 @@ const app = express();
 // CLIENT wrote, and the limiters could be bypassed by forging it. Trusting exactly
 // the real hops ignores anything the client prepends — /api/health/ip proves this
 // on every call, and says so if the count ever stops matching.
+// ── Which build is actually running ─────────────────────────────────────────
+// "Did my deploy land?" was being answered by inference — checking whether some
+// file existed, or whether a field had appeared in a response. This answers it
+// outright, and it is read ONCE at boot rather than per request.
+//
+// Railway sets RAILWAY_GIT_* on every deploy. Running locally there is no such
+// variable, so it falls back to asking git directly; a deployed build without
+// either simply reports null instead of guessing.
+const BUILD = (() => {
+    const env = process.env;
+    let commit  = env.RAILWAY_GIT_COMMIT_SHA || env.GIT_COMMIT_SHA || env.SOURCE_VERSION || null;
+    let branch  = env.RAILWAY_GIT_BRANCH || null;
+    let message = env.RAILWAY_GIT_COMMIT_MESSAGE || null;
+    if (!commit) {
+        // execSync rather than reading .git/refs by hand: refs get packed away by
+        // `git gc`, and git knows where they went.
+        try {
+            const run = (c) => execSync(c, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+            commit  = run('git rev-parse HEAD');
+            branch  = branch  || run('git rev-parse --abbrev-ref HEAD');
+            message = message || run('git log -1 --pretty=%s');
+        } catch { /* no git, no .git directory — leave them null */ }
+    }
+    return {
+        commit:   commit ? String(commit).slice(0, 7) : null,
+        branch:   branch || null,
+        message:  message ? String(message).split('\n')[0].slice(0, 120) : null,
+        // When THIS process started, which on Railway is when the deploy went live.
+        startedAt: new Date().toISOString(),
+    };
+})();
+
+// "hace 3 días" — the part that actually answers the question at a glance.
+const sinceBoot = () => {
+    const ms = Date.now() - new Date(BUILD.startedAt).getTime();
+    const mins = Math.floor(ms / 60000);
+    if (mins < 1)  return 'hace unos segundos';
+    if (mins < 60) return `hace ${mins} minuto${mins === 1 ? '' : 's'}`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24)  return `hace ${hrs} hora${hrs === 1 ? '' : 's'}`;
+    const days = Math.floor(hrs / 24);
+    return `hace ${days} día${days === 1 ? '' : 's'}`;
+};
+
 const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY_HOPS ?? 2);
 app.set('trust proxy', TRUST_PROXY_HOPS);
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION'; // NEW: JWT secret from env
@@ -932,6 +977,92 @@ const SavedMealSchema = new mongoose.Schema({
 SavedMealSchema.index({ clientId: 1, createdAt: -1 });
 const SavedMeal = mongoose.model('SavedMeal', SavedMealSchema);
 
+// --- Recipe Schema ---
+// The trainer's own recipe book: a photo, what goes in it, and what that adds up
+// to. Deliberately NO method/steps — these exist so a client can see an idea and
+// put it straight into their diary, not to be cooked from.
+//
+// The macros are NOT stored. They are summed from the ingredients on every read
+// (`recipeTotals`), because a stored copy drifts the moment an ingredient is
+// edited, and a wrong calorie count on a coach's recommendation is worse than no
+// recommendation. Summing twenty numbers costs nothing.
+const RecipeSchema = new mongoose.Schema({
+    // Owner. Recipes are PRIVATE to their trainer; a client sees their own
+    // trainer's book and nobody else's. Superadmin sees every trainer's.
+    trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    name:      { type: String, required: true, trim: true },
+    // Cloudinary URL. Optional — a recipe with no photo falls back to a branded
+    // placeholder rather than a broken image (same choice as blog covers).
+    image:     { type: String, default: '' },
+    imagePos:  { type: String, default: '50% 50%' },   // CSS object-position for framing
+    // Free-form, e.g. "Sin lactosa", "Rápido", "Alto en proteína".
+    tags:      { type: [String], default: [] },
+    // Which meal it suits ("Desayuno", "Merienda AM", …) or '' for any.
+    mealSlot:  { type: String, default: '' },
+    // How many people the ingredient list feeds; macros are reported per serving.
+    servings:  { type: Number, default: 1, min: 1 },
+    ingredients: [{
+        name:     { type: String, default: '' },
+        amount:   { type: Number, default: 0 },
+        unit:     { type: String, default: 'g' },
+        calories: { type: Number, default: 0 },
+        protein:  { type: Number, default: 0 },
+        carbs:    { type: Number, default: 0 },
+        fat:      { type: Number, default: 0 },
+    }],
+    // Soft delete: a recipe a client already cooked from should never vanish out
+    // of the trainer's history because of one mis-tap.
+    isArchived: { type: Boolean, default: false },
+}, { timestamps: true });
+RecipeSchema.index({ trainerId: 1, isArchived: 1, name: 1 });
+const Recipe = mongoose.model('Recipe', RecipeSchema);
+
+// ONE serving of one ingredient. Both the card and "añadir a mi diario" go
+// through this, which is the only way the number a client is promised and the
+// number that lands in their day can be the same.
+//
+// Calories are rounded to a whole number HERE, per ingredient, on purpose.
+// Dividing by servings produces halves constantly, and the day's totals are
+// summed by MongoDB's $round — which is banker's rounding, so 194.5 becomes 194
+// while the browser's Math.round makes it 195. A recipe card promising one more
+// calorie than the diary records is exactly the kind of small lie that stops a
+// client trusting the numbers. No half ever reaches $round now.
+const recipeServingOf = (ing, servings) => {
+    const per = Math.max(1, Number(servings) || 1);
+    const one = (v) => Math.round(((Number(v) || 0) / per) * 10) / 10;
+    return {
+        calories: Math.round((Number(ing?.calories) || 0) / per),
+        protein:  one(ing?.protein),
+        carbs:    one(ing?.carbs),
+        fat:      one(ing?.fat),
+        amount:   Math.round(((Number(ing?.amount) || 0) / per) * 100) / 100,
+    };
+};
+
+// Per-serving macros, summed from the ingredients. The one place this is computed.
+const recipeTotals = (recipe) => {
+    const t = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    (recipe?.ingredients || []).forEach((i) => {
+        const one = recipeServingOf(i, recipe?.servings);
+        t.calories += one.calories;
+        t.protein  += one.protein;
+        t.carbs    += one.carbs;
+        t.fat      += one.fat;
+    });
+    return {
+        calories: t.calories,                 // already whole numbers
+        protein:  Math.round(t.protein),
+        carbs:    Math.round(t.carbs),
+        fat:      Math.round(t.fat),
+    };
+};
+
+// Shape a recipe for the wire: a plain object plus its computed macros.
+const recipeOut = (doc) => {
+    const r = doc.toObject ? doc.toObject() : doc;
+    return { ...r, macros: recipeTotals(r) };
+};
+
 // Meal-recommender usage counters for cost caps: one 'global' doc per month and
 // one 'client' doc per client per day. Drives the daily + monthly limits.
 const AiUsageSchema = new mongoose.Schema({
@@ -1794,6 +1925,9 @@ app.get('/api/health/ip', authenticateToken, requireSuperadmin, (req, res) => {
     }
 
     res.json({
+        // First, so "did my deploy land?" is answered before anything else: match
+        // `commit` against the SHA you pushed.
+        build: { ...BUILD, running: sinceBoot() },
         trustProxySetting: trust,
         reqIp: req.ip,
         reqIps: req.ips,                       // populated only when trust proxy is on
@@ -3166,6 +3300,147 @@ app.delete('/api/nutrition-logs/:logId', authenticateToken, async (req, res) => 
         await NutritionLog.findByIdAndDelete(req.params.logId);
         res.json({ message: 'Deleted' });
     } catch (e) { res.status(500).json({ message: 'Error deleting nutrition log' }); }
+});
+
+// --- Recipes (the trainer's recipe book) ---
+// A trainer writes a recipe once; their clients browse it and put it in their
+// diary in one tap. "Add to diary" deliberately reuses POST /api/nutrition-logs/food
+// (§ "Append food"), so a recipe lands through the same atomic, concurrency-safe
+// path as any other food and recomputes the day's totals server-side.
+
+const isTrainerRole = (u) => u && (u.role === 'trainer' || u.role === 'admin');
+
+// Whose recipe book does this user read? A trainer reads their own. A client
+// reads the book of the trainer who manages them — never anyone else's. The
+// superadmin reads every trainer's, which is how support sees what a client sees.
+const recipeScopeFor = async (user) => {
+    if (user.isSuperadmin) return {};                       // all trainers
+    if (isTrainerRole(user)) return { trainerId: user.id };
+    const me = await User.findById(user.id).select('trainerId').lean();
+    if (!me?.trainerId) return null;                        // unassigned client: nothing to show
+    return { trainerId: me.trainerId };
+};
+
+// Trim an incoming ingredient list to the stored shape. Numbers are coerced and
+// floored at zero so a stray "-" or "abc" cannot poison a client's day total.
+const cleanIngredients = (list) => (Array.isArray(list) ? list : [])
+    .map((i) => ({
+        name:     String(i?.name || '').trim().slice(0, 120),
+        amount:   Math.max(0, Number(i?.amount) || 0),
+        unit:     String(i?.unit || 'g').trim().slice(0, 20) || 'g',
+        calories: Math.max(0, Number(i?.calories) || 0),
+        protein:  Math.max(0, Number(i?.protein)  || 0),
+        carbs:    Math.max(0, Number(i?.carbs)    || 0),
+        fat:      Math.max(0, Number(i?.fat)      || 0),
+    }))
+    .filter((i) => i.name)
+    .slice(0, 40);
+
+const cleanTags = (list) => (Array.isArray(list) ? list : [])
+    .map((t) => String(t || '').trim().slice(0, 30))
+    .filter(Boolean)
+    .slice(0, 8);
+
+// GET /api/recipes — the book this user is allowed to see.
+app.get('/api/recipes', authenticateToken, async (req, res) => {
+    try {
+        const scope = await recipeScopeFor(req.user);
+        if (scope === null) return res.json([]);
+        const docs = await Recipe.find({ ...scope, isArchived: { $ne: true } })
+            .sort({ updatedAt: -1 }).limit(500).lean();
+        res.json(docs.map(recipeOut));
+    } catch (e) {
+        console.error('Error fetching recipes:', e);
+        res.status(500).json({ message: 'Error cargando las recetas.' });
+    }
+});
+
+// POST /api/recipes — trainers only.
+app.post('/api/recipes', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const { name, image, imagePos, tags, mealSlot, servings, ingredients } = req.body;
+        if (!String(name || '').trim()) return res.status(400).json({ message: 'La receta necesita un nombre.' });
+        const doc = await Recipe.create({
+            trainerId:   req.user.id,
+            name:        String(name).trim().slice(0, 120),
+            image:       String(image || '').trim(),
+            imagePos:    String(imagePos || '50% 50%').slice(0, 24),
+            tags:        cleanTags(tags),
+            mealSlot:    String(mealSlot || '').trim().slice(0, 30),
+            servings:    Math.max(1, Math.round(Number(servings) || 1)),
+            ingredients: cleanIngredients(ingredients),
+        });
+        res.status(201).json(recipeOut(doc));
+    } catch (e) {
+        console.error('Error creating recipe:', e);
+        res.status(500).json({ message: 'Error guardando la receta.' });
+    }
+});
+
+// PUT /api/recipes/:id — the owning trainer, or the superadmin.
+app.put('/api/recipes/:id', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const doc = await Recipe.findById(req.params.id);
+        if (!doc) return res.status(404).json({ message: 'Receta no encontrada.' });
+        if (!req.user.isSuperadmin && String(doc.trainerId) !== String(req.user.id))
+            return res.status(403).json({ message: 'Forbidden' });
+
+        const b = req.body || {};
+        if (b.name !== undefined) {
+            if (!String(b.name).trim()) return res.status(400).json({ message: 'La receta necesita un nombre.' });
+            doc.name = String(b.name).trim().slice(0, 120);
+        }
+        if (b.image       !== undefined) doc.image    = String(b.image || '').trim();
+        if (b.imagePos    !== undefined) doc.imagePos = String(b.imagePos || '50% 50%').slice(0, 24);
+        if (b.tags        !== undefined) doc.tags     = cleanTags(b.tags);
+        if (b.mealSlot    !== undefined) doc.mealSlot = String(b.mealSlot || '').trim().slice(0, 30);
+        if (b.servings    !== undefined) doc.servings = Math.max(1, Math.round(Number(b.servings) || 1));
+        if (b.ingredients !== undefined) doc.ingredients = cleanIngredients(b.ingredients);
+        await doc.save();
+        res.json(recipeOut(doc));
+    } catch (e) {
+        console.error('Error updating recipe:', e);
+        res.status(500).json({ message: 'Error guardando la receta.' });
+    }
+});
+
+// DELETE /api/recipes/:id — ARCHIVES, never erases. A client may have cooked from
+// this yesterday; one mis-tap should not take it out of the trainer's history.
+app.delete('/api/recipes/:id', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const doc = await Recipe.findById(req.params.id);
+        if (!doc) return res.status(404).json({ message: 'Receta no encontrada.' });
+        if (!req.user.isSuperadmin && String(doc.trainerId) !== String(req.user.id))
+            return res.status(403).json({ message: 'Forbidden' });
+        doc.isArchived = true;
+        await doc.save();
+        res.json({ message: 'Archivada' });
+    } catch (e) {
+        console.error('Error archiving recipe:', e);
+        res.status(500).json({ message: 'Error eliminando la receta.' });
+    }
+});
+
+// POST /api/recipes/image — the recipe photo. Same Cloudinary helper and multer
+// instance as the blog cover: the full composition is kept and framing is a
+// display-time concern (imagePos), so a photo can be re-cropped without re-upload.
+app.post('/api/recipes/image', authenticateToken, coverUpload.single('photo'), async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No se recibió ninguna imagen.' });
+        const result = await uploadToCloudinary(req.file.buffer, {
+            folder: 'fitbysuarez/recipes',
+            format: 'jpg',          // normalises the HEIC an iPhone hands over
+            transformation: [{ quality: 'auto', width: 1600, crop: 'limit' }],
+        });
+        res.json({ image: result.secure_url });
+    } catch (e) {
+        console.error('Error uploading recipe image:', e);
+        res.status(500).json({ message: e?.message || 'Error subiendo la imagen.' });
+    }
 });
 
 // --- Saved meal combos (per client) ---

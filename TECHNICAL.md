@@ -4376,6 +4376,31 @@ left**, so with the hop count set to the real number, the fake never reaches the
 The last row is the danger: trusting more hops than exist means trusting the part of the header the
 client wrote.
 
+### Which build is running
+
+The first thing the endpoint returns is the build, because "did my deploy land?" was being answered by
+inference — checking whether some file had appeared, or whether a field existed in a response:
+
+```json
+"build": {
+  "commit":    "5b49921",
+  "branch":    "main",
+  "message":   "trust proxy = 2, measured on the live server …",
+  "startedAt": "2026-10-31T05:09:23.886Z",
+  "running":   "hace 3 días"
+}
+```
+
+Match `commit` against what was pushed and the question is closed. `running` is how long *this process*
+has been up, which on Railway is how long ago the deploy went live.
+
+Read **once at boot**, never per request, from `RAILWAY_GIT_COMMIT_SHA` / `_BRANCH` / `_COMMIT_MESSAGE`.
+Running locally there is no such variable, so it falls back to asking git (`rev-parse`, not reading
+`.git/refs` by hand — `git gc` packs those away). A host with neither reports `null` rather than
+guessing. Verified in all three states: the git fallback returned the real local SHA and subject line,
+Railway's variables took precedence over git and a multi-line commit message was truncated to its first
+line, and with `git` removed from `PATH` the server still booted and the endpoint still answered.
+
 ### The endpoint now proves it on every call
 
 `/api/health/ip` no longer just reports — it re-runs the pick with a fake entry prepended to the real
@@ -4610,3 +4635,110 @@ website, and the confirmation carries a **Deshacer** that restores only the carr
 
 Without this, the help existed on the laptop and not in the trainer's pocket, and the same program would
 behave differently depending on which one was in hand.
+
+---
+
+## 54. Recetas: the trainer's recipe book
+
+A recipe is a **photo, an ingredient list, and what those add up to**. There is deliberately no method or
+step list — these exist so a client can see an idea and put it straight into their diary, not to be
+cooked from.
+
+### Why this and not the AI recommender
+
+`/api/meal-suggestion` already answers *"what do I eat right now to close today's macros"*. It is
+AI-generated, costs credits per tap, and the ideas are not the trainer's. A coach is paid for their
+method; the recipe book is the place that method lives. The two are complementary — the recommender
+improvises, the book is what was prescribed.
+
+### Where it lives
+
+| Who | Where |
+|---|---|
+| Trainer | **Biblioteca → Recetas** (a fourth tab beside Programas / Librería / Videos) |
+| Client | a **Recetas de tu entrenador** card in their Nutrición page, above the day's log |
+
+A client sees **their own trainer's book and nobody else's**. The superadmin sees every trainer's, which
+is how support sees what a client sees. A client with no trainer assigned gets an empty list, and the
+section hides itself entirely when the book is empty — a promise with nothing behind it is worse than
+silence.
+
+### The macros are never stored
+
+`recipeTotals()` sums them from the ingredients on **every read**. A stored copy drifts the moment an
+ingredient is edited, and a wrong calorie count on a coach's recommendation is worse than no
+recommendation. Summing twenty numbers costs nothing. Macros sent in a request body are ignored, and
+negative or non-numeric values are floored at zero so a typo cannot poison a client's day.
+
+### The number on the card is the number in the diary
+
+Both go through one function, `recipeServingOf()` (mirrored in `server.js` and `public/app.js`), which
+divides one ingredient by the servings and **rounds calories to a whole number there**.
+
+This is not fussiness. Dividing by servings produces halves constantly, and the day's totals are summed
+by MongoDB's `$round` — which is **banker's rounding**, so `194.5` becomes `194`, while the browser's
+`Math.round` makes it `195`. The first version of this shipped a card promising 195 kcal against a diary
+recording 194. Rounding per ingredient means no half ever reaches `$round`, and the test asserts the two
+are equal rather than merely close.
+
+### Adding to the diary reuses the atomic append
+
+**Añadir a mi diario** posts the ingredients to `POST /api/nutrition-logs/food` — the same path every
+other food uses (§ 47). So a recipe inherits the concurrency safety already proven there: two devices
+adding at once cannot erase each other, and the day's totals are recomputed server-side rather than sent
+by the client. No new write path was added.
+
+If the recipe names a meal slot it goes straight there; otherwise the client is asked which meal. One
+*serving* is added, not the whole list — the sheet says so when the recipe makes more than one.
+
+### Delete archives, never erases
+
+`DELETE /api/recipes/:id` sets `isArchived`. A client may have cooked from it yesterday; one mis-tap
+should not take it out of the trainer's history. The test asserts the row is still in the database
+afterwards.
+
+### Files
+
+| File | What |
+|---|---|
+| `RecipeSchema` / `recipeTotals` / `recipeServingOf` in `server.js` | model and the one place macros are computed |
+| `GET/POST/PUT/DELETE /api/recipes`, `POST /api/recipes/image` | CRUD + Cloudinary upload (same helper as blog covers) |
+| `renderRecipeLibrary` / `openRecipeModal` in `public/app.js` | the trainer's grid and editor |
+| `renderClientRecipes` / `openRecipeView` in `public/app.js` | the client's browser, filters and detail sheet |
+| `scripts/test-recipes.mjs` | 26 checks against an isolated server + database |
+
+### Verified
+
+26 automated checks, most of them about what must **not** happen: a client cannot create a recipe,
+another trainer cannot read, edit or delete one, a client cannot write into someone else's diary, and the
+book is unreadable signed out. Plus the full flow driven in a browser against a throwaway local database
+— create a recipe, pick an ingredient from the food search (macros auto-fill), set two servings and watch
+the per-serving figure halve, save, then sign in as the client, open it and tap **Añadir a mi diario**:
+the ring went 2,348 → 2,154 remaining and the macro bars moved to exactly one serving. Checked at phone
+width. No new console errors.
+
+### Seeding the first five
+
+`scripts/seed-recipes.mjs` holds Angel's five published meals (the yogurt breakfast, the chicken lunch,
+the two David bars, the filet dinner, the evening shake). His posts give **meal-level** macros, but the
+model sums a recipe from its ingredients — so the per-ingredient numbers are chosen to add up to exactly
+the figure he published, and the script **asserts that before writing anything**. A card disagreeing with
+his own post would be worse than not adding the recipe.
+
+```bash
+MONGO_URI=<db> TRAINER_EMAIL=you@example.com node scripts/seed-recipes.mjs --dry   # check, write nothing
+MONGO_URI=<db> TRAINER_EMAIL=you@example.com node scripts/seed-recipes.mjs         # write
+```
+
+It upserts on (trainer, name), so re-running after an edit updates rather than duplicates — verified by
+running it twice: `5 created, 0 updated` then `0 created, 5 updated`.
+
+### Not built yet
+
+- **The phone.** The app has no recipe screen; this is web-only so far.
+- **Targeting.** Every client of a trainer sees the whole book. Pushing a specific recipe to a specific
+  client is the obvious next step.
+- **Reordering ingredients**, and framing the photo (`imagePos` is stored and honoured but there is no
+  drag-to-reposition control yet).
+- **No notes field.** Variations like "sometimes I mix whey into the yogurt, sometimes I add a bar if I'm
+  still hungry" have nowhere to live — the model is ingredients and macros only, by choice.

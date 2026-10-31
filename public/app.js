@@ -5927,14 +5927,587 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     };
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // RECIPES — the trainer's recipe book
+    //
+    // A recipe is a photo, an ingredient list and what those add up to. There is
+    // deliberately no method: these exist so a client can see an idea and put it
+    // straight into their diary, not to be cooked from.
+    //
+    // The per-serving macros shown here are computed the same way the server
+    // computes them (sum the ingredients, divide by servings) and are never sent
+    // to the server — it recomputes on read, so the two cannot drift.
+    // ══════════════════════════════════════════════════════════════════════════
+    const RECIPE_MEAL_SLOTS = ['Desayuno', 'Merienda AM', 'Almuerzo', 'Merienda PM', 'Cena', 'Snack'];
+    const RECIPE_TAG_IDEAS  = ['Rápido', 'Alto en proteína', 'Sin lactosa', 'Sin gluten', 'Vegetariano', 'Bajo en carbos', 'Pre-entreno', 'Post-entreno'];
+    let recipesCache = [];
+    let recipeDraft  = null;   // the recipe open in the editor
+
+    // ONE serving of one ingredient. Both the card and "añadir a mi diario" go
+    // through this, so the number a client is promised is the number that lands
+    // in their day. Calories are rounded per ingredient on purpose — dividing by
+    // servings makes halves constantly, and the day's totals are summed by
+    // MongoDB's $round (banker's rounding: 194.5 → 194) while the browser's
+    // Math.round gives 195. Rounding here means no half ever reaches it.
+    // Mirrors recipeServingOf() in server.js.
+    const recipeServingOf = (ing, servings) => {
+        const per = Math.max(1, Number(servings) || 1);
+        const one = (v) => Math.round(((Number(v) || 0) / per) * 10) / 10;
+        return {
+            calories: Math.round((Number(ing?.calories) || 0) / per),
+            protein:  one(ing?.protein),
+            carbs:    one(ing?.carbs),
+            fat:      one(ing?.fat),
+            amount:   Math.round(((Number(ing?.amount) || 0) / per) * 100) / 100,
+        };
+    };
+
+    const recipeMacros = (r) => {
+        const t = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+        (r?.ingredients || []).forEach((i) => {
+            const one = recipeServingOf(i, r?.servings);
+            t.calories += one.calories;
+            t.protein  += one.protein;
+            t.carbs    += one.carbs;
+            t.fat      += one.fat;
+        });
+        return { calories: t.calories, protein: Math.round(t.protein),
+                 carbs: Math.round(t.carbs), fat: Math.round(t.fat) };
+    };
+
+    // A recipe with no photo gets the brand gradient, never a broken image.
+    const recipeThumb = (r, extraClass = '') => (r.image
+        ? `<img src="${escHtml(r.image)}" alt="" loading="lazy" class="w-full h-full object-cover ${extraClass}" style="object-position:${escHtml(r.imagePos || '50% 50%')}">`
+        : `<div class="w-full h-full flex items-center justify-center ${extraClass}" style="background:linear-gradient(135deg,rgba(255,219,137,0.18),rgba(255,219,137,0.04))">
+               <i class="fas fa-bowl-food text-3xl text-[#FFDB89]/30"></i>
+           </div>`);
+
+    const fetchRecipes = async () => {
+        try {
+            const res = await apiFetch('/api/recipes');
+            recipesCache = res.ok ? await res.json() : [];
+        } catch { recipesCache = []; }
+        return recipesCache;
+    };
+
+    window.renderRecipeLibrary = async () => {
+        const grid = document.getElementById('recipe-grid');
+        if (!grid) return;
+        await fetchRecipes();
+        const q = (document.getElementById('recipe-search-input')?.value || '').trim().toLowerCase();
+        const list = recipesCache.filter((r) => !q
+            || r.name.toLowerCase().includes(q)
+            || (r.tags || []).some((t) => t.toLowerCase().includes(q))
+            || (r.ingredients || []).some((i) => (i.name || '').toLowerCase().includes(q)));
+
+        if (!list.length) {
+            grid.innerHTML = `<div class="col-span-full text-center py-16 text-[#FFDB89]/30">
+                <i class="fas fa-bowl-food text-4xl mb-3 block"></i>
+                <p class="font-bold">${q ? 'Ninguna receta coincide.' : 'Todavía no hay recetas.'}</p>
+                <p class="text-xs mt-1">${q ? 'Prueba otra búsqueda.' : 'Crea la primera y tus clientes la verán en su Nutrición.'}</p>
+            </div>`;
+            return;
+        }
+        grid.innerHTML = list.map((r) => {
+            const m = r.macros || recipeMacros(r);
+            return `
+            <div class="recipe-card group bg-[#111113] border border-[#FFDB89]/10 hover:border-[#FFDB89]/35 rounded-2xl overflow-hidden cursor-pointer transition" data-recipe="${escHtml(r._id)}">
+                <div class="relative h-32 overflow-hidden">
+                    ${recipeThumb(r, 'group-hover:scale-105 transition-transform duration-500')}
+                    <div class="absolute bottom-0 inset-x-0 px-3 py-1.5 bg-gradient-to-t from-black/85 to-transparent">
+                        <p class="text-xs font-black text-[#FFDB89]">${m.calories} <span class="font-bold opacity-60">kcal</span></p>
+                    </div>
+                </div>
+                <div class="p-3">
+                    <p class="font-bold text-[#FFDB89] text-sm leading-tight truncate">${escHtml(r.name)}</p>
+                    <p class="text-[10px] text-[#FFDB89]/35 mt-0.5">
+                        ${r.mealSlot ? escHtml(r.mealSlot) + ' · ' : ''}${(r.ingredients || []).length} ingrediente${(r.ingredients || []).length === 1 ? '' : 's'}
+                    </p>
+                    <div class="flex gap-2 mt-2 text-[10px] font-bold">
+                        <span class="text-[#F87171]">P ${m.protein}</span>
+                        <span class="text-yellow-400">C ${m.carbs}</span>
+                        <span class="text-orange-400">G ${m.fat}</span>
+                    </div>
+                    ${(r.tags || []).length ? `<div class="flex flex-wrap gap-1 mt-2">${r.tags.slice(0, 3).map((t) =>
+                        `<span class="px-1.5 py-0.5 rounded bg-[#FFDB89]/10 text-[9px] text-[#FFDB89]/60">${escHtml(t)}</span>`).join('')}</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    };
+
+    // ── Editor ────────────────────────────────────────────────────────────────
+    const recipeIngredientRow = (ing = {}, idx = 0) => `
+        <div class="recipe-ing grid grid-cols-12 gap-2 items-start" data-idx="${idx}">
+            <div class="col-span-12 sm:col-span-5 relative">
+                <input type="text" class="ri-name w-full p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm placeholder:text-[#FFDB89]/25 outline-none focus:ring-1 focus:ring-[#FFDB89]/40"
+                    placeholder="Ingrediente" autocomplete="off" autocorrect="off" spellcheck="false" value="${escHtml(ing.name || '')}">
+                <div class="ri-drop hidden absolute top-full left-0 right-0 mt-1 bg-[#1a1a1c] border border-[#FFDB89]/30 rounded-xl shadow-2xl z-20 max-h-48 overflow-y-auto"></div>
+            </div>
+            <div class="col-span-4 sm:col-span-2 flex gap-1">
+                <input type="number" step="any" min="0" class="ri-amount w-full p-2.5 text-center bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-1 focus:ring-[#FFDB89]/40" value="${ing.amount ?? ''}" placeholder="100">
+                <input type="text" class="ri-unit w-14 p-2.5 text-center bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-1 focus:ring-[#FFDB89]/40" value="${escHtml(ing.unit || 'g')}" autocomplete="off">
+            </div>
+            <div class="col-span-7 sm:col-span-4 grid grid-cols-4 gap-1">
+                <input type="number" step="any" min="0" class="ri-cal  w-full p-2.5 text-center bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-xs outline-none" value="${ing.calories ?? ''}" placeholder="kcal" title="Calorías">
+                <input type="number" step="any" min="0" class="ri-pro  w-full p-2.5 text-center bg-[#F87171]/10 border border-[#F87171]/25 rounded-lg text-[#F87171] text-xs outline-none" value="${ing.protein ?? ''}" placeholder="P" title="Proteína (g)">
+                <input type="number" step="any" min="0" class="ri-carb w-full p-2.5 text-center bg-yellow-400/10 border border-yellow-400/25 rounded-lg text-yellow-400 text-xs outline-none" value="${ing.carbs ?? ''}" placeholder="C" title="Carbos (g)">
+                <input type="number" step="any" min="0" class="ri-fat  w-full p-2.5 text-center bg-orange-400/10 border border-orange-400/25 rounded-lg text-orange-400 text-xs outline-none" value="${ing.fat ?? ''}" placeholder="G" title="Grasas (g)">
+            </div>
+            <div class="col-span-1 flex justify-end">
+                <button class="ri-del w-9 h-9 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition" title="Quitar"><i class="fas fa-times"></i></button>
+            </div>
+        </div>`;
+
+    const readRecipeForm = () => {
+        const ings = Array.from(document.querySelectorAll('#recipe-ingredients .recipe-ing')).map((row) => ({
+            name:     row.querySelector('.ri-name')?.value.trim() || '',
+            amount:   parseFloat(row.querySelector('.ri-amount')?.value) || 0,
+            unit:     row.querySelector('.ri-unit')?.value.trim() || 'g',
+            calories: parseFloat(row.querySelector('.ri-cal')?.value)  || 0,
+            protein:  parseFloat(row.querySelector('.ri-pro')?.value)  || 0,
+            carbs:    parseFloat(row.querySelector('.ri-carb')?.value) || 0,
+            fat:      parseFloat(row.querySelector('.ri-fat')?.value)  || 0,
+        })).filter((i) => i.name);
+        return {
+            name:        document.getElementById('recipe-name')?.value.trim() || '',
+            image:       recipeDraft?.image || '',
+            imagePos:    recipeDraft?.imagePos || '50% 50%',
+            tags:        recipeDraft?.tags || [],
+            mealSlot:    document.getElementById('recipe-meal-slot')?.value || '',
+            servings:    Math.max(1, parseInt(document.getElementById('recipe-servings')?.value, 10) || 1),
+            ingredients: ings,
+        };
+    };
+
+    const refreshRecipeTotals = () => {
+        const m = recipeMacros(readRecipeForm());
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        set('recipe-tot-cal', m.calories); set('recipe-tot-pro', m.protein);
+        set('recipe-tot-carb', m.carbs);   set('recipe-tot-fat', m.fat);
+    };
+
+    const renderRecipeTags = () => {
+        const wrap = document.getElementById('recipe-tag-pills');
+        const sugg = document.getElementById('recipe-tag-suggestions');
+        const tags = recipeDraft?.tags || [];
+        if (wrap) wrap.innerHTML = tags.length ? tags.map((t, i) =>
+            `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FFDB89]/12 border border-[#FFDB89]/25 text-xs font-bold text-[#FFDB89]">
+                ${escHtml(t)}<button class="recipe-tag-del text-[#FFDB89]/50 hover:text-red-400 transition" data-i="${i}"><i class="fas fa-times text-[10px]"></i></button>
+             </span>`).join('') : '<span class="text-[11px] text-[#FFDB89]/25">Sin etiquetas</span>';
+        if (sugg) sugg.innerHTML = RECIPE_TAG_IDEAS.filter((t) => !tags.includes(t)).map((t) =>
+            `<button class="recipe-tag-add px-2 py-0.5 rounded-md border border-[#FFDB89]/15 text-[10px] text-[#FFDB89]/45 hover:text-[#FFDB89] hover:border-[#FFDB89]/40 transition" data-tag="${escHtml(t)}">+ ${escHtml(t)}</button>`).join('');
+    };
+
+    const renderRecipeIngredients = () => {
+        const wrap = document.getElementById('recipe-ingredients');
+        if (!wrap) return;
+        const list = recipeDraft?.ingredients?.length ? recipeDraft.ingredients : [{}];
+        wrap.innerHTML = list.map((i, n) => recipeIngredientRow(i, n)).join('');
+        refreshRecipeTotals();
+    };
+
+    const setRecipePhoto = (url) => {
+        if (recipeDraft) recipeDraft.image = url || '';
+        const img   = document.getElementById('recipe-photo-preview');
+        const empty = document.getElementById('recipe-photo-empty');
+        const clear = document.getElementById('recipe-photo-clear');
+        if (img)   { img.src = url || ''; img.classList.toggle('hidden', !url); }
+        if (empty) empty.classList.toggle('hidden', !!url);
+        if (clear) clear.classList.toggle('hidden', !url);
+    };
+
+    window.openRecipeModal = (recipe = null) => {
+        recipeDraft = recipe
+            ? JSON.parse(JSON.stringify(recipe))
+            : { name: '', image: '', imagePos: '50% 50%', tags: [], mealSlot: '', servings: 1, ingredients: [{}] };
+
+        document.getElementById('recipe-modal-title').innerHTML =
+            `<i class="fas fa-bowl-food mr-2"></i>${recipe ? 'Editar receta' : 'Nueva receta'}`;
+        document.getElementById('recipe-name').value     = recipeDraft.name || '';
+        document.getElementById('recipe-servings').value = recipeDraft.servings || 1;
+
+        const sel = document.getElementById('recipe-meal-slot');
+        sel.innerHTML = '<option value="">Cualquiera</option>' +
+            RECIPE_MEAL_SLOTS.map((s) => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+        sel.value = recipeDraft.mealSlot || '';
+
+        setRecipePhoto(recipeDraft.image);
+        renderRecipeTags();
+        renderRecipeIngredients();
+        document.getElementById('recipe-delete-btn').classList.toggle('hidden', !recipe);
+        document.getElementById('recipe-modal').classList.remove('hidden');
+    };
+
+    const closeRecipeModal = () => {
+        document.getElementById('recipe-modal')?.classList.add('hidden');
+        recipeDraft = null;
+    };
+
+    const saveRecipe = async () => {
+        const body = readRecipeForm();
+        if (!body.name) { showToast('La receta necesita un nombre.', 'error'); return; }
+        if (!body.ingredients.length) { showToast('Añade al menos un ingrediente.', 'error'); return; }
+        const btn = document.getElementById('save-recipe-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+        try {
+            const editing = recipeDraft?._id;
+            const res = await apiFetch(editing ? `/api/recipes/${editing}` : '/api/recipes', {
+                method: editing ? 'PUT' : 'POST',
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) { showToast('Error guardando la receta.', 'error'); return; }
+            closeRecipeModal();
+            await window.renderRecipeLibrary();
+            showToast(editing ? '✓ Receta actualizada' : '✓ Receta creada — tus clientes ya la ven', 'success');
+        } catch { showToast('Error de conexión.', 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar receta'; } }
+    };
+
+
+    // ── Recipe editor wiring ──────────────────────────────────────────────────
+    // Delegated so it survives the Programas module being re-rendered, and bound
+    // once rather than per modal open (which is how listeners stack up).
+    document.addEventListener('click', async (e) => {
+        const t = e.target;
+
+        const card = t.closest?.('.recipe-card');
+        if (card) {
+            const r = recipesCache.find((x) => String(x._id) === card.dataset.recipe);
+            if (r) window.openRecipeModal(r);
+            return;
+        }
+        if (t.closest?.('#close-recipe-modal') || t.closest?.('#cancel-recipe-modal')) { closeRecipeModal(); return; }
+        if (t.closest?.('#save-recipe-btn')) { saveRecipe(); return; }
+
+        if (t.closest?.('#recipe-delete-btn')) {
+            if (!recipeDraft?._id) return;
+            const yes = await showConfirm('¿Eliminar esta receta? Tus clientes dejarán de verla.',
+                { confirmLabel: 'Eliminar', danger: true });
+            if (!yes) return;
+            const res = await apiFetch(`/api/recipes/${recipeDraft._id}`, { method: 'DELETE' });
+            if (res.ok) { closeRecipeModal(); await window.renderRecipeLibrary(); showToast('Receta eliminada.', 'info'); }
+            else showToast('Error eliminando la receta.', 'error');
+            return;
+        }
+
+        if (t.closest?.('#recipe-photo-drop')) { document.getElementById('recipe-photo-input')?.click(); return; }
+        if (t.closest?.('#recipe-photo-clear')) { setRecipePhoto(''); return; }
+
+        if (t.closest?.('#recipe-add-ingredient')) {
+            const wrap = document.getElementById('recipe-ingredients');
+            if (wrap) {
+                wrap.insertAdjacentHTML('beforeend', recipeIngredientRow({}, wrap.children.length));
+                wrap.lastElementChild?.querySelector('.ri-name')?.focus();
+            }
+            return;
+        }
+        const del = t.closest?.('.ri-del');
+        if (del) {
+            const wrap = document.getElementById('recipe-ingredients');
+            // Never leave the list empty — an empty row is the invitation to type.
+            if (wrap && wrap.children.length === 1) renderRecipeIngredients();
+            else { del.closest('.recipe-ing')?.remove(); refreshRecipeTotals(); }
+            return;
+        }
+
+        const tagAdd = t.closest?.('.recipe-tag-add');
+        if (tagAdd && recipeDraft) {
+            const tag = tagAdd.dataset.tag;
+            if (!recipeDraft.tags.includes(tag)) recipeDraft.tags.push(tag);
+            renderRecipeTags();
+            return;
+        }
+        const tagDel = t.closest?.('.recipe-tag-del');
+        if (tagDel && recipeDraft) {
+            recipeDraft.tags.splice(Number(tagDel.dataset.i), 1);
+            renderRecipeTags();
+            return;
+        }
+
+        // A pick from an ingredient's food-search dropdown.
+        const hit = t.closest?.('.ri-hit');
+        if (hit) {
+            const row = hit.closest('.recipe-ing');
+            const f   = JSON.parse(hit.dataset.food);
+            const amt = parseFloat(row.querySelector('.ri-amount')?.value) || 100;
+            // The search returns per-100 g numbers; scale them to the amount typed.
+            const k = amt / 100;
+            row.querySelector('.ri-name').value   = f.name;
+            row.querySelector('.ri-amount').value = amt;
+            row.querySelector('.ri-unit').value   = 'g';
+            row.querySelector('.ri-cal').value    = Math.round((f.cal100 || 0) * k);
+            row.querySelector('.ri-pro').value    = Math.round((f.p100 || 0) * k * 10) / 10;
+            row.querySelector('.ri-carb').value   = Math.round((f.c100 || 0) * k * 10) / 10;
+            row.querySelector('.ri-fat').value    = Math.round((f.f100 || 0) * k * 10) / 10;
+            row.querySelector('.ri-drop').classList.add('hidden');
+            refreshRecipeTotals();
+            return;
+        }
+        // Clicking anywhere else closes any open ingredient dropdown.
+        if (!t.closest?.('.recipe-ing')) {
+            document.querySelectorAll('#recipe-ingredients .ri-drop').forEach((d) => d.classList.add('hidden'));
+        }
+    });
+
+    // Live totals, and the ingredient food search.
+    let riSearchTimer = null;
+    document.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t.id === 'recipe-search-input') { window.renderRecipeLibrary(); return; }
+        if (t.id === 'recipe-servings') { refreshRecipeTotals(); return; }
+        if (!t.closest?.('#recipe-ingredients')) return;
+        refreshRecipeTotals();
+
+        if (!t.classList.contains('ri-name')) return;
+        const row  = t.closest('.recipe-ing');
+        const drop = row.querySelector('.ri-drop');
+        const q    = t.value.trim();
+        clearTimeout(riSearchTimer);
+        if (q.length < 2) { drop.classList.add('hidden'); return; }
+        riSearchTimer = setTimeout(async () => {
+            try {
+                const res = await apiFetch(`/api/food-search?q=${encodeURIComponent(q)}`);
+                const hits = res.ok ? await res.json() : [];
+                if (!hits.length) { drop.classList.add('hidden'); return; }
+                drop.innerHTML = hits.slice(0, 8).map((f) => `
+                    <button class="ri-hit w-full text-left px-3 py-2 hover:bg-[#FFDB89]/10 transition border-b border-[#FFDB89]/5 last:border-0"
+                        data-food='${escHtml(JSON.stringify({ name: f.name, cal100: f.cal100, p100: f.p100, c100: f.c100, f100: f.f100 }))}'>
+                        <span class="block text-sm text-[#FFDB89] truncate">${escHtml(f.name)}</span>
+                        <span class="block text-[10px] text-[#FFDB89]/40">${Math.round(f.cal100 || 0)} kcal · P ${f.p100 || 0} · C ${f.c100 || 0} · G ${f.f100 || 0} <span class="opacity-60">por 100 g</span></span>
+                    </button>`).join('');
+                drop.classList.remove('hidden');
+            } catch { drop.classList.add('hidden'); }
+        }, 250);
+    });
+
+    // Enter adds the typed tag.
+    document.addEventListener('keydown', (e) => {
+        if (e.target.id !== 'recipe-tag-input' || e.key !== 'Enter') return;
+        e.preventDefault();
+        const val = e.target.value.trim();
+        if (val && recipeDraft && !recipeDraft.tags.includes(val) && recipeDraft.tags.length < 8) {
+            recipeDraft.tags.push(val);
+            renderRecipeTags();
+        }
+        e.target.value = '';
+    });
+
+    // Photo upload.
+    document.addEventListener('change', async (e) => {
+        if (e.target.id !== 'recipe-photo-input') return;
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        const busy = document.getElementById('recipe-photo-busy');
+        busy?.classList.replace('hidden', 'flex');
+        try {
+            const fd = new FormData();
+            fd.append('photo', file);
+            // apiFetch already leaves Content-Type off a FormData body so the
+            // browser can write its own multipart boundary.
+            const res = await apiFetch('/api/recipes/image', { method: 'POST', body: fd });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.image) setRecipePhoto(data.image);
+            else showToast(data.message || 'Error subiendo la imagen.', 'error');
+        } catch { showToast('Error de conexión.', 'error'); }
+        finally { busy?.classList.replace('flex', 'hidden'); }
+    });
+
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // RECIPES — the client's side
+    //
+    // The same book the trainer writes in Biblioteca → Recetas, read-only, with
+    // one button that matters: "Añadir a mi diario". That posts the ingredients
+    // through POST /api/nutrition-logs/food — the same atomic append every other
+    // food uses — so the day's totals are recomputed by the server and two
+    // devices adding at once cannot erase each other.
+    // ══════════════════════════════════════════════════════════════════════════
+    let clientRecipes     = [];
+    let clientRecipeTag   = '';     // active tag filter, '' = all
+    let viewingRecipe     = null;
+
+    window.renderClientRecipes = async () => {
+        const wrap = document.getElementById('client-recipes');
+        if (!wrap) return;
+        try {
+            const res = await apiFetch('/api/recipes');
+            clientRecipes = res.ok ? await res.json() : [];
+        } catch { clientRecipes = []; }
+
+        // No book, no section. A promise with nothing behind it is worse than silence.
+        if (!clientRecipes.length) { wrap.classList.add('hidden'); return; }
+        wrap.classList.remove('hidden');
+
+        const countEl = document.getElementById('client-recipes-count');
+        if (countEl) countEl.textContent = `${clientRecipes.length} receta${clientRecipes.length === 1 ? '' : 's'}`;
+
+        // Filter pills: every tag actually in use, plus "Todas".
+        const tags = [...new Set(clientRecipes.flatMap((r) => r.tags || []))].sort();
+        const filters = document.getElementById('client-recipes-filters');
+        if (filters) {
+            if (!tags.includes(clientRecipeTag)) clientRecipeTag = '';   // tag disappeared
+            filters.innerHTML = ['', ...tags].map((t) => `
+                <button class="client-recipe-tag px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
+                    t === clientRecipeTag
+                        ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
+                        : 'border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:border-[#FFDB89]/40'}"
+                    data-tag="${escHtml(t)}">${t ? escHtml(t) : 'Todas'}</button>`).join('');
+        }
+
+        const list = clientRecipeTag
+            ? clientRecipes.filter((r) => (r.tags || []).includes(clientRecipeTag))
+            : clientRecipes;
+
+        document.getElementById('client-recipes-grid').innerHTML = list.map((r) => {
+            const m = r.macros || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+            return `
+            <button class="client-recipe-card group text-left bg-[#111113] border border-[#FFDB89]/10 hover:border-[#FFDB89]/40 rounded-xl overflow-hidden transition" data-recipe="${escHtml(r._id)}">
+                <div class="relative h-24 overflow-hidden">
+                    ${recipeThumb(r, 'group-hover:scale-105 transition-transform duration-500')}
+                    <div class="absolute bottom-0 inset-x-0 px-2 py-1 bg-gradient-to-t from-black/85 to-transparent">
+                        <p class="text-[11px] font-black text-[#FFDB89]">${m.calories} <span class="font-bold opacity-60">kcal</span></p>
+                    </div>
+                </div>
+                <div class="p-2.5">
+                    <p class="text-xs font-bold text-[#FFDB89] leading-tight line-clamp-2">${escHtml(r.name)}</p>
+                    <div class="flex gap-2 mt-1.5 text-[9px] font-bold">
+                        <span class="text-[#F87171]">P ${m.protein}</span>
+                        <span class="text-yellow-400">C ${m.carbs}</span>
+                        <span class="text-orange-400">G ${m.fat}</span>
+                    </div>
+                </div>
+            </button>`;
+        }).join('');
+    };
+
+    const openRecipeView = (recipe) => {
+        viewingRecipe = recipe;
+        const m = recipe.macros || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+        const macroPill = (label, val, unit, color) => `
+            <div class="flex-1 rounded-xl py-2.5 text-center" style="background:${color}1a;border:1px solid ${color}40">
+                <p class="text-lg font-black" style="color:${color}">${val}<span class="text-[10px] font-bold opacity-70">${unit}</span></p>
+                <p class="text-[9px] uppercase tracking-wider" style="color:${color};opacity:.6">${label}</p>
+            </div>`;
+        document.getElementById('recipe-view-body').innerHTML = `
+            <div class="relative h-44">
+                ${recipeThumb(recipe)}
+                <div class="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black via-black/60 to-transparent">
+                    <h3 class="text-xl font-black text-[#FFDB89] leading-tight">${escHtml(recipe.name)}</h3>
+                    <p class="text-[11px] text-[#FFDB89]/50 mt-0.5">
+                        ${recipe.mealSlot ? escHtml(recipe.mealSlot) + ' · ' : ''}${recipe.servings > 1 ? `rinde ${recipe.servings} porciones · ` : ''}por porción
+                    </p>
+                </div>
+            </div>
+            <div class="p-4 space-y-4">
+                <div class="flex gap-2">
+                    ${macroPill('kcal', m.calories, '', '#FFDB89')}
+                    ${macroPill('Proteína', m.protein, 'g', '#F87171')}
+                    ${macroPill('Carbos', m.carbs, 'g', '#facc15')}
+                    ${macroPill('Grasas', m.fat, 'g', '#fb923c')}
+                </div>
+                ${(recipe.tags || []).length ? `<div class="flex flex-wrap gap-1.5">${recipe.tags.map((t) =>
+                    `<span class="px-2 py-0.5 rounded-lg bg-[#FFDB89]/10 border border-[#FFDB89]/20 text-[10px] font-bold text-[#FFDB89]/70">${escHtml(t)}</span>`).join('')}</div>` : ''}
+                <div>
+                    <p class="text-[10px] font-bold text-[#FFDB89]/40 uppercase tracking-widest mb-2">Ingredientes</p>
+                    <div class="rounded-xl border border-[#FFDB89]/10 divide-y divide-[#FFDB89]/8 overflow-hidden">
+                        ${(recipe.ingredients || []).map((i) => `
+                        <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                            <span class="text-sm text-[#FFDB89]/85">${escHtml(i.name)}</span>
+                            <span class="text-xs text-[#FFDB89]/40 shrink-0">${window.FoodScale ? window.FoodScale.fmtAmount(i.amount) : i.amount} ${escHtml(i.unit || 'g')}</span>
+                        </div>`).join('')}
+                    </div>
+                    ${recipe.servings > 1
+                        ? `<p class="text-[10px] text-[#FFDB89]/30 mt-2">La lista completa rinde ${recipe.servings} porciones. Al añadirla se registra <strong>1 porción</strong>.</p>`
+                        : ''}
+                </div>
+            </div>`;
+        const modal = document.getElementById('recipe-view-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    };
+
+    const closeRecipeView = () => {
+        const modal = document.getElementById('recipe-view-modal');
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        viewingRecipe = null;
+    };
+
+    document.addEventListener('click', async (e) => {
+        const tagBtn = e.target.closest?.('.client-recipe-tag');
+        if (tagBtn) { clientRecipeTag = tagBtn.dataset.tag || ''; window.renderClientRecipes(); return; }
+
+        const card = e.target.closest?.('.client-recipe-card');
+        if (card) {
+            const r = clientRecipes.find((x) => String(x._id) === card.dataset.recipe);
+            if (r) openRecipeView(r);
+            return;
+        }
+        if (e.target.closest?.('#recipe-view-close')) { closeRecipeView(); return; }
+        if (e.target.id === 'recipe-view-modal') { closeRecipeView(); return; }
+
+        if (e.target.closest?.('#recipe-view-add')) {
+            if (!viewingRecipe) return;
+            const recipe = viewingRecipe;
+            const session = loadSession();
+            if (!session) return;
+
+            // Which meal? The recipe's own slot if it has one, otherwise ask.
+            let slot = recipe.mealSlot;
+            if (!slot) {
+                slot = await window.showChoice({
+                    title: '¿En qué comida la anoto?',
+                    body: recipe.name,
+                    options: RECIPE_MEAL_SLOTS.map((s) => ({ label: s, value: s })),
+                });
+                if (!slot) return;
+            }
+
+            // One serving of the recipe: every ingredient divided by the servings
+            // it makes, so the diary matches the macros the card promised.
+            const foods = (recipe.ingredients || []).map((i) => {
+                const one = recipeServingOf(i, recipe.servings);
+                return {
+                    name:          `${i.name} · ${recipe.name}`,
+                    calories:      one.calories,
+                    protein:       one.protein,
+                    carbs:         one.carbs,
+                    fat:           one.fat,
+                    servingAmount: one.amount,
+                    servingUnit:   i.unit || 'g',
+                };
+            }).filter((f) => f.name);
+            if (!foods.length) { showToast('Esta receta no tiene ingredientes.', 'error'); return; }
+
+            const btn = document.getElementById('recipe-view-add');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+            try {
+                const date = document.getElementById('nutri-date')?.value || getTodayStr();
+                const res = await apiFetch('/api/nutrition-logs/food', {
+                    method: 'POST',
+                    body: JSON.stringify({ clientId: session.id, date, mealName: slot, foods }),
+                });
+                if (!res.ok) { showToast('Error añadiendo la receta.', 'error'); return; }
+                closeRecipeView();
+                showToast(`✓ ${recipe.name} añadida a ${slot}`, 'success');
+                // Reload the day so the rings, bars and meal rows all agree with
+                // what the server just stored.
+                if (typeof window.reloadNutritionDay === 'function') window.reloadNutritionDay();
+            } catch { showToast('Error de conexión.', 'error'); }
+            finally { if (btn) { btn.disabled = false; btn.textContent = 'Añadir a mi diario'; } }
+        }
+    });
+
     // ── Tab switching helper ───────────────────────────────────────────────────
     const switchLibraryTab = (activeTabId) => {
-        const tabs   = ['tab-programas', 'tab-ejercicios', 'tab-videos'];
-        const panels = ['programs-main-view', 'ejercicios-panel', 'videos-panel'];
+        const tabs   = ['tab-programas', 'tab-ejercicios', 'tab-videos', 'tab-recetas'];
+        const panels = ['programs-main-view', 'ejercicios-panel', 'videos-panel', 'recetas-panel'];
         const tabPanelMap = {
             'tab-programas':   'programs-main-view',
             'tab-ejercicios':  'ejercicios-panel',
             'tab-videos':      'videos-panel',
+            'tab-recetas':     'recetas-panel',
         };
         tabs.forEach(id => {
             const btn = document.getElementById(id);
@@ -5984,6 +6557,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('video-upload-modal')?.classList.remove('hidden');
             };
             window.renderVideoLibrary();
+        } else if (activeTabId === 'tab-recetas') {
+            if (btnText) btnText.textContent = 'Nueva receta';
+            if (btn) btn.onclick = () => window.openRecipeModal(null);
+            window.renderRecipeLibrary();
         }
     };
 
@@ -12345,6 +12922,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'tab-programas')  { switchLibraryTab('tab-programas');  return; }
         if (target.id === 'tab-ejercicios') { switchLibraryTab('tab-ejercicios'); return; }
         if (target.id === 'tab-videos')     { switchLibraryTab('tab-videos');     return; }
+        if (target.id === 'tab-recetas')    { switchLibraryTab('tab-recetas');    return; }
         // Legacy library_content.html buttons (kept for backwards compat)
         if (target.id === 'toggle-programs-view')  { switchLibraryTab('tab-programas');  return; }
         if (target.id === 'toggle-exercises-view') { switchLibraryTab('tab-ejercicios'); return; }
@@ -16493,7 +17071,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Initial load
+        // Lets anything outside this closure pull the day again after writing to
+        // it — the recipe "Añadir a mi diario" button is the first such caller.
+        window.reloadNutritionDay = () =>
+            loadLogForDate(document.getElementById('nutri-date')?.value || todayStr);
+
         await loadLogForDate(todayStr);
+
+        // The trainer's recipe book. Non-blocking: a slow or failed fetch must
+        // never hold up the food log, which is what the client actually came for.
+        window.renderClientRecipes();
         fetchSavedMeals();
         await loadHistory();
     };
