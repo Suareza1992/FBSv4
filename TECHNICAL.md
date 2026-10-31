@@ -3638,9 +3638,21 @@ each is to bite:
    through RN's interop layer; I cannot confirm it for RN 0.81.
 4. **Ringing is vibration-only, and only while the app is open.** There is no ringtone asset and
    no push/CallKit — a call to a closed app rings nowhere. Push is already on the pending list.
-5. **Landscape is unreachable on phones.** `app.json` locks portrait. Allowing rotation during
-   calls means `orientation: default` plus a runtime lock everywhere else (`expo-screen-orientation`)
-   — a change to every screen's behaviour, so left for a decision.
+5. ~~**Landscape is unreachable on phones.**~~ **Decided 2026-10-31: the call screen rotates, nothing
+   else does.** A call is the one screen that is better in landscape — two people side by side rather
+   than stacked, which is what the web already does and what `computeLayout()` already produces. Every
+   other screen is a form or a list and gains nothing.
+
+   iOS only offers the orientations in Info.plist, so `app.json` is now `orientation: "default"`. That
+   alone would free every screen, so the policy moved to runtime in **two** places rather than into
+   every screen: `app/_layout.tsx` locks portrait once at startup, and `CallScreen` lifts it on mount
+   and restores it on unmount. The whole policy is `lib/live/orientation.ts`, which wraps every call —
+   a build without `expo-screen-orientation`, or a platform that refuses, must not take the app down
+   over a rotation preference.
+
+   Verified with `expo config --type introspect`: `UISupportedInterfaceOrientations` now lists all
+   four on both iPhone and iPad, and Android's manifest leaves it unset so the runtime lock applies.
+   **Not verified on a device** — nothing in the call screen has been.
 6. **A development build** needs `expo-dev-client`, which is **not installed** (`eas.json` already
    has the profile). Installing it makes `expo start` default to the dev client instead of Expo Go,
    which changes how the app is tested today — so it was left alone.

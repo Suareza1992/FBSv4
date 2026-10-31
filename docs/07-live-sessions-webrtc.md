@@ -576,6 +576,21 @@ concurrent requests, prefetches on socket open so call setup never waits, falls 
 2. Set `TURN_APP` and `TURN_API_KEY` in Railway
 3. Redeploy. `GET /api/rtc/ice` should return `turn: true`
 
+`TURN_APP` is the subdomain Metered gives the app — the `<this>` in `<this>.metered.live`, not the
+whole URL. `TURN_API_KEY` is on the same page. Nothing else changes: the server builds the request
+URL from those two.
+
+**The path either side of those two variables was exercised end to end on 2026-10-31**, against a
+stand-in provider returning Metered's response shape, so pasting real keys is genuinely all that is
+left:
+
+| | Result |
+|---|---|
+| Provider reachable | `turn: true`, STUN kept first in the list, relay servers appended |
+| Second request inside the cache window | served from cache — **one** provider request for two calls |
+| Provider down | `turn: false, degraded: true`, still returns STUN so a call can still connect |
+| The API key in any log line | never — checked both server logs for the literal key |
+
 Switching provider is **one function** — `fetchIceServers()` in `server.js`. Twilio and Cloudflare
 endpoints are documented in `.env.example`; the response shape and the entire browser side are
 unchanged.
