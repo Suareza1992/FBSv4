@@ -4733,9 +4733,16 @@ MONGO_URI=<db> TRAINER_EMAIL=you@example.com node scripts/seed-recipes.mjs      
 It upserts on (trainer, name), so re-running after an edit updates rather than duplicates — verified by
 running it twice: `5 created, 0 updated` then `0 created, 5 updated`.
 
-### Not built yet
+### Deliberately web-only
 
-- **The phone.** The app has no recipe screen; this is web-only so far.
+**The phone is not getting a recipe screen.** Decided 2026-10-31, after the web version shipped — this is
+a settled scope call, not a gap waiting to be filled. Do not propose porting it again without Angel
+raising it first.
+
+The consequence to keep in mind: clients who use the app rather than the website will not see the recipe
+book at all.
+
+### Not built yet
 - **Targeting.** Every client of a trainer sees the whole book. Pushing a specific recipe to a specific
   client is the obvious next step.
 - **Reordering ingredients**, and framing the photo (`imagePos` is stored and honoured but there is no
