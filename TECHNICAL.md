@@ -4805,6 +4805,20 @@ Delete is a **real delete**, not an archive — unlike a recipe. A wrong shared 
 client's autocomplete and the thing to do with it is make it stop existing. Nothing already logged
 changes: a day's foods are copies, not references, which the confirmation says out loud.
 
+### The "sin porción" filter
+
+A food with no `servingAmount` is read back as if its numbers were **per 100 g** (§ 43). At the time of
+writing that was **145 of 177** entries, and the effect is not subtle: "Huevos revueltos · 745 kcal" is
+plainly a multi-egg plate, but a client picking it is shown 745 kcal per 100 g.
+
+These are not broken rows — they are rows nobody ever told the app the portion for, and only the person
+who weighed the food can. So the screen offers a **filter rather than a guess**: two chips, `Todos` and
+`Sin porción`, each with its count, and the filtered list keeps the by-usage sort so the first rows are
+the ones whose missing portion costs the most. Each row also marks "sin porción" in orange.
+
+Twenty rows of work, in usage order, covers most of the real traffic. Guessing 145 portions would have
+been faster and worse: a confidently wrong portion is harder to notice than a missing one.
+
 ### Edge cases that are handled
 
 - `nameNorm` is uniquely indexed, so renaming one food onto another's name would throw a duplicate-key

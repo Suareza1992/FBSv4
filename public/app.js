@@ -6515,6 +6515,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let foodAdminCache = [];
     let foodAdminEditing = null;   // _id of the row open for editing
     const NEW_FOOD_ID = '__new__'; // the unsaved row, which has no _id yet
+    let foodAdminFilter = 'all';   // 'all' | 'noserving'
+
+    // A food with no amount recorded is read back as if its numbers were PER 100 G
+    // (§ 43). "Huevos revueltos · 745 kcal" is plainly a multi-egg plate, but a
+    // client picking it is shown 745 kcal per 100 g. These are not broken rows —
+    // they are rows nobody has told the app the portion for, and only the person
+    // who weighed it can. Hence a filter rather than a guess.
+    const foodHasServing = (f) => f.servingAmount > 0 && !!f.servingUnit;
 
     // The tab is in the markup but hidden: an ordinary trainer never sees it.
     const renderAlimentosTabVisibility = () => {
@@ -6525,7 +6533,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const foodAdminRow = (f) => {
         const serving = f.servingAmount > 0 && f.servingUnit
             ? `${window.FoodScale ? window.FoodScale.fmtAmount(f.servingAmount) : f.servingAmount} ${escHtml(f.servingUnit)}`
-            : '<span class="opacity-40">sin porción</span>';
+            : '<span class="text-orange-400/70 font-bold">sin porción</span>';
         if (foodAdminEditing === String(f._id)) {
             return `
             <div class="food-admin-row p-3 bg-[#FFDB89]/5 border-b border-[#FFDB89]/10" data-id="${escHtml(f._id)}">
@@ -6577,17 +6585,39 @@ document.addEventListener('DOMContentLoaded', () => {
             foodAdminCache = res.ok ? await res.json() : [];
         } catch { foodAdminCache = []; }
 
+        const missing = foodAdminCache.filter((f) => !foodHasServing(f));
+        const shown = foodAdminFilter === 'noserving' ? missing : foodAdminCache;
+
+        // Sorted by use already, so the first rows here are the ones whose missing
+        // portion is costing the most — the twenty worth fixing first.
+        const filters = document.getElementById('food-admin-filters');
+        if (filters) {
+            const chip = (key, label, n) => `
+                <button class="food-admin-filter px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
+                    foodAdminFilter === key
+                        ? 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]'
+                        : 'border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:border-[#FFDB89]/40'}"
+                    data-filter="${key}">${label} <span class="opacity-60">${n}</span></button>`;
+            filters.innerHTML = chip('all', 'Todos', foodAdminCache.length)
+                              + chip('noserving', 'Sin porción', missing.length);
+        }
+
         const countEl = document.getElementById('food-admin-count');
-        if (countEl) countEl.textContent = `${foodAdminCache.length} alimento${foodAdminCache.length === 1 ? '' : 's'}${q ? ' encontrados' : ' en la librería'}`;
+        if (countEl) {
+            countEl.textContent = foodAdminFilter === 'noserving'
+                ? `${shown.length} sin porción — se leen como "por 100 g" hasta que les pongas una`
+                : `${shown.length} alimento${shown.length === 1 ? '' : 's'}${q ? ' encontrados' : ' en la librería'}`;
+        }
 
         const blank = foodAdminEditing === NEW_FOOD_ID
             ? foodAdminRow({ _id: NEW_FOOD_ID, name: '', calories: '', protein: '', carbs: '', fat: '', servingAmount: 100, servingUnit: 'g' })
             : '';
-        list.innerHTML = (blank + (foodAdminCache.length
-            ? foodAdminCache.map(foodAdminRow).join('')
+        list.innerHTML = (blank + (shown.length
+            ? shown.map(foodAdminRow).join('')
             : (blank ? '' : `<div class="p-8 text-center text-[#FFDB89]/30">
                    <i class="fas fa-apple-whole text-3xl mb-2 block"></i>
-                   <p class="font-bold">${q ? 'Ningún alimento coincide.' : 'La librería está vacía.'}</p>
+                   <p class="font-bold">${foodAdminFilter === 'noserving' ? 'Todos tienen porción. 🎉'
+                        : q ? 'Ningún alimento coincide.' : 'La librería está vacía.'}</p>
                </div>`)));
     };
 
@@ -6621,6 +6651,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelector('.food-admin-row .fa-name')?.focus();
             return;
         }
+        const filterBtn = e.target.closest?.('.food-admin-filter');
+        if (filterBtn) { foodAdminFilter = filterBtn.dataset.filter; foodAdminEditing = null; window.renderFoodAdmin(); return; }
         if (e.target.closest?.('.fa-cancel')) { foodAdminEditing = null; window.renderFoodAdmin(); return; }
         if (e.target.closest?.('.fa-save') && row) {
             if (row.dataset.id === NEW_FOOD_ID) createFoodAdminRow(row); else saveFoodAdminRow(row);
