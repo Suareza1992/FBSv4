@@ -7,8 +7,8 @@ The snippets are *illustrative* — faithful to the real patterns in `server.js`
 ## The parts
 
 1. [Foundation](01-foundation.md) — stack, models, auth, the SPA shell, UI primitives
-2. [Trainer features](02-trainer-features.md) — clients, invites, library, program builder, assignment, workout editor, notifications, measurements, payments, blog
-3. [Client features](03-client-features.md) — workout logging, nutrition, photos, metrics, equipment
+2. [Trainer features](02-trainer-features.md) — clients, invites, library, program builder, assignment, workout editor, notifications, measurements, payments, blog, nutrición (recipes + food library)
+3. [Client features](03-client-features.md) — workout logging, nutrition (diary + the trainer's recipe book), photos, metrics, equipment
 4. [Integrations & cross-cutting](04-integrations.md) — email, food APIs, AI, security, deployment
 5. [Self-serve signup & payments](05-self-serve-signup-and-payments.md) — public pricing page, Stripe + **native PayPal**, pay-then-create-account provisioning
 6. [Live sessions (WebRTC)](07-live-sessions-webrtc.md) — trainer↔client video calls: signaling over WebSocket, the call lifecycle, media capture, peer connections, TURN, and resilience. Go-live checks in [GO-LIVE-live-sessions.md](GO-LIVE-live-sessions.md)

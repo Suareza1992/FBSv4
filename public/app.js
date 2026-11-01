@@ -6328,7 +6328,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ══════════════════════════════════════════════════════════════════════════
     // RECIPES — the client's side
     //
-    // The same book the trainer writes in Biblioteca → Recetas, read-only, with
+    // The same book the trainer writes in Nutrición → Recetas, read-only, with
     // one button that matters: "Añadir a mi diario". That posts the ingredients
     // through POST /api/nutrition-logs/food — the same atomic append every other
     // food uses — so the day's totals are recomputed by the server and two
@@ -12704,7 +12704,12 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (linkText === 'Blog') moduleToLoad = 'blog_content';
             else if (linkText.includes('Mis programas')) moduleToLoad = 'client_programas';
             else if (linkText.includes('Métricas')) moduleToLoad = 'client_metricas';
-            else if (linkText.includes('Nutrición')) moduleToLoad = 'client_nutricion';
+            else if (linkText.includes('Nutrición')) {
+                // Both dashboards label this link "Nutrición": the client browses
+                // the recipes, the trainer edits them.
+                const session = loadSession();
+                moduleToLoad = (session?.role === 'client') ? 'client_nutricion' : 'nutricion_content';
+            }
             else if (linkText.includes('Equipo')) moduleToLoad = 'client_equipo';
             else if (linkText.includes('Fotos')) moduleToLoad = 'client_progress';
             else if (linkText.includes('Cronómetro')) moduleToLoad = 'client_clock';

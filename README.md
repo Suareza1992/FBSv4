@@ -49,6 +49,7 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Constructor de rutinas personalizadas (gated por entrenador)** — permite a clientes proponer entrenamientos propios a través de un modal guiado: seleccionar mecanismo (Push/Pull) → tipo corporal (Upper/Lower/Full Body) → grupos musculares (10 opciones) → buscar ejercicios → configurar series/reps. El entrenador puede habilitar/deshabilitar por cliente en la pestaña de Restricciones.
 - **Blog** — redactar y publicar artículos con formato Markdown (enlaces, negrita, cursiva, listas); se muestran en el sitio público con fecha de publicación y, si se editan, de actualización.
 - **Biblioteca de ejercicios** — base de datos por grupo muscular, con video e instrucciones; agregar y editar ejercicios.
+- **Nutrición (Recetas + Alimentos)** — sección propia en el panel. En **Recetas** creas el recetario que ven tus clientes: nombre, descripción corta, foto (subir o quitar), comida, porciones, etiquetas e ingredientes con sus macros; los totales se muestran **por porción**. En **Alimentos** se administra la librería compartida: cualquiera puede **agregar** un alimento, pero solo el superadmin puede **modificar** uno existente, y el filtro **"Sin porción"** lista los que todavía se leen como "por 100 g".
 - **Equipo del cliente** — pestaña de solo lectura con el inventario y los pesos que el cliente marcó como disponibles; recibes una notificación cuando el cliente lo actualiza.
 - **Feed de notificaciones** — actividad en tiempo real (entrenamientos completados/perdidos, RPE, peso, nutrición, fotos, equipo actualizado, restricciones musculares, nuevos clientes); filtrable.
 - **Medidas corporales** — registrar y seguir circunferencias, % de grasa, IMC y peso por sesión.
@@ -60,6 +61,7 @@ Resumen de todo lo que ofrece la plataforma FitBySuárez.
 - **Propuesta de rutina personalizada** — si el entrenador lo habilita, puedes hacer clic en "¿Qué propones?" en la celda de hoy para proponer tu propio entrenamiento a través de un constructor guiado (mecanismo → tipo corporal → grupos musculares → búsqueda de ejercicios → series/reps).
 - **Historial de entrenamientos** — revisar y editar sesiones pasadas con su estado.
 - **Seguimiento de nutrición** — registrar calorías, macros (proteína, carbos, grasas) y agua por comida (desayuno, almuerzo, merienda, cena).
+- **Recetas de tu entrenador** — el recetario que publicó tu entrenador, con foto, macros por porción y etiquetas; un botón **"Añadir a mi diario"** registra los ingredientes en la comida del día.
 - **Búsqueda de alimentos** — base local en español (incluye comida criolla puertorriqueña) más USDA / Nutritionix / Open Food Facts; entrada manual con unidad obligatoria.
 - **Recomendador de comidas con IA — "¿Qué como?"** 🤖 — sugiere comidas para cerrar los macros que faltan, respetando alergias y preferencias; los macros se verifican contra la base de datos.
 - **Registro de comidas por texto natural — "Describir"** 🤖 — el cliente describe lo que comió en español y la IA lo convierte en alimentos con macros; revisa y ajusta los gramos antes de guardar.
