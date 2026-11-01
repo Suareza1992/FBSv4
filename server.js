@@ -3598,41 +3598,25 @@ app.post('/api/personal-foods/:id/submit-community', authenticateToken, async (r
         if (!food) return res.status(404).json({ message: 'Alimento no encontrado' });
         if (food.clientId.toString() !== req.user.id) return res.status(403).json({ message: 'Forbidden' });
 
-        // Normalize name for dedup (strip accents, lowercase)
-        const normalizeStr = (s) => {
-            return (s || '').toLowerCase()
-                .normalize('NFD')
-                .replace(/[̀-ͯ]/g, '');
-        };
-        const nameNorm = normalizeStr(food.name);
-
-        // Upsert to community library: if name exists, increment timesUsed; otherwise create
-        const communityFood = await FoodLibrary.findOneAndUpdate(
-            { nameNorm },
-            {
-                $set: {
-                    name: food.name,
-                    nameNorm,
-                    calories: food.calories,
-                    protein: food.protein,
-                    carbs: food.carbs,
-                    fat: food.fat,
-                    // The personal food's numbers are FOR servingSize servingUnit; share that too,
-                    // or the community copy would be read back as "per 100 g".
-                    ...cleanServing(food.servingSize, food.servingUnit),
-                    updatedAt: new Date()
-                },
-                $inc: { timesUsed: 1 }
-            },
-            { new: true, upsert: true }
-        );
+        // Goes through the SAME guard as every other write to the shared library:
+        // a client may contribute a food nobody has yet, but may not silently change
+        // the numbers on one that already exists. `changed` tells the caller which
+        // happened, so the UI does not claim a contribution that was only counted.
+        const r = await upsertSharedFood({
+            name: food.name,
+            calories: food.calories, protein: food.protein, carbs: food.carbs, fat: food.fat,
+            // The personal food's numbers are FOR servingSize servingUnit; share that too,
+            // or the community copy would be read back as "per 100 g".
+            servingAmount: food.servingSize, servingUnit: food.servingUnit,
+        }, await isSuperadmin(req));
+        const communityFood = { _id: r.id };
 
         // Mark personal food as submitted
         food.submittedToCommunity = true;
         food.communityFoodId = communityFood._id;
         await food.save();
 
-        res.json({ ok: true, communityFoodId: communityFood._id });
+        res.json({ ok: true, communityFoodId: communityFood._id, created: r.created, changed: r.changed });
     } catch (e) { res.status(500).json({ message: 'Error submitting to community library' }); }
 });
 
@@ -4803,28 +4787,128 @@ const cleanServing = (amount, unit) => {
         : { servingAmount: 0, servingUnit: '' };
 };
 
+/**
+ * Write to the SHARED food library.
+ *
+ * Anyone may ADD a food nobody has entered yet — that is how the library grew to its
+ * current size and it should keep growing. But until now anyone could also OVERWRITE
+ * an existing food's numbers just by logging it: one client typing 3000 calories for
+ * "Arroz blanco" silently changed what every other client sees in their autocomplete,
+ * and nothing in the app could put it back. The shared library is the one piece of
+ * data here that every client reads and every client could write.
+ *
+ * So: creating is open, CHANGING an existing entry is the superadmin's alone. A
+ * non-admin save of a food that already exists still counts the use (the popularity
+ * ranking stays honest) and leaves the numbers untouched.
+ *
+ * The return value says which of the three happened, so a caller can tell the user
+ * the truth instead of "✓ saved" over a write that did nothing.
+ */
+const upsertSharedFood = async (food, isAdmin) => {
+    const name = String(food?.name || '').trim();
+    if (!name) return { ok: false, reason: 'name' };
+    const nameNorm = normalizeStr(name);
+    const existing = await FoodLibrary.findOne({ nameNorm });
+
+    if (existing && !isAdmin) {
+        await FoodLibrary.updateOne({ _id: existing._id }, { $inc: { timesUsed: 1 } });
+        return { ok: true, created: false, changed: false, counted: true, id: existing._id };
+    }
+
+    // The serving is ALWAYS written, even when absent: this call replaces the macros, and
+    // macros from an older app (no serving) must not keep a stale serving from the
+    // previous writer — that would pair new numbers with an old amount.
+    const serving = cleanServing(food.servingAmount, food.servingUnit);
+    const doc = await FoodLibrary.findOneAndUpdate(
+        { nameNorm },
+        {
+            $set: { name, nameNorm, calories: +food.calories || 0, protein: +food.protein || 0,
+                    carbs: +food.carbs || 0, fat: +food.fat || 0, ...serving, updatedAt: new Date() },
+            $inc: { timesUsed: 1 },
+        },
+        { upsert: true, new: true },
+    );
+    return { ok: true, created: !existing, changed: !!existing, counted: true, id: doc._id };
+};
+
 app.post('/api/food-library', authenticateToken, async (req, res) => {
     try {
-        const { name, calories, protein, carbs, fat } = req.body;
-        if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
-        const nameNorm = normalizeStr(name.trim());
-        // The serving is ALWAYS written, even when absent: this call replaces the macros, and
-        // macros from an older app (no serving) must not keep a stale serving from the
-        // previous writer — that would pair new numbers with an old amount.
-        const serving = cleanServing(req.body.servingAmount, req.body.servingUnit);
-        await FoodLibrary.findOneAndUpdate(
-            { nameNorm },
-            {
-                $set: { name: name.trim(), calories: +calories || 0, protein: +protein || 0,
-                        carbs: +carbs || 0, fat: +fat || 0, ...serving, updatedAt: new Date() },
-                $inc: { timesUsed: 1 }
-            },
-            { upsert: true, new: true }
-        );
-        res.json({ ok: true });
+        if (!req.body?.name?.trim()) return res.status(400).json({ error: 'Name required' });
+        const r = await upsertSharedFood(req.body, await isSuperadmin(req));
+        res.json({ ok: true, created: r.created, changed: r.changed });
     } catch (e) {
         console.error('Food library save error:', e.message);
         res.status(500).json({ error: e.message });
+    }
+});
+
+// ── The shared library, for the superadmin ────────────────────────────────────
+// Until now nothing in the app could correct or remove a shared food. These three
+// routes are that missing half. Superadmin only: this data is read by every client.
+
+app.get('/api/admin/foods', authenticateToken, requireSuperadmin, async (req, res) => {
+    try {
+        const q = String(req.query.q || '').trim();
+        // Escape before it reaches RegExp: a search for "100% whey (vainilla)" is a
+        // perfectly ordinary thing to type and must not be read as a pattern.
+        const esc = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const filter = q ? { nameNorm: new RegExp(esc(normalizeStr(q))) } : {};
+        const foods = await FoodLibrary.find(filter)
+            .sort({ timesUsed: -1, name: 1 }).limit(500).lean();
+        res.json(foods);
+    } catch (e) {
+        console.error('Error listing shared foods:', e);
+        res.status(500).json({ message: 'Error cargando los alimentos.' });
+    }
+});
+
+app.put('/api/admin/foods/:id', authenticateToken, requireSuperadmin, async (req, res) => {
+    try {
+        const food = await FoodLibrary.findById(req.params.id);
+        if (!food) return res.status(404).json({ message: 'Alimento no encontrado.' });
+        const b = req.body || {};
+        if (b.name !== undefined) {
+            const name = String(b.name).trim();
+            if (!name) return res.status(400).json({ message: 'El alimento necesita un nombre.' });
+            const nameNorm = normalizeStr(name);
+            // nameNorm is uniquely indexed: renaming onto another food would throw a
+            // duplicate-key error, so say what happened instead of a 500.
+            if (nameNorm !== food.nameNorm && await FoodLibrary.exists({ nameNorm })) {
+                return res.status(409).json({ message: `Ya existe un alimento llamado "${name}".` });
+            }
+            food.name = name;
+            food.nameNorm = nameNorm;
+        }
+        ['calories', 'protein', 'carbs', 'fat'].forEach((k) => {
+            if (b[k] !== undefined) food[k] = Math.max(0, Number(b[k]) || 0);
+        });
+        if (b.servingAmount !== undefined || b.servingUnit !== undefined) {
+            const serving = cleanServing(
+                b.servingAmount !== undefined ? b.servingAmount : food.servingAmount,
+                b.servingUnit   !== undefined ? b.servingUnit   : food.servingUnit);
+            food.servingAmount = serving.servingAmount;
+            food.servingUnit   = serving.servingUnit;
+        }
+        food.updatedAt = new Date();
+        await food.save();
+        res.json(food.toObject());
+    } catch (e) {
+        console.error('Error updating shared food:', e);
+        res.status(500).json({ message: 'Error guardando el alimento.' });
+    }
+});
+
+// A real delete, not an archive: a wrong shared food is noise in every client's
+// autocomplete, and the thing to do with it is make it stop existing. Nothing
+// already logged is touched — a day's foods are copies, not references.
+app.delete('/api/admin/foods/:id', authenticateToken, requireSuperadmin, async (req, res) => {
+    try {
+        const food = await FoodLibrary.findByIdAndDelete(req.params.id);
+        if (!food) return res.status(404).json({ message: 'Alimento no encontrado.' });
+        res.json({ message: 'Eliminado', name: food.name });
+    } catch (e) {
+        console.error('Error deleting shared food:', e);
+        res.status(500).json({ message: 'Error eliminando el alimento.' });
     }
 });
 

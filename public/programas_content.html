@@ -53,6 +53,11 @@
                 <button id="tab-recetas" class="px-3 sm:px-4 py-2 rounded-lg font-bold transition text-sm lib-tab-inactive shrink-0">
                     <i class="fas fa-bowl-food mr-1.5"></i>Recetas
                 </button>
+                <!-- Superadmin only — this list is what every client's autocomplete reads.
+                     Unhidden by renderAlimentosTabVisibility() in app.js. -->
+                <button id="tab-alimentos" class="hidden px-3 sm:px-4 py-2 rounded-lg font-bold transition text-sm lib-tab-inactive shrink-0">
+                    <i class="fas fa-apple-whole mr-1.5"></i>Alimentos
+                </button>
             </div>
             <!-- Context-aware action button -->
             <button id="add-new-item-btn" class="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#2C2C2E] border border-[#FFDB89]/30 hover:bg-[#FFDB89]/20 text-[#FFDB89] font-bold rounded-xl transition text-sm shrink-0">
@@ -89,6 +94,31 @@
         </div>
         <div id="exercise-library-list" class="bg-[#111113] border border-[#FFDB89]/10 rounded-xl overflow-hidden min-h-[200px]">
             <div class="p-8 text-center text-[#FFDB89]/30">Cargando ejercicios...</div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         TAB: ALIMENTOS — the shared food library every client's autocomplete reads.
+         Superadmin only. This is the half that was missing: anyone could add a food,
+         nobody could correct or remove one.
+    ══════════════════════════════════════════ -->
+    <div id="alimentos-panel" class="hidden space-y-4">
+        <div class="flex flex-wrap gap-3 items-center">
+            <div class="relative flex-grow max-w-sm">
+                <input type="text" id="food-admin-search" autocomplete="off" autocorrect="off" spellcheck="false"
+                    class="w-full pl-10 pr-4 py-2.5 bg-[#0D0D0D] border border-[#FFDB89]/20 rounded-xl text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 focus:border-[#FFDB89]/50 outline-none transition"
+                    placeholder="Buscar alimento...">
+                <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-[#FFDB89]/30 text-sm"></i>
+            </div>
+            <p id="food-admin-count" class="text-xs text-[#FFDB89]/35"></p>
+        </div>
+        <p class="text-[11px] text-[#FFDB89]/30 flex items-start gap-1.5">
+            <i class="fas fa-circle-info mt-0.5"></i>
+            <span>Esta lista es la que ven todos tus clientes al buscar un alimento. Tus clientes pueden
+            <strong>añadir</strong> alimentos nuevos, pero solo tú puedes <strong>corregir o eliminar</strong> los que ya existen.</span>
+        </p>
+        <div id="food-admin-list" class="bg-[#111113] border border-[#FFDB89]/10 rounded-xl overflow-hidden min-h-[200px]">
+            <div class="p-8 text-center text-[#FFDB89]/30">Cargando alimentos...</div>
         </div>
     </div>
 

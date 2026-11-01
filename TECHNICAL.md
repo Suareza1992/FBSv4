@@ -4761,3 +4761,65 @@ book at all.
   drag-to-reposition control yet).
 - **No notes field.** Variations like "sometimes I mix whey into the yogurt, sometimes I add a bar if I'm
   still hungry" have nowhere to live — the model is ingredients and macros only, by choice.
+
+---
+
+## 55. Alimentos: who may change the shared food library
+
+The shared library (`FoodLibrary`) is the list every client's food autocomplete reads. It had a hole
+that had been there from the start:
+
+**`POST /api/food-library` had no role check and upserted by name.** Any client logging "Arroz blanco"
+with the wrong numbers silently rewrote the entry all the other clients then saw — and nothing in the
+app could put it back. Adding was open, correcting was impossible, and removing did not exist at all.
+The superadmin account had no more power over food than a client did.
+
+### The rule now
+
+| Action | Who |
+|---|---|
+| **Add** a food nobody has entered | anyone signed in — this is how the library grew |
+| **Change** the numbers on one that exists | **superadmin only** |
+| **Delete** one | **superadmin only** |
+| **Count** a use (popularity ranking) | happens on every save, by anyone |
+
+A client re-logging an existing food still gets `200` and still bumps `timesUsed`, so the ranking stays
+honest — the numbers simply do not move. The response carries `created` and `changed` so a caller can
+say what actually happened instead of "✓ saved" over a write that did nothing.
+
+One helper, `upsertSharedFood()`, enforces this, and **both** write paths go through it:
+`POST /api/food-library` and `POST /api/personal-foods/:id/submit-community`. The second had the same
+hole and would otherwise have been a way around the first.
+
+### The screen
+
+**Biblioteca → Alimentos**, superadmin only — the tab is hidden for everyone else, and the routes 403
+independently, so hiding it is a courtesy rather than the security.
+
+Rows are sorted by how often each food is used, because the most-used entry is the one whose being wrong
+costs the most. Click a row to edit it in place: name, the amount the macros are *for*, and the four
+macros. Enter saves, Escape abandons. **Nuevo alimento** opens the same editor as a blank row at the
+top, so creating and correcting look identical.
+
+Delete is a **real delete**, not an archive — unlike a recipe. A wrong shared food is noise in every
+client's autocomplete and the thing to do with it is make it stop existing. Nothing already logged
+changes: a day's foods are copies, not references, which the confirmation says out loud.
+
+### Edge cases that are handled
+
+- `nameNorm` is uniquely indexed, so renaming one food onto another's name would throw a duplicate-key
+  error. It returns **409** with the offending name instead of a 500.
+- Negative or non-numeric macros are floored at zero.
+- The search term is regex-escaped before it reaches `new RegExp` — `100% whey (vainilla)` is a
+  perfectly ordinary thing to type and must not be read as a pattern.
+
+### Verified
+
+`node scripts/test-food-admin.mjs` — 23 checks against an isolated server and database. The one that
+matters: a client POSTs 3000 kcal onto an existing food, gets a 200, `timesUsed` goes to 2, and the
+stored value is **still 130**.
+
+Driven in a browser as well: the list rendered in use-order, an entry was corrected in place and the
+row re-read with the new number, a deliberately wrong "Pollo MAL ENTRADO · 3000 kcal" was deleted and
+confirmed gone from the database, and signing in as an **ordinary trainer** showed the tab hidden and
+`GET /api/admin/foods` returning 403.

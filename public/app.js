@@ -6499,16 +6499,199 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // ALIMENTOS — the shared food library, for the superadmin
+    //
+    // Every client's autocomplete reads this list, and any client may ADD to it.
+    // Until this screen existed nobody could correct or remove an entry, so one
+    // wrong number was permanent and visible to everyone. Superadmin only, because
+    // an edit here changes what all the clients see.
+    // ══════════════════════════════════════════════════════════════════════════
+    let foodAdminCache = [];
+    let foodAdminEditing = null;   // _id of the row open for editing
+    const NEW_FOOD_ID = '__new__'; // the unsaved row, which has no _id yet
+
+    // The tab is in the markup but hidden: an ordinary trainer never sees it.
+    const renderAlimentosTabVisibility = () => {
+        const btn = document.getElementById('tab-alimentos');
+        if (btn) btn.classList.toggle('hidden', !loadSession()?.isSuperadmin);
+    };
+
+    const foodAdminRow = (f) => {
+        const serving = f.servingAmount > 0 && f.servingUnit
+            ? `${window.FoodScale ? window.FoodScale.fmtAmount(f.servingAmount) : f.servingAmount} ${escHtml(f.servingUnit)}`
+            : '<span class="opacity-40">sin porción</span>';
+        if (foodAdminEditing === String(f._id)) {
+            return `
+            <div class="food-admin-row p-3 bg-[#FFDB89]/5 border-b border-[#FFDB89]/10" data-id="${escHtml(f._id)}">
+                <div class="grid grid-cols-12 gap-2 items-center">
+                    <input class="fa-name col-span-12 sm:col-span-4 p-2 bg-[#0D0D0D] border border-[#FFDB89]/25 rounded-lg text-[#FFDB89] text-sm outline-none focus:ring-1 focus:ring-[#FFDB89]/40" value="${escHtml(f.name)}" autocomplete="off">
+                    <div class="col-span-5 sm:col-span-3 flex gap-1">
+                        <input type="number" step="any" min="0" class="fa-amt w-full p-2 text-center bg-[#0D0D0D] border border-[#FFDB89]/25 rounded-lg text-[#FFDB89] text-sm outline-none" value="${f.servingAmount || ''}" placeholder="100" title="Cantidad">
+                        <input class="fa-unit w-16 p-2 text-center bg-[#0D0D0D] border border-[#FFDB89]/25 rounded-lg text-[#FFDB89] text-sm outline-none" value="${escHtml(f.servingUnit || '')}" placeholder="g" title="Unidad">
+                    </div>
+                    <div class="col-span-7 sm:col-span-4 grid grid-cols-4 gap-1">
+                        <input type="number" step="any" min="0" class="fa-cal  w-full p-2 text-center bg-[#0D0D0D] border border-[#FFDB89]/25 rounded-lg text-[#FFDB89] text-xs outline-none" value="${f.calories ?? ''}" title="Calorías">
+                        <input type="number" step="any" min="0" class="fa-pro  w-full p-2 text-center bg-[#F87171]/10 border border-[#F87171]/25 rounded-lg text-[#F87171] text-xs outline-none" value="${f.protein ?? ''}" title="Proteína">
+                        <input type="number" step="any" min="0" class="fa-carb w-full p-2 text-center bg-yellow-400/10 border border-yellow-400/25 rounded-lg text-yellow-400 text-xs outline-none" value="${f.carbs ?? ''}" title="Carbos">
+                        <input type="number" step="any" min="0" class="fa-fat  w-full p-2 text-center bg-orange-400/10 border border-orange-400/25 rounded-lg text-orange-400 text-xs outline-none" value="${f.fat ?? ''}" title="Grasas">
+                    </div>
+                    <div class="col-span-12 sm:col-span-1 flex justify-end gap-1">
+                        <button class="fa-save w-9 h-9 rounded-lg bg-[#FFDB89] text-[#030303] font-black transition hover:bg-[#FFDB89]/80" title="Guardar"><i class="fas fa-check text-xs"></i></button>
+                        <button class="fa-cancel w-9 h-9 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] transition" title="Cancelar"><i class="fas fa-times text-xs"></i></button>
+                    </div>
+                </div>
+                <p class="text-[10px] text-[#FFDB89]/30 mt-2">Los macros son <strong>para esa cantidad</strong>, no por 100 g.</p>
+            </div>`;
+        }
+        return `
+        <div class="food-admin-row group flex items-center gap-3 px-3 py-2.5 border-b border-[#FFDB89]/8 hover:bg-[#FFDB89]/5 transition" data-id="${escHtml(f._id)}">
+            <div class="flex-grow min-w-0">
+                <p class="text-sm text-[#FFDB89] truncate">${escHtml(f.name)}</p>
+                <p class="text-[10px] text-[#FFDB89]/35">${serving} · usado ${f.timesUsed || 0}×</p>
+            </div>
+            <div class="flex gap-3 text-[11px] font-bold shrink-0">
+                <span class="text-[#FFDB89]/70 w-14 text-right">${Math.round(f.calories || 0)} kcal</span>
+                <span class="text-[#F87171] w-10 text-right">P ${f.protein || 0}</span>
+                <span class="text-yellow-400 w-10 text-right">C ${f.carbs || 0}</span>
+                <span class="text-orange-400 w-10 text-right">G ${f.fat || 0}</span>
+            </div>
+            <div class="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition">
+                <button class="fa-edit w-8 h-8 rounded-lg text-[#FFDB89]/50 hover:text-[#FFDB89] hover:bg-[#FFDB89]/10 transition" title="Editar"><i class="fas fa-pencil-alt text-xs"></i></button>
+                <button class="fa-del  w-8 h-8 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition" title="Eliminar"><i class="fas fa-trash-alt text-xs"></i></button>
+            </div>
+        </div>`;
+    };
+
+    window.renderFoodAdmin = async () => {
+        const list = document.getElementById('food-admin-list');
+        if (!list) return;
+        const q = (document.getElementById('food-admin-search')?.value || '').trim();
+        try {
+            const res = await apiFetch(`/api/admin/foods${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+            foodAdminCache = res.ok ? await res.json() : [];
+        } catch { foodAdminCache = []; }
+
+        const countEl = document.getElementById('food-admin-count');
+        if (countEl) countEl.textContent = `${foodAdminCache.length} alimento${foodAdminCache.length === 1 ? '' : 's'}${q ? ' encontrados' : ' en la librería'}`;
+
+        const blank = foodAdminEditing === NEW_FOOD_ID
+            ? foodAdminRow({ _id: NEW_FOOD_ID, name: '', calories: '', protein: '', carbs: '', fat: '', servingAmount: 100, servingUnit: 'g' })
+            : '';
+        list.innerHTML = (blank + (foodAdminCache.length
+            ? foodAdminCache.map(foodAdminRow).join('')
+            : (blank ? '' : `<div class="p-8 text-center text-[#FFDB89]/30">
+                   <i class="fas fa-apple-whole text-3xl mb-2 block"></i>
+                   <p class="font-bold">${q ? 'Ningún alimento coincide.' : 'La librería está vacía.'}</p>
+               </div>`)));
+    };
+
+    const saveFoodAdminRow = async (row) => {
+        const id = row.dataset.id;
+        const num = (sel) => { const v = parseFloat(row.querySelector(sel)?.value); return Number.isFinite(v) ? v : 0; };
+        const body = {
+            name:          row.querySelector('.fa-name')?.value.trim() || '',
+            calories:      num('.fa-cal'),  protein: num('.fa-pro'),
+            carbs:         num('.fa-carb'), fat:     num('.fa-fat'),
+            servingAmount: num('.fa-amt'),
+            servingUnit:   row.querySelector('.fa-unit')?.value.trim() || '',
+        };
+        if (!body.name) { showToast('El alimento necesita un nombre.', 'error'); return; }
+        try {
+            const res = await apiFetch(`/api/admin/foods/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { showToast(data.message || 'Error guardando el alimento.', 'error'); return; }
+            foodAdminEditing = null;
+            await window.renderFoodAdmin();
+            showToast('✓ Alimento actualizado — tus clientes ya lo ven corregido', 'success');
+        } catch { showToast('Error de conexión.', 'error'); }
+    };
+
+    document.addEventListener('click', async (e) => {
+        const row = e.target.closest?.('.food-admin-row');
+
+        if (e.target.closest?.('.fa-edit') && row) {
+            foodAdminEditing = row.dataset.id;
+            await window.renderFoodAdmin();
+            document.querySelector('.food-admin-row .fa-name')?.focus();
+            return;
+        }
+        if (e.target.closest?.('.fa-cancel')) { foodAdminEditing = null; window.renderFoodAdmin(); return; }
+        if (e.target.closest?.('.fa-save') && row) {
+            if (row.dataset.id === NEW_FOOD_ID) createFoodAdminRow(row); else saveFoodAdminRow(row);
+            return;
+        }
+
+        if (e.target.closest?.('.fa-del') && row) {
+            const food = foodAdminCache.find((f) => String(f._id) === row.dataset.id);
+            if (!food) return;
+            const yes = await showConfirm(
+                `¿Eliminar "${escHtml(food.name)}" de la librería? Dejará de aparecer cuando tus clientes busquen alimentos. Lo que ya está registrado en sus días no cambia.`,
+                { confirmLabel: 'Eliminar', danger: true });
+            if (!yes) return;
+            const res = await apiFetch(`/api/admin/foods/${food._id}`, { method: 'DELETE' });
+            if (res.ok) { await window.renderFoodAdmin(); showToast('Alimento eliminado.', 'info'); }
+            else showToast('Error eliminando el alimento.', 'error');
+        }
+    });
+
+    document.addEventListener('input', (e) => {
+        if (e.target.id === 'food-admin-search') window.renderFoodAdmin();
+    });
+    // Enter saves the row being edited; Escape abandons it.
+    document.addEventListener('keydown', (e) => {
+        const row = e.target.closest?.('.food-admin-row');
+        if (!row || !foodAdminEditing) return;
+        if (e.key === 'Enter')  {
+            e.preventDefault();
+            if (row.dataset.id === NEW_FOOD_ID) createFoodAdminRow(row); else saveFoodAdminRow(row);
+        }
+        if (e.key === 'Escape') { foodAdminEditing = null; window.renderFoodAdmin(); }
+    });
+
+    // Adding one deliberately. No prompt dialog: a blank row opens at the top of the
+    // list in the same editor used for every other row, so creating and correcting
+    // look and behave identically.
+    window.addFoodAdminEntry = async () => {
+        foodAdminEditing = NEW_FOOD_ID;
+        await window.renderFoodAdmin();
+        document.querySelector(`[data-id="${NEW_FOOD_ID}"] .fa-name`)?.focus();
+    };
+
+    const createFoodAdminRow = async (row) => {
+        const num = (sel) => { const v = parseFloat(row.querySelector(sel)?.value); return Number.isFinite(v) ? v : 0; };
+        const name = row.querySelector('.fa-name')?.value.trim() || '';
+        if (!name) { showToast('El alimento necesita un nombre.', 'error'); return; }
+        const body = {
+            name,
+            calories: num('.fa-cal'), protein: num('.fa-pro'), carbs: num('.fa-carb'), fat: num('.fa-fat'),
+            servingAmount: num('.fa-amt'), servingUnit: row.querySelector('.fa-unit')?.value.trim() || '',
+        };
+        try {
+            const res = await apiFetch('/api/food-library', { method: 'POST', body: JSON.stringify(body) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { showToast('Error creando el alimento.', 'error'); return; }
+            foodAdminEditing = null;
+            await window.renderFoodAdmin();
+            // `created: false` means a food with this name was already there and the
+            // numbers were applied to it — say so rather than implying a new entry.
+            showToast(data.created ? '✓ Alimento añadido a la librería'
+                                   : '✓ Ya existía con ese nombre — se actualizaron sus macros', 'success');
+        } catch { showToast('Error de conexión.', 'error'); }
+    };
+
     // ── Tab switching helper ───────────────────────────────────────────────────
     const switchLibraryTab = (activeTabId) => {
-        const tabs   = ['tab-programas', 'tab-ejercicios', 'tab-videos', 'tab-recetas'];
-        const panels = ['programs-main-view', 'ejercicios-panel', 'videos-panel', 'recetas-panel'];
+        const tabs   = ['tab-programas', 'tab-ejercicios', 'tab-videos', 'tab-recetas', 'tab-alimentos'];
+        const panels = ['programs-main-view', 'ejercicios-panel', 'videos-panel', 'recetas-panel', 'alimentos-panel'];
         const tabPanelMap = {
             'tab-programas':   'programs-main-view',
             'tab-ejercicios':  'ejercicios-panel',
             'tab-videos':      'videos-panel',
             'tab-recetas':     'recetas-panel',
+            'tab-alimentos':   'alimentos-panel',
         };
+        renderAlimentosTabVisibility();
         tabs.forEach(id => {
             const btn = document.getElementById(id);
             if (!btn) return;
@@ -6561,6 +6744,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnText) btnText.textContent = 'Nueva receta';
             if (btn) btn.onclick = () => window.openRecipeModal(null);
             window.renderRecipeLibrary();
+        } else if (activeTabId === 'tab-alimentos') {
+            if (btnText) btnText.textContent = 'Nuevo alimento';
+            if (btn) btn.onclick = () => window.addFoodAdminEntry();
+            foodAdminEditing = null;
+            window.renderFoodAdmin();
         }
     };
 
@@ -12923,6 +13111,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'tab-ejercicios') { switchLibraryTab('tab-ejercicios'); return; }
         if (target.id === 'tab-videos')     { switchLibraryTab('tab-videos');     return; }
         if (target.id === 'tab-recetas')    { switchLibraryTab('tab-recetas');    return; }
+        if (target.id === 'tab-alimentos')  { switchLibraryTab('tab-alimentos');  return; }
         // Legacy library_content.html buttons (kept for backwards compat)
         if (target.id === 'toggle-programs-view')  { switchLibraryTab('tab-programas');  return; }
         if (target.id === 'toggle-exercises-view') { switchLibraryTab('tab-ejercicios'); return; }
