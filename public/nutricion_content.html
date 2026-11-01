@@ -104,7 +104,7 @@
                         <button type="button" data-aspect="portrait" class="px-2.5 py-1 rounded-md text-[10px] font-bold transition"><i class="fas fa-mobile-screen mr-1"></i>Vertical</button>
                     </div>
                 </div>
-                <div id="recipe-photo-drop" class="relative h-44 rounded-xl border border-dashed border-[#FFDB89]/25 bg-[#FFDB89]/5 overflow-hidden cursor-pointer hover:border-[#FFDB89]/50 transition">
+                <div id="recipe-photo-drop" class="relative mx-auto w-full aspect-[16/10] max-w-lg rounded-xl border border-dashed border-[#FFDB89]/25 bg-[#FFDB89]/5 overflow-hidden cursor-pointer hover:border-[#FFDB89]/50 transition">
                     <img id="recipe-photo-preview" alt="" class="absolute inset-0 w-full h-full object-cover hidden">
                     <div id="recipe-photo-empty" class="absolute inset-0 flex flex-col items-center justify-center text-[#FFDB89]/35 gap-2">
                         <i class="fas fa-camera text-2xl"></i>
@@ -116,7 +116,7 @@
                     </div>
                 </div>
                 <input type="file" id="recipe-photo-input" accept="image/*" class="hidden">
-                <button id="recipe-photo-clear" class="hidden mt-1.5 text-[11px] text-red-400/70 hover:text-red-400 transition"><i class="fas fa-times mr-1"></i>Quitar foto</button>
+                <button id="recipe-photo-clear" class="hidden block mx-auto mt-1.5 text-[11px] text-red-400/70 hover:text-red-400 transition"><i class="fas fa-times mr-1"></i>Quitar foto</button>
             </div>
 
             <!-- Name + slot + servings -->

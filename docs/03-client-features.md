@@ -120,14 +120,25 @@ const cleanAspect = (v) => (String(v || '').trim() === 'portrait' ? 'portrait' :
 ```
 The upload route reports the shape it received (`result.height > result.width`) and the editor
 preselects it, so the common case needs no decision; two pills override it. One table holds the
-frame for all three surfaces, so they can never drift apart:
+frame for all four surfaces, so they can never drift apart:
 ```js
 const RECIPE_FRAME = {
-  trainerCard: { landscape: 'h-32', portrait: 'h-56' },
-  clientCard:  { landscape: 'h-24', portrait: 'h-44' },
-  detail:      { landscape: 'h-44', portrait: 'h-72' },
-  editor:      { landscape: 'h-44', portrait: 'h-72' },
+  trainerCard: { landscape: 'aspect-[16/10]', portrait: 'aspect-[4/5]' },
+  clientCard:  { landscape: 'aspect-[16/10]', portrait: 'aspect-[4/5]' },
+  detail:      { landscape: 'aspect-[16/10]', portrait: 'aspect-[4/5]' },
+  editor:      { landscape: 'aspect-[16/10] max-w-lg', portrait: 'aspect-[4/5] max-w-[16rem]' },
 };
+```
+**These are ratios, not heights, and that is the whole point.** The first cut used fixed heights
+(`h-72` for portrait) and a "vertical" photo in the 3xl editor modal still came out wider than it
+was tall — a taller letterbox is still a letterbox. A frame only reads as portrait if the frame
+itself is taller than it is wide, so portrait is `4/5`, the Instagram crop. On a wide surface the
+ratio alone would blow the frame up, so the editor also caps its width; both of its frames land
+around 320px tall and the form keeps its shape whichever pill is lit. Because the editor's frame
+is two classes now, `setRecipeAspect` swaps whole sets:
+```js
+drop.classList.remove(...RECIPE_FRAME.editor.landscape.split(' '), ...RECIPE_FRAME.editor.portrait.split(' '));
+drop.classList.add(...RECIPE_FRAME.editor[a].split(' '));
 ```
 Cards carry `self-start` so one tall card cannot stretch the short ones beside it, and the enum
 defaults rather than validates, so a recipe written before the field reads as landscape instead
@@ -156,8 +167,9 @@ else if (linkText.includes('Nutrición')) {
   moduleToLoad = (session?.role === 'client') ? 'client_nutricion' : 'nutricion_content';
 }
 ```
-④ Tailwind only ships classes it can see as literals — the frame table spells `h-56` and `h-72`
-out in full for that reason, and new ones need `npm run build:css`. ⑤ A new SPA module needs **four** registrations — `MODULE_TITLES`, `TRAINER_MODULES`,
+④ Tailwind only ships classes it can see as literals — the frame table spells `aspect-[4/5]` and
+`max-w-[16rem]` out in full for that reason, and new ones need `npm run build:css`. `hidden` is
+emitted after `block`, so `class="hidden block mx-auto"` on the *Quitar foto* button still hides. ⑤ A new SPA module needs **four** registrations — `MODULE_TITLES`, `TRAINER_MODULES`,
 server-side `SPA_PARTIALS`, and whatever `scripts/check-routes.mjs` asserts; the catch-all route
 returns **200 for any unknown path**, so a status check can never prove a partial is deployed.
 

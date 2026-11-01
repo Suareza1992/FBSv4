@@ -5985,13 +5985,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Portrait or landscape. Anything we don't recognise is landscape, so an older
     // recipe saved before the field existed keeps the frame it has always had.
     const recipeAspect = (r) => (r?.imageAspect === 'portrait' ? 'portrait' : 'landscape');
-    // One place to change the frame sizes. Keys are the three surfaces a photo
-    // shows on; a portrait frame is roughly 3:4 at that surface's column width.
+    // One place to change the frame sizes. Keys are the surfaces a photo shows
+    // on. These are ratios, not heights: a fixed height on a wide surface is
+    // still a letterbox, so a portrait photo only looks portrait if the frame
+    // itself is taller than it is wide — 4:5, the Instagram portrait crop.
+    // The editor sits in a 3xl modal, so its frames also cap their width; both
+    // land around 320px tall, so the form keeps its shape either way.
     const RECIPE_FRAME = {
-        trainerCard: { landscape: 'h-32', portrait: 'h-56' },
-        clientCard:  { landscape: 'h-24', portrait: 'h-44' },
-        detail:      { landscape: 'h-44', portrait: 'h-72' },
-        editor:      { landscape: 'h-44', portrait: 'h-72' },
+        trainerCard: { landscape: 'aspect-[16/10]', portrait: 'aspect-[4/5]' },
+        clientCard:  { landscape: 'aspect-[16/10]', portrait: 'aspect-[4/5]' },
+        detail:      { landscape: 'aspect-[16/10]', portrait: 'aspect-[4/5]' },
+        editor:      { landscape: 'aspect-[16/10] max-w-lg', portrait: 'aspect-[4/5] max-w-[16rem]' },
     };
     const recipeFrame = (surface, r) => RECIPE_FRAME[surface][recipeAspect(r)];
 
@@ -6136,8 +6140,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (recipeDraft) recipeDraft.imageAspect = a;
         const drop = document.getElementById('recipe-photo-drop');
         if (drop) {
-            drop.classList.remove(RECIPE_FRAME.editor.landscape, RECIPE_FRAME.editor.portrait);
-            drop.classList.add(RECIPE_FRAME.editor[a]);
+            // Each frame is a ratio plus a width cap now, so swap whole sets.
+            drop.classList.remove(...RECIPE_FRAME.editor.landscape.split(' '), ...RECIPE_FRAME.editor.portrait.split(' '));
+            drop.classList.add(...RECIPE_FRAME.editor[a].split(' '));
         }
         document.querySelectorAll('#recipe-aspect-pills [data-aspect]').forEach((b) => {
             const on = b.dataset.aspect === a;
