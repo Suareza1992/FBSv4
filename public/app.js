@@ -2029,6 +2029,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pagos_content:          '',
         blog_content:           '',
         programas_content:      'Programas',
+        nutricion_content:      'Nutrición',
         notifications_content:  'Notificaciones',
         ajustes_content:        'Ajustes',
         client_programas:       'Mis programas',
@@ -2045,7 +2046,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // client following #/clientes must not get the trainer roster shell — the API
     // would 403 every call behind it and they'd stare at a broken page.
     const TRAINER_MODULES = new Set(['trainer_home', 'notifications_content', 'clientes_content',
-        'entrenadores_content', 'programas_content', 'pagos_content', 'blog_content', 'ajustes_content']);
+        'entrenadores_content', 'programas_content', 'nutricion_content', 'pagos_content',
+        'blog_content', 'ajustes_content']);
     const CLIENT_MODULES  = new Set(['client_inicio', 'client_programas', 'client_metricas',
         'client_nutricion', 'client_equipo', 'client_progress', 'client_clock', 'client_historial',
         'ajustes_content']);
@@ -2156,6 +2158,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 switchLibraryTab('tab-programas');
                 window.renderExerciseLibrary();
                 window.renderVideoLibrary();
+            }
+            if (moduleToLoad === 'nutricion_content') {
+                // Opens on Recetas; switchNutriTab also unhides Alimentos for the
+                // superadmin and wires the section's action button.
+                window.switchNutriTab('tab-recetas');
             }
             if (moduleToLoad === 'notifications_content') {
                 currentNotifFilter = '7days';
@@ -6719,16 +6726,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Tab switching helper ───────────────────────────────────────────────────
     const switchLibraryTab = (activeTabId) => {
-        const tabs   = ['tab-programas', 'tab-ejercicios', 'tab-videos', 'tab-recetas', 'tab-alimentos'];
-        const panels = ['programs-main-view', 'ejercicios-panel', 'videos-panel', 'recetas-panel', 'alimentos-panel'];
+        const tabs   = ['tab-programas', 'tab-ejercicios', 'tab-videos'];
+        const panels = ['programs-main-view', 'ejercicios-panel', 'videos-panel'];
         const tabPanelMap = {
             'tab-programas':   'programs-main-view',
             'tab-ejercicios':  'ejercicios-panel',
             'tab-videos':      'videos-panel',
-            'tab-recetas':     'recetas-panel',
-            'tab-alimentos':   'alimentos-panel',
         };
-        renderAlimentosTabVisibility();
         tabs.forEach(id => {
             const btn = document.getElementById(id);
             if (!btn) return;
@@ -6777,15 +6781,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('video-upload-modal')?.classList.remove('hidden');
             };
             window.renderVideoLibrary();
-        } else if (activeTabId === 'tab-recetas') {
-            if (btnText) btnText.textContent = 'Nueva receta';
-            if (btn) btn.onclick = () => window.openRecipeModal(null);
-            window.renderRecipeLibrary();
-        } else if (activeTabId === 'tab-alimentos') {
+        }
+    };
+
+    // ── Nutrición: its own two-tab switcher ──────────────────────────────────
+    // Recetas and Alimentos used to be tabs inside Biblioteca. Same panels, same
+    // render functions — only the section they live in changed.
+    window.switchNutriTab = (activeTabId) => {
+        renderAlimentosTabVisibility();
+        const map = { 'tab-recetas': 'recetas-panel', 'tab-alimentos': 'alimentos-panel' };
+        Object.entries(map).forEach(([tab, panel]) => {
+            const b = document.getElementById(tab);
+            const p = document.getElementById(panel);
+            if (b) {
+                b.classList.toggle('nut-tab-active', tab === activeTabId);
+                b.classList.toggle('nut-tab-inactive', tab !== activeTabId);
+            }
+            if (p) p.classList.toggle('hidden', panel !== map[activeTabId]);
+        });
+        const btn     = document.getElementById('add-nutri-item-btn');
+        const btnText = document.getElementById('add-nutri-btn-text');
+        if (activeTabId === 'tab-alimentos') {
             if (btnText) btnText.textContent = 'Nuevo alimento';
             if (btn) btn.onclick = () => window.addFoodAdminEntry();
             foodAdminEditing = null;
             window.renderFoodAdmin();
+        } else {
+            if (btnText) btnText.textContent = 'Nueva receta';
+            if (btn) btn.onclick = () => window.openRecipeModal(null);
+            window.renderRecipeLibrary();
         }
     };
 
@@ -13147,8 +13171,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'tab-programas')  { switchLibraryTab('tab-programas');  return; }
         if (target.id === 'tab-ejercicios') { switchLibraryTab('tab-ejercicios'); return; }
         if (target.id === 'tab-videos')     { switchLibraryTab('tab-videos');     return; }
-        if (target.id === 'tab-recetas')    { switchLibraryTab('tab-recetas');    return; }
-        if (target.id === 'tab-alimentos')  { switchLibraryTab('tab-alimentos');  return; }
+        if (target.id === 'tab-recetas')    { window.switchNutriTab('tab-recetas');   return; }
+        if (target.id === 'tab-alimentos')  { window.switchNutriTab('tab-alimentos'); return; }
         // Legacy library_content.html buttons (kept for backwards compat)
         if (target.id === 'toggle-programs-view')  { switchLibraryTab('tab-programas');  return; }
         if (target.id === 'toggle-exercises-view') { switchLibraryTab('tab-ejercicios'); return; }

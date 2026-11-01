@@ -315,7 +315,8 @@ const setAuthCookie = (res, token) => {
 // "the user typed/clicked this into the address bar" from "script asked for it".
 const SPA_PARTIALS = new Set([
     'trainer_home', 'notifications_content', 'clientes_content', 'entrenadores_content',
-    'programas_content', 'pagos_content', 'blog_content', 'ajustes_content', 'library_content',
+    'programas_content', 'nutricion_content', 'pagos_content', 'blog_content', 'ajustes_content',
+    'library_content',
     'client_inicio', 'client_programas', 'client_metricas', 'client_nutricion',
     'client_equipo', 'client_progress', 'client_clock', 'client_historial',
     'trainer-dashboard', 'client-dashboard',
