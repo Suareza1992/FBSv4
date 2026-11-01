@@ -97,7 +97,13 @@
         <div class="flex-grow p-6 space-y-5 overflow-y-auto min-h-0">
             <!-- Photo -->
             <div>
-                <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Foto</label>
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider">Foto</label>
+                    <div id="recipe-aspect-pills" class="flex gap-1 p-0.5 rounded-lg bg-[#FFDB89]/5 border border-[#FFDB89]/10">
+                        <button type="button" data-aspect="landscape" class="px-2.5 py-1 rounded-md text-[10px] font-bold transition"><i class="fas fa-image mr-1"></i>Horizontal</button>
+                        <button type="button" data-aspect="portrait" class="px-2.5 py-1 rounded-md text-[10px] font-bold transition"><i class="fas fa-mobile-screen mr-1"></i>Vertical</button>
+                    </div>
+                </div>
                 <div id="recipe-photo-drop" class="relative h-44 rounded-xl border border-dashed border-[#FFDB89]/25 bg-[#FFDB89]/5 overflow-hidden cursor-pointer hover:border-[#FFDB89]/50 transition">
                     <img id="recipe-photo-preview" alt="" class="absolute inset-0 w-full h-full object-cover hidden">
                     <div id="recipe-photo-empty" class="absolute inset-0 flex flex-col items-center justify-center text-[#FFDB89]/35 gap-2">

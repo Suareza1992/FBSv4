@@ -5982,6 +5982,19 @@ document.addEventListener('DOMContentLoaded', () => {
                  carbs: Math.round(t.carbs), fat: Math.round(t.fat) };
     };
 
+    // Portrait or landscape. Anything we don't recognise is landscape, so an older
+    // recipe saved before the field existed keeps the frame it has always had.
+    const recipeAspect = (r) => (r?.imageAspect === 'portrait' ? 'portrait' : 'landscape');
+    // One place to change the frame sizes. Keys are the three surfaces a photo
+    // shows on; a portrait frame is roughly 3:4 at that surface's column width.
+    const RECIPE_FRAME = {
+        trainerCard: { landscape: 'h-32', portrait: 'h-56' },
+        clientCard:  { landscape: 'h-24', portrait: 'h-44' },
+        detail:      { landscape: 'h-44', portrait: 'h-72' },
+        editor:      { landscape: 'h-44', portrait: 'h-72' },
+    };
+    const recipeFrame = (surface, r) => RECIPE_FRAME[surface][recipeAspect(r)];
+
     // A recipe with no photo gets the brand gradient, never a broken image.
     const recipeThumb = (r, extraClass = '') => (r.image
         ? `<img src="${escHtml(r.image)}" alt="" loading="lazy" class="w-full h-full object-cover ${extraClass}" style="object-position:${escHtml(r.imagePos || '50% 50%')}">`
@@ -6018,8 +6031,8 @@ document.addEventListener('DOMContentLoaded', () => {
         grid.innerHTML = list.map((r) => {
             const m = r.macros || recipeMacros(r);
             return `
-            <div class="recipe-card group bg-[#111113] border border-[#FFDB89]/10 hover:border-[#FFDB89]/35 rounded-2xl overflow-hidden cursor-pointer transition" data-recipe="${escHtml(r._id)}">
-                <div class="relative h-32 overflow-hidden">
+            <div class="recipe-card group self-start bg-[#111113] border border-[#FFDB89]/10 hover:border-[#FFDB89]/35 rounded-2xl overflow-hidden cursor-pointer transition" data-recipe="${escHtml(r._id)}">
+                <div class="relative ${recipeFrame('trainerCard', r)} overflow-hidden">
                     ${recipeThumb(r, 'group-hover:scale-105 transition-transform duration-500')}
                     <div class="absolute bottom-0 inset-x-0 px-3 py-1.5 bg-gradient-to-t from-black/85 to-transparent">
                         <p class="text-xs font-black text-[#FFDB89]">${m.calories} <span class="font-bold opacity-60">kcal</span></p>
@@ -6081,6 +6094,7 @@ document.addEventListener('DOMContentLoaded', () => {
             description: document.getElementById('recipe-description')?.value.trim() || '',
             image:       recipeDraft?.image || '',
             imagePos:    recipeDraft?.imagePos || '50% 50%',
+            imageAspect: recipeAspect(recipeDraft),
             tags:        recipeDraft?.tags || [],
             mealSlot:    document.getElementById('recipe-meal-slot')?.value || '',
             servings:    Math.max(1, parseInt(document.getElementById('recipe-servings')?.value, 10) || 1),
@@ -6115,6 +6129,24 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshRecipeTotals();
     };
 
+    // Resizes the drop zone and lights the matching pill, so what he sees while
+    // editing is the frame the card and the detail sheet will use.
+    const setRecipeAspect = (aspect) => {
+        const a = aspect === 'portrait' ? 'portrait' : 'landscape';
+        if (recipeDraft) recipeDraft.imageAspect = a;
+        const drop = document.getElementById('recipe-photo-drop');
+        if (drop) {
+            drop.classList.remove(RECIPE_FRAME.editor.landscape, RECIPE_FRAME.editor.portrait);
+            drop.classList.add(RECIPE_FRAME.editor[a]);
+        }
+        document.querySelectorAll('#recipe-aspect-pills [data-aspect]').forEach((b) => {
+            const on = b.dataset.aspect === a;
+            b.classList.toggle('bg-[#FFDB89]', on);
+            b.classList.toggle('text-black', on);
+            b.classList.toggle('text-[#FFDB89]/50', !on);
+        });
+    };
+
     const setRecipePhoto = (url) => {
         if (recipeDraft) recipeDraft.image = url || '';
         const img   = document.getElementById('recipe-photo-preview');
@@ -6128,7 +6160,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.openRecipeModal = (recipe = null) => {
         recipeDraft = recipe
             ? JSON.parse(JSON.stringify(recipe))
-            : { name: '', description: '', image: '', imagePos: '50% 50%', tags: [], mealSlot: '', servings: 1, ingredients: [{}] };
+            : { name: '', description: '', image: '', imagePos: '50% 50%', imageAspect: 'landscape', tags: [], mealSlot: '', servings: 1, ingredients: [{}] };
 
         document.getElementById('recipe-modal-title').innerHTML =
             `<i class="fas fa-bowl-food mr-2"></i>${recipe ? 'Editar receta' : 'Nueva receta'}`;
@@ -6142,6 +6174,7 @@ document.addEventListener('DOMContentLoaded', () => {
             RECIPE_MEAL_SLOTS.map((s) => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
         sel.value = recipeDraft.mealSlot || '';
 
+        setRecipeAspect(recipeDraft.imageAspect);
         setRecipePhoto(recipeDraft.image);
         renderRecipeTags();
         renderRecipeIngredients();
@@ -6203,6 +6236,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (t.closest?.('#recipe-photo-drop')) { document.getElementById('recipe-photo-input')?.click(); return; }
         if (t.closest?.('#recipe-photo-clear')) { setRecipePhoto(''); return; }
+        const aspectBtn = t.closest?.('#recipe-aspect-pills [data-aspect]');
+        if (aspectBtn) { setRecipeAspect(aspectBtn.dataset.aspect); return; }
 
         if (t.closest?.('#recipe-add-ingredient')) {
             const wrap = document.getElementById('recipe-ingredients');
@@ -6318,7 +6353,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // browser can write its own multipart boundary.
             const res = await apiFetch('/api/recipes/image', { method: 'POST', body: fd });
             const data = await res.json().catch(() => ({}));
-            if (res.ok && data.image) setRecipePhoto(data.image);
+            if (res.ok && data.image) {
+                // Preselect the shape the photo actually is; he can still override it.
+                if (data.aspect) setRecipeAspect(data.aspect);
+                setRecipePhoto(data.image);
+            }
             else showToast(data.message || 'Error subiendo la imagen.', 'error');
         } catch { showToast('Error de conexión.', 'error'); }
         finally { busy?.classList.replace('flex', 'hidden'); }
@@ -6373,8 +6412,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('client-recipes-grid').innerHTML = list.map((r) => {
             const m = r.macros || { calories: 0, protein: 0, carbs: 0, fat: 0 };
             return `
-            <button class="client-recipe-card group text-left bg-[#111113] border border-[#FFDB89]/10 hover:border-[#FFDB89]/40 rounded-xl overflow-hidden transition" data-recipe="${escHtml(r._id)}">
-                <div class="relative h-24 overflow-hidden">
+            <button class="client-recipe-card group self-start text-left bg-[#111113] border border-[#FFDB89]/10 hover:border-[#FFDB89]/40 rounded-xl overflow-hidden transition" data-recipe="${escHtml(r._id)}">
+                <div class="relative ${recipeFrame('clientCard', r)} overflow-hidden">
                     ${recipeThumb(r, 'group-hover:scale-105 transition-transform duration-500')}
                     <div class="absolute bottom-0 inset-x-0 px-2 py-1 bg-gradient-to-t from-black/85 to-transparent">
                         <p class="text-[11px] font-black text-[#FFDB89]">${m.calories} <span class="font-bold opacity-60">kcal</span></p>
@@ -6401,7 +6440,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p class="text-[9px] uppercase tracking-wider" style="color:${color};opacity:.6">${label}</p>
             </div>`;
         document.getElementById('recipe-view-body').innerHTML = `
-            <div class="relative h-44">
+            <div class="relative ${recipeFrame('detail', recipe)}">
                 ${recipeThumb(recipe)}
                 <div class="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black via-black/60 to-transparent">
                     <h3 class="text-xl font-black text-[#FFDB89] leading-tight">${escHtml(recipe.name)}</h3>

@@ -999,6 +999,10 @@ const RecipeSchema = new mongoose.Schema({
     // placeholder rather than a broken image (same choice as blog covers).
     image:     { type: String, default: '' },
     imagePos:  { type: String, default: '50% 50%' },   // CSS object-position for framing
+    // Which way the photo stands. A phone shoots portrait by default, and forcing
+    // those into a landscape band crops the plate out of the picture — so the card,
+    // the detail sheet and the editor all size their frame from this.
+    imageAspect: { type: String, enum: ['landscape', 'portrait'], default: 'landscape' },
     // Free-form, e.g. "Sin lactosa", "Rápido", "Alto en proteína".
     tags:      { type: [String], default: [] },
     // Which meal it suits ("Desayuno", "Merienda AM", …) or '' for any.
@@ -1031,6 +1035,10 @@ const Recipe = mongoose.model('Recipe', RecipeSchema);
 // while the browser's Math.round makes it 195. A recipe card promising one more
 // calorie than the diary records is exactly the kind of small lie that stops a
 // client trusting the numbers. No half ever reaches $round now.
+// Anything that is not the string 'portrait' is a landscape frame — an unknown
+// value must never reach the enum and fail the save.
+const cleanAspect = (v) => (String(v || '').trim() === 'portrait' ? 'portrait' : 'landscape');
+
 const recipeServingOf = (ing, servings) => {
     const per = Math.max(1, Number(servings) || 1);
     const one = (v) => Math.round(((Number(v) || 0) / per) * 10) / 10;
@@ -3363,7 +3371,7 @@ app.get('/api/recipes', authenticateToken, async (req, res) => {
 app.post('/api/recipes', authenticateToken, async (req, res) => {
     if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
     try {
-        const { name, description, image, imagePos, tags, mealSlot, servings, ingredients } = req.body;
+        const { name, description, image, imagePos, imageAspect, tags, mealSlot, servings, ingredients } = req.body;
         if (!String(name || '').trim()) return res.status(400).json({ message: 'La receta necesita un nombre.' });
         const doc = await Recipe.create({
             trainerId:   req.user.id,
@@ -3371,6 +3379,7 @@ app.post('/api/recipes', authenticateToken, async (req, res) => {
             description: String(description || '').trim().slice(0, 400),
             image:       String(image || '').trim(),
             imagePos:    String(imagePos || '50% 50%').slice(0, 24),
+            imageAspect: cleanAspect(imageAspect),
             tags:        cleanTags(tags),
             mealSlot:    String(mealSlot || '').trim().slice(0, 30),
             servings:    Math.max(1, Math.round(Number(servings) || 1)),
@@ -3400,6 +3409,7 @@ app.put('/api/recipes/:id', authenticateToken, async (req, res) => {
         if (b.description !== undefined) doc.description = String(b.description || '').trim().slice(0, 400);
         if (b.image       !== undefined) doc.image    = String(b.image || '').trim();
         if (b.imagePos    !== undefined) doc.imagePos = String(b.imagePos || '50% 50%').slice(0, 24);
+        if (b.imageAspect !== undefined) doc.imageAspect = cleanAspect(b.imageAspect);
         if (b.tags        !== undefined) doc.tags     = cleanTags(b.tags);
         if (b.mealSlot    !== undefined) doc.mealSlot = String(b.mealSlot || '').trim().slice(0, 30);
         if (b.servings    !== undefined) doc.servings = Math.max(1, Math.round(Number(b.servings) || 1));
@@ -3442,7 +3452,14 @@ app.post('/api/recipes/image', authenticateToken, coverUpload.single('photo'), a
             format: 'jpg',          // normalises the HEIC an iPhone hands over
             transformation: [{ quality: 'auto', width: 1600, crop: 'limit' }],
         });
-        res.json({ image: result.secure_url });
+        // Hand back the shape too: the editor preselects the frame that matches the
+        // photo, so a portrait shot is not letterboxed unless he chooses it.
+        res.json({
+            image:  result.secure_url,
+            width:  result.width,
+            height: result.height,
+            aspect: result.height > result.width ? 'portrait' : 'landscape',
+        });
     } catch (e) {
         console.error('Error uploading recipe image:', e);
         res.status(500).json({ message: e?.message || 'Error subiendo la imagen.' });

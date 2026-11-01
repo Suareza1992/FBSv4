@@ -112,6 +112,27 @@ if (b.image !== undefined) doc.image = String(b.image || '').trim();   // '' MUS
 ```
 `if (b.image)` would make a removal a silent no-op.
 
+**Portrait or landscape.** A phone shoots portrait, and forcing those into a landscape band
+crops the plate out of the picture — so the recipe carries its own frame:
+```js
+imageAspect: { type: String, enum: ['landscape', 'portrait'], default: 'landscape' },
+const cleanAspect = (v) => (String(v || '').trim() === 'portrait' ? 'portrait' : 'landscape');
+```
+The upload route reports the shape it received (`result.height > result.width`) and the editor
+preselects it, so the common case needs no decision; two pills override it. One table holds the
+frame for all three surfaces, so they can never drift apart:
+```js
+const RECIPE_FRAME = {
+  trainerCard: { landscape: 'h-32', portrait: 'h-56' },
+  clientCard:  { landscape: 'h-24', portrait: 'h-44' },
+  detail:      { landscape: 'h-44', portrait: 'h-72' },
+  editor:      { landscape: 'h-44', portrait: 'h-72' },
+};
+```
+Cards carry `self-start` so one tall card cannot stretch the short ones beside it, and the enum
+defaults rather than validates, so a recipe written before the field reads as landscape instead
+of failing to save.
+
 **The shared food library (Alimentos)** — `upsertSharedFood(food, isAdmin)`: **adding is open to
 everyone, changing is superadmin-only.** A client logging a food that already exists just bumps
 `timesUsed`; only the owner's account may rewrite another person's macros.
@@ -135,7 +156,8 @@ else if (linkText.includes('Nutrición')) {
   moduleToLoad = (session?.role === 'client') ? 'client_nutricion' : 'nutricion_content';
 }
 ```
-④ A new SPA module needs **four** registrations — `MODULE_TITLES`, `TRAINER_MODULES`,
+④ Tailwind only ships classes it can see as literals — the frame table spells `h-56` and `h-72`
+out in full for that reason, and new ones need `npm run build:css`. ⑤ A new SPA module needs **four** registrations — `MODULE_TITLES`, `TRAINER_MODULES`,
 server-side `SPA_PARTIALS`, and whatever `scripts/check-routes.mjs` asserts; the catch-all route
 returns **200 for any unknown path**, so a status check can never prove a partial is deployed.
 

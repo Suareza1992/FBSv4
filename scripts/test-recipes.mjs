@@ -98,6 +98,31 @@ try {
     check(longOne.description.length === 400, 'an over-long description is cut to 400 characters', `${longOne.description.length}`);
     made.push({ recipeId: longOne._id });
 
+    // ── Portrait or landscape ──────────────────────────────────────────────
+    // A phone shoots portrait; the frame has to follow the photo, and anything
+    // unrecognised has to fall back to landscape rather than fail the save.
+    check(recipe.imageAspect === 'landscape', 'a recipe defaults to a landscape frame', recipe.imageAspect);
+
+    r = await asA('POST', '/api/recipes', { ...avena, name: `${tag} Vertical`, imageAspect: 'portrait' });
+    const tall = await r.json();
+    check(tall.imageAspect === 'portrait', 'a portrait frame is stored', tall.imageAspect);
+    made.push({ recipeId: tall._id });
+
+    r = await asA('PUT', `/api/recipes/${tall._id}`, { imageAspect: 'landscape' });
+    check((await r.json()).imageAspect === 'landscape', 'the frame can be switched back');
+
+    r = await asA('PUT', `/api/recipes/${tall._id}`, { imageAspect: 'diagonal' });
+    check((await r.json()).imageAspect === 'landscape', 'an unknown frame falls back to landscape, it does not throw');
+
+    r = await asA('PUT', `/api/recipes/${tall._id}`, { name: `${tag} Vertical` });
+    check((await r.json()).imageAspect === 'landscape', 'an edit that omits the frame leaves it alone');
+
+    // A recipe written before the field existed must still read as landscape.
+    await db.collection('recipes').updateOne({ _id: new ObjectId(tall._id) }, { $unset: { imageAspect: '' } });
+    r = await asA('GET', `/api/recipes`);
+    const legacy = (await r.json()).find((x) => String(x._id) === String(tall._id));
+    check((legacy.imageAspect ?? 'landscape') === 'landscape', 'a recipe saved before the field reads as landscape');
+
     r = await asCA('POST', '/api/recipes', avena);
     check(r.status === 403, 'a client cannot create a recipe', String(r.status));
 
