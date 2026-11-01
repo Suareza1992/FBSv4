@@ -991,6 +991,9 @@ const RecipeSchema = new mongoose.Schema({
     // trainer's book and nobody else's. Superadmin sees every trainer's.
     trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     name:      { type: String, required: true, trim: true },
+    // One or two lines of why this recipe is worth making — the thing a coach says
+    // when they hand it over. Not a method; the recipe is still ingredients only.
+    description: { type: String, default: '' },
     // Cloudinary URL. Optional — a recipe with no photo falls back to a branded
     // placeholder rather than a broken image (same choice as blog covers).
     image:     { type: String, default: '' },
@@ -3359,11 +3362,12 @@ app.get('/api/recipes', authenticateToken, async (req, res) => {
 app.post('/api/recipes', authenticateToken, async (req, res) => {
     if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
     try {
-        const { name, image, imagePos, tags, mealSlot, servings, ingredients } = req.body;
+        const { name, description, image, imagePos, tags, mealSlot, servings, ingredients } = req.body;
         if (!String(name || '').trim()) return res.status(400).json({ message: 'La receta necesita un nombre.' });
         const doc = await Recipe.create({
             trainerId:   req.user.id,
             name:        String(name).trim().slice(0, 120),
+            description: String(description || '').trim().slice(0, 400),
             image:       String(image || '').trim(),
             imagePos:    String(imagePos || '50% 50%').slice(0, 24),
             tags:        cleanTags(tags),
@@ -3392,6 +3396,7 @@ app.put('/api/recipes/:id', authenticateToken, async (req, res) => {
             if (!String(b.name).trim()) return res.status(400).json({ message: 'La receta necesita un nombre.' });
             doc.name = String(b.name).trim().slice(0, 120);
         }
+        if (b.description !== undefined) doc.description = String(b.description || '').trim().slice(0, 400);
         if (b.image       !== undefined) doc.image    = String(b.image || '').trim();
         if (b.imagePos    !== undefined) doc.imagePos = String(b.imagePos || '50% 50%').slice(0, 24);
         if (b.tags        !== undefined) doc.tags     = cleanTags(b.tags);

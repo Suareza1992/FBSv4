@@ -72,6 +72,7 @@ try {
     // ── Writing ────────────────────────────────────────────────────────────
     const avena = {
         name: `${tag} Avena con proteína`,
+        description: 'Dulce, rápida y con mucha proteína.',
         tags: ['Sin lactosa', 'Rápido'],
         mealSlot: 'Desayuno',
         servings: 2,
@@ -86,6 +87,16 @@ try {
     check(recipe.macros?.calories === 260, 'macros are summed and divided by servings', `${recipe.macros?.calories} kcal (expected 260)`);
     check(recipe.macros?.protein === 29, 'protein per serving', `${recipe.macros?.protein} g (expected 29)`);
     made.push({ recipeId: recipe._id });
+
+    check(recipe.description === 'Dulce, rápida y con mucha proteína.', 'the short description is stored', JSON.stringify(recipe.description));
+
+    r = await asA('PUT', `/api/recipes/${recipe._id}`, { description: '  Cambiada  ' });
+    check((await r.json()).description === 'Cambiada', 'the description can be edited, and is trimmed');
+
+    r = await asA('POST', '/api/recipes', { ...avena, name: `${tag} Larga`, description: 'x'.repeat(600) });
+    const longOne = await r.json();
+    check(longOne.description.length === 400, 'an over-long description is cut to 400 characters', `${longOne.description.length}`);
+    made.push({ recipeId: longOne._id });
 
     r = await asCA('POST', '/api/recipes', avena);
     check(r.status === 403, 'a client cannot create a recipe', String(r.status));

@@ -6023,6 +6023,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p class="text-[10px] text-[#FFDB89]/35 mt-0.5">
                         ${r.mealSlot ? escHtml(r.mealSlot) + ' · ' : ''}${(r.ingredients || []).length} ingrediente${(r.ingredients || []).length === 1 ? '' : 's'}
                     </p>
+                    ${r.description ? `<p class="text-[10px] text-[#FFDB89]/45 mt-1 line-clamp-2 leading-snug">${escHtml(r.description)}</p>` : ''}
                     <div class="flex gap-2 mt-2 text-[10px] font-bold">
                         <span class="text-[#F87171]">P ${m.protein}</span>
                         <span class="text-yellow-400">C ${m.carbs}</span>
@@ -6070,6 +6071,7 @@ document.addEventListener('DOMContentLoaded', () => {
         })).filter((i) => i.name);
         return {
             name:        document.getElementById('recipe-name')?.value.trim() || '',
+            description: document.getElementById('recipe-description')?.value.trim() || '',
             image:       recipeDraft?.image || '',
             imagePos:    recipeDraft?.imagePos || '50% 50%',
             tags:        recipeDraft?.tags || [],
@@ -6119,11 +6121,13 @@ document.addEventListener('DOMContentLoaded', () => {
     window.openRecipeModal = (recipe = null) => {
         recipeDraft = recipe
             ? JSON.parse(JSON.stringify(recipe))
-            : { name: '', image: '', imagePos: '50% 50%', tags: [], mealSlot: '', servings: 1, ingredients: [{}] };
+            : { name: '', description: '', image: '', imagePos: '50% 50%', tags: [], mealSlot: '', servings: 1, ingredients: [{}] };
 
         document.getElementById('recipe-modal-title').innerHTML =
             `<i class="fas fa-bowl-food mr-2"></i>${recipe ? 'Editar receta' : 'Nueva receta'}`;
         document.getElementById('recipe-name').value     = recipeDraft.name || '';
+        const descEl = document.getElementById('recipe-description');
+        if (descEl) descEl.value = recipeDraft.description || '';
         document.getElementById('recipe-servings').value = recipeDraft.servings || 1;
 
         const sel = document.getElementById('recipe-meal-slot');
@@ -6400,6 +6404,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
             <div class="p-4 space-y-4">
+                ${recipe.description ? `<p class="text-[13px] text-[#FFDB89]/70 leading-relaxed">${escHtml(recipe.description)}</p>` : ''}
                 <div class="flex gap-2">
                     ${macroPill('kcal', m.calories, '', '#FFDB89')}
                     ${macroPill('Proteína', m.protein, 'g', '#F87171')}
@@ -14050,6 +14055,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             // were stored are read from the name ("10 oz Medalla Light") when it
                             // starts with a recognised amount; otherwise the amount is unknown.
                             const b = window.FoodScale.baseOf(food);
+                            // The logs arrive newest-first, so the FIRST time a name is
+                            // seen is its most recent version — that is the one whose
+                            // numbers and amount are kept.
                             if (!seen.has(key)) seen.set(key, {
                                 name:     b.name || food.name,
                                 calories: parseFloat(food.calories) || 0,
@@ -14057,12 +14065,20 @@ document.addEventListener('DOMContentLoaded', () => {
                                 carbs:    parseFloat(food.carbs)    || 0,
                                 fat:      parseFloat(food.fat)      || 0,
                                 servingAmount: b.known ? b.amount : 0,
-                                servingUnit:   b.known ? b.unit   : ''
+                                servingUnit:   b.known ? b.unit   : '',
+                                timesLogged:   0,
+                                lastDate:      log.date || '',
                             });
+                            // How often this food is actually eaten. Someone who has the
+                            // same breakfast every day should find it at the top, not have
+                            // to retype it — which is the whole point of this list.
+                            seen.get(key).timesLogged++;
                         });
                     });
                 });
-                foodHistory = Array.from(seen.values());
+                // Most-eaten first, ties broken by most recent.
+                foodHistory = Array.from(seen.values())
+                    .sort((a, b2) => (b2.timesLogged - a.timesLogged) || String(b2.lastDate).localeCompare(String(a.lastDate)));
             } catch (e) { /* silently fail — autocomplete just won't have history */ }
         };
         buildFoodHistory();
@@ -15130,12 +15146,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 let searchTimer   = null;
                 let searchSeq     = 0;   // guards against out-of-order responses
 
-                // ── Show recent foods (from history) ──
+                // ── Show the foods this client actually eats ──
+                // This used to read `foodHistory.slice(-10).reverse()`. The logs arrive
+                // newest-first, so the END of that array was the client's OLDEST foods —
+                // the panel labelled "usados recientemente" was showing what they ate
+                // longest ago. foodHistory is now sorted most-eaten first, so the top of
+                // it is what someone who eats the same thing every day wants.
                 const showRecentFoods = async () => {
-                    // Build recent section HTML (personal history)
-                    const recent = foodHistory.slice(-10).reverse();
+                    const recent = foodHistory.slice(0, 10);
                     const recentHTML = recent.length ? `
-                        <p class="text-[10px] text-[#FFDB89]/30 uppercase tracking-wider font-bold px-1 pb-1">Usados recientemente</p>
+                        <p class="text-[10px] text-[#FFDB89]/30 uppercase tracking-wider font-bold px-1 pb-1">Lo que más comes</p>
                         ${recent.map(f => `
                         <button class="history-food-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition"
                             data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}">
@@ -15143,7 +15163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <p class="text-sm font-semibold text-white leading-tight truncate">${(f.name||'').replace(/</g,'&lt;')}</p>
                                 <span class="text-sm font-black text-[#FFDB89] shrink-0">${f.calories||0} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
                             </div>
-                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">${f.servingAmount && f.servingUnit ? `${window.FoodScale.fmtAmount(f.servingAmount)} ${(f.servingUnit||'').replace(/</g,'&lt;')} · ` : ''}P:${f.protein||0}g · C:${f.carbs||0}g · G:${f.fat||0}g</p>
+                            <p class="text-[10px] mt-0.5 text-[#FFDB89]/40">${f.servingAmount && f.servingUnit ? `${window.FoodScale.fmtAmount(f.servingAmount)} ${(f.servingUnit||'').replace(/</g,'&lt;')} · ` : ''}P:${f.protein||0}g · C:${f.carbs||0}g · G:${f.fat||0}g${f.timesLogged > 1 ? ` · <span class="text-[#FFDB89]/60">${f.timesLogged}×</span>` : ''}</p>
                         </button>`).join('')}` : '';
 
                     // Show skeleton while fetching popular foods

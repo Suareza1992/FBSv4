@@ -76,6 +76,37 @@ const RECIPES = [
         ],
     },
     {
+        // INCOMPLETE ON PURPOSE. The post is "Honey BBQ Chicken & Garlic Parmesan
+        // Potatoes" at 578 kcal per serving, but only the chicken half's ingredients
+        // were to hand. The potatoes are ~1,130 kcal / P47 C153 F32 across the five
+        // servings — 39% of the meal — and guessing them would put a number on a
+        // coach's recommendation that nobody had checked.
+        //
+        // So `published` here is what the CHICKEN HALF really adds up to, which keeps
+        // the script's promise (the card never disagrees with its own ingredients)
+        // honest. When the potato ingredients arrive: add their lines, change
+        // `published` to 578/55/50/17, drop the "Faltan las papas" tag, re-run.
+        name: 'High Protein Honey BBQ Chicken & Garlic Parmesan Potatoes',
+        description: 'El balance perfecto entre salado, dulce y ácido. Mucha profundidad de sabor y aún más proteína gracias a la salsa cremosa mejorada.',
+        mealSlot: 'Almuerzo',
+        tags: ['Alto en proteína', 'Faltan las papas'],
+        servings: 5,
+        published: { calories: 352, protein: 46, carbs: 20, fat: 11 },
+        ingredients: [
+            g('Pechuga de pollo cruda, en cubos', 1000, 'g',    1200, 225, 0,   26),
+            g('Ajo en polvo',                     2,    'cdta',   20, 1,   4.5, 0),
+            g('Paprika ahumada',                  2,    'cdta',   13, 0.7, 2.5, 0.6),
+            g('Comino',                           1.5,  'cdta',   11, 0.5, 1.3, 0.7),
+            g('Sal',                              1.5,  'cdta',    0, 0,   0,   0),
+            g('Pimienta negra',                   2,    'cdta',   12, 0.5, 3,   0.2),
+            g('Aceite de oliva',                  2,    'cdta',   80, 0,   0,   9),
+            g('Mantequilla light',                30,   'g',     150, 0.2, 0,   16.5),
+            g('Miel',                             60,   'g',     183, 0.2, 50,  0),
+            g('Salsa BBQ sin azúcar (G Hughes)',  160,  'g',      90, 0,   36,  0),
+            g('Perejil fresco picado',            2,    'cda',     1, 0.1, 0.2, 0),
+        ],
+    },
+    {
         name: 'Batido de la noche: whey, leche A2 y kéfir',
         mealSlot: 'Snack',
         tags: ['Rápido', 'Alto en proteína'],
@@ -125,7 +156,8 @@ try {
     let created = 0, updated = 0;
     for (const r of RECIPES) {
         const doc = {
-            trainerId: trainer._id, name: r.name, image: '', imagePos: '50% 50%',
+            trainerId: trainer._id, name: r.name, description: r.description || '',
+            image: '', imagePos: '50% 50%',
             tags: r.tags, mealSlot: r.mealSlot, servings: r.servings,
             ingredients: r.ingredients, isArchived: false, updatedAt: new Date(),
         };
