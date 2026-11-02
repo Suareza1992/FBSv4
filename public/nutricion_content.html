@@ -104,7 +104,7 @@
                         <button type="button" data-aspect="portrait" class="px-2.5 py-1 rounded-md text-[10px] font-bold transition"><i class="fas fa-mobile-screen mr-1"></i>Vertical</button>
                     </div>
                 </div>
-                <div id="recipe-photo-drop" class="relative mx-auto w-full aspect-[16/10] max-w-lg rounded-xl border border-dashed border-[#FFDB89]/25 bg-[#FFDB89]/5 overflow-hidden cursor-pointer hover:border-[#FFDB89]/50 transition">
+                <div id="recipe-photo-drop" class="relative mx-auto w-full aspect-[4/5] max-w-[16rem] rounded-xl border border-dashed border-[#FFDB89]/25 bg-[#FFDB89]/5 overflow-hidden cursor-pointer hover:border-[#FFDB89]/50 transition">
                     <img id="recipe-photo-preview" alt="" class="absolute inset-0 w-full h-full object-cover hidden">
                     <div id="recipe-photo-empty" class="absolute inset-0 flex flex-col items-center justify-center text-[#FFDB89]/35 gap-2">
                         <i class="fas fa-camera text-2xl"></i>
@@ -120,15 +120,15 @@
             </div>
 
             <!-- Name + slot + servings -->
-            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-5 gap-3">
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Nombre</label>
                     <input type="text" id="recipe-name" autocomplete="off" placeholder="Ej: Avena con proteína"
                         class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] placeholder:text-[#FFDB89]/30 focus:ring-2 focus:ring-[#FFDB89]/40 outline-none">
                 </div>
-                <div>
+                <div class="sm:col-span-2">
                     <label class="block text-xs font-bold text-[#FFDB89]/60 uppercase tracking-wider mb-1.5">Comida</label>
-                    <select id="recipe-meal-slot" class="w-full p-3 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:ring-2 focus:ring-[#FFDB89]/40">
+                    <select id="recipe-meal-slot" class="w-full py-3 pl-4 pr-10 bg-[#FFDB89]/5 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] outline-none focus:ring-2 focus:ring-[#FFDB89]/40 appearance-none cursor-pointer" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23FFDB89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;">
                         <option value="">Cualquiera</option>
                     </select>
                 </div>

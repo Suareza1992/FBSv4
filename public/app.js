@@ -6165,7 +6165,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.openRecipeModal = (recipe = null) => {
         recipeDraft = recipe
             ? JSON.parse(JSON.stringify(recipe))
-            : { name: '', description: '', image: '', imagePos: '50% 50%', imageAspect: 'landscape', tags: [], mealSlot: '', servings: 1, ingredients: [{}] };
+            // A new recipe opens on portrait: these photos are shot on a phone,
+            // so vertical is the common case and horizontal the exception.
+            : { name: '', description: '', image: '', imagePos: '50% 50%', imageAspect: 'portrait', tags: [], mealSlot: '', servings: 1, ingredients: [{}] };
 
         document.getElementById('recipe-modal-title').innerHTML =
             `<i class="fas fa-bowl-food mr-2"></i>${recipe ? 'Editar receta' : 'Nueva receta'}`;

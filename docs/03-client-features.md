@@ -144,6 +144,13 @@ Cards carry `self-start` so one tall card cannot stretch the short ones beside i
 defaults rather than validates, so a recipe written before the field reads as landscape instead
 of failing to save.
 
+**Two different defaults, deliberately.** A *new* recipe opens on portrait — these photos are
+shot on a phone, so vertical is the common case — but the schema default and `recipeAspect`'s
+fallback stay landscape. That split is what keeps the recipes written before the field existed
+looking the way they always did: a document with no `imageAspect` is still read as landscape, so
+flipping the editor's default reframes nothing that is already saved. Changing the *schema*
+default would, because Mongoose fills a missing path on hydration.
+
 **The shared food library (Alimentos)** — `upsertSharedFood(food, isAdmin)`: **adding is open to
 everyone, changing is superadmin-only.** A client logging a food that already exists just bumps
 `timesUsed`; only the owner's account may rewrite another person's macros.
