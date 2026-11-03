@@ -11,6 +11,11 @@
 //      never see each other's changes.
 //   5. A swap names the ELEMENT it replaces, so two changes to one plate coexist
 //      and neither overwrites the other.
+//   6. Nothing of a plan reaches a client until the trainer has PREPARED it. A
+//      client can ask, and that is all; asking twice must not notify twice.
+//   7. The amounts a trainer tunes for one client are that client's, and the
+//      macros they were written against are frozen, so a new weigh-in cannot
+//      silently rewrite somebody's dinner.
 //
 // The scaling itself — which element moves with which goal — is pure and lives
 // in scripts/test-meal-items.mjs.
@@ -81,7 +86,13 @@ try {
     const clientA1 = await mk('client', { trainerId: trainerA._id,
         macroSettings: { targetCal: 2000, goalProtein: 160, goalCarbs: 150, goalFat: 40 } });
     const clientA2 = await mk('client', { trainerId: trainerA._id });
+    // The one who ASKS. Macro goals of their own, so the sheet has an evaluation
+    // to default to, and a measurement so there is a date to carry.
+    const clientA3 = await mk('client', { trainerId: trainerA._id,
+        macroSettings: { targetCal: 2400, goalProtein: 190, goalCarbs: 220, goalFat: 60 } });
     const clientB  = await mk('client', { trainerId: trainerB._id });
+    await db.collection('bodymeasurements').insertOne({
+        clientId: clientA3._id, date: daysAgo(4), weight: 185, bodyFat: 18, createdAt: new Date() });
 
     const signIn = async (who) => {
         const r = await fetch(`${BASE}/api/auth/login`, {
@@ -95,8 +106,8 @@ try {
             body: body ? JSON.stringify(body) : undefined,
         });
     };
-    const [asA, asB, asC1, asC2, asCB] = await Promise.all(
-        [trainerA, trainerB, clientA1, clientA2, clientB].map(signIn));
+    const [asA, asB, asC1, asC2, asC3, asCB] = await Promise.all(
+        [trainerA, trainerB, clientA1, clientA2, clientA3, clientB].map(signIn));
 
     // ── Building a plan ────────────────────────────────────────────────────
     const payload = {
@@ -243,6 +254,122 @@ try {
     const row = list.find((p) => String(p._id) === String(plan._id));
     check(row?.assignedCount === 2, 'the card shows how many clients are on it', `${row?.assignedCount}`);
 
+    // ── Asking for one ─────────────────────────────────────────────────────
+    const notifCount = () => db.collection('notifications')
+        .countDocuments({ clientId: clientA3._id, type: 'meal_plan_requested' });
+
+    r = await asC3('GET', '/api/my-meal-plan');
+    check((await r.json()) === null, 'a client with nothing has nothing');
+
+    r = await asC3('POST', '/api/my-meal-plan/request');
+    let ask = await r.json();
+    check(r.status === 200 && ask.status === 'requested', 'a client can ask for a plan', String(r.status));
+    check((await notifCount()) === 1, 'asking reaches the trainer as a notification');
+
+    r = await asC3('GET', '/api/my-meal-plan');
+    const waiting = await r.json();
+    check(waiting?.status === 'requested', 'and the client is told it is pending', JSON.stringify(waiting));
+    // The gate itself: a plan the trainer has not prepared is not this client's
+    // plan, so not one word of it is sent — not even its name.
+    check(!waiting?.plan && !waiting?.goals, 'nothing of any plan is sent while it is only requested');
+
+    r = await asC3('POST', '/api/my-meal-plan/request');
+    ask = await r.json();
+    check(ask.repeated === true, 'asking twice is not an error');
+    check((await notifCount()) === 1, 'and does not notify the trainer twice');
+
+    r = await asA('POST', '/api/my-meal-plan/request');
+    check(r.status === 403, 'a trainer has nobody to ask', String(r.status));
+
+    // A request is not an assignment: it must not show up as a client on a plan.
+    r = await asA('GET', '/api/meal-plans');
+    check((await r.json()).find((p) => String(p._id) === String(plan._id))?.assignedCount === 2,
+        'a pending request is not counted as a client on a plan');
+
+    // ── The trainer's list ─────────────────────────────────────────────────
+    r = await asA('GET', '/api/meal-plan-clients');
+    const roster = await r.json();
+    const rowA3 = roster.find((c) => c.clientId === String(clientA3._id));
+    check(rowA3?.status === 'requested', 'the panel shows who is waiting', rowA3?.status);
+    check(rowA3?.evalDate === daysAgo(4), "and the date of their latest evaluation", rowA3?.evalDate);
+    check(roster.find((c) => c.clientId === String(clientA1._id))?.status === 'ready',
+        'and who is already running');
+    check(!roster.some((c) => c.clientId === String(clientB._id)),
+        "another trainer's client is not in the panel at all");
+    r = await asC3('GET', '/api/meal-plan-clients');
+    check(r.status === 403, 'a client cannot read the panel', String(r.status));
+
+    // ── Preparing it ───────────────────────────────────────────────────────
+    r = await asA('GET', `/api/meal-plan-prep/${clientA3._id}`);
+    const sheet = await r.json();
+    check(r.status === 200 && sheet.status === 'requested', 'the sheet loads for a client who asked', String(r.status));
+    check(sheet.evalGoals?.protein === 190 && sheet.evalGoals?.calories === 2400,
+        'and opens on the macros their evaluation produced', JSON.stringify(sheet.evalGoals));
+    check(sheet.evaluation?.date === daysAgo(4), 'and says which evaluation that was', sheet.evaluation?.date);
+
+    r = await asB('GET', `/api/meal-plan-prep/${clientA3._id}`);
+    check(r.status === 404, "a trainer cannot open another trainer's client", String(r.status));
+    r = await asC3('GET', `/api/meal-plan-prep/${clientA3._id}`);
+    check(r.status === 403, 'a client cannot open their own sheet', String(r.status));
+
+    const prepBody = {
+        planId: String(plan._id),
+        startDate: daysAgo(8),
+        goals: { calories: 2400, protein: 200, carbs: 220, fat: 60 },
+        evalDate: daysAgo(4),
+        amounts: [
+            { week: 2, option: 'A', slot: 'Cena', name: 'Salmón A', amount: 9 },
+            // No name addresses nothing; an amount of zero is not an override.
+            { week: 2, option: 'A', slot: 'Cena', name: '',          amount: 4 },
+            { week: 2, option: 'B', slot: 'Cena', name: 'Salmón B',  amount: 0 },
+        ],
+    };
+    r = await asB('PUT', `/api/meal-plan-prep/${clientA3._id}`, prepBody);
+    check(r.status === 404, "a trainer cannot prepare another trainer's client", String(r.status));
+    r = await asC3('PUT', `/api/meal-plan-prep/${clientA3._id}`, prepBody);
+    check(r.status === 403, 'a client cannot prepare their own plan', String(r.status));
+    r = await asA('PUT', `/api/meal-plan-prep/${clientA3._id}`, { ...prepBody, planId: '' });
+    check(r.status === 400, 'preparing without a plan is refused', String(r.status));
+
+    r = await asA('PUT', `/api/meal-plan-prep/${clientA3._id}`, prepBody);
+    const prepared = await r.json();
+    check(r.status === 200 && prepared.status === 'ready', 'the trainer prepares it', String(r.status));
+    check(prepared.tuned === 1, 'only the amounts that address a real food are kept', `${prepared.tuned}`);
+
+    r = await asC3('GET', '/api/my-meal-plan');
+    const got = await r.json();
+    check(got?.status === 'ready' && got?.plan?.name === payload.name, 'now the client can see it');
+    check(got?.currentWeek === 2, 'on the week counted from the start date the trainer set', `week ${got?.currentWeek}`);
+    // Frozen, not read live: the client's own macroSettings still say 190.
+    check(got?.goals?.protein === 200, 'against the macros frozen onto the assignment', JSON.stringify(got?.goals));
+    check(got?.amounts?.length === 1 && got.amounts[0].amount === 9 && got.amounts[0].name === 'Salmón A',
+        "and with the trainer's own amount for that one food", JSON.stringify(got?.amounts));
+
+    // One client's tuned amounts are that client's.
+    r = await asC1('GET', '/api/my-meal-plan');
+    check(((await r.json())?.amounts || []).length === 0,
+        "another client on the same plan gets none of those amounts");
+
+    // Re-preparing on the SAME plan leaves the client's swaps alone; moving them
+    // to a different plan drops them, because they name foods that are not there.
+    await asC3('PUT', '/api/my-meal-plan', { swap: { week: 2, slot: 'Cena', from: 'Salmón A', text: 'Salmón alt', amount: 4, unit: 'oz', role: 'protein' } });
+    await asA('PUT', `/api/meal-plan-prep/${clientA3._id}`, prepBody);
+    r = await asC3('GET', '/api/my-meal-plan');
+    check(((await r.json())?.swaps || []).length === 1, 'preparing the same plan again keeps the client\'s swaps');
+
+    r = await asA('POST', '/api/meal-plans', { name: `${tag} Otra combinación`, weeks: [week(1, 1800, SLOTS)] });
+    const plan2 = await r.json();
+    await asA('PUT', `/api/meal-plan-prep/${clientA3._id}`, { ...prepBody, planId: String(plan2._id) });
+    r = await asC3('GET', '/api/my-meal-plan');
+    check(((await r.json())?.swaps || []).length === 0, 'moving them to another plan drops swaps that point at nothing');
+    await asA('PUT', `/api/meal-plan-prep/${clientA3._id}`, prepBody);
+
+    // Taking it away puts the client back to the button.
+    r = await asA('DELETE', `/api/meal-plan-prep/${clientA3._id}`);
+    check(r.status === 200, 'the trainer can take a client off their plan', String(r.status));
+    r = await asC3('GET', '/api/my-meal-plan');
+    check((await r.json()) === null, 'and the client is back to asking');
+
     // ── Retiring it ────────────────────────────────────────────────────────
     r = await asA('DELETE', `/api/meal-plans/${plan._id}`);
     check(r.status === 200, 'the owning trainer can retire a plan', String(r.status));
@@ -259,6 +386,8 @@ try {
     const ids = users.map((u) => u._id);
     await db.collection('mealplans').deleteMany({ name: new RegExp(`^${tag}`) });
     await db.collection('mealplanassignments').deleteMany({ clientId: { $in: ids } });
+    await db.collection('bodymeasurements').deleteMany({ clientId: { $in: ids } });
+    await db.collection('notifications').deleteMany({ clientId: { $in: ids } });
     await db.collection('users').deleteMany({ email: new RegExp(`^${tag}-`) });
     await mongo.close();
 }

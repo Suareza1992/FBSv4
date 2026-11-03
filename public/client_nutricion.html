@@ -26,6 +26,28 @@
          no plan is assigned. The week is counted server-side from the start
          date, so this opens on the right week with nothing to choose.
          Filled by renderClientMealPlan() in app.js. -->
+    <!-- ── Pedir el meal prep ────────────────────────────────────────────────
+         What a client sees until their trainer has prepared one. A meal plan is
+         written from an evaluation by the person who did the evaluating, so the
+         client's whole part in it is one button: asking. Swapped for the plan
+         itself by renderClientMealPlan(). -->
+    <div id="client-mealplan-request" class="hidden bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-2xl p-5 sm:p-6">
+        <h3 class="text-xs font-bold text-[#FFDB89]/50 uppercase tracking-wider">
+            <i class="fas fa-calendar-week mr-1.5"></i>Tu meal prep
+        </h3>
+        <p id="mealplan-request-copy" class="text-[13px] text-[#FFDB89]/60 leading-relaxed mt-2 mb-4 max-w-xl">
+            Tu entrenador arma tu plan de comidas con los macros de tu última evaluación:
+            las mismas comidas de siempre, en las cantidades que te tocan a ti.
+        </p>
+        <button id="mealplan-request-btn"
+            class="w-full sm:w-auto px-5 py-3 rounded-xl bg-[#FFDB89] text-[#030303] text-sm font-black transition hover:bg-[#FFDB89]/80 disabled:opacity-40 disabled:cursor-default">
+            <i class="fas fa-paper-plane mr-2"></i>Solicítale las recomendaciones nutricionales a tu entrenador.
+        </button>
+        <p id="mealplan-request-note" class="hidden text-[11px] text-[#FFDB89]/35 mt-3 flex items-start gap-1.5">
+            <i class="fas fa-circle-check mt-0.5 text-green-400/70"></i><span></span>
+        </p>
+    </div>
+
     <div id="client-mealplan" class="hidden bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-2xl p-4 sm:p-5 space-y-4">
         <div class="flex items-start justify-between gap-3 flex-wrap">
             <div class="min-w-0">
@@ -41,12 +63,7 @@
             </div>
         </div>
 
-        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
-            <p id="mealplan-objective" class="sm:flex-1 min-w-0 text-[13px] text-[#FFDB89]/60 leading-relaxed"></p>
-            <!-- Only shown when this client's macro goals differ from the week's,
-                 i.e. when there is actually something to switch between. -->
-            <button id="mealplan-adjust" class="hidden self-start shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition"></button>
-        </div>
+        <p id="mealplan-objective" class="text-[13px] text-[#FFDB89]/60 leading-relaxed"></p>
 
         <div id="mealplan-targets" class="grid grid-cols-4 gap-2 text-center"></div>
 

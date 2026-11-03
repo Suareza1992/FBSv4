@@ -193,6 +193,13 @@ Recetas is a book to browse; **Meal Prep** is the plan to follow. A plan is week
 targets plus **two preparations** that hit the same numbers — so the week can be cooked in two batches
 instead of the same plate seven nights running.
 
+**A client does not get a plan, they are given one.** Until their trainer has prepared it, the whole
+of this screen is a single button — *"Solicítale las recomendaciones nutricionales a tu
+entrenador."* — which raises a `meal_plan_requested` notification and then spends itself. Three
+states: no row at all, a row with `status: 'requested'` and `planId: null`, and a prepared row.
+`GET /api/my-meal-plan` sends **nothing of any plan** in the first two; the gate is in the response,
+not in the rendering. Asking twice is accepted and notifies once.
+
 A plate is a short list of **elements**, each a food, an amount and a **role** — `protein | carb |
 fat | veg | free`. The role is the mechanism: it decides what an element can be swapped for, and
 which of the week's targets its amount scales against.
@@ -201,7 +208,10 @@ which of the week's targets its amount scales against.
 MealPlan            // trainerId, name, weeks[{ objective, calories, protein, carbs, fat, deficit,
                     //   options[{ key, label, meals[{ slot, text,
                     //     items[{ name, amount, unit, role, alternatives[{ name, amount, unit, role }] }] }] }] }]
-MealPlanAssignment  // planId, clientId (unique), trainerId, startDate, option,
+MealPlanAssignment  // planId (null until prepared), clientId (unique), trainerId, startDate, option,
+                    //   status: 'requested' | 'ready', requestedAt, preparedAt,
+                    //   goals{ calories, protein, carbs, fat }, evalDate,
+                    //   amounts[{ week, option, slot, name, amount }],
                     //   swaps[{ week, slot, from, text, amount, unit, role }]
 ```
 
@@ -210,14 +220,37 @@ plan written before elements existed has only its text and still renders, with o
 whole plate.
 
 **Elements still carry no macros.** `public/meal-item.js` scales amounts from the week's targets and
-the client's own `macroSettings` goals: protein elements by `goal.protein / week.protein`, carbs and
-fat by theirs, **vegetables and free items never**. Clamped to [0.5, 2], 1 when a goal or a target is
-missing. The four tiles on top switch to the client's goals whenever the amounts are theirs, and a
-pill toggles back to the plan as written (per-device, `localStorage`).
+the goals on the assignment: protein elements by `goal.protein / week.protein`, carbs and fat by
+theirs, **vegetables and free items never**. Clamped to [0.5, 2], 1 when a goal or a target is
+missing. The four tiles on top switch to the client's goals whenever the amounts are theirs. There
+is no "as written" toggle any more: what the client sees *is* the plan as their trainer wrote it for
+them.
+
+**The goals are frozen onto the assignment** at preparation time, copied from the client's
+`macroSettings` — the numbers the macro calculator already produced from their latest evaluation.
+`mealGoalsFor()` falls back to live `macroSettings` only when the assignment has none, which is what
+a plan assigned before preparation existed still does. Frozen because a weigh-in on Tuesday must not
+silently rewrite Wednesday's dinner; the trainer's panel points out that a newer evaluation landed
+and leaves the decision to them.
+
+**Amounts are the personalisation.** `amounts[{ week, option, slot, name, amount }]` is the trainer
+overruling the arithmetic one element at a time, addressed by `overrideKey(week, option, slot, name)`
+— the same shape a swap uses, lower-cased and trimmed. A tuned amount is filed under the *plan's*
+food, so swapping that element out leaves it behind. Typing the computed number back, or clearing
+the box, deletes the entry. A tuned amount is displayed **as typed** (`amountLabel(item, true)`),
+unrounded: a number a coach chose is already measurable.
 
 **The plan belongs to the trainer; what a client changed belongs to the assignment.** Two clients on
 one plan can swap different dinners and neither sees the other's. `clientId` is unique, so assigning
 a client takes them off whatever they were on.
+
+**Two ways in.** `PUT /api/meal-plan-prep/:clientId` is one client with their own frozen goals and
+amounts, and is the only route that can turn a request into a readable plan; `DELETE` on the same
+path removes the row entirely and puts the client back to the button. Moving a client to a
+*different* plan drops their swaps, because those name foods that are not on the new plates.
+**Asignar en grupo** (`PUT /api/meal-plans/:id/assignments`) is still there as the fast path: ready,
+but with no frozen goals, so those clients scale against their live macros until somebody prepares
+them.
 
 **The week is counted, not set** — `mealPlanWeekFor(startDate, weekCount)` is
 `floor(daysSince / 7) + 1`, clamped at both ends. A plan that needs someone to remember to advance it
@@ -244,6 +277,12 @@ week with no preps is dropped rather than stored empty. ⑤ **Anything `amountLa
 that only goes one way turns the amount into part of the food's name on the next save. The glyphs
 are a closed set and `scripts/test-meal-items.mjs` runs the whole template through the round trip.
 ⑥ A plate's *"N cambios"* counts only swaps that land on an element in the prep being shown.
+⑦ `meal_plan_requested` must be in `NotificationSchema`'s enum — that enum is strict, and a missing
+type makes `Notification.create()` throw a `ValidationError` that `createNotification()` swallows, so
+you get no notification and no error. ⑧ The preparation sheet renders one week at a time, so the
+open week is the only week in the DOM: overrides live in a `Map` kept current by the `input`
+handler, never read off the inputs at save time. ⑨ A pending request has `planId: null` and is
+therefore not counted as a client on any plan.
 
 Full reasoning in [TECHNICAL.md § 56](../TECHNICAL.md).
 

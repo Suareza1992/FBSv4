@@ -134,5 +134,34 @@ check(alts > 150, 'and most of them come with alternatives already written', `${
 check(broken.length === 0, 'every template element survives being written and read back',
     broken.slice(0, 3).join(' | '));
 
+// ── Per-client amounts: the address, and showing one as typed ─────────────
+// A trainer's amount for one client is filed under where the element sits plus
+// what it is called. Case and stray spaces must not make two addresses out of
+// one food, because a typed plan is exactly where those come from.
+check(M.overrideKey(2, 'A', 'Cena', 'Salmón al horno')
+    === M.overrideKey('2', 'a', ' cena ', 'SALMÓN AL HORNO'),
+    'an element address ignores case and stray spaces');
+check(M.overrideKey(2, 'A', 'Cena', 'Salmón') !== M.overrideKey(2, 'B', 'Cena', 'Salmón'),
+    'the same food in the other prep is a different address');
+check(M.overrideKey(2, 'A', 'Cena', 'Salmón') !== M.overrideKey(3, 'A', 'Cena', 'Salmón'),
+    'and in another week, another address again');
+
+const idx = M.overrideIndex([
+    { week: 2, option: 'A', slot: 'Cena', name: 'Salmón', amount: 9 },
+    { week: 2, option: 'A', slot: 'Cena', name: '',       amount: 4 },
+    { week: 2, option: 'A', slot: 'Cena', name: 'Arroz',  amount: 0 },
+]);
+check(idx.size === 1 && idx.get(M.overrideKey(2, 'A', 'Cena', 'salmón')) === 9,
+    'an entry with no name or no amount addresses nothing', `${idx.size}`);
+
+// Rounding turns arithmetic into something measurable. An amount a person chose
+// is already measurable, so `exact` leaves it alone.
+check(M.amountLabel({ amount: 5.3, unit: 'oz' }) === '5 ¼ oz',
+    'a computed amount lands on something you can measure', M.amountLabel({ amount: 5.3, unit: 'oz' }));
+check(M.amountLabel({ amount: 5.3, unit: 'oz' }, true) === '5.3 oz',
+    'an amount the trainer typed is shown as typed', M.amountLabel({ amount: 5.3, unit: 'oz' }, true));
+check(M.amountLabel({ amount: 1.5, unit: 'taza' }, true) === '1 ½ taza',
+    'and still reads as a fraction when it is one', M.amountLabel({ amount: 1.5, unit: 'taza' }, true));
+
 console.log(`\n${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

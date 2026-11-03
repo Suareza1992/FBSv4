@@ -4838,7 +4838,7 @@ row re-read with the new number, a deliberately wrong "Pollo MAL ENTRADO · 3000
 confirmed gone from the database, and signing in as an **ordinary trainer** showed the tab hidden and
 `GET /api/admin/foods` returning 403.
 
-## 56. Meal Prep: a plan that advances by itself
+## 56. Meal Prep: prescribed, not collected
 
 Recetas is a **book to browse**. Meal Prep is the **plan to follow** — and the difference is who is
 doing the thinking. The brief for this one was explicit: *offer the least amount of thinking to the
@@ -4848,6 +4848,98 @@ falls out of that sentence.
 A plan is a list of weeks. A week carries its own objective and targets and **two preparations** —
 Prep A and Prep B — that hit the same daily numbers. The point of two is batch cooking: three or four
 days of one, three or four of the other, instead of the same plate seven nights running.
+
+### Nobody has a plan until the trainer hands them one
+
+The first two versions of this let a trainer put clients on a plan from a roster, and that was the
+whole of it. It is the wrong shape for what a meal plan **is**: a prescription written from an
+evaluation by the person who did the evaluating. A plan a client collected for themselves is not a
+plan, it is a menu.
+
+So there are three states, and only one of them is a plan:
+
+| state | the row | what the client sees |
+|---|---|---|
+| nothing | no `MealPlanAssignment` at all | the button |
+| `requested` | a row with `planId: null` | the button, spent, and the date they asked |
+| `ready` | a row with a `planId` | the plan |
+
+The gate is in `GET /api/my-meal-plan`, and it is a gate rather than a filter: while a plan is only
+requested, **not one word of any plan is sent** — not a name, not a week, not the goals. There is
+nothing on the wire to be read out of a response that should not have had it.
+
+```js
+if (a.status === 'requested' || !a.planId) {
+    return res.json({ status: 'requested', requestedAt: a.requestedAt || null });
+}
+```
+
+`status` defaults to `'ready'`, which is what makes this safe to deploy: every assignment written
+before the gate existed keeps working exactly as it did.
+
+### Asking is the client's whole part in it
+
+`POST /api/my-meal-plan/request` is the only meal-plan write a client has besides their own swaps.
+It upserts the row to `requested` and raises a `meal_plan_requested` notification — the only
+notification in the app that is a **request** rather than a report, which is precisely why it is
+worth acting on.
+
+Asking twice does not notify twice. A client who taps the button again because nothing visibly
+happened must not fill the trainer's bell with the same sentence; the pending request is already
+sitting there to act on. The second call returns `repeated: true` and writes nothing.
+
+> `meal_plan_requested` has to be in `NotificationSchema`'s enum. That enum is **strict**: a type
+> missing from it makes `Notification.create()` throw a `ValidationError` that `createNotification()`
+> swallows in its own try/catch, so you get no notification *and* no error.
+
+### The personalisation is the amounts
+
+Everyone eats more or less the same foods; what differs is how much. So the preparation sheet is a
+plan picker, a start date, four macro numbers — **and every single amount in the plan, editable**.
+
+```js
+MealPlanAssignment.amounts  // [{ week, option, slot, name, amount }]
+```
+
+An entry is addressed by where the element sits plus what it is called — `overrideKey(week, option,
+slot, name)`, lower-cased and trimmed — which is the same shape a swap uses. Two consequences, both
+deliberate:
+
+- A tuned amount is filed under the **plan's** food. Swap the salmon out and the number chosen for
+  salmon stays behind, because it said nothing about the tilapia that replaced it.
+- The same food in the other prep, or in another week, is a different address. Tuning Tuesday's
+  chicken does not quietly move Thursday's.
+
+Typing a number back onto the computed one, or clearing the box, **deletes the entry** rather than
+storing a copy of what the arithmetic would have produced anyway. Same rule as a swap: putting the
+original back is not a change.
+
+And a tuned amount is shown **as typed**, without rounding — `amountLabel(item, true)`. Rounding
+exists to turn arithmetic into something measurable; a number a coach chose is already measurable,
+and moving 5.3 oz to 5 ¼ would be the app overruling the person who wrote the plan.
+
+### The goals are frozen, and that is the point
+
+`mealGoalsFor(assignment, macroSettings)` reads the goals **off the assignment**, falling back to the
+client's live `macroSettings` only when the assignment has none — which is what a plan assigned
+before preparation existed still does.
+
+Freezing is the whole argument for this feature. If the plates tracked `macroSettings` live, a
+weigh-in on Tuesday would silently rewrite Wednesday's dinner, and the trainer would find out from
+the client. Instead the plan says what it said when it was prepared, and the panel points out that a
+newer evaluation has landed:
+
+```
+Marisol Rivera · Semana 1 de 8 · 2 a mano · evaluación nueva del 2026-11-03   [Ajustar]
+```
+
+The default on a fresh sheet is the client's own `macroSettings` — the numbers the macro calculator
+already applied from their latest evaluation. Not a second, slightly different calculation of our
+own: one evaluation, one set of numbers, used everywhere.
+
+**Usar la evaluación** resets the four macros and recomputes every box nobody has typed into. It
+leaves the hand-typed amounts alone — those are decisions about a food, not about the macros, and
+throwing them away there would be a surprise.
 
 ### A plate is elements, not a sentence
 
@@ -4897,8 +4989,9 @@ Three guards, all of them load-bearing:
   client's goals, not the week's. Showing 125 g over plates that add to 160 g would be two different
   plans on one screen.
 
-A pill toggles the whole thing back to the plan as written, and it only appears when there is
-actually a difference to toggle. The preference is per-device, in `localStorage`.
+There used to be a pill that put the plan back the way the trainer wrote it. It went when the plan
+became something the trainer prepares per client: what the client is looking at now **is** the plan
+as their trainer wrote it, so there is no second version to switch to.
 
 ### The round trip is the thing that breaks
 
@@ -4930,7 +5023,10 @@ the trainer chose.
 MealPlan            // trainerId, name, weeks[{ objective, calories, protein, carbs, fat, deficit,
                     //   options[{ key, label, meals[{ slot, text,
                     //     items[{ name, amount, unit, role, alternatives[{ name, amount, unit, role }] }] }] }] }]
-MealPlanAssignment  // planId, clientId (unique), trainerId, startDate, option,
+MealPlanAssignment  // planId (null until prepared), clientId (unique), trainerId, startDate, option,
+                    //   status: 'requested' | 'ready', requestedAt, preparedAt,
+                    //   goals{ calories, protein, carbs, fat }, evalDate,
+                    //   amounts[{ week, option, slot, name, amount }],
                     //   swaps[{ week, slot, from, text, amount, unit, role }]
 ```
 
@@ -4988,9 +5084,25 @@ Keying on the name rather than a position is the decision worth the words:
 Sending the same `(week, slot, from)` twice replaces the row. Without that the array grows forever
 and the newest choice stops being the one that shows.
 
-### Assigning is a roster, not a toggle
+### Two ways in, and they do different jobs
 
-`PUT /api/meal-plans/:id/assignments` takes the whole list of client ids. Clients dropped from the
+`PUT /api/meal-plan-prep/:clientId` is the one that matters: one client, their own frozen goals,
+their own amounts. It is the only route that can turn a `requested` row into a plan somebody can
+read, and it clears the request by doing so.
+
+Moving a client to a **different** plan drops their swaps. Those name foods that are not on the new
+plan's plates, and a swap pointing at nothing is worse than no swap at all. Re-preparing the *same*
+plan keeps them.
+
+`DELETE /api/meal-plan-prep/:clientId` removes the row entirely — plan, request and all — so the
+client is back to the button with nothing half-authorised left behind.
+
+**Asignar en grupo** is the fast path: `PUT /api/meal-plans/:id/assignments` takes the whole list of
+client ids. It writes `status: 'ready'` with no frozen goals, so those clients' amounts come from
+their live `macroSettings` — the behaviour this feature shipped with. Preparing them afterwards
+freezes the numbers and is what the sheet is for.
+
+The roster takes the whole list of client ids. Clients dropped from the
 list come off the plan; clients already on it keep their start date **and their swaps**, because
 `$setOnInsert` only fires for a client new to the plan. Re-saving the roster to add one person does
 not reset the other six to week 1.
@@ -5013,6 +5125,24 @@ place without re-reading the form. The line carries the element and its alternat
 Opening a plan that predates elements splits its sentence on commas, *y*, *con* and *más* into
 editable lines. It is a head start, not a conversion: nothing is stored until the trainer saves, and
 whatever the splitter gets wrong is one line to fix.
+
+### The sheet: 202 boxes that stay put
+
+The preparation sheet renders one week at a time, the same way the plan editor does — eight weeks of
+amounts expanded at once is a wall. Which means the open week is the **only** week in the DOM, so
+the overrides cannot be read off the inputs at save time: they live in a `Map` that the `input`
+handler keeps current. A number typed into week 2 survives opening week 5 and coming back.
+
+Each row is the food, a number box, and the measure the client will actually read:
+
+```
+● avena en seco        [ 0.67 ]  ⅔ taza
+● pechuga de pollo …   [ 8    ]  8 oz     A MANO
+```
+
+Two things in that line rather than one, on purpose. A third of a cup is `0.3333333333` as a number
+and **⅓** as a measure; the box holds the number you can type over, and the label beside it is what
+lands on the client's phone. The label follows the box as you type, without a re-render.
 
 ### The template
 
@@ -5037,24 +5167,39 @@ never touches the template.
 - Retiring a plan archives it *and* deletes its assignments, so nobody is left following a plan their
   trainer has retired.
 - Deficit is stored as a magnitude. The sign lives in the label, not the data.
+- A pending request has `planId: null`, so it is **not** counted as a client on any plan. A card
+  claiming "1 cliente" for somebody who has only asked would be the card lying.
+- A malformed `planId` or `clientId` is caught before the query. Letting Mongoose throw on a cast
+  would turn a plainly bad request into a 500.
+- An `amounts` entry with no name, or an amount of 0, addresses nothing and is dropped server-side
+  as well as client-side.
 
 ### Verified
 
-`node scripts/test-meal-plans.mjs` — 42 checks against an isolated server and database. The ones that
-matter: another trainer's client is silently refused by the roster (2 assigned, not 3); 15 days in is
-week 3; one client's swap is invisible to another client on the same plan; a client gets 403 on both
-the plan itself and the roster; an unknown role is stored as `free`; and two elements in one plate
-are two swaps, not one replacing the other.
+`node scripts/test-meal-plans.mjs` — **75 checks** against an isolated server and database. The ones
+that matter: nothing of any plan is sent while it is only requested; asking twice does not notify
+twice; a trainer gets 404 on another trainer's client and a client gets 403 on their own sheet; the
+goals come back frozen at 200 g while the client's own `macroSettings` still say 190; one client's
+tuned amounts are invisible to another client on the same plan; re-preparing the same plan keeps
+swaps and moving to another plan drops them; a pending request is not counted as a client on a plan;
+another trainer's client is silently refused by the roster (2 assigned, not 3); 15 days in is week 3;
+and two elements in one plate are two swaps, not one replacing the other.
 
-`node scripts/test-meal-items.mjs` — 47 pure checks, no server: the parsing, the display ladder, the
-clamp, which role follows which target, and the whole template through the round trip.
+`node scripts/test-meal-items.mjs` — **54 pure checks**, no server: the parsing, the display ladder,
+the clamp, which role follows which target, element addresses ignoring case and spacing, and the
+whole shipped template through the round trip.
 
-Driven in a browser as well, both roles. The template loaded 202 element rows into the editor, the
-role badge cycled and recoloured, **+ Alimento** added a row that saved with the rest. The client's
-page opened on **Semana 3 de 8** against goals of 160 P / 150 C / 55 F over a week written for
-125 / 155 / 44 — 1 scoop of whey came out at **1 ¼**, 4.5 oz of chicken at **5 ¾ oz**, 1 cda of
-linaza at **1 ¼ cda**, and the spinach stayed at **1 taza**. The swap sheet for the cod offered only
-proteins, at this client's amounts. Two swaps in one dinner both held through a reload; Prep B showed
-its own plates with neither applied and no change count. The pill flipped the tiles back to
-1560 / 125 / 155 / 44 and the cod back to 5 ½ oz, and survived a reload. Checked at 375 px, both
-roles, with no horizontal overflow.
+Driven in a browser as well, both roles, on an isolated stack. The client's page showed the request
+card and nothing else, the button sent one request and spent itself (*"Se lo pediste el 3 de
+noviembre"*), and the trainer's bell carried *"Marisol Rivera te pidió sus recomendaciones
+nutricionales."* The Clientes panel put the request at the top in amber — **1 esperando por ti** —
+the sheet opened on her evaluation's 2100 / 165 / 150 / 55 and said which evaluation that was, and
+the 8-week template loaded 27 boxes into week 1. Chicken typed to **8** and oats to **0.5** were
+marked *a mano*; a third box typed back onto its computed number was correctly **not** stored.
+Authorising flipped her to **Semana 1 de 8 · 2 a mano**, and her page then read `avena en seco ½
+taza` and `pechuga de pollo a la parrilla 8 oz` with every other amount computed — the swap sheet
+showing 8 oz for the chicken and 6 ½ oz for its alternatives. Dropping her live macros to
+1500 / 90 / 100 / 35 and adding a newer evaluation changed **nothing** on her plan, and the trainer's
+row grew *evaluación nueva del 2026-11-03*. **Usar la evaluación** recomputed every untouched box
+(1.33 → 0.75) and left both hand-typed amounts alone. Checked at 375 px, both roles, no horizontal
+overflow.

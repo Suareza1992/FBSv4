@@ -116,13 +116,21 @@
         return whole ? `${whole} ${glyph}` : glyph;
     };
 
-    /** The chip that sits beside the name: "¾ taza", "150 g", "3". '' when there is no amount. */
-    function amountLabel(item) {
+    /**
+     * The chip that sits beside the name: "¾ taza", "150 g", "3". '' when there
+     * is no amount.
+     *
+     * `exact` skips the rounding, and is for an amount a trainer TYPED for one
+     * client. Rounding exists to turn arithmetic into something measurable; an
+     * amount somebody chose is already measurable, and quietly moving 5.3 oz to
+     * 5 ¼ would be the app overruling the person who wrote the plan.
+     */
+    function amountLabel(item, exact) {
         const a = Number(item && item.amount) || 0;
         if (!(a > 0)) return '';
         const unit = String((item && item.unit) || '').trim();
         const key = unitKeyOf(unit);
-        const label = numberLabel(roundAmount(a, key), key);
+        const label = numberLabel(exact ? a : roundAmount(a, key), key);
         return unit ? `${label} ${unit}` : label;
     }
 
@@ -158,6 +166,27 @@
     /** Is anything actually being moved? Used to decide whether to say so in the UI. */
     const isAdjusted = (factors) => ROLE_KEYS.some((r) => (factors && factors[r]) !== undefined && factors[r] !== 1);
 
+    /**
+     * Where ONE element sits, as a string: week, prep, slot, food.
+     *
+     * This is the address a trainer's per-client amount is filed under, and the
+     * name is part of it on purpose — the same address the client's swaps use.
+     * Lower-cased and trimmed so "Pechuga de pollo " and "pechuga de pollo" are
+     * the same food, which is the mistake a typed plan actually makes.
+     */
+    const overrideKey = (week, option, slot, name) =>
+        [week, option, slot, name].map((x) => String(x == null ? '' : x).trim().toLowerCase()).join('|');
+
+    /** A list of per-client amounts as a lookup. Anything unnamed addresses nothing. */
+    const overrideIndex = (list) => {
+        const map = new Map();
+        (Array.isArray(list) ? list : []).forEach((a) => {
+            const amount = Number(a && a.amount) || 0;
+            if (a && a.name && amount > 0) map.set(overrideKey(a.week, a.option, a.slot, a.name), amount);
+        });
+        return map;
+    };
+
     /** The element as this client should cook it. Rounding happens at display time, once. */
     function scaleItem(item, factors) {
         const f = (factors && factors[roleOf(item && item.role)]) || 1;
@@ -167,5 +196,5 @@
     }
 
     return { ROLES, ROLE_KEYS, roleOf, toNumber, parseLine, amountLabel, itemText, plateText,
-        factorsFor, isAdjusted, scaleItem, roundAmount, unitKeyOf };
+        factorsFor, isAdjusted, scaleItem, roundAmount, unitKeyOf, overrideKey, overrideIndex };
 });

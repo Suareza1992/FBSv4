@@ -849,7 +849,9 @@ document.addEventListener('DOMContentLoaded', () => {
             contact_inquiry:   { icon: 'fas fa-envelope-open-text',   color: '#34D399' },
             muscle_restriction:{ icon: 'fas fa-person-rays',          color: '#F87171' },
             equipment_updated: { icon: 'fas fa-dumbbell',             color: '#38BDF8' },
-            exercise_swapped:  { icon: 'fas fa-right-left',           color: '#38BDF8' }
+            exercise_swapped:  { icon: 'fas fa-right-left',           color: '#38BDF8' },
+            // The only notification that is a request rather than a report.
+            meal_plan_requested: { icon: 'fas fa-calendar-week',      color: '#FFDB89' }
         };
         return configs[type] || { icon: 'fas fa-bell', color: '#FFDB89' };
     };
@@ -6487,9 +6489,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let clientMealPlan   = null;   // { plan, startDate, option, swaps, currentWeek, goals }
     let clientMealWeek   = 0;      // the week being LOOKED AT, which may not be today's; 0 = not chosen yet
     let clientMealSwapping = null; // { slot, from, original }
-    // Amounts are rewritten for this client's macros unless they ask to see the
-    // plan as the trainer wrote it. A per-device preference, so localStorage.
-    let clientMealAdjust = localStorage.getItem('mealplan_adjust') !== 'off';
+    // The trainer's own amounts for this client, by element address. These win
+    // over the arithmetic: the plan is prepared per client, and a number their
+    // coach typed is not something the app should recompute.
+    let clientMealAmounts = new Map();
 
     const mealPlanWeekAt = (n) => (clientMealPlan?.plan?.weeks || []).find((w) => w.week === n)
         || (clientMealPlan?.plan?.weeks || [])[n - 1] || null;
@@ -6502,24 +6505,71 @@ document.addEventListener('DOMContentLoaded', () => {
         (clientMealPlan?.swaps || []).find((s) => s.week === weekNo && s.slot === slot && (s.from || '') === (from || '')) || null;
 
     // How much of each role this client eats compared with the week as written.
-    // Off, or with no goals set, every factor is 1 and nothing moves.
-    const mealPlanFactors = (week) => (clientMealAdjust
-        ? window.MealItem.factorsFor(week, clientMealPlan?.goals)
-        : { protein: 1, carb: 1, fat: 1, veg: 1, free: 1 });
+    // With no goals on the assignment every factor is 1 and nothing moves.
+    const mealPlanFactors = (week) => window.MealItem.factorsFor(week, clientMealPlan?.goals);
+
+    // The amount the trainer wrote for THIS element, or null for "work it out".
+    const mealPlanAmountFor = (option, slot, name) => {
+        const v = clientMealAmounts.get(window.MealItem.overrideKey(clientMealWeek, option, slot, name));
+        return v === undefined ? null : v;
+    };
 
     window.renderClientMealPlan = async () => {
         const wrap = document.getElementById('client-mealplan');
+        const ask  = document.getElementById('client-mealplan-request');
         if (!wrap) return;
         try {
             const res = await apiFetch('/api/my-meal-plan');
             clientMealPlan = res.ok ? await res.json() : null;
         } catch { clientMealPlan = null; }
 
-        // No plan, no section — the same rule the recipe book follows.
-        if (!clientMealPlan?.plan?.weeks?.length) { wrap.classList.add('hidden'); return; }
-        wrap.classList.remove('hidden');
+        // Three states, and only one of them is a plan: nothing asked for yet,
+        // asked for and waiting, and prepared. A plan the trainer has not
+        // prepared does not reach here at all — the server does not send it.
+        const ready = Boolean(clientMealPlan?.status !== 'requested' && clientMealPlan?.plan?.weeks?.length);
+        wrap.classList.toggle('hidden', !ready);
+        paintMealPlanRequest(ask, !ready, clientMealPlan);
+        if (!ready) return;
+
+        clientMealAmounts = window.MealItem.overrideIndex(clientMealPlan.amounts);
         if (!clientMealWeek) clientMealWeek = clientMealPlan.currentWeek || 1;
         paintClientMealPlan();
+    };
+
+    // The waiting half. Hidden for a client who already has a plan, and the
+    // button is spent once the request is in: asking twice changes nothing on
+    // the trainer's side, so it should not look like it might.
+    const paintMealPlanRequest = (ask, show, state) => {
+        if (!ask) return;
+        ask.classList.toggle('hidden', !show);
+        if (!show) return;
+        const pending = state?.status === 'requested';
+        const btn  = document.getElementById('mealplan-request-btn');
+        const note = document.getElementById('mealplan-request-note');
+        if (btn) {
+            btn.disabled = Boolean(pending);
+            btn.innerHTML = pending
+                ? '<i class="fas fa-hourglass-half mr-2"></i>Solicitud enviada'
+                : '<i class="fas fa-paper-plane mr-2"></i>Solicítale las recomendaciones nutricionales a tu entrenador.';
+        }
+        if (note) {
+            note.classList.toggle('hidden', !pending);
+            const when = pending && state?.requestedAt ? new Date(state.requestedAt) : null;
+            note.querySelector('span').textContent = when
+                ? `Se lo pediste el ${when.toLocaleDateString('es-PR', { day: 'numeric', month: 'long' })}. Te avisará cuando esté listo.`
+                : 'Tu entrenador lo está preparando.';
+        }
+    };
+
+    window.requestMealPlan = async () => {
+        const btn = document.getElementById('mealplan-request-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Enviando...'; }
+        try {
+            const res = await apiFetch('/api/my-meal-plan/request', { method: 'POST' });
+            if (!res.ok) { showToast('No se pudo enviar la solicitud.', 'error'); await window.renderClientMealPlan(); return; }
+            showToast('✓ Tu entrenador ya tiene tu solicitud', 'success');
+        } catch { showToast('Error de conexión.', 'error'); }
+        await window.renderClientMealPlan();
     };
 
     const paintClientMealPlan = () => {
@@ -6553,20 +6603,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p class="text-[9px] uppercase tracking-wider" style="color:${color};opacity:.6">${label}</p>
             </div>`).join('');
 
-        // The toggle only appears when it would do something — a client with no
-        // macro goals has nothing to adjust to.
-        const canAdjust = window.MealItem.isAdjusted(window.MealItem.factorsFor(week, clientMealPlan.goals));
-        const adjustBtn = document.getElementById('mealplan-adjust');
-        if (adjustBtn) {
-            adjustBtn.innerHTML = clientMealAdjust
-                ? '<i class="fas fa-sliders mr-1.5"></i>Ajustado a tus macros'
-                : '<i class="fas fa-file-lines mr-1.5"></i>Como lo escribió tu entrenador';
-            // className last would drop the hidden class, so it goes first.
-            adjustBtn.className = `self-start shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition ${
-                clientMealAdjust ? 'bg-[#FFDB89]/15 text-[#FFDB89]' : 'bg-[#FFDB89]/5 text-[#FFDB89]/40 hover:text-[#FFDB89]/70'}`;
-            adjustBtn.classList.toggle('hidden', !canAdjust);
-        }
-
         const active = clientMealPlan.option || (week.options || [])[0]?.key || 'A';
         document.getElementById('mealplan-options').innerHTML = (week.options || []).map((o) => `
             <button class="mealplan-opt flex-1 px-3 py-2 rounded-lg text-xs font-black transition ${
@@ -6575,7 +6611,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const opt = mealPlanOptionOf(week, active);
         document.getElementById('mealplan-meals').innerHTML = (opt?.meals || [])
-            .map((m) => mealPlanPlateHtml(m, factors)).join('');
+            .map((m) => mealPlanPlateHtml(m, factors, active)).join('');
 
         // Only nag about the week when they have navigated away from today's.
         document.getElementById('mealplan-today-note')
@@ -6584,11 +6620,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // One element: a dot for what it is, the food, and the amount THIS client
     // cooks. Tapping anywhere on the row opens its alternatives.
-    const mealPlanItemHtml = (slot, planItem, factors) => {
+    const mealPlanItemHtml = (slot, planItem, factors, option) => {
         const swap = mealPlanSwapFor(clientMealWeek, slot, planItem.name);
         const shown = swap ? { name: swap.text, amount: swap.amount, unit: swap.unit, role: swap.role } : planItem;
         const def = window.MealItem.ROLES[window.MealItem.roleOf(shown.role)];
-        const amount = window.MealItem.amountLabel(window.MealItem.scaleItem(shown, factors));
+        // An amount the trainer wrote for this client replaces the arithmetic
+        // outright — and is shown as typed, not rounded. It is filed under the
+        // PLAN's food, so swapping this element out leaves it behind: a number
+        // chosen for salmon says nothing about the tilapia that replaced it.
+        const tuned = swap ? null : mealPlanAmountFor(option, slot, planItem.name);
+        const amount = tuned !== null
+            ? window.MealItem.amountLabel({ ...shown, amount: tuned }, true)
+            : window.MealItem.amountLabel(window.MealItem.scaleItem(shown, factors));
         return `
         <button class="mealplan-item w-full flex items-center gap-2.5 py-1.5 text-left rounded-lg hover:bg-[#FFDB89]/5 px-1.5 -mx-1.5 transition"
             data-slot="${escHtml(slot)}" data-from="${escHtml(planItem.name)}">
@@ -6601,12 +6644,12 @@ document.addEventListener('DOMContentLoaded', () => {
         </button>`;
     };
 
-    const mealPlanPlateHtml = (m, factors) => {
+    const mealPlanPlateHtml = (m, factors, option) => {
         const items = m.items || [];
         // A plan written before elements existed still has only its sentence.
         // It keeps the behaviour it shipped with: one swap for the whole plate.
         const body = items.length
-            ? `<div class="divide-y divide-[#FFDB89]/5">${items.map((it) => mealPlanItemHtml(m.slot, it, factors)).join('')}</div>`
+            ? `<div class="divide-y divide-[#FFDB89]/5">${items.map((it) => mealPlanItemHtml(m.slot, it, factors, option)).join('')}</div>`
             : (() => {
                 const swap = mealPlanSwapFor(clientMealWeek, m.slot, '');
                 return `
@@ -6679,8 +6722,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('mealplan-swap-title').innerHTML = `<i class="fas fa-rotate mr-2"></i>${planItem ? 'Cambiar alimento' : 'Cambiar plato'}`;
         document.getElementById('mealplan-swap-sub').textContent = `${slot} · semana ${clientMealWeek}`;
+        // The plan's own element is shown at the amount the trainer tuned for this
+        // client, the same as the row they just tapped. A sheet that disagreed
+        // with the plate above it would be the thing that stops them trusting it.
+        const tunedHere = planItem ? mealPlanAmountFor(active, slot, planItem.name) : null;
         document.getElementById('mealplan-swap-body').innerHTML = choices.map((c) => {
-            const amount = window.MealItem.amountLabel(window.MealItem.scaleItem(c.item, factors));
+            const amount = (c.item === planItem && tunedHere !== null)
+                ? window.MealItem.amountLabel({ ...c.item, amount: tunedHere }, true)
+                : window.MealItem.amountLabel(window.MealItem.scaleItem(c.item, factors));
             const on = c.item.name === current;
             return `
                 <button class="mealplan-pick w-full text-left rounded-xl border p-3 transition ${
@@ -6725,18 +6774,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     document.addEventListener('click', async (e) => {
+        // The request button is the one control that exists BEFORE there is a
+        // plan, so it is handled above the guard below.
+        if (e.target.closest?.('#mealplan-request-btn')) { await window.requestMealPlan(); return; }
         if (!clientMealPlan) return;
         const t = e.target;
 
         const optBtn = t.closest?.('.mealplan-opt');
         if (optBtn) { saveMealPlanChoice({ option: optBtn.dataset.key }); return; }
 
-        if (t.closest?.('#mealplan-adjust')) {
-            clientMealAdjust = !clientMealAdjust;
-            try { localStorage.setItem('mealplan_adjust', clientMealAdjust ? 'on' : 'off'); } catch { /* private window */ }
-            paintClientMealPlan();
-            return;
-        }
 
         if (t.closest?.('#mealplan-week-prev')) { clientMealWeek -= 1; paintClientMealPlan(); return; }
         if (t.closest?.('#mealplan-week-next')) { clientMealWeek += 1; paintClientMealPlan(); return; }
@@ -7329,12 +7375,375 @@ document.addEventListener('DOMContentLoaded', () => {
                         <i class="fas fa-pen mr-1"></i>Editar
                     </button>
                     <button class="mealplan-assign flex-1 px-3 py-2 rounded-xl bg-[#FFDB89] text-[#030303] text-xs font-black transition hover:bg-[#FFDB89]/80" data-id="${escHtml(p._id)}">
-                        <i class="fas fa-users mr-1"></i>Asignar
+                        <i class="fas fa-users mr-1"></i>Asignar en grupo
                     </button>
                 </div>
             </div>`;
         }).join('');
     };
+
+    // ── Who is waiting, who is running ──────────────────────────────────────
+    //
+    // The list that decides what a trainer does next. A client cannot put
+    // themselves on a plan or see one before it is prepared, so an unanswered
+    // request is the only thing on this screen that is actually waiting on
+    // somebody — it sorts to the top and says so in amber.
+    let mealPlanClients = [];
+
+    window.renderMealPlanClients = async () => {
+        const list = document.getElementById('mealplan-clients');
+        if (!list) return;
+        try {
+            const res = await apiFetch('/api/meal-plan-clients');
+            mealPlanClients = res.ok ? await res.json() : [];
+        } catch { mealPlanClients = []; }
+
+        const rank = { requested: 0, ready: 1, none: 2 };
+        const rows = [...mealPlanClients].sort((a, b) => (rank[a.status] - rank[b.status])
+            || a.name.localeCompare(b.name, 'es'));
+        const waiting = rows.filter((c) => c.status === 'requested').length;
+
+        const count = document.getElementById('mealplan-clients-count');
+        if (count) count.textContent = waiting
+            ? `${waiting} esperando por ti`
+            : `${rows.filter((c) => c.status === 'ready').length} con plan · ${rows.length} en total`;
+
+        if (!rows.length) {
+            list.innerHTML = '<p class="text-xs text-[#FFDB89]/30 py-4 text-center">No tienes clientes todavía.</p>';
+            return;
+        }
+
+        list.innerHTML = rows.map((c) => {
+            // A newer evaluation than the one the plan was written from is worth
+            // saying out loud: the amounts are frozen on purpose, so nobody is
+            // told about it unless somebody looks.
+            const restale = c.status === 'ready' && c.evalDate && c.planEvalDate && c.evalDate > c.planEvalDate;
+            const pill = c.status === 'requested'
+                ? ['bg-[#FFDB89]/15 text-[#FFDB89]', `Lo pidió${c.requestedAt ? ` el ${new Date(c.requestedAt).toLocaleDateString('es-PR', { day: 'numeric', month: 'short' })}` : ''}`]
+                : c.status === 'ready'
+                    ? ['bg-green-400/10 text-green-400', `Semana ${c.week} de ${c.weeks}`]
+                    : ['bg-[#FFDB89]/5 text-[#FFDB89]/40', 'Sin plan'];
+            return `
+            <div class="flex items-center gap-3 p-2.5 rounded-xl border ${
+                c.status === 'requested' ? 'border-[#FFDB89]/40 bg-[#FFDB89]/5' : 'border-[#FFDB89]/10 bg-[#0D0D0D]'
+            }">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-[#FFDB89] truncate">${escHtml(c.name)}</p>
+                    <p class="text-[10px] mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span class="font-bold px-1.5 py-0.5 rounded ${pill[0]}">${escHtml(pill[1])}</span>
+                        ${c.planName ? `<span class="text-[#FFDB89]/35 truncate">${escHtml(c.planName)}</span>` : ''}
+                        ${c.tuned ? `<span class="text-[#FFDB89]/35">${c.tuned} a mano</span>` : ''}
+                        ${restale ? `<span class="text-amber-400/80 font-bold">evaluación nueva del ${escHtml(c.evalDate)}</span>` : ''}
+                    </p>
+                </div>
+                <button class="mealplan-prep shrink-0 px-3 py-2 rounded-xl text-xs font-black transition ${
+                    c.status === 'ready'
+                        ? 'bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 text-[#FFDB89]'
+                        : 'bg-[#FFDB89] text-[#030303] hover:bg-[#FFDB89]/80'
+                }" data-id="${escHtml(c.clientId)}">
+                    <i class="fas fa-${c.status === 'ready' ? 'sliders' : 'calendar-check'} mr-1"></i>${c.status === 'ready' ? 'Ajustar' : 'Preparar'}
+                </button>
+            </div>`;
+        }).join('');
+    };
+
+    // ── The preparation sheet ───────────────────────────────────────────────
+    //
+    // Every amount on it starts as arithmetic — the week's targets against this
+    // client's macros — and anything the trainer types replaces that number
+    // outright, for this client only. Overrides are held in a Map rather than
+    // read off the DOM at the end, because only the open week is rendered: a
+    // number typed into week 2 has to survive opening week 5.
+    let mealPrep = null;            // what the server sent for this client
+    let mealPrepOverrides = new Map();
+    let mealPrepOpenWeek = 0;
+
+    const mealPrepGoals = () => ({
+        calories: Number(document.getElementById('prep-cal')?.value)  || 0,
+        protein:  Number(document.getElementById('prep-pro')?.value)  || 0,
+        carbs:    Number(document.getElementById('prep-carb')?.value) || 0,
+        fat:      Number(document.getElementById('prep-fat')?.value)  || 0,
+    });
+
+    const mealPrepPlan = () => mealPlansCache.find((p) => String(p._id) === document.getElementById('prep-plan')?.value) || null;
+
+    // The number this element would land on with nobody interfering: the same
+    // arithmetic, and the same rounding, the client's own page does.
+    const mealPrepDefault = (item, factors) => {
+        const scaled = window.MealItem.scaleItem(item, factors);
+        const amount = Number(scaled.amount) || 0;
+        if (!(amount > 0)) return 0;
+        return window.MealItem.roundAmount(amount, window.MealItem.unitKeyOf(item.unit));
+    };
+
+    const mealPrepWeekHtml = (week, open) => {
+        const factors = window.MealItem.factorsFor(week, mealPrepGoals());
+        const n = week.week;
+        const body = !open ? '' : `
+        <div class="px-3 pb-3 space-y-3">
+            ${(week.options || []).map((o) => `
+                <div>
+                    <p class="text-[10px] font-black text-[#FFDB89]/70 uppercase tracking-wider mb-1.5">${escHtml(o.label || `Prep ${o.key}`)}</p>
+                    <div class="space-y-2">
+                        ${(o.meals || []).map((m) => `
+                            <div>
+                                <p class="text-[9px] font-bold text-[#FFDB89]/35 uppercase tracking-wider mb-1">${escHtml(m.slot)}</p>
+                                ${(m.items || []).map((it) => {
+                                    const def = mealPrepDefault(it, factors);
+                                    const key = window.MealItem.overrideKey(n, o.key, m.slot, it.name);
+                                    const over = mealPrepOverrides.get(key);
+                                    // Two decimals in the box. A third of a cup is
+                                    // 0.3333333333 as a number and ⅓ as a measure;
+                                    // the box holds the number you can type over
+                                    // and the label beside it is what the client
+                                    // will actually read.
+                                    const box = def ? Math.round(def * 100) / 100 : '';
+                                    const shown = over ? over.amount : box;
+                                    const label = window.MealItem.amountLabel(
+                                        { amount: over ? over.amount : def, unit: it.unit }, Boolean(over));
+                                    const role = window.MealItem.ROLES[window.MealItem.roleOf(it.role)];
+                                    return `
+                                    <div class="flex items-center gap-2 py-0.5">
+                                        <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:${role.color}"></span>
+                                        <span class="flex-1 min-w-0 text-[12px] text-[#FFDB89]/80 truncate" title="${escHtml(it.name)}">${escHtml(it.name)}</span>
+                                        ${over ? '<span class="hidden sm:inline text-[9px] font-bold uppercase tracking-wider text-[#FFDB89]/60 shrink-0" title="Cantidad escrita a mano">a mano</span>' : ''}
+                                        <input type="number" min="0" step="0.25" class="prep-amt w-20 shrink-0 px-2 py-1 bg-[#FFDB89]/5 border rounded-lg text-[#FFDB89] text-xs font-bold text-right tabular-nums outline-none focus:ring-1 focus:ring-[#FFDB89]/40 ${
+                                            over ? 'border-[#FFDB89]/50' : 'border-[#FFDB89]/15'}"
+                                            value="${shown}"
+                                            data-week="${n}" data-option="${escHtml(o.key)}" data-slot="${escHtml(m.slot)}"
+                                            data-name="${escHtml(it.name)}" data-default="${box}" data-unit="${escHtml(it.unit || '')}">
+                                        <span class="w-14 sm:w-20 shrink-0 text-[10px] text-[#FFDB89]/40 truncate" title="${escHtml(label)}">${escHtml(label)}</span>
+                                    </div>`;
+                                }).join('')}
+                            </div>`).join('')}
+                    </div>
+                </div>`).join('')}
+        </div>`;
+        const tuned = (week.options || []).reduce((sum, o) => sum + (o.meals || []).reduce((n2, m) => n2
+            + (m.items || []).filter((it) => mealPrepOverrides.has(window.MealItem.overrideKey(n, o.key, m.slot, it.name))).length, 0), 0);
+        return `
+        <div class="rounded-xl border ${open ? 'border-[#FFDB89]/35' : 'border-[#FFDB89]/10'} bg-[#0D0D0D] overflow-hidden">
+            <button type="button" class="prep-week w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-[#FFDB89]/5 transition" data-week="${n}">
+                <span class="text-xs font-black text-[#FFDB89] shrink-0">Semana ${n}</span>
+                <span class="flex-1 min-w-0 text-[11px] text-[#FFDB89]/40 truncate">${escHtml(week.objective || '')}</span>
+                ${tuned ? `<span class="text-[9px] font-bold text-[#FFDB89]/60 shrink-0">${tuned} a mano</span>` : ''}
+                <span class="text-[10px] text-[#FFDB89]/35 shrink-0 tabular-nums">${week.calories || 0} kcal</span>
+                <i class="fas fa-chevron-${open ? 'up' : 'down'} text-[10px] text-[#FFDB89]/30 shrink-0"></i>
+            </button>
+            ${body}
+        </div>`;
+    };
+
+    const renderMealPrepWeeks = () => {
+        const host = document.getElementById('prep-weeks');
+        if (!host) return;
+        const plan = mealPrepPlan();
+        const weeks = plan?.weeks || [];
+        host.innerHTML = weeks.length
+            ? weeks.map((w) => mealPrepWeekHtml(w, w.week === mealPrepOpenWeek)).join('')
+            : '<p class="text-xs text-[#FFDB89]/30 py-4 text-center">Esta combinación no tiene semanas todavía.</p>';
+    };
+
+    window.openMealPrep = async (clientId) => {
+        const modal = document.getElementById('mealprep-prep-modal');
+        if (!modal) return;
+        if (!mealPlansCache.length) await window.renderMealPlans();
+        if (!mealPlansCache.length) { showToast('Crea una combinación primero.', 'info'); return; }
+
+        let data = null;
+        try {
+            const res = await apiFetch(`/api/meal-plan-prep/${clientId}`);
+            data = res.ok ? await res.json() : null;
+        } catch { /* reported below */ }
+        if (!data) { showToast('No se pudo cargar al cliente.', 'error'); return; }
+        mealPrep = data;
+        // Held whole rather than as a number per key: the key is lower-cased for
+        // matching, and rebuilding a food's name out of it would send the plan
+        // back in lower case.
+        mealPrepOverrides = new Map();
+        (data.amounts || []).forEach((a) => {
+            const amount = Number(a?.amount) || 0;
+            if (!a?.name || !(amount > 0)) return;
+            mealPrepOverrides.set(window.MealItem.overrideKey(a.week, a.option, a.slot, a.name), {
+                week: Number(a.week) || 1, option: a.option || 'A', slot: a.slot || '', name: a.name, amount,
+            });
+        });
+
+        document.getElementById('prep-client-name').textContent = data.name;
+        const sel = document.getElementById('prep-plan');
+        sel.innerHTML = mealPlansCache.map((p) => `<option value="${escHtml(p._id)}">${escHtml(p.name)}</option>`).join('');
+        sel.value = data.planId && mealPlansCache.some((p) => String(p._id) === data.planId)
+            ? data.planId : String(mealPlansCache[0]._id);
+        document.getElementById('prep-date').value = data.startDate || getTodayStr();
+
+        // The default is the evaluation, every time. A plan already prepared
+        // opens on the numbers it was prepared with, which may be the ones the
+        // trainer typed over them.
+        const g = (data.goals.calories || data.goals.protein) ? data.goals : data.evalGoals;
+        document.getElementById('prep-cal').value  = g.calories || '';
+        document.getElementById('prep-pro').value  = g.protein  || '';
+        document.getElementById('prep-carb').value = g.carbs    || '';
+        document.getElementById('prep-fat').value  = g.fat      || '';
+        paintMealPrepEvalNote();
+
+        const rm = document.getElementById('prep-remove');
+        if (rm) {
+            rm.classList.toggle('hidden', data.status === 'none');
+            rm.innerHTML = data.status === 'ready'
+                ? '<i class="fas fa-user-minus mr-1"></i>Quitar el plan'
+                : '<i class="fas fa-xmark mr-1"></i>Descartar la solicitud';
+        }
+        document.getElementById('save-prep-modal').textContent = data.status === 'ready'
+            ? 'Guardar cambios' : 'Autorizar y preparar';
+
+        mealPrepOpenWeek = 1;
+        renderMealPrepWeeks();
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    };
+
+    const paintMealPrepEvalNote = () => {
+        const el = document.getElementById('prep-eval-note');
+        if (!el || !mealPrep) return;
+        const ev = mealPrep.evaluation;
+        const stale = mealPrep.planEvalDate && ev?.date && ev.date > mealPrep.planEvalDate;
+        el.innerHTML = ev?.date
+            ? `Macros de su evaluación del <strong class="text-[#FFDB89]/60">${escHtml(ev.date)}</strong>${
+                ev.weight ? ` · ${escHtml(String(ev.weight))} lb` : ''}${
+                stale ? ' <span class="text-amber-400/80 font-bold">— el plan se preparó con una anterior</span>' : ''}`
+            : 'Este cliente no tiene evaluaciones. Escribe los macros a mano.';
+    };
+
+    const closeMealPrep = () => {
+        const modal = document.getElementById('mealprep-prep-modal');
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        mealPrep = null;
+        mealPrepOverrides = new Map();
+    };
+
+    const saveMealPrep = async () => {
+        if (!mealPrep) return;
+        const plan = mealPrepPlan();
+        if (!plan) { showToast('Elige una combinación.', 'error'); return; }
+        const btn = document.getElementById('save-prep-modal');
+        const label = btn?.textContent;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+        try {
+            const res = await apiFetch(`/api/meal-plan-prep/${mealPrep.clientId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    planId:    String(plan._id),
+                    startDate: document.getElementById('prep-date')?.value || getTodayStr(),
+                    goals:     mealPrepGoals(),
+                    // The evaluation these macros came from, so a newer one can be
+                    // spotted later instead of overwriting this quietly.
+                    evalDate:  mealPrep.evaluation?.date || '',
+                    amounts:   [...mealPrepOverrides.values()],
+                }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                showToast(err.message || 'No se pudo preparar el plan.', 'error');
+                return;
+            }
+            const out = await res.json();
+            const who = mealPrep.name;
+            closeMealPrep();
+            await Promise.all([window.renderMealPlanClients(), window.renderMealPlans()]);
+            showToast(`✓ ${who} ya puede ver su meal prep${out.tuned ? ` · ${out.tuned} cantidad${out.tuned === 1 ? '' : 'es'} a mano` : ''}`, 'success');
+        } catch { showToast('Error de conexión.', 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = label || 'Guardar'; } }
+    };
+
+    const removeMealPrep = async () => {
+        if (!mealPrep) return;
+        const yes = await showConfirm(
+            mealPrep.status === 'ready'
+                ? `¿Quitarle el meal prep a ${mealPrep.name}? Volverá a ver solo el botón para pedírtelo.`
+                : `¿Descartar la solicitud de ${mealPrep.name}? Podrá volver a pedírtelo.`,
+            { confirmLabel: mealPrep.status === 'ready' ? 'Quitar' : 'Descartar', danger: true });
+        if (!yes) return;
+        try {
+            const res = await apiFetch(`/api/meal-plan-prep/${mealPrep.clientId}`, { method: 'DELETE' });
+            if (!res.ok) { showToast('No se pudo quitar el plan.', 'error'); return; }
+            closeMealPrep();
+            await Promise.all([window.renderMealPlanClients(), window.renderMealPlans()]);
+            showToast('Plan quitado.', 'info');
+        } catch { showToast('Error de conexión.', 'error'); }
+    };
+
+    document.addEventListener('click', async (e) => {
+        const t = e.target;
+
+        const prep = t.closest?.('.mealplan-prep');
+        if (prep) { await window.openMealPrep(prep.dataset.id); return; }
+
+        if (t.closest?.('#close-prep-modal') || t.closest?.('#cancel-prep-modal')) { closeMealPrep(); return; }
+        if (t.closest?.('#save-prep-modal')) { await saveMealPrep(); return; }
+        if (t.closest?.('#prep-remove'))     { await removeMealPrep(); return; }
+
+        const weekBtn = t.closest?.('.prep-week');
+        if (weekBtn) {
+            const n = Number(weekBtn.dataset.week);
+            mealPrepOpenWeek = (mealPrepOpenWeek === n) ? 0 : n;
+            renderMealPrepWeeks();
+            return;
+        }
+
+        // Back to the evaluation. Only the macros reset — an amount the trainer
+        // typed by hand is a decision about a food, not about the macros, and
+        // throwing it away here would be a surprise.
+        if (t.closest?.('#prep-use-eval')) {
+            if (!mealPrep) return;
+            const g = mealPrep.evalGoals || {};
+            document.getElementById('prep-cal').value  = g.calories || '';
+            document.getElementById('prep-pro').value  = g.protein  || '';
+            document.getElementById('prep-carb').value = g.carbs    || '';
+            document.getElementById('prep-fat').value  = g.fat      || '';
+            renderMealPrepWeeks();
+        }
+    });
+
+    document.addEventListener('input', (e) => {
+        const amt = e.target.closest?.('.prep-amt');
+        if (amt) {
+            const d = amt.dataset;
+            const key = window.MealItem.overrideKey(d.week, d.option, d.slot, d.name);
+            const typed = Number(amt.value);
+            // Back on the computed number, or emptied, is not an override — it is
+            // the trainer leaving it to the arithmetic, so the row is dropped
+            // rather than storing a copy of what we would have worked out anyway.
+            if (!(typed > 0) || typed === Number(d.default)) {
+                mealPrepOverrides.delete(key);
+            } else {
+                mealPrepOverrides.set(key, { week: Number(d.week) || 1, option: d.option,
+                    slot: d.slot, name: d.name, amount: typed });
+            }
+            const over = mealPrepOverrides.has(key);
+            amt.classList.toggle('border-[#FFDB89]/50', over);
+            amt.classList.toggle('border-[#FFDB89]/15', !over);
+            // The measure beside the box is what the client will read, so it has
+            // to follow the box rather than wait for a re-render.
+            const label = amt.nextElementSibling;
+            if (label) {
+                const text = window.MealItem.amountLabel({ amount: typed, unit: d.unit || '' }, true)
+                    || window.MealItem.amountLabel({ amount: Number(d.default), unit: d.unit || '' }, true);
+                label.textContent = text;
+                label.title = text;
+            }
+        }
+    });
+
+    document.addEventListener('change', (e) => {
+        // A different combination, or different macros, means different numbers
+        // in every box that nobody has typed into.
+        if (e.target.closest?.('#prep-plan') || e.target.closest?.('.prep-goal')) {
+            if (!mealPrep) return;
+            if (e.target.closest?.('#prep-plan')) mealPrepOpenWeek = 1;
+            renderMealPrepWeeks();
+        }
+    });
 
     // One week, collapsed to its headline until opened. Eight weeks expanded at
     // once is a wall; eight headlines is a plan you can read.
@@ -7569,6 +7978,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnText) btnText.textContent = 'Nuevo plan';
             if (btn) btn.onclick = () => window.openMealPlanModal(null);
             window.renderMealPlans();
+            window.renderMealPlanClients();
         } else {
             if (btnText) btnText.textContent = 'Nueva receta';
             if (btn) btn.onclick = () => window.openRecipeModal(null);

@@ -872,7 +872,10 @@ const NotificationSchema = new mongoose.Schema({
             // Live sessions. NOTE: this enum is strict — a type missing from it makes
             // Notification.create() throw a ValidationError that createNotification()
             // swallows in its own try/catch, so you get NO notification and NO error.
-            'live_session_missed', 'live_session_ended'
+            'live_session_missed', 'live_session_ended',
+            // A client asking for a meal plan. The only notification that is a
+            // REQUEST rather than a report, so it is the one worth acting on.
+            'meal_plan_requested'
         ],
         required: true
     },
@@ -1091,9 +1094,45 @@ const MealPlan = mongoose.model('MealPlan', MealPlanSchema);
 // client changed, so a swap is private to them and the trainer's plan stays the
 // plan for everyone else on it.
 const MealPlanAssignmentSchema = new mongoose.Schema({
-    planId:    { type: mongoose.Schema.Types.ObjectId, ref: 'MealPlan', required: true },
+    // Null while a client has only ASKED for a plan. One row per client either
+    // way, so a request and the plan that answers it are the same document and
+    // cannot drift apart.
+    planId:    { type: mongoose.Schema.Types.ObjectId, ref: 'MealPlan', default: null },
     clientId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // 'requested' is a client knocking on the door; 'ready' is the trainer
+    // having opened it. Nothing of the plan reaches the client until 'ready',
+    // which is the whole point: a meal plan is prescribed, not collected.
+    // Default 'ready' so every assignment made before this existed keeps working.
+    status:      { type: String, enum: ['requested', 'ready'], default: 'ready' },
+    requestedAt: { type: Date, default: null },
+    preparedAt:  { type: Date, default: null },
+    // The macros this client's plates were written against, FROZEN at the moment
+    // the trainer prepared them — normally copied from the goals their latest
+    // evaluation produced. Frozen rather than read live so a new weigh-in cannot
+    // silently rewrite somebody's dinner; re-preparing is the trainer's call.
+    // All zero means fall back to the client's own macroSettings, which is what
+    // a plan assigned before preparation existed still does.
+    goals: {
+        calories: { type: Number, default: 0 },
+        protein:  { type: Number, default: 0 },
+        carbs:    { type: Number, default: 0 },
+        fat:      { type: Number, default: 0 },
+    },
+    // Which evaluation those goals came from, so the trainer can be told when a
+    // newer one has landed.
+    evalDate: { type: String, default: '' },
+    // The trainer overruling the arithmetic, one element at a time. Keyed by
+    // where the element sits AND what it is called, the same way a swap is: this
+    // is the personalisation, since every client eats much the same foods in
+    // different amounts.
+    amounts: [{
+        week:   { type: Number, default: 1 },
+        option: { type: String, default: 'A' },
+        slot:   { type: String, default: '' },
+        name:   { type: String, default: '' },
+        amount: { type: Number, default: 0 },
+    }],
     // 'YYYY-MM-DD'. Which week the client is on is counted from here, so the plan
     // advances on its own and nobody has to remember to move them along.
     startDate: { type: String, default: '' },
@@ -3589,6 +3628,45 @@ const mealPlateText = (items) => items
         .filter(Boolean).join(' '))
     .join(' · ').slice(0, 600);
 
+// The trainer's per-element amounts for ONE client. Same bounds as a plan's own
+// amounts, and the same key a swap uses, minus the client: week, prep, slot and
+// the element's name. An entry with no name addresses nothing and is dropped.
+const cleanMealAmounts = (list) => (Array.isArray(list) ? list : []).slice(0, 2000)
+    .map((a) => ({
+        week:   Math.max(1, Math.min(52, Math.round(Number(a?.week) || 1))),
+        option: String(a?.option || 'A').trim().slice(0, 2).toUpperCase() || 'A',
+        slot:   String(a?.slot || '').trim().slice(0, 30),
+        name:   String(a?.name || '').trim().slice(0, 200),
+        amount: Math.max(0, Math.min(10000, Number(a?.amount) || 0)),
+    }))
+    .filter((a) => a.name && a.amount > 0);
+
+// The four numbers a plate is scaled against. Zero means "not set", which the
+// scaling reads as "do not scale" rather than as a goal of zero.
+const cleanMealGoals = (g) => ({
+    calories: Math.max(0, Math.min(20000, Math.round(Number(g?.calories) || 0))),
+    protein:  Math.max(0, Math.min(1000,  Math.round(Number(g?.protein)  || 0))),
+    carbs:    Math.max(0, Math.min(2000,  Math.round(Number(g?.carbs)    || 0))),
+    fat:      Math.max(0, Math.min(1000,  Math.round(Number(g?.fat)      || 0))),
+});
+
+// What the client's plates are scaled against: the goals frozen onto the
+// assignment when the trainer prepared it, or — for a plan assigned before
+// preparation existed — the client's own macro goals, read live.
+const mealGoalsFor = (assignment, macroSettings) => {
+    const g = assignment?.goals || {};
+    if (g.calories || g.protein || g.carbs || g.fat) {
+        return { calories: g.calories || 0, protein: g.protein || 0, carbs: g.carbs || 0, fat: g.fat || 0 };
+    }
+    const ms = macroSettings || {};
+    return {
+        calories: Number(ms.targetCal)   || 0,
+        protein:  Number(ms.goalProtein) || 0,
+        carbs:    Number(ms.goalCarbs)   || 0,
+        fat:      Number(ms.goalFat)     || 0,
+    };
+};
+
 // Trim an incoming plan to the stored shape. Everything is bounded, because
 // these strings are rendered straight into a client's day.
 const cleanMealPlanWeeks = (weeks) => (Array.isArray(weeks) ? weeks : [])
@@ -3771,7 +3849,9 @@ app.put('/api/meal-plans/:id/assignments', authenticateToken, async (req, res) =
             await MealPlanAssignment.updateOne(
                 { clientId },
                 {
-                    $set: { planId: plan._id, trainerId: plan.trainerId },
+                    // Putting a client on the roster IS authorising them: it is the
+                    // trainer's own action, so it clears a pending request too.
+                    $set: { planId: plan._id, trainerId: plan.trainerId, status: 'ready', preparedAt: new Date() },
                     // A client already running stays where they are; only a client
                     // new to this plan gets today's start date and option A.
                     $setOnInsert: { startDate, option: 'A', swaps: [] },
@@ -3791,26 +3871,28 @@ app.get('/api/my-meal-plan', authenticateToken, async (req, res) => {
     try {
         const a = await MealPlanAssignment.findOne({ clientId: req.user.id }).lean();
         if (!a) return res.json(null);
+        // A request is all there is until the trainer prepares one. Nothing of
+        // any plan is sent back — not the name, not a week — because a plan the
+        // trainer has not authorised is not this client's plan.
+        if (a.status === 'requested' || !a.planId) {
+            return res.json({ status: 'requested', requestedAt: a.requestedAt || null });
+        }
         const plan = await MealPlan.findOne({ _id: a.planId, isArchived: { $ne: true } }).lean();
         if (!plan) return res.json(null);
-        // The client's own macro goals ride along, because the amounts on the
-        // plate are rewritten against them. They are sent rather than applied
-        // here: the week being looked at is a front-end decision, and every week
-        // has its own targets to scale against.
+        // The macros the plates are rewritten against ride along rather than
+        // being applied here: the week being looked at is a front-end decision,
+        // and every week has its own targets to scale from.
         const me = await User.findById(req.user.id).select('macroSettings').lean();
-        const ms = me?.macroSettings || {};
         res.json({
+            status:      'ready',
             plan,
             startDate:   a.startDate,
             option:      a.option || 'A',
             swaps:       a.swaps || [],
+            // The trainer's own numbers, which win over the arithmetic.
+            amounts:     a.amounts || [],
             currentWeek: mealPlanWeekFor(a.startDate, (plan.weeks || []).length),
-            goals: {
-                calories: Number(ms.targetCal)    || 0,
-                protein:  Number(ms.goalProtein)  || 0,
-                carbs:    Number(ms.goalCarbs)    || 0,
-                fat:      Number(ms.goalFat)      || 0,
-            },
+            goals:       mealGoalsFor(a, me?.macroSettings),
         });
     } catch (e) {
         console.error('Error fetching my meal plan:', e);
@@ -3854,6 +3936,237 @@ app.put('/api/my-meal-plan', authenticateToken, async (req, res) => {
     } catch (e) {
         console.error('Error updating my meal plan:', e);
         res.status(500).json({ message: 'Error guardando el cambio.' });
+    }
+});
+
+// POST /api/my-meal-plan/request — the one move a client has here: asking.
+//
+// A client cannot put themselves on a plan, pick one, or see one before it is
+// prepared. They can knock, and the knock arrives as a notification, because a
+// meal plan is written FROM an evaluation by the person who did the evaluating.
+app.post('/api/my-meal-plan/request', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'client') return res.status(403).json({ message: 'Solo un cliente puede pedir un plan.' });
+    try {
+        const existing = await MealPlanAssignment.findOne({ clientId: req.user.id });
+        if (existing && existing.status === 'ready' && existing.planId) {
+            return res.status(409).json({ message: 'Ya tienes un plan preparado.' });
+        }
+        const me = await User.findById(req.user.id).select('name lastName trainerId').lean();
+        if (!me) return res.status(404).json({ message: 'Usuario no encontrado.' });
+
+        // Asking twice does not notify twice. A client tapping the button again
+        // because nothing visibly happened must not fill the trainer's bell with
+        // the same sentence; the pending request is already there to act on.
+        const already = existing && existing.status === 'requested' && existing.requestedAt;
+        if (!already) {
+            await MealPlanAssignment.updateOne(
+                { clientId: req.user.id },
+                {
+                    $set: { status: 'requested', requestedAt: new Date(), planId: null,
+                        trainerId: me.trainerId || existing?.trainerId || req.user.id },
+                    $setOnInsert: { startDate: '', option: 'A', swaps: [], amounts: [] },
+                },
+                { upsert: true },
+            );
+            const who = `${me.name || ''} ${me.lastName || ''}`.trim() || 'Un cliente';
+            await createNotification({
+                clientId:   req.user.id,
+                clientName: who,
+                type:       'meal_plan_requested',
+                title:      'Pidió su meal prep',
+                message:    `${who} te pidió sus recomendaciones nutricionales. Prepárale el plan desde su última evaluación.`,
+                data:       { clientId: String(req.user.id) },
+            });
+        }
+        const row = await MealPlanAssignment.findOne({ clientId: req.user.id }).lean();
+        res.json({ ok: true, status: 'requested', requestedAt: row?.requestedAt || null, repeated: Boolean(already) });
+    } catch (e) {
+        console.error('Error requesting meal plan:', e);
+        res.status(500).json({ message: 'Error enviando la solicitud.' });
+    }
+});
+
+// Whose meal plans may this user prepare? A trainer their own clients', the
+// superadmin anyone's, a client nobody's.
+const mealPlanClientFilter = async (req) => (await isSuperadmin(req))
+    ? { role: 'client', isDeleted: { $ne: true } }
+    : { role: 'client', isDeleted: { $ne: true }, trainerId: req.user.id };
+
+// The date of the client's most recent evaluation — the weigh-in the macro
+// calculator worked from, and therefore what the plan should be written to.
+const latestEvalFor = async (clientId) => {
+    const m = await BodyMeasurement.findOne({ clientId }).sort({ date: -1, createdAt: -1 })
+        .select('date weight bodyFat').lean();
+    return m ? { date: m.date || '', weight: m.weight ?? null, bodyFat: m.bodyFat ?? null } : null;
+};
+
+// GET /api/meal-plan-clients — every client this trainer has, and where their
+// meal prep stands. One call, because the panel is a single list: who is
+// waiting, who is running, and who has had a new evaluation since their plan
+// was written.
+app.get('/api/meal-plan-clients', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const clients = await User.find(await mealPlanClientFilter(req))
+            .select('name lastName email macroSettings').sort({ name: 1 }).limit(1000).lean();
+        const ids = clients.map((c) => c._id);
+        const [rows, plans, evals] = await Promise.all([
+            MealPlanAssignment.find({ clientId: { $in: ids } }).lean(),
+            MealPlan.find({ isArchived: { $ne: true } }).select('name weeks').lean(),
+            BodyMeasurement.aggregate([
+                { $match: { clientId: { $in: ids } } },
+                { $sort: { date: 1 } },
+                { $group: { _id: '$clientId', date: { $last: '$date' } } },
+            ]),
+        ]);
+        const byClient = new Map(rows.map((a) => [String(a.clientId), a]));
+        const byPlan   = new Map(plans.map((p) => [String(p._id), p]));
+        const byEval   = new Map(evals.map((e) => [String(e._id), e.date]));
+
+        res.json(clients.map((c) => {
+            const a    = byClient.get(String(c._id));
+            const plan = a?.planId ? byPlan.get(String(a.planId)) : null;
+            return {
+                clientId:  String(c._id),
+                name:      `${c.name || ''} ${c.lastName || ''}`.trim() || c.email,
+                status:    a ? (a.planId && a.status === 'ready' ? 'ready' : 'requested') : 'none',
+                planId:    a?.planId ? String(a.planId) : '',
+                planName:  plan?.name || '',
+                startDate: a?.startDate || '',
+                week:      plan ? mealPlanWeekFor(a.startDate, (plan.weeks || []).length) : 0,
+                weeks:     (plan?.weeks || []).length,
+                requestedAt: a?.requestedAt || null,
+                preparedAt:  a?.preparedAt  || null,
+                evalDate:    byEval.get(String(c._id)) || '',
+                // The evaluation the plan was written from, so a newer one can be
+                // pointed out rather than quietly rewriting anybody's amounts.
+                planEvalDate: a?.evalDate || '',
+                tuned:       (a?.amounts || []).length,
+            };
+        }));
+    } catch (e) {
+        console.error('Error listing meal plan clients:', e);
+        res.status(500).json({ message: 'Error cargando los clientes.' });
+    }
+});
+
+// GET /api/meal-plan-prep/:clientId — everything the preparation sheet needs
+// for ONE client: what they are on now, the amounts already tuned for them, and
+// the macros their latest evaluation produced, which is what a fresh plan is
+// written to by default.
+app.get('/api/meal-plan-prep/:clientId', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    if (!mongoose.Types.ObjectId.isValid(String(req.params.clientId || '')))
+        return res.status(404).json({ message: 'Cliente no encontrado.' });
+    try {
+        const client = await User.findOne({ _id: req.params.clientId, ...(await mealPlanClientFilter(req)) })
+            .select('name lastName email macroSettings').lean();
+        if (!client) return res.status(404).json({ message: 'Cliente no encontrado.' });
+        const [a, evaluation] = await Promise.all([
+            MealPlanAssignment.findOne({ clientId: client._id }).lean(),
+            latestEvalFor(client._id),
+        ]);
+        const ms = client.macroSettings || {};
+        res.json({
+            clientId: String(client._id),
+            name:     `${client.name || ''} ${client.lastName || ''}`.trim() || client.email,
+            status:   a ? (a.planId && a.status === 'ready' ? 'ready' : 'requested') : 'none',
+            planId:   a?.planId ? String(a.planId) : '',
+            startDate: a?.startDate || '',
+            requestedAt: a?.requestedAt || null,
+            preparedAt:  a?.preparedAt  || null,
+            goals:    mealGoalsFor(a, ms),
+            amounts:  a?.amounts || [],
+            planEvalDate: a?.evalDate || '',
+            evaluation,
+            // What the macro calculator last applied for this client. The default
+            // the sheet opens on, because it is the evaluation already turned into
+            // numbers — no second, slightly different calculation of our own.
+            evalGoals: {
+                calories: Number(ms.targetCal)   || 0,
+                protein:  Number(ms.goalProtein) || 0,
+                carbs:    Number(ms.goalCarbs)   || 0,
+                fat:      Number(ms.goalFat)     || 0,
+            },
+        });
+    } catch (e) {
+        console.error('Error loading meal plan prep:', e);
+        res.status(500).json({ message: 'Error cargando la preparación.' });
+    }
+});
+
+// PUT /api/meal-plan-prep/:clientId — the trainer authorising and tuning one
+// client's plan. This is the only way a client's plan becomes visible to them.
+app.put('/api/meal-plan-prep/:clientId', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    if (!mongoose.Types.ObjectId.isValid(String(req.params.clientId || '')))
+        return res.status(404).json({ message: 'Cliente no encontrado.' });
+    try {
+        const client = await User.findOne({ _id: req.params.clientId, ...(await mealPlanClientFilter(req)) })
+            .select('_id trainerId').lean();
+        if (!client) return res.status(404).json({ message: 'Cliente no encontrado.' });
+
+        const b = req.body || {};
+        // Checked before the query: a malformed id makes Mongoose throw, which
+        // would come back as a 500 for what is plainly a bad request.
+        if (!mongoose.Types.ObjectId.isValid(String(b.planId || '')))
+            return res.status(400).json({ message: 'Elige un plan.' });
+        const plan = await MealPlan.findOne({ _id: b.planId, isArchived: { $ne: true } }).select('trainerId').lean();
+        if (!plan) return res.status(400).json({ message: 'Elige un plan.' });
+        if (String(plan.trainerId) !== String(req.user.id) && !(await isSuperadmin(req)))
+            return res.status(403).json({ message: 'Acceso restringido.' });
+
+        const startDate = /^\d{4}-\d{2}-\d{2}$/.test(String(b.startDate || ''))
+            ? String(b.startDate) : new Date().toISOString().split('T')[0];
+
+        const existing = await MealPlanAssignment.findOne({ clientId: client._id });
+        // Moving a client to a different plan drops the swaps they made on the
+        // old one: those name foods that are not on the new plan's plates, and a
+        // swap that points at nothing is worse than no swap at all.
+        const keepSwaps = existing && String(existing.planId || '') === String(plan._id);
+
+        await MealPlanAssignment.updateOne(
+            { clientId: client._id },
+            {
+                $set: {
+                    planId:     plan._id,
+                    trainerId:  client.trainerId || req.user.id,
+                    status:     'ready',
+                    preparedAt: new Date(),
+                    startDate,
+                    goals:      cleanMealGoals(b.goals),
+                    amounts:    cleanMealAmounts(b.amounts),
+                    evalDate:   String(b.evalDate || '').trim().slice(0, 10),
+                    ...(keepSwaps ? {} : { swaps: [] }),
+                },
+                $setOnInsert: { option: 'A' },
+            },
+            { upsert: true },
+        );
+        const row = await MealPlanAssignment.findOne({ clientId: client._id }).lean();
+        res.json({ ok: true, status: 'ready', tuned: (row?.amounts || []).length });
+    } catch (e) {
+        console.error('Error preparing meal plan:', e);
+        res.status(500).json({ message: 'Error preparando el plan.' });
+    }
+});
+
+// DELETE /api/meal-plan-prep/:clientId — take this client off their plan. The
+// row goes entirely, pending request included, so the client is back to the
+// button and nothing half-authorised is left behind.
+app.delete('/api/meal-plan-prep/:clientId', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    if (!mongoose.Types.ObjectId.isValid(String(req.params.clientId || '')))
+        return res.status(404).json({ message: 'Cliente no encontrado.' });
+    try {
+        const client = await User.findOne({ _id: req.params.clientId, ...(await mealPlanClientFilter(req)) })
+            .select('_id').lean();
+        if (!client) return res.status(404).json({ message: 'Cliente no encontrado.' });
+        await MealPlanAssignment.deleteOne({ clientId: client._id });
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('Error removing meal plan:', e);
+        res.status(500).json({ message: 'Error quitando el plan.' });
     }
 });
 
