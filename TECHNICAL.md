@@ -4837,3 +4837,120 @@ Driven in a browser as well: the list rendered in use-order, an entry was correc
 row re-read with the new number, a deliberately wrong "Pollo MAL ENTRADO · 3000 kcal" was deleted and
 confirmed gone from the database, and signing in as an **ordinary trainer** showed the tab hidden and
 `GET /api/admin/foods` returning 403.
+
+## 56. Meal Prep: a plan that advances by itself
+
+Recetas is a **book to browse**. Meal Prep is the **plan to follow** — and the difference is who is
+doing the thinking. The brief for this one was explicit: *offer the least amount of thinking to the
+client, so their effort goes into following the plan rather than designing it.* Everything below
+falls out of that sentence.
+
+A plan is a list of weeks. A week carries its own objective and targets and **two preparations** —
+Prep A and Prep B — that hit the same daily numbers. The point of two is batch cooking: three or four
+days of one, three or four of the other, instead of the same plate seven nights running.
+
+### Prose, not ingredient rows
+
+A plate is a sentence: *"Salmón al horno (5 oz) con batata asada (5 oz) y espárragos al vapor."* It is
+not a list of ingredients with macros attached, and that is on purpose.
+
+Structuring every plate would buy automatic macro maths and cost the thing the feature exists for.
+The week already states its targets; the plates are written to hit them. Counting happens in the
+diary, where the client logs what they actually ate — which is never exactly what the plan said
+anyway. Giving them a second, parallel, slightly-wrong set of numbers would make the page worse.
+
+So the targets on a week are **informational only**. Nothing is computed from them.
+
+### Two schemas, because a swap is not an edit
+
+```js
+MealPlan            // trainerId, name, weeks[{ objective, calories, protein, carbs, fat,
+                    //   deficit, options[{ key, label, meals[{ slot, text, alternatives[] }] }] }]
+MealPlanAssignment  // planId, clientId (unique), trainerId, startDate, option, swaps[{ week, slot, text }]
+```
+
+The plan belongs to the trainer. What a client changed belongs to the **assignment**. Two clients on
+the same plan can swap different dinners and neither sees the other's, and the trainer's plan stays
+the plan. `clientId` is unique: one client follows one plan at a time, so assigning a client to a plan
+takes them off whatever they were on without a second step.
+
+### The week is counted, not set
+
+```js
+const mealPlanWeekFor = (startDate, weekCount) => { /* floor(daysSince(start) / 7) + 1, clamped */ };
+```
+
+A plan that needs someone to remember to move clients along is a plan that stops advancing in week
+three. The client's week comes from their start date, every read, so the page opens on the right week
+with nothing asked and nothing to maintain.
+
+Both ends of the range are clamped rather than left to arithmetic. Before the start date there is no
+week zero — they see week 1. Past the last week they **hold on the last week** instead of falling off
+the end into a blank page, which is what an unclamped index would give them on day 57 of an 8-week
+plan.
+
+### "I don't want this tonight"
+
+Every plate has a **Cambiar** button. What it offers is the same slot from every other prep that week,
+plus whatever extra alternatives the trainer wrote for it.
+
+That last part matters: a plan with no alternatives at all **still** offers the other prep, so a
+plain two-option plan already answers the question. Alternatives are a trainer adding more choices,
+not the thing that makes swapping work.
+
+A swap is keyed by `(week, slot)` and stores the **final text**, not a pointer into the plan. Two
+consequences, both wanted:
+
+- Flipping between Prep A and Prep B does not undo a swap. The client asked for *that dinner*, not
+  for "whatever option B says".
+- Putting the original back is just picking the original. The client sends the plan's own text, the
+  server sees it is unchanged and **deletes the row** rather than storing a copy of it.
+
+Sending the same `(week, slot)` twice replaces the row. Without that the array grows forever and the
+newest choice stops being the one that shows.
+
+### Assigning is a roster, not a toggle
+
+`PUT /api/meal-plans/:id/assignments` takes the whole list of client ids. Clients dropped from the
+list come off the plan; clients already on it keep their start date **and their swaps**, because
+`$setOnInsert` only fires for a client new to the plan. Re-saving the roster to add one person does
+not reset the other six to week 1.
+
+The incoming ids are intersected with the trainer's own clients before anything is written, so a
+crafted id cannot put another trainer's client on this plan. The response says how many were actually
+assigned, which is how the test catches it.
+
+### The template
+
+Building an 8-week plan by hand is 64 plates of typing, and a feature nobody can face starting is a
+feature nobody uses. `public/meal-plan-template.js` holds a full 8-week progressive plan —
+maintenance down to −500 kcal, protein held at ~125 g the whole way, two preps a week — and **Usar
+plantilla** loads it into the editor, where every line is editable before saving.
+
+It lives in its own file rather than in `app.js` because it is prose, not logic, and 200 lines of
+prose buried in a 17k-line file is prose nobody finds. It is a starting point: editing a saved plan
+never touches the template.
+
+### Edge cases that are handled
+
+- A week with no preps is **dropped** by `cleanMealPlanWeeks` rather than stored empty, so a
+  half-built week cannot reach a client as a blank day.
+- Removing week 3 of 8 renumbers the rest to 1–7; it does not leave a gap.
+- Collapsing or removing a week in the editor reads the form into the draft **first**. Re-rendering
+  without that would wipe whatever was typed into the open week.
+- Retiring a plan archives it *and* deletes its assignments, so nobody is left following a plan their
+  trainer has retired.
+- Deficit is stored as a magnitude. The sign lives in the label, not the data.
+
+### Verified
+
+`node scripts/test-meal-plans.mjs` — 31 checks against an isolated server and database. The four that
+matter: another trainer's client is silently refused by the roster (2 assigned, not 3); 15 days in is
+week 3; one client's swap is invisible to another client on the same plan; and a client gets 403 on
+both the plan itself and the roster.
+
+Driven in a browser as well: the template loaded 8 weeks into the editor and saved, the card showed
+`8 semanas · 1700 → 1200 kcal · 1 cliente`, the client's page opened on **Semana 3 de 8** with week
+3's targets, Prep B swapped the whole day, one breakfast was changed to Prep A's and came back marked
+*cambiado* after a reload, and week 4 showed its own plates with the week-3 swap correctly absent.
+Checked at 375 px with no horizontal overflow.

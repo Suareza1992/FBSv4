@@ -346,10 +346,11 @@ if (upd - pub > 5*60*1000) dateStr += ` · Actualizado ${upd.toLocaleDateString(
 
 **Gotchas:** ① `if (published) publishedAt = new Date()` on update wipes the original date — guard on `!existing.publishedAt`. ② Don't use `" L<n> "` as the link sentinel — it collides with "L4/L5" spine references; use `@@LK…KL@@`. ③ Only `http(s)` links linkify (no `javascript:`).
 
-## Nutrición (recipes + shared food library)
+## Nutrición (recipes, meal plans, shared food library)
 
-The trainer's own nutrition section — `#/nutricion`, tabs **Recetas** and **Alimentos** — is
-documented with the rest of nutrition, in
-[Part 3 §17 → The trainer's side](03-client-features.md#the-trainers-side--nutrición-recipe-book--shared-food-library).
+The trainer's own nutrition section — `#/nutricion`, tabs **Recetas**, **Meal Prep** and
+**Alimentos** — is documented with the rest of nutrition, in
+[Part 3 §17 → The trainer's side](03-client-features.md#the-trainers-side--nutrición-recipe-book--shared-food-library)
+and [§17 → Meal Prep](03-client-features.md#meal-prep--the-plan-as-opposed-to-the-book).
 
 [← Foundation](01-foundation.md) · [Index](README.md) · Next: [Client features →](03-client-features.md)

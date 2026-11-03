@@ -187,6 +187,48 @@ recomputed server-side.
 
 ---
 
+### Meal Prep — the plan, as opposed to the book
+
+Recetas is a book to browse; **Meal Prep** is the plan to follow. A plan is weeks, a week is its own
+targets plus **two preparations** that hit the same numbers — so the week can be cooked in two batches
+instead of the same plate seven nights running.
+
+The plates are prose, not ingredient rows, and that is the point: the client reads a plate and cooks
+it. The week's targets are informational — counting happens in the diary, where they log what they
+actually ate.
+
+```js
+MealPlan            // trainerId, name, weeks[{ objective, calories, protein, carbs, fat,
+                    //   deficit, options[{ key, label, meals[{ slot, text, alternatives[] }] }] }]
+MealPlanAssignment  // planId, clientId (unique), trainerId, startDate, option, swaps[{ week, slot, text }]
+```
+
+**The plan belongs to the trainer; what a client changed belongs to the assignment.** Two clients on
+one plan can swap different dinners and neither sees the other's. `clientId` is unique, so assigning
+a client takes them off whatever they were on.
+
+**The week is counted, not set** — `mealPlanWeekFor(startDate, weekCount)` is
+`floor(daysSince / 7) + 1`, clamped at both ends. A plan that needs someone to remember to advance it
+stops advancing in week three. Before the start date the client sees week 1; past the last week they
+hold on the last week instead of falling off into a blank page.
+
+**Swapping** offers the same slot from every other prep that week, plus the trainer's own
+alternatives — so a plan with no alternatives still answers *"not this tonight"*. A swap stores the
+final text keyed by `(week, slot)`, which is why it survives flipping between preps, and sending the
+plan's own text back deletes the row rather than storing a copy of it.
+
+`public/meal-plan-template.js` holds a ready 8-week progressive plan that **Usar plantilla** loads
+into the editor; it is a starting point, every line editable before saving. Prose in its own file,
+not buried in `app.js`.
+
+**Gotchas:** ① `$setOnInsert` on the roster is what keeps an existing client's start date and swaps
+when the roster is re-saved to add somebody else. ② Incoming client ids are intersected with the
+trainer's own clients before anything is written. ③ Collapsing or removing a week in the editor must
+read the form into the draft first, or the re-render wipes what was typed into the open week. ④ A
+week with no preps is dropped rather than stored empty.
+
+Full reasoning in [TECHNICAL.md § 56](../TECHNICAL.md).
+
 ## 18. Progress photos
 
 ```js

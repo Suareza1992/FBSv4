@@ -6227,6 +6227,76 @@ document.addEventListener('DOMContentLoaded', () => {
             if (r) window.openRecipeModal(r);
             return;
         }
+        // ── Meal Prep ────────────────────────────────────────────────────────
+        const mpEdit = t.closest?.('.mealplan-edit');
+        if (mpEdit) {
+            const p = mealPlansCache.find((x) => String(x._id) === mpEdit.dataset.id);
+            if (p) window.openMealPlanModal(p);
+            return;
+        }
+        const mpAssign = t.closest?.('.mealplan-assign');
+        if (mpAssign) {
+            const p = mealPlansCache.find((x) => String(x._id) === mpAssign.dataset.id);
+            if (p) openMealPlanAssign(p);
+            return;
+        }
+        if (t.closest?.('#close-mealplan-modal') || t.closest?.('#cancel-mealplan-modal')) { closeMealPlanModal(); return; }
+        if (t.closest?.('#save-mealplan-btn')) { saveMealPlan(); return; }
+        if (t.closest?.('#close-mealplan-assign') || t.closest?.('#cancel-mealplan-assign')) { closeMealPlanAssign(); return; }
+        if (t.closest?.('#save-mealplan-assign')) { saveMealPlanAssign(); return; }
+
+        if (t.closest?.('#mealplan-use-template')) {
+            if (!window.MEAL_PLAN_TEMPLATE) { showToast('La plantilla no cargó.', 'error'); return; }
+            const tpl = JSON.parse(JSON.stringify(window.MEAL_PLAN_TEMPLATE));
+            // Whatever is already typed in the name wins — he may have named it first.
+            const typed = readMealPlanForm();
+            mealPlanDraft = { ...mealPlanDraft, name: typed.name || tpl.name,
+                description: typed.description || tpl.description, weeks: tpl.weeks };
+            document.getElementById('mealplan-name').value        = mealPlanDraft.name;
+            document.getElementById('mealplan-description').value = mealPlanDraft.description;
+            mealPlanOpenWeek = 0;
+            renderMealPlanWeeks();
+            return;
+        }
+        if (t.closest?.('#mealplan-add-week')) {
+            mealPlanDraft = { ...readMealPlanForm(), _id: mealPlanDraft?._id };
+            mealPlanDraft.weeks.push(blankMealPlanWeek(mealPlanDraft.weeks.length + 1));
+            mealPlanOpenWeek = mealPlanDraft.weeks.length - 1;
+            renderMealPlanWeeks();
+            return;
+        }
+        const mpHead = t.closest?.('.mp-week-head');
+        if (mpHead) {
+            const i = Number(mpHead.closest('.mp-week').dataset.i);
+            // Read first: collapsing re-renders, and a re-render without this
+            // would wipe whatever was typed into the open week.
+            mealPlanDraft = { ...readMealPlanForm(), _id: mealPlanDraft?._id };
+            mealPlanOpenWeek = (mealPlanOpenWeek === i) ? -1 : i;
+            renderMealPlanWeeks();
+            return;
+        }
+        const mpRemove = t.closest?.('.mp-week-remove');
+        if (mpRemove) {
+            const i = Number(mpRemove.closest('.mp-week').dataset.i);
+            mealPlanDraft = { ...readMealPlanForm(), _id: mealPlanDraft?._id };
+            mealPlanDraft.weeks.splice(i, 1);
+            // Renumber, so removing week 3 of 8 leaves 1..7 and not a gap.
+            mealPlanDraft.weeks.forEach((w, n) => { w.week = n + 1; });
+            mealPlanOpenWeek = Math.min(i, mealPlanDraft.weeks.length - 1);
+            renderMealPlanWeeks();
+            return;
+        }
+        if (t.closest?.('#mealplan-delete-btn')) {
+            if (!mealPlanDraft?._id) return;
+            const yes = await showConfirm('¿Eliminar este plan? Los clientes que lo siguen se quedarán sin plan.',
+                { confirmLabel: 'Eliminar', danger: true });
+            if (!yes) return;
+            const res = await apiFetch(`/api/meal-plans/${mealPlanDraft._id}`, { method: 'DELETE' });
+            if (res.ok) { closeMealPlanModal(); await window.renderMealPlans(); showToast('Plan eliminado.', 'info'); }
+            else showToast('Error eliminando el plan.', 'error');
+            return;
+        }
+
         if (t.closest?.('#close-recipe-modal') || t.closest?.('#cancel-recipe-modal')) { closeRecipeModal(); return; }
         if (t.closest?.('#save-recipe-btn')) { saveRecipe(); return; }
 
@@ -6383,6 +6453,187 @@ document.addEventListener('DOMContentLoaded', () => {
     let clientRecipes     = [];
     let clientRecipeTag   = '';     // active tag filter, '' = all
     let viewingRecipe     = null;
+
+    // ── Meal Prep (client) ───────────────────────────────────────────────────
+    // The plan, as opposed to the recipe book. Everything the client has to
+    // decide is two taps wide: which prep they are cooking, and whether a plate
+    // gets swapped. The week they are on is counted server-side from the start
+    // date, so the page opens on the right one without being asked.
+    let clientMealPlan   = null;   // { plan, startDate, option, swaps, currentWeek }
+    let clientMealWeek   = 0;      // the week being LOOKED AT, which may not be today's; 0 = not chosen yet
+    let clientMealSwapping = null; // { slot, original }
+
+    const mealPlanWeekAt = (n) => (clientMealPlan?.plan?.weeks || []).find((w) => w.week === n)
+        || (clientMealPlan?.plan?.weeks || [])[n - 1] || null;
+
+    const mealPlanOptionOf = (week, key) => (week?.options || []).find((o) => o.key === key) || (week?.options || [])[0] || null;
+
+    // What the client has chosen for this plate, or '' if they are on the plan's own.
+    const mealPlanSwapFor = (weekNo, slot) =>
+        (clientMealPlan?.swaps || []).find((s) => s.week === weekNo && s.slot === slot)?.text || '';
+
+    window.renderClientMealPlan = async () => {
+        const wrap = document.getElementById('client-mealplan');
+        if (!wrap) return;
+        try {
+            const res = await apiFetch('/api/my-meal-plan');
+            clientMealPlan = res.ok ? await res.json() : null;
+        } catch { clientMealPlan = null; }
+
+        // No plan, no section — the same rule the recipe book follows.
+        if (!clientMealPlan?.plan?.weeks?.length) { wrap.classList.add('hidden'); return; }
+        wrap.classList.remove('hidden');
+        if (!clientMealWeek) clientMealWeek = clientMealPlan.currentWeek || 1;
+        paintClientMealPlan();
+    };
+
+    const paintClientMealPlan = () => {
+        const total = (clientMealPlan?.plan?.weeks || []).length;
+        clientMealWeek = Math.min(total, Math.max(1, clientMealWeek));
+        const week = mealPlanWeekAt(clientMealWeek);
+        if (!week) return;
+
+        document.getElementById('mealplan-name-label').textContent = clientMealPlan.plan.name || '';
+        document.getElementById('mealplan-week-label').textContent = `Semana ${clientMealWeek} de ${total}`;
+        document.getElementById('mealplan-objective').textContent  = week.objective || '';
+
+        document.getElementById('mealplan-targets').innerHTML = [
+            ['kcal', week.calories, '#FFDB89'],
+            ['Proteína', week.protein, '#F87171'],
+            ['Carbos', week.carbs, '#FACC15'],
+            ['Grasas', week.fat, '#FB923C'],
+        ].map(([label, val, color]) => `
+            <div class="rounded-xl py-2.5" style="background:${color}1a;border:1px solid ${color}40">
+                <p class="text-lg font-black" style="color:${color}">${val || 0}${label === 'kcal' ? '' : '<span class="text-[10px] font-bold opacity-70">g</span>'}</p>
+                <p class="text-[9px] uppercase tracking-wider" style="color:${color};opacity:.6">${label}</p>
+            </div>`).join('');
+
+        const active = clientMealPlan.option || (week.options || [])[0]?.key || 'A';
+        document.getElementById('mealplan-options').innerHTML = (week.options || []).map((o) => `
+            <button class="mealplan-opt flex-1 px-3 py-2 rounded-lg text-xs font-black transition ${
+                o.key === active ? 'bg-[#FFDB89] text-[#030303]' : 'text-[#FFDB89]/50 hover:text-[#FFDB89]'
+            }" data-key="${escHtml(o.key)}">${escHtml(o.label || `Prep ${o.key}`)}</button>`).join('');
+
+        const opt = mealPlanOptionOf(week, active);
+        document.getElementById('mealplan-meals').innerHTML = (opt?.meals || []).map((m) => {
+            const swapped = mealPlanSwapFor(clientMealWeek, m.slot);
+            const text = swapped || m.text;
+            return `
+            <div class="rounded-xl border ${swapped ? 'border-[#FFDB89]/35' : 'border-[#FFDB89]/10'} bg-[#0D0D0D] p-3">
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                    <p class="text-[10px] font-bold text-[#FFDB89]/50 uppercase tracking-wider">
+                        ${escHtml(m.slot)}${swapped ? ' <span class="text-[#FFDB89]/80">· cambiado</span>' : ''}
+                    </p>
+                    <button class="mealplan-swap text-[10px] font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] transition px-2 py-1 rounded-lg hover:bg-[#FFDB89]/10 shrink-0"
+                        data-slot="${escHtml(m.slot)}"><i class="fas fa-rotate mr-1"></i>Cambiar</button>
+                </div>
+                <p class="text-[13px] text-[#FFDB89]/85 leading-relaxed">${escHtml(text)}</p>
+            </div>`;
+        }).join('');
+
+        // Only nag about the week when they have navigated away from today's.
+        document.getElementById('mealplan-today-note')
+            ?.classList.toggle('hidden', clientMealWeek === (clientMealPlan.currentWeek || 1));
+    };
+
+    // Everything this client could eat in this slot instead: the other preps'
+    // version of the same plate, plus whatever alternatives the trainer wrote.
+    // A plan with no alternatives still offers the other prep, which is why a
+    // bare two-option plan already answers "I don't want this tonight".
+    const mealPlanChoicesFor = (weekNo, slot) => {
+        const week = mealPlanWeekAt(weekNo);
+        const out = [];
+        (week?.options || []).forEach((o) => {
+            (o.meals || []).filter((m) => m.slot === slot).forEach((m) => {
+                if (m.text) out.push({ text: m.text, from: o.label || `Prep ${o.key}` });
+                (m.alternatives || []).forEach((a) => out.push({ text: a, from: 'Alternativa' }));
+            });
+        });
+        // Same plate written into two preps should appear once.
+        const seen = new Set();
+        return out.filter((c) => (seen.has(c.text) ? false : seen.add(c.text)));
+    };
+
+    const openMealPlanSwap = (slot) => {
+        const week = mealPlanWeekAt(clientMealWeek);
+        const active = clientMealPlan.option || (week?.options || [])[0]?.key || 'A';
+        const original = (mealPlanOptionOf(week, active)?.meals || []).find((m) => m.slot === slot)?.text || '';
+        clientMealSwapping = { slot, original };
+
+        document.getElementById('mealplan-swap-sub').textContent = `${slot} · semana ${clientMealWeek}`;
+        const current = mealPlanSwapFor(clientMealWeek, slot) || original;
+        document.getElementById('mealplan-swap-body').innerHTML = mealPlanChoicesFor(clientMealWeek, slot)
+            .map((c) => `
+                <button class="mealplan-pick w-full text-left rounded-xl border p-3 transition ${
+                    c.text === current ? 'border-[#FFDB89] bg-[#FFDB89]/10' : 'border-[#FFDB89]/15 hover:border-[#FFDB89]/40'
+                }" data-text="${escHtml(c.text)}">
+                    <p class="text-[10px] font-bold uppercase tracking-wider ${c.text === current ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'}">
+                        ${escHtml(c.from)}${c.text === current ? ' · ahora' : ''}
+                    </p>
+                    <p class="text-[13px] text-[#FFDB89]/85 leading-relaxed mt-1">${escHtml(c.text)}</p>
+                </button>`).join('')
+            || '<p class="text-xs text-[#FFDB89]/30 text-center py-4">Tu entrenador no dejó alternativas para este plato.</p>';
+
+        const modal = document.getElementById('mealplan-swap-modal');
+        modal?.classList.remove('hidden');
+        modal?.classList.add('flex');
+    };
+
+    const closeMealPlanSwap = () => {
+        const modal = document.getElementById('mealplan-swap-modal');
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        clientMealSwapping = null;
+    };
+
+    // One PUT, one knob. Sending the plan's own text back clears the swap
+    // instead of storing a copy of it, so "back to the original" is just
+    // picking the original.
+    const saveMealPlanChoice = async (payload) => {
+        try {
+            const res = await apiFetch('/api/my-meal-plan', { method: 'PUT', body: JSON.stringify(payload) });
+            if (!res.ok) { showToast('No se pudo guardar el cambio.', 'error'); return false; }
+            const data = await res.json();
+            clientMealPlan.option = data.option;
+            clientMealPlan.swaps  = data.swaps || [];
+            paintClientMealPlan();
+            return true;
+        } catch { showToast('Error de conexión.', 'error'); return false; }
+    };
+
+    document.addEventListener('click', async (e) => {
+        if (!clientMealPlan) return;
+        const t = e.target;
+
+        const optBtn = t.closest?.('.mealplan-opt');
+        if (optBtn) { saveMealPlanChoice({ option: optBtn.dataset.key }); return; }
+
+        if (t.closest?.('#mealplan-week-prev')) { clientMealWeek -= 1; paintClientMealPlan(); return; }
+        if (t.closest?.('#mealplan-week-next')) { clientMealWeek += 1; paintClientMealPlan(); return; }
+        if (t.closest?.('#mealplan-week-today')) {
+            clientMealWeek = clientMealPlan.currentWeek || 1;
+            paintClientMealPlan();
+            return;
+        }
+
+        const swapBtn = t.closest?.('.mealplan-swap');
+        if (swapBtn) { openMealPlanSwap(swapBtn.dataset.slot); return; }
+        if (t.closest?.('#mealplan-swap-close')) { closeMealPlanSwap(); return; }
+        if (t.id === 'mealplan-swap-modal') { closeMealPlanSwap(); return; }
+
+        const pick = t.closest?.('.mealplan-pick');
+        if (pick && clientMealSwapping) {
+            const chosen = pick.dataset.text;
+            const ok = await saveMealPlanChoice({
+                swap: {
+                    week: clientMealWeek,
+                    slot: clientMealSwapping.slot,
+                    text: chosen === clientMealSwapping.original ? '' : chosen,
+                },
+            });
+            if (ok) closeMealPlanSwap();
+        }
+    });
 
     window.renderClientRecipes = async () => {
         const wrap = document.getElementById('client-recipes');
@@ -6830,12 +7081,282 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // ── Nutrición: its own two-tab switcher ──────────────────────────────────
+    // ── Meal Prep (trainer) ──────────────────────────────────────────────────
+    // A plan is weeks; a week is targets plus two preps that hit them. The
+    // draft below is the source of truth while the modal is open: inputs are
+    // read out of the DOM before any structural change, so adding a week never
+    // throws away what was typed into the one above it.
+    let mealPlansCache  = [];
+    let mealPlanDraft   = null;
+    let mealPlanOpenWeek = 0;
+    let mealPlanAssigning = null;
+
+    const MEAL_PLAN_SLOTS = ['Desayuno', 'Almuerzo', 'Merienda', 'Cena'];
+
+    const blankMealPlanWeek = (n) => ({
+        week: n, objective: '', calories: 0, protein: 0, carbs: 0, fat: 0, deficit: 0,
+        options: ['A', 'B'].map((key) => ({
+            key, label: `Prep ${key}`,
+            meals: MEAL_PLAN_SLOTS.map((slot) => ({ slot, text: '', alternatives: [] })),
+        })),
+    });
+
+    window.renderMealPlans = async () => {
+        const list = document.getElementById('mealplan-list');
+        if (!list) return;
+        try {
+            const res = await apiFetch('/api/meal-plans');
+            mealPlansCache = res.ok ? await res.json() : [];
+        } catch { mealPlansCache = []; }
+
+        if (!mealPlansCache.length) {
+            list.innerHTML = `<div class="col-span-full text-center py-16 text-[#FFDB89]/30">
+                <i class="fas fa-calendar-week text-4xl mb-3 block"></i>
+                <p class="font-bold">Todavía no hay planes.</p>
+                <p class="text-xs mt-1">Crea el primero — hay una plantilla de 8 semanas lista para usar.</p>
+            </div>`;
+            return;
+        }
+
+        list.innerHTML = mealPlansCache.map((p) => {
+            const weeks = (p.weeks || []).length;
+            const kcal  = (p.weeks || []).map((w) => w.calories).filter(Boolean);
+            const range = kcal.length
+                ? (Math.min(...kcal) === Math.max(...kcal)
+                    ? `${kcal[0]} kcal`
+                    : `${Math.max(...kcal)} → ${Math.min(...kcal)} kcal`)
+                : 'Sin objetivos';
+            return `
+            <div class="bg-[#111113] border border-[#FFDB89]/10 hover:border-[#FFDB89]/35 rounded-2xl p-4 transition flex flex-col gap-3">
+                <div class="min-w-0">
+                    <p class="font-black text-[#FFDB89] leading-tight">${escHtml(p.name)}</p>
+                    ${p.description ? `<p class="text-[11px] text-[#FFDB89]/40 mt-1 line-clamp-2">${escHtml(p.description)}</p>` : ''}
+                </div>
+                <div class="flex flex-wrap gap-1.5 text-[10px] font-bold">
+                    <span class="px-2 py-1 rounded-lg bg-[#FFDB89]/10 text-[#FFDB89]/70">${weeks} semana${weeks === 1 ? '' : 's'}</span>
+                    <span class="px-2 py-1 rounded-lg bg-[#FFDB89]/10 text-[#FFDB89]/70">${escHtml(range)}</span>
+                    <span class="px-2 py-1 rounded-lg ${p.assignedCount ? 'bg-green-400/10 text-green-400' : 'bg-[#FFDB89]/10 text-[#FFDB89]/40'}">
+                        ${p.assignedCount} cliente${p.assignedCount === 1 ? '' : 's'}
+                    </span>
+                </div>
+                <div class="flex gap-2 mt-auto pt-1">
+                    <button class="mealplan-edit flex-1 px-3 py-2 rounded-xl bg-[#FFDB89]/10 hover:bg-[#FFDB89]/20 text-[#FFDB89] text-xs font-bold transition" data-id="${escHtml(p._id)}">
+                        <i class="fas fa-pen mr-1"></i>Editar
+                    </button>
+                    <button class="mealplan-assign flex-1 px-3 py-2 rounded-xl bg-[#FFDB89] text-[#030303] text-xs font-black transition hover:bg-[#FFDB89]/80" data-id="${escHtml(p._id)}">
+                        <i class="fas fa-users mr-1"></i>Asignar
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+    };
+
+    // One week, collapsed to its headline until opened. Eight weeks expanded at
+    // once is a wall; eight headlines is a plan you can read.
+    const mealPlanWeekCard = (w, i) => {
+        const open = i === mealPlanOpenWeek;
+        const opt = (o, oi) => `
+            <div class="mp-option flex-1 min-w-[260px] space-y-2" data-oi="${oi}">
+                <input class="mp-option-label w-full px-3 py-2 bg-[#FFDB89]/10 border border-[#FFDB89]/20 rounded-lg text-[#FFDB89] text-xs font-black uppercase tracking-wider outline-none focus:ring-2 focus:ring-[#FFDB89]/40"
+                    value="${escHtml(o.label || `Prep ${o.key}`)}" autocomplete="off">
+                ${(o.meals || []).map((m) => `
+                    <div class="mp-meal rounded-lg border border-[#FFDB89]/10 bg-[#0D0D0D] p-2.5 space-y-1.5">
+                        <input class="mp-slot w-full px-2 py-1 bg-transparent text-[10px] font-bold text-[#FFDB89]/60 uppercase tracking-wider outline-none"
+                            value="${escHtml(m.slot)}" placeholder="Comida" autocomplete="off">
+                        <textarea class="mp-text w-full p-2 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] text-xs outline-none focus:ring-1 focus:ring-[#FFDB89]/40 resize-none" rows="3"
+                            placeholder="Qué come">${escHtml(m.text)}</textarea>
+                        <textarea class="mp-alts w-full p-2 bg-transparent border border-dashed border-[#FFDB89]/15 rounded-lg text-[#FFDB89]/70 text-[11px] outline-none focus:ring-1 focus:ring-[#FFDB89]/30 resize-none" rows="2"
+                            placeholder="Alternativas — una por línea">${escHtml((m.alternatives || []).join('\n'))}</textarea>
+                    </div>`).join('')}
+            </div>`;
+
+        return `
+        <div class="mp-week rounded-xl border border-[#FFDB89]/15 bg-[#0D0D0D] overflow-hidden" data-i="${i}">
+            <button type="button" class="mp-week-head w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-[#FFDB89]/5 transition text-left">
+                <span class="font-black text-[#FFDB89] text-sm">Semana ${w.week}</span>
+                <span class="flex items-center gap-2 text-[10px] font-bold text-[#FFDB89]/40">
+                    <span>${w.calories || 0} kcal</span>
+                    <span>·</span>
+                    <span>${w.protein || 0}P ${w.carbs || 0}C ${w.fat || 0}G</span>
+                    <i class="fas fa-chevron-${open ? 'up' : 'down'} ml-1"></i>
+                </span>
+            </button>
+            <div class="mp-week-body ${open ? '' : 'hidden'} px-4 pb-4 space-y-3 border-t border-[#FFDB89]/10 pt-3">
+                <textarea class="mp-objective w-full p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] text-xs outline-none focus:ring-1 focus:ring-[#FFDB89]/40 resize-none" rows="2"
+                    placeholder="Objetivo de la semana">${escHtml(w.objective)}</textarea>
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    ${[['mp-cal', 'kcal', w.calories], ['mp-pro', 'Proteína', w.protein], ['mp-carb', 'Carbos', w.carbs],
+                       ['mp-fat', 'Grasas', w.fat], ['mp-def', 'Déficit', w.deficit]].map(([cls, label, val]) => `
+                        <div>
+                            <label class="block text-[9px] font-bold text-[#FFDB89]/40 uppercase tracking-wider mb-1">${label}</label>
+                            <input type="number" min="0" class="${cls} w-full p-2 text-center bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] text-sm font-bold outline-none focus:ring-1 focus:ring-[#FFDB89]/40" value="${val || 0}">
+                        </div>`).join('')}
+                </div>
+                <div class="flex flex-wrap gap-3">${(w.options || []).map(opt).join('')}</div>
+                <button type="button" class="mp-week-remove text-[11px] text-red-400/60 hover:text-red-400 font-bold transition">
+                    <i class="fas fa-trash-alt mr-1"></i>Quitar esta semana
+                </button>
+            </div>
+        </div>`;
+    };
+
+    const renderMealPlanWeeks = () => {
+        const wrap = document.getElementById('mealplan-weeks');
+        if (!wrap || !mealPlanDraft) return;
+        wrap.innerHTML = (mealPlanDraft.weeks || []).map(mealPlanWeekCard).join('');
+        const count = document.getElementById('mealplan-week-count');
+        if (count) count.textContent = String((mealPlanDraft.weeks || []).length);
+        // The template offer only makes sense on an empty plan.
+        document.getElementById('mealplan-template-row')
+            ?.classList.toggle('hidden', !!(mealPlanDraft.weeks || []).length);
+    };
+
+    // Everything the modal holds, straight out of the DOM. Called before any
+    // re-render and again on save, so the draft and the form never drift.
+    const readMealPlanForm = () => {
+        const weeks = [...document.querySelectorAll('#mealplan-weeks .mp-week')].map((el, i) => ({
+            week: (mealPlanDraft?.weeks?.[i]?.week) || i + 1,
+            objective: el.querySelector('.mp-objective')?.value || '',
+            calories: Number(el.querySelector('.mp-cal')?.value)  || 0,
+            protein:  Number(el.querySelector('.mp-pro')?.value)  || 0,
+            carbs:    Number(el.querySelector('.mp-carb')?.value) || 0,
+            fat:      Number(el.querySelector('.mp-fat')?.value)  || 0,
+            deficit:  Number(el.querySelector('.mp-def')?.value)  || 0,
+            options: [...el.querySelectorAll('.mp-option')].map((oe, oi) => ({
+                key:   mealPlanDraft?.weeks?.[i]?.options?.[oi]?.key || String.fromCharCode(65 + oi),
+                label: oe.querySelector('.mp-option-label')?.value || '',
+                meals: [...oe.querySelectorAll('.mp-meal')].map((me) => ({
+                    slot: me.querySelector('.mp-slot')?.value || '',
+                    text: me.querySelector('.mp-text')?.value || '',
+                    alternatives: (me.querySelector('.mp-alts')?.value || '')
+                        .split('\n').map((s) => s.trim()).filter(Boolean),
+                })),
+            })),
+        }));
+        return {
+            _id:         mealPlanDraft?._id,
+            name:        document.getElementById('mealplan-name')?.value || '',
+            description: document.getElementById('mealplan-description')?.value || '',
+            weeks,
+        };
+    };
+
+    window.openMealPlanModal = (plan = null) => {
+        mealPlanDraft = plan
+            ? JSON.parse(JSON.stringify(plan))
+            : { name: '', description: '', weeks: [] };
+        mealPlanOpenWeek = 0;
+
+        document.getElementById('mealplan-modal-title').innerHTML = plan
+            ? '<i class="fas fa-calendar-week mr-2"></i>Editar plan'
+            : '<i class="fas fa-calendar-week mr-2"></i>Nuevo plan';
+        document.getElementById('mealplan-name').value        = mealPlanDraft.name || '';
+        document.getElementById('mealplan-description').value = mealPlanDraft.description || '';
+        document.getElementById('mealplan-delete-btn')?.classList.toggle('hidden', !plan);
+        renderMealPlanWeeks();
+        const modal = document.getElementById('mealplan-modal');
+        modal?.classList.remove('hidden');
+        modal?.classList.add('flex');
+    };
+
+    const closeMealPlanModal = () => {
+        const modal = document.getElementById('mealplan-modal');
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        mealPlanDraft = null;
+    };
+
+    const saveMealPlan = async () => {
+        const body = readMealPlanForm();
+        if (!body.name.trim()) { showToast('El plan necesita un nombre.', 'error'); return; }
+        if (!body.weeks.length) { showToast('Añade al menos una semana.', 'error'); return; }
+        const btn = document.getElementById('save-mealplan-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+        try {
+            const editing = mealPlanDraft?._id;
+            const res = await apiFetch(editing ? `/api/meal-plans/${editing}` : '/api/meal-plans', {
+                method: editing ? 'PUT' : 'POST',
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) { showToast('Error guardando el plan.', 'error'); return; }
+            closeMealPlanModal();
+            await window.renderMealPlans();
+            showToast(editing ? '✓ Plan actualizado' : '✓ Plan creado', 'success');
+        } catch { showToast('Error de conexión.', 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar plan'; } }
+    };
+
+    // ── Assigning ────────────────────────────────────────────────────────────
+    const openMealPlanAssign = async (plan) => {
+        mealPlanAssigning = plan;
+        document.getElementById('mealplan-assign-sub').textContent = plan.name;
+        const dateEl = document.getElementById('mealplan-assign-date');
+        if (dateEl) dateEl.value = getTodayStr();
+
+        const listEl = document.getElementById('mealplan-assign-list');
+        listEl.innerHTML = '<p class="text-xs text-[#FFDB89]/30 py-4 text-center">Cargando clientes...</p>';
+        const modal = document.getElementById('mealplan-assign-modal');
+        modal?.classList.remove('hidden');
+        modal?.classList.add('flex');
+
+        if (!clientsCache.length) await fetchClientsFromDB();
+        let assigned = [];
+        try {
+            const res = await apiFetch(`/api/meal-plans/${plan._id}/assignments`);
+            if (res.ok) assigned = await res.json();
+        } catch { /* an empty roster is a fine starting point */ }
+        const byId = new Map(assigned.map((a) => [a.clientId, a]));
+
+        const rows = clientsCache.filter((c) => !c.isDeleted);
+        listEl.innerHTML = rows.length ? rows.map((c) => {
+            const a = byId.get(String(c._id || c.id));
+            return `
+            <label class="flex items-center gap-3 p-2.5 rounded-xl border border-[#FFDB89]/10 hover:border-[#FFDB89]/30 bg-[#0D0D0D] cursor-pointer transition">
+                <input type="checkbox" class="mp-assign-check w-4 h-4 accent-[#FFDB89]" value="${escHtml(c._id || c.id)}" ${a ? 'checked' : ''}>
+                <span class="flex-1 min-w-0 text-sm font-bold text-[#FFDB89] truncate">${escHtml(`${c.name || ''} ${c.lastName || ''}`.trim() || c.email)}</span>
+                ${a ? `<span class="text-[10px] font-bold text-green-400 shrink-0">semana ${a.week}</span>` : ''}
+            </label>`;
+        }).join('') : '<p class="text-xs text-[#FFDB89]/30 py-4 text-center">No tienes clientes todavía.</p>';
+    };
+
+    const closeMealPlanAssign = () => {
+        const modal = document.getElementById('mealplan-assign-modal');
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        mealPlanAssigning = null;
+    };
+
+    const saveMealPlanAssign = async () => {
+        if (!mealPlanAssigning) return;
+        const clientIds = [...document.querySelectorAll('.mp-assign-check:checked')].map((el) => el.value);
+        const startDate = document.getElementById('mealplan-assign-date')?.value || getTodayStr();
+        const btn = document.getElementById('save-mealplan-assign');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+        try {
+            const res = await apiFetch(`/api/meal-plans/${mealPlanAssigning._id}/assignments`, {
+                method: 'PUT',
+                body: JSON.stringify({ clientIds, startDate }),
+            });
+            if (!res.ok) { showToast('Error asignando el plan.', 'error'); return; }
+            const data = await res.json();
+            closeMealPlanAssign();
+            await window.renderMealPlans();
+            showToast(`✓ ${data.assigned} cliente${data.assigned === 1 ? '' : 's'} en el plan`, 'success');
+        } catch { showToast('Error de conexión.', 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
+    };
+
+    // ── Nutrición: its own tab switcher ──────────────────────────────────────
     // Recetas and Alimentos used to be tabs inside Biblioteca. Same panels, same
-    // render functions — only the section they live in changed.
+    // render functions — only the section they live in changed. Meal Prep joined
+    // them later: the plan to follow, next to the book to browse.
     window.switchNutriTab = (activeTabId) => {
         renderAlimentosTabVisibility();
-        const map = { 'tab-recetas': 'recetas-panel', 'tab-alimentos': 'alimentos-panel' };
+        const map = {
+            'tab-recetas':  'recetas-panel',
+            'tab-mealprep': 'mealprep-panel',
+            'tab-alimentos': 'alimentos-panel',
+        };
         Object.entries(map).forEach(([tab, panel]) => {
             const b = document.getElementById(tab);
             const p = document.getElementById(panel);
@@ -6852,6 +7373,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btn) btn.onclick = () => window.addFoodAdminEntry();
             foodAdminEditing = null;
             window.renderFoodAdmin();
+        } else if (activeTabId === 'tab-mealprep') {
+            if (btnText) btnText.textContent = 'Nuevo plan';
+            if (btn) btn.onclick = () => window.openMealPlanModal(null);
+            window.renderMealPlans();
         } else {
             if (btnText) btnText.textContent = 'Nueva receta';
             if (btn) btn.onclick = () => window.openRecipeModal(null);
@@ -13223,6 +13748,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'tab-ejercicios') { switchLibraryTab('tab-ejercicios'); return; }
         if (target.id === 'tab-videos')     { switchLibraryTab('tab-videos');     return; }
         if (target.id === 'tab-recetas')    { window.switchNutriTab('tab-recetas');   return; }
+        if (target.id === 'tab-mealprep')   { window.switchNutriTab('tab-mealprep');  return; }
         if (target.id === 'tab-alimentos')  { window.switchNutriTab('tab-alimentos'); return; }
         // Legacy library_content.html buttons (kept for backwards compat)
         if (target.id === 'toggle-programs-view')  { switchLibraryTab('tab-programas');  return; }
@@ -17394,8 +17920,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         await loadLogForDate(todayStr);
 
-        // The trainer's recipe book. Non-blocking: a slow or failed fetch must
+        // The plan and the recipe book. Non-blocking: a slow or failed fetch must
         // never hold up the food log, which is what the client actually came for.
+        window.renderClientMealPlan();
         window.renderClientRecipes();
         fetchSavedMeals();
         await loadHistory();

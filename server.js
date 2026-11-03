@@ -1025,6 +1025,67 @@ const RecipeSchema = new mongoose.Schema({
 RecipeSchema.index({ trainerId: 1, isArchived: 1, name: 1 });
 const Recipe = mongoose.model('Recipe', RecipeSchema);
 
+// --- Meal Prep -------------------------------------------------------------
+// A multi-week plan a trainer hands to a client: every week has its own targets
+// and TWO prep options that hit the same numbers, so the week can be cooked in
+// two batches instead of eating the same plate seven nights running.
+//
+// The meals are prose, not ingredient rows. That is deliberate: this is the
+// "do not make me think" half of Nutrición. The client reads a plate and cooks
+// it; the Recetas book is where macros get counted.
+const MealPlanSchema = new mongoose.Schema({
+    trainerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    name:        { type: String, required: true, trim: true },
+    description: { type: String, default: '' },
+    weeks: [{
+        week:      { type: Number, default: 1 },
+        objective: { type: String, default: '' },
+        // Informational only — nothing is computed from these. They are what the
+        // client is told to aim for; the diary still counts what they actually ate.
+        calories:  { type: Number, default: 0 },
+        protein:   { type: Number, default: 0 },
+        carbs:     { type: Number, default: 0 },
+        fat:       { type: Number, default: 0 },
+        deficit:   { type: Number, default: 0 },
+        options: [{
+            key:   { type: String, default: 'A' },
+            label: { type: String, default: '' },
+            meals: [{
+                slot: { type: String, default: '' },
+                text: { type: String, default: '' },
+                // Extra swaps the trainer wrote for THIS plate. The other option's
+                // version of the same slot is always offered too, so a plan with no
+                // alternatives still gives the client something to switch to.
+                alternatives: { type: [String], default: [] },
+            }],
+        }],
+    }],
+    isArchived:  { type: Boolean, default: false },
+}, { timestamps: true });
+MealPlanSchema.index({ trainerId: 1, isArchived: 1, name: 1 });
+const MealPlan = mongoose.model('MealPlan', MealPlanSchema);
+
+// One client, one running plan. The assignment — not the plan — carries what the
+// client changed, so a swap is private to them and the trainer's plan stays the
+// plan for everyone else on it.
+const MealPlanAssignmentSchema = new mongoose.Schema({
+    planId:    { type: mongoose.Schema.Types.ObjectId, ref: 'MealPlan', required: true },
+    clientId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+    trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // 'YYYY-MM-DD'. Which week the client is on is counted from here, so the plan
+    // advances on its own and nobody has to remember to move them along.
+    startDate: { type: String, default: '' },
+    option:    { type: String, default: 'A' },
+    // Keyed by week + slot and holding the final text, which is why a swap
+    // survives flipping between option A and option B.
+    swaps: [{
+        week: { type: Number, default: 1 },
+        slot: { type: String, default: '' },
+        text: { type: String, default: '' },
+    }],
+}, { timestamps: true });
+const MealPlanAssignment = mongoose.model('MealPlanAssignment', MealPlanAssignmentSchema);
+
 // ONE serving of one ingredient. Both the card and "añadir a mi diario" go
 // through this, which is the only way the number a client is promised and the
 // number that lands in their day can be the same.
@@ -3463,6 +3524,246 @@ app.post('/api/recipes/image', authenticateToken, coverUpload.single('photo'), a
     } catch (e) {
         console.error('Error uploading recipe image:', e);
         res.status(500).json({ message: e?.message || 'Error subiendo la imagen.' });
+    }
+});
+
+// --- Meal Prep -------------------------------------------------------------
+// Trim an incoming plan to the stored shape. Everything is bounded, because
+// these strings are rendered straight into a client's day.
+const cleanMealPlanWeeks = (weeks) => (Array.isArray(weeks) ? weeks : [])
+    .slice(0, 52)
+    .map((w, i) => ({
+        week:      Math.max(1, Math.round(Number(w?.week) || i + 1)),
+        objective: String(w?.objective || '').trim().slice(0, 400),
+        calories:  Math.max(0, Math.round(Number(w?.calories) || 0)),
+        protein:   Math.max(0, Math.round(Number(w?.protein)  || 0)),
+        carbs:     Math.max(0, Math.round(Number(w?.carbs)    || 0)),
+        fat:       Math.max(0, Math.round(Number(w?.fat)      || 0)),
+        // A deficit is a negative number in everyday speech but a magnitude here;
+        // the sign is in the label, not the data.
+        deficit:   Math.max(0, Math.round(Math.abs(Number(w?.deficit) || 0))),
+        options: (Array.isArray(w?.options) ? w.options : []).slice(0, 4).map((o, oi) => ({
+            key:   String(o?.key || String.fromCharCode(65 + oi)).trim().slice(0, 2).toUpperCase(),
+            label: String(o?.label || '').trim().slice(0, 40),
+            meals: (Array.isArray(o?.meals) ? o.meals : []).slice(0, 8).map((m) => ({
+                slot: String(m?.slot || '').trim().slice(0, 30),
+                text: String(m?.text || '').trim().slice(0, 600),
+                alternatives: (Array.isArray(m?.alternatives) ? m.alternatives : [])
+                    .map((a) => String(a || '').trim().slice(0, 600)).filter(Boolean).slice(0, 6),
+            })).filter((m) => m.slot || m.text),
+        })).filter((o) => o.meals.length),
+    }))
+    .filter((w) => w.options.length);
+
+// Which week is this client on? Counted from the start date so the plan moves
+// forward by itself. Before the start date they see week 1; after the last week
+// they stay on the last one rather than falling off the end.
+const mealPlanWeekFor = (startDate, weekCount) => {
+    if (!weekCount) return 1;
+    const start = Date.parse(`${startDate}T00:00:00`);
+    if (!startDate || Number.isNaN(start)) return 1;
+    const today = Date.parse(`${new Date().toISOString().split('T')[0]}T00:00:00`);
+    const days  = Math.floor((today - start) / 86400000);
+    return Math.min(weekCount, Math.max(1, Math.floor(days / 7) + 1));
+};
+
+// Whose plans does this user administer? Same rule as the recipe book: a trainer
+// owns theirs, the superadmin sees every trainer's, a client owns none.
+const mealPlanScopeFor = async (user) => {
+    if (user.isSuperadmin) return {};
+    if (isTrainerRole(user)) return { trainerId: user.id };
+    return null;
+};
+
+// GET /api/meal-plans — the trainer's plans, each with how many clients are on it.
+app.get('/api/meal-plans', authenticateToken, async (req, res) => {
+    try {
+        const scope = await mealPlanScopeFor(req.user);
+        if (scope === null) return res.status(403).json({ message: 'Acceso restringido.' });
+        const plans = await MealPlan.find({ ...scope, isArchived: { $ne: true } })
+            .sort({ updatedAt: -1 }).limit(200).lean();
+        const counts = await MealPlanAssignment.aggregate([
+            { $match: { planId: { $in: plans.map((p) => p._id) } } },
+            { $group: { _id: '$planId', n: { $sum: 1 } } },
+        ]);
+        const byPlan = new Map(counts.map((c) => [String(c._id), c.n]));
+        res.json(plans.map((p) => ({ ...p, assignedCount: byPlan.get(String(p._id)) || 0 })));
+    } catch (e) {
+        console.error('Error fetching meal plans:', e);
+        res.status(500).json({ message: 'Error cargando los planes.' });
+    }
+});
+
+// POST /api/meal-plans — trainers only.
+app.post('/api/meal-plans', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const { name, description, weeks } = req.body;
+        if (!String(name || '').trim()) return res.status(400).json({ message: 'El plan necesita un nombre.' });
+        const doc = await MealPlan.create({
+            trainerId:   req.user.id,
+            name:        String(name).trim().slice(0, 120),
+            description: String(description || '').trim().slice(0, 400),
+            weeks:       cleanMealPlanWeeks(weeks),
+        });
+        res.status(201).json(doc.toObject());
+    } catch (e) {
+        console.error('Error creating meal plan:', e);
+        res.status(500).json({ message: 'Error guardando el plan.' });
+    }
+});
+
+// PUT /api/meal-plans/:id — the owning trainer, or the superadmin.
+app.put('/api/meal-plans/:id', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const doc = await MealPlan.findById(req.params.id);
+        if (!doc) return res.status(404).json({ message: 'Plan no encontrado.' });
+        if (String(doc.trainerId) !== String(req.user.id) && !(await isSuperadmin(req)))
+            return res.status(403).json({ message: 'Acceso restringido.' });
+        const b = req.body || {};
+        if (b.name !== undefined) {
+            if (!String(b.name).trim()) return res.status(400).json({ message: 'El plan necesita un nombre.' });
+            doc.name = String(b.name).trim().slice(0, 120);
+        }
+        if (b.description !== undefined) doc.description = String(b.description || '').trim().slice(0, 400);
+        if (b.weeks !== undefined)       doc.weeks = cleanMealPlanWeeks(b.weeks);
+        await doc.save();
+        res.json(doc.toObject());
+    } catch (e) {
+        console.error('Error updating meal plan:', e);
+        res.status(500).json({ message: 'Error guardando el plan.' });
+    }
+});
+
+// DELETE /api/meal-plans/:id — archives it and takes every client off it, so
+// nobody is left following a plan their trainer has retired.
+app.delete('/api/meal-plans/:id', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const doc = await MealPlan.findById(req.params.id);
+        if (!doc) return res.status(404).json({ message: 'Plan no encontrado.' });
+        if (String(doc.trainerId) !== String(req.user.id) && !(await isSuperadmin(req)))
+            return res.status(403).json({ message: 'Acceso restringido.' });
+        doc.isArchived = true;
+        await doc.save();
+        await MealPlanAssignment.deleteMany({ planId: doc._id });
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('Error deleting meal plan:', e);
+        res.status(500).json({ message: 'Error eliminando el plan.' });
+    }
+});
+
+// GET /api/meal-plans/:id/assignments — who is on this plan, and since when.
+app.get('/api/meal-plans/:id/assignments', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const plan = await MealPlan.findById(req.params.id).select('trainerId weeks').lean();
+        if (!plan) return res.status(404).json({ message: 'Plan no encontrado.' });
+        if (String(plan.trainerId) !== String(req.user.id) && !(await isSuperadmin(req)))
+            return res.status(403).json({ message: 'Acceso restringido.' });
+        const rows = await MealPlanAssignment.find({ planId: plan._id }).lean();
+        res.json(rows.map((a) => ({
+            clientId:  String(a.clientId),
+            startDate: a.startDate,
+            option:    a.option,
+            week:      mealPlanWeekFor(a.startDate, (plan.weeks || []).length),
+        })));
+    } catch (e) {
+        console.error('Error fetching assignments:', e);
+        res.status(500).json({ message: 'Error cargando las asignaciones.' });
+    }
+});
+
+// PUT /api/meal-plans/:id/assignments — the whole roster for this plan, in one
+// call. Clients dropped from the list come off the plan; clients already on it
+// keep their start date and their swaps.
+app.put('/api/meal-plans/:id/assignments', authenticateToken, async (req, res) => {
+    if (!isTrainerRole(req.user)) return res.status(403).json({ message: 'Acceso restringido.' });
+    try {
+        const plan = await MealPlan.findById(req.params.id);
+        if (!plan) return res.status(404).json({ message: 'Plan no encontrado.' });
+        if (String(plan.trainerId) !== String(req.user.id) && !(await isSuperadmin(req)))
+            return res.status(403).json({ message: 'Acceso restringido.' });
+
+        const startDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.startDate || ''))
+            ? String(req.body.startDate) : new Date().toISOString().split('T')[0];
+        const wanted = [...new Set((Array.isArray(req.body?.clientIds) ? req.body.clientIds : [])
+            .map(String).filter((id) => mongoose.Types.ObjectId.isValid(id)))].slice(0, 500);
+
+        // Only this trainer's own clients, so a crafted id cannot put someone
+        // else's client on this plan.
+        const mine = await User.find({ _id: { $in: wanted }, role: 'client',
+            ...(await isSuperadmin(req) ? {} : { trainerId: req.user.id }) }).select('_id').lean();
+        const allowed = mine.map((u) => String(u._id));
+
+        await MealPlanAssignment.deleteMany({ planId: plan._id, clientId: { $nin: allowed } });
+        for (const clientId of allowed) {
+            await MealPlanAssignment.updateOne(
+                { clientId },
+                {
+                    $set: { planId: plan._id, trainerId: plan.trainerId },
+                    // A client already running stays where they are; only a client
+                    // new to this plan gets today's start date and option A.
+                    $setOnInsert: { startDate, option: 'A', swaps: [] },
+                },
+                { upsert: true },
+            );
+        }
+        res.json({ ok: true, assigned: allowed.length });
+    } catch (e) {
+        console.error('Error assigning meal plan:', e);
+        res.status(500).json({ message: 'Error asignando el plan.' });
+    }
+});
+
+// GET /api/my-meal-plan — what the signed-in client is following, if anything.
+app.get('/api/my-meal-plan', authenticateToken, async (req, res) => {
+    try {
+        const a = await MealPlanAssignment.findOne({ clientId: req.user.id }).lean();
+        if (!a) return res.json(null);
+        const plan = await MealPlan.findOne({ _id: a.planId, isArchived: { $ne: true } }).lean();
+        if (!plan) return res.json(null);
+        res.json({
+            plan,
+            startDate:   a.startDate,
+            option:      a.option || 'A',
+            swaps:       a.swaps || [],
+            currentWeek: mealPlanWeekFor(a.startDate, (plan.weeks || []).length),
+        });
+    } catch (e) {
+        console.error('Error fetching my meal plan:', e);
+        res.status(500).json({ message: 'Error cargando tu plan.' });
+    }
+});
+
+// PUT /api/my-meal-plan — the client's own two knobs: which prep they are
+// cooking this week, and the plates they swapped out.
+app.put('/api/my-meal-plan', authenticateToken, async (req, res) => {
+    try {
+        const a = await MealPlanAssignment.findOne({ clientId: req.user.id });
+        if (!a) return res.status(404).json({ message: 'No tienes un plan asignado.' });
+        const b = req.body || {};
+        if (b.option !== undefined) {
+            const key = String(b.option || '').trim().slice(0, 2).toUpperCase();
+            if (key) a.option = key;
+        }
+        // One swap at a time. An empty text is how a client puts the original back.
+        if (b.swap) {
+            const week = Math.max(1, Math.round(Number(b.swap.week) || 1));
+            const slot = String(b.swap.slot || '').trim().slice(0, 30);
+            const text = String(b.swap.text || '').trim().slice(0, 600);
+            if (slot) {
+                a.swaps = (a.swaps || []).filter((s) => !(s.week === week && s.slot === slot));
+                if (text) a.swaps.push({ week, slot, text });
+            }
+        }
+        await a.save();
+        res.json({ ok: true, option: a.option, swaps: a.swaps });
+    } catch (e) {
+        console.error('Error updating my meal plan:', e);
+        res.status(500).json({ message: 'Error guardando el cambio.' });
     }
 });
 
