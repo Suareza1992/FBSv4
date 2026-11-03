@@ -9,6 +9,11 @@
 //      supposed to advance by itself silently stops advancing.
 //   4. A swap is stored against the assignment, so two clients on the same plan
 //      never see each other's changes.
+//   5. A swap names the ELEMENT it replaces, so two changes to one plate coexist
+//      and neither overwrites the other.
+//
+// The scaling itself — which element moves with which goal — is pure and lives
+// in scripts/test-meal-items.mjs.
 //
 // Needs an ISOLATED server and database. NEVER point it at production:
 //
@@ -50,11 +55,21 @@ const mk = async (role, extra = {}) => {
 // 'YYYY-MM-DD' n days before today, which is how the week count is exercised.
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
 
+// Two elements per plate, so a plate can be half-changed: a protein that moves
+// with the client's goal and a vegetable that never does.
+const plate = (slot, food, suffix) => ({
+    slot,
+    items: [
+        { name: `${food} ${suffix}`, amount: 5, unit: 'oz', role: 'protein',
+            alternatives: [{ name: `${food} alt`, amount: 4, unit: 'oz', role: 'protein' }] },
+        { name: `Ensalada ${suffix}`, amount: 2, unit: 'tazas', role: 'veg', alternatives: [] },
+    ],
+});
 const week = (n, kcal, meals) => ({
     week: n, objective: `Objetivo ${n}`, calories: kcal, protein: 125, carbs: 150, fat: 40, deficit: (n - 1) * 70,
     options: [
-        { key: 'A', label: 'Prep A', meals: meals.map(([slot, text]) => ({ slot, text: `${text} A`, alternatives: [`${text} alt`] })) },
-        { key: 'B', label: 'Prep B', meals: meals.map(([slot, text]) => ({ slot, text: `${text} B`, alternatives: [] })) },
+        { key: 'A', label: 'Prep A', meals: meals.map(([slot, food]) => plate(slot, food, 'A')) },
+        { key: 'B', label: 'Prep B', meals: meals.map(([slot, food]) => plate(slot, food, 'B')) },
     ],
 });
 const SLOTS = [['Desayuno', 'Avena'], ['Almuerzo', 'Pollo'], ['Merienda', 'Yogur'], ['Cena', 'Salmón']];
@@ -62,7 +77,9 @@ const SLOTS = [['Desayuno', 'Avena'], ['Almuerzo', 'Pollo'], ['Merienda', 'Yogur
 try {
     const trainerA = await mk('trainer');
     const trainerB = await mk('trainer');
-    const clientA1 = await mk('client', { trainerId: trainerA._id });
+    // Goals above the week's, so the client's side has something to scale against.
+    const clientA1 = await mk('client', { trainerId: trainerA._id,
+        macroSettings: { targetCal: 2000, goalProtein: 160, goalCarbs: 150, goalFat: 40 } });
     const clientA2 = await mk('client', { trainerId: trainerA._id });
     const clientB  = await mk('client', { trainerId: trainerB._id });
 
@@ -94,8 +111,24 @@ try {
     check(plan.weeks?.[0]?.options?.length === 2, 'each week keeps both preps', `${plan.weeks?.[0]?.options?.length}`);
     check(plan.weeks?.[0]?.options?.[0]?.meals?.length === 4, 'each prep keeps its four plates',
         `${plan.weeks?.[0]?.options?.[0]?.meals?.length}`);
-    check(plan.weeks?.[0]?.options?.[0]?.meals?.[0]?.alternatives?.length === 1,
-        'alternatives survive the round trip');
+
+    const m0 = plan.weeks?.[0]?.options?.[0]?.meals?.[0];
+    check(m0?.items?.length === 2, 'a plate is stored as its elements', `${m0?.items?.length}`);
+    check(m0?.items?.[0]?.role === 'protein' && m0?.items?.[1]?.role === 'veg',
+        'each element keeps the role that decides whether it scales');
+    check(m0?.items?.[0]?.amount === 5 && m0?.items?.[0]?.unit === 'oz', 'amount and unit survive the round trip');
+    check(m0?.items?.[0]?.alternatives?.length === 1, 'per-element alternatives survive the round trip');
+    check(m0?.text === 'Avena A · Ensalada A' || /Avena A/.test(m0?.text || ''),
+        'the plate sentence is rebuilt from the elements, not stored twice', m0?.text);
+
+    // A role nobody recognises must not become a scaling rule by accident.
+    r = await asA('PUT', `/api/meal-plans/${plan._id}`, {
+        weeks: [{ ...payload.weeks[0], options: [{ key: 'A', label: 'Prep A', meals: [
+            { slot: 'Desayuno', items: [{ name: 'Algo', amount: 1, unit: 'taza', role: 'esteroides' }] }] }] }],
+    });
+    check((await r.json())?.weeks?.[0]?.options?.[0]?.meals?.[0]?.items?.[0]?.role === 'free',
+        'an unknown role is stored as free, so it simply never scales');
+    await asA('PUT', `/api/meal-plans/${plan._id}`, payload);  // put the real plan back
 
     r = await asC1('POST', '/api/meal-plans', payload);
     check(r.status === 403, 'a client cannot create a plan', String(r.status));
@@ -134,6 +167,10 @@ try {
     check(mine?.currentWeek === 3, '15 days in is week 3', `week ${mine?.currentWeek}`);
     check(mine?.option === 'A', 'a new assignment starts on prep A', String(mine?.option));
     check(mine?.plan?.name === payload.name, 'the client reads the whole plan');
+    // The client's own macro goals ride along, because the amounts on the plate
+    // are rewritten against them.
+    check(mine?.goals?.protein === 160 && mine?.goals?.carbs === 150,
+        "the client's macro goals come with the plan", JSON.stringify(mine?.goals));
 
     // Past the end, a client holds on the last week rather than falling off it.
     await db.collection('mealplanassignments').updateOne(
@@ -151,22 +188,44 @@ try {
     r = await asC1('PUT', '/api/my-meal-plan', { option: 'B' });
     check((await r.json())?.option === 'B', 'the client can switch prep');
 
-    r = await asC1('PUT', '/api/my-meal-plan', { swap: { week: 3, slot: 'Cena', text: 'Salmón alt' } });
+    const swapIn = (body) => asC1('PUT', '/api/my-meal-plan', { swap: { week: 3, slot: 'Cena', ...body } });
+
+    r = await swapIn({ from: 'Salmón A', text: 'Salmón alt', amount: 4, unit: 'oz', role: 'protein' });
     let state = await r.json();
     check(state.swaps?.length === 1, 'a swap is stored', `${state.swaps?.length}`);
-    check(state.swaps?.[0]?.text === 'Salmón alt', 'the swap holds the chosen plate');
+    check(state.swaps?.[0]?.text === 'Salmón alt', 'the swap holds the chosen element');
+    check(state.swaps?.[0]?.from === 'Salmón A', 'and names the element it replaces');
+    check(state.swaps?.[0]?.amount === 4 && state.swaps?.[0]?.role === 'protein',
+        "the replacement's own amount and role come with it, so it scales too");
 
-    // Same slot twice must replace, not pile up — otherwise the list grows
-    // forever and the last write stops being the one that shows.
-    r = await asC1('PUT', '/api/my-meal-plan', { swap: { week: 3, slot: 'Cena', text: 'Salmón B' } });
+    // The whole point of naming the element: two changes to one plate coexist.
+    r = await swapIn({ from: 'Ensalada A', text: 'Brócoli', amount: 2, unit: 'tazas', role: 'veg' });
     state = await r.json();
-    check(state.swaps?.length === 1, 'swapping the same plate again replaces it', `${state.swaps?.length}`);
-    check(state.swaps?.[0]?.text === 'Salmón B', 'the newest choice wins');
+    check(state.swaps?.length === 2, 'a second element in the same plate is a second swap, not a replacement',
+        `${state.swaps?.length}`);
 
-    r = await asC1('PUT', '/api/my-meal-plan', { swap: { week: 3, slot: 'Cena', text: '' } });
-    check((await r.json())?.swaps?.length === 0, 'an empty text puts the original back');
+    // Same element twice must replace, not pile up — otherwise the list grows
+    // forever and the last write stops being the one that shows.
+    r = await swapIn({ from: 'Salmón A', text: 'Salmón B', amount: 5, unit: 'oz', role: 'protein' });
+    state = await r.json();
+    check(state.swaps?.length === 2, 'swapping the same element again replaces it', `${state.swaps?.length}`);
+    check(state.swaps?.find((x) => x.from === 'Salmón A')?.text === 'Salmón B', 'the newest choice wins');
 
-    await asC1('PUT', '/api/my-meal-plan', { swap: { week: 2, slot: 'Almuerzo', text: 'Pollo alt' } });
+    r = await swapIn({ from: 'Salmón A', text: '' });
+    state = await r.json();
+    check(state.swaps?.length === 1, 'an empty text puts that one element back', `${state.swaps?.length}`);
+    check(state.swaps?.[0]?.from === 'Ensalada A', 'and leaves the other change alone');
+    await swapIn({ from: 'Ensalada A', text: '' });
+
+    // A plan written before elements existed still swaps a whole plate: no
+    // `from` at all, which is its own key.
+    r = await swapIn({ text: 'Toda la cena distinta' });
+    state = await r.json();
+    check(state.swaps?.length === 1 && (state.swaps[0].from || '') === '',
+        'a plate-level swap is still accepted, keyed by an empty from');
+    await swapIn({ text: '' });
+
+    await asC1('PUT', '/api/my-meal-plan', { swap: { week: 2, slot: 'Almuerzo', from: 'Pollo A', text: 'Pollo alt' } });
     r = await asC2('GET', '/api/my-meal-plan');
     const other = await r.json();
     check((other?.swaps || []).length === 0, "one client's swap is invisible to another on the same plan",

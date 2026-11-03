@@ -6275,6 +6275,31 @@ document.addEventListener('DOMContentLoaded', () => {
             renderMealPlanWeeks();
             return;
         }
+        const mpRole = t.closest?.('.mp-role');
+        if (mpRole) {
+            // In place, with no re-render: a re-render here would mean reading
+            // the whole form back just to recolour one badge.
+            const order = window.MealItem.ROLE_KEYS;
+            const next = order[(order.indexOf(window.MealItem.roleOf(mpRole.dataset.role)) + 1) % order.length];
+            const def = window.MealItem.ROLES[next];
+            mpRole.dataset.role = next;
+            mpRole.textContent  = MEAL_ROLE_LETTER[next];
+            mpRole.title        = `${def.label} — toca para cambiar`;
+            mpRole.style.cssText = `background:${def.color}1f;color:${def.color};border:1px solid ${def.color}55`;
+            return;
+        }
+        const mpItemAdd = t.closest?.('.mp-item-add');
+        if (mpItemAdd) {
+            const list = mpItemAdd.closest('.mp-meal')?.querySelector('.mp-items');
+            if (list) {
+                list.insertAdjacentHTML('beforeend', mealItemRowHtml(blankMealItem()));
+                list.lastElementChild?.querySelector('.mp-line')?.focus();
+            }
+            return;
+        }
+        const mpItemRemove = t.closest?.('.mp-item-remove');
+        if (mpItemRemove) { mpItemRemove.closest('.mp-item')?.remove(); return; }
+
         const mpRemove = t.closest?.('.mp-week-remove');
         if (mpRemove) {
             const i = Number(mpRemove.closest('.mp-week').dataset.i);
@@ -6459,18 +6484,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // decide is two taps wide: which prep they are cooking, and whether a plate
     // gets swapped. The week they are on is counted server-side from the start
     // date, so the page opens on the right one without being asked.
-    let clientMealPlan   = null;   // { plan, startDate, option, swaps, currentWeek }
+    let clientMealPlan   = null;   // { plan, startDate, option, swaps, currentWeek, goals }
     let clientMealWeek   = 0;      // the week being LOOKED AT, which may not be today's; 0 = not chosen yet
-    let clientMealSwapping = null; // { slot, original }
+    let clientMealSwapping = null; // { slot, from, original }
+    // Amounts are rewritten for this client's macros unless they ask to see the
+    // plan as the trainer wrote it. A per-device preference, so localStorage.
+    let clientMealAdjust = localStorage.getItem('mealplan_adjust') !== 'off';
 
     const mealPlanWeekAt = (n) => (clientMealPlan?.plan?.weeks || []).find((w) => w.week === n)
         || (clientMealPlan?.plan?.weeks || [])[n - 1] || null;
 
     const mealPlanOptionOf = (week, key) => (week?.options || []).find((o) => o.key === key) || (week?.options || [])[0] || null;
 
-    // What the client has chosen for this plate, or '' if they are on the plan's own.
-    const mealPlanSwapFor = (weekNo, slot) =>
-        (clientMealPlan?.swaps || []).find((s) => s.week === weekNo && s.slot === slot)?.text || '';
+    // What this client has put in place of a plan element, or null. Keyed by the
+    // element's name, so the change follows the food through both preps.
+    const mealPlanSwapFor = (weekNo, slot, from) =>
+        (clientMealPlan?.swaps || []).find((s) => s.week === weekNo && s.slot === slot && (s.from || '') === (from || '')) || null;
+
+    // How much of each role this client eats compared with the week as written.
+    // Off, or with no goals set, every factor is 1 and nothing moves.
+    const mealPlanFactors = (week) => (clientMealAdjust
+        ? window.MealItem.factorsFor(week, clientMealPlan?.goals)
+        : { protein: 1, carb: 1, fat: 1, veg: 1, free: 1 });
 
     window.renderClientMealPlan = async () => {
         const wrap = document.getElementById('client-mealplan');
@@ -6497,16 +6532,40 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('mealplan-week-label').textContent = `Semana ${clientMealWeek} de ${total}`;
         document.getElementById('mealplan-objective').textContent  = week.objective || '';
 
+        const factors  = mealPlanFactors(week);
+        const adjusted = window.MealItem.isAdjusted(factors);
+        const goals    = clientMealPlan.goals || {};
+
+        // When the amounts have been rewritten, the numbers on top have to be the
+        // client's own — showing the week's 125 g over plates that add to 160 g
+        // would just be two different plans on one screen.
+        const shown = adjusted
+            ? [goals.calories || week.calories, goals.protein, goals.carbs, goals.fat]
+            : [week.calories, week.protein, week.carbs, week.fat];
         document.getElementById('mealplan-targets').innerHTML = [
-            ['kcal', week.calories, '#FFDB89'],
-            ['Proteína', week.protein, '#F87171'],
-            ['Carbos', week.carbs, '#FACC15'],
-            ['Grasas', week.fat, '#FB923C'],
+            ['kcal', shown[0], '#FFDB89'],
+            ['Proteína', shown[1], '#F87171'],
+            ['Carbos', shown[2], '#FACC15'],
+            ['Grasas', shown[3], '#FB923C'],
         ].map(([label, val, color]) => `
             <div class="rounded-xl py-2.5" style="background:${color}1a;border:1px solid ${color}40">
                 <p class="text-lg font-black" style="color:${color}">${val || 0}${label === 'kcal' ? '' : '<span class="text-[10px] font-bold opacity-70">g</span>'}</p>
                 <p class="text-[9px] uppercase tracking-wider" style="color:${color};opacity:.6">${label}</p>
             </div>`).join('');
+
+        // The toggle only appears when it would do something — a client with no
+        // macro goals has nothing to adjust to.
+        const canAdjust = window.MealItem.isAdjusted(window.MealItem.factorsFor(week, clientMealPlan.goals));
+        const adjustBtn = document.getElementById('mealplan-adjust');
+        if (adjustBtn) {
+            adjustBtn.innerHTML = clientMealAdjust
+                ? '<i class="fas fa-sliders mr-1.5"></i>Ajustado a tus macros'
+                : '<i class="fas fa-file-lines mr-1.5"></i>Como lo escribió tu entrenador';
+            // className last would drop the hidden class, so it goes first.
+            adjustBtn.className = `self-start shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition ${
+                clientMealAdjust ? 'bg-[#FFDB89]/15 text-[#FFDB89]' : 'bg-[#FFDB89]/5 text-[#FFDB89]/40 hover:text-[#FFDB89]/70'}`;
+            adjustBtn.classList.toggle('hidden', !canAdjust);
+        }
 
         const active = clientMealPlan.option || (week.options || [])[0]?.key || 'A';
         document.getElementById('mealplan-options').innerHTML = (week.options || []).map((o) => `
@@ -6515,64 +6574,128 @@ document.addEventListener('DOMContentLoaded', () => {
             }" data-key="${escHtml(o.key)}">${escHtml(o.label || `Prep ${o.key}`)}</button>`).join('');
 
         const opt = mealPlanOptionOf(week, active);
-        document.getElementById('mealplan-meals').innerHTML = (opt?.meals || []).map((m) => {
-            const swapped = mealPlanSwapFor(clientMealWeek, m.slot);
-            const text = swapped || m.text;
-            return `
-            <div class="rounded-xl border ${swapped ? 'border-[#FFDB89]/35' : 'border-[#FFDB89]/10'} bg-[#0D0D0D] p-3">
-                <div class="flex items-center justify-between gap-2 mb-1.5">
-                    <p class="text-[10px] font-bold text-[#FFDB89]/50 uppercase tracking-wider">
-                        ${escHtml(m.slot)}${swapped ? ' <span class="text-[#FFDB89]/80">· cambiado</span>' : ''}
-                    </p>
-                    <button class="mealplan-swap text-[10px] font-bold text-[#FFDB89]/50 hover:text-[#FFDB89] transition px-2 py-1 rounded-lg hover:bg-[#FFDB89]/10 shrink-0"
-                        data-slot="${escHtml(m.slot)}"><i class="fas fa-rotate mr-1"></i>Cambiar</button>
-                </div>
-                <p class="text-[13px] text-[#FFDB89]/85 leading-relaxed">${escHtml(text)}</p>
-            </div>`;
-        }).join('');
+        document.getElementById('mealplan-meals').innerHTML = (opt?.meals || [])
+            .map((m) => mealPlanPlateHtml(m, factors)).join('');
 
         // Only nag about the week when they have navigated away from today's.
         document.getElementById('mealplan-today-note')
             ?.classList.toggle('hidden', clientMealWeek === (clientMealPlan.currentWeek || 1));
     };
 
-    // Everything this client could eat in this slot instead: the other preps'
-    // version of the same plate, plus whatever alternatives the trainer wrote.
-    // A plan with no alternatives still offers the other prep, which is why a
-    // bare two-option plan already answers "I don't want this tonight".
-    const mealPlanChoicesFor = (weekNo, slot) => {
+    // One element: a dot for what it is, the food, and the amount THIS client
+    // cooks. Tapping anywhere on the row opens its alternatives.
+    const mealPlanItemHtml = (slot, planItem, factors) => {
+        const swap = mealPlanSwapFor(clientMealWeek, slot, planItem.name);
+        const shown = swap ? { name: swap.text, amount: swap.amount, unit: swap.unit, role: swap.role } : planItem;
+        const def = window.MealItem.ROLES[window.MealItem.roleOf(shown.role)];
+        const amount = window.MealItem.amountLabel(window.MealItem.scaleItem(shown, factors));
+        return `
+        <button class="mealplan-item w-full flex items-center gap-2.5 py-1.5 text-left rounded-lg hover:bg-[#FFDB89]/5 px-1.5 -mx-1.5 transition"
+            data-slot="${escHtml(slot)}" data-from="${escHtml(planItem.name)}">
+            <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:${def.color}"></span>
+            <span class="flex-1 min-w-0 text-[13px] leading-snug ${swap ? 'text-[#FFDB89]' : 'text-[#FFDB89]/85'}">
+                ${escHtml(shown.name)}${swap ? ' <span class="text-[9px] font-bold uppercase tracking-wider text-[#FFDB89]/45">cambiado</span>' : ''}
+            </span>
+            ${amount ? `<span class="text-[11px] font-black text-[#FFDB89]/70 tabular-nums shrink-0">${escHtml(amount)}</span>` : ''}
+            <i class="fas fa-rotate text-[10px] text-[#FFDB89]/25 shrink-0"></i>
+        </button>`;
+    };
+
+    const mealPlanPlateHtml = (m, factors) => {
+        const items = m.items || [];
+        // A plan written before elements existed still has only its sentence.
+        // It keeps the behaviour it shipped with: one swap for the whole plate.
+        const body = items.length
+            ? `<div class="divide-y divide-[#FFDB89]/5">${items.map((it) => mealPlanItemHtml(m.slot, it, factors)).join('')}</div>`
+            : (() => {
+                const swap = mealPlanSwapFor(clientMealWeek, m.slot, '');
+                return `
+                <button class="mealplan-item w-full text-left text-[13px] text-[#FFDB89]/85 leading-relaxed"
+                    data-slot="${escHtml(m.slot)}" data-from="">${escHtml(swap ? swap.text : m.text)}</button>`;
+            })();
+        // Only the changes you can SEE in this prep. A swap made on prep A's
+        // salmon is still stored while prep B is showing, but prep B has no
+        // salmon, so claiming a change here would be counting something the
+        // client cannot find on the plate in front of them.
+        const changed = items.length
+            ? items.filter((it) => mealPlanSwapFor(clientMealWeek, m.slot, it.name)).length
+            : (mealPlanSwapFor(clientMealWeek, m.slot, '') ? 1 : 0);
+        return `
+        <div class="rounded-xl border ${changed ? 'border-[#FFDB89]/35' : 'border-[#FFDB89]/10'} bg-[#0D0D0D] p-3">
+            <p class="text-[10px] font-bold text-[#FFDB89]/50 uppercase tracking-wider mb-1">
+                ${escHtml(m.slot)}${changed ? ` <span class="text-[#FFDB89]/80">· ${changed} cambio${changed === 1 ? '' : 's'}</span>` : ''}
+            </p>
+            ${body}
+        </div>`;
+    };
+
+    // Everything this client could have instead of ONE element: what the plan
+    // says, the alternatives the trainer wrote for it, and the same slot's
+    // element of the same role from every other prep. A plan with no
+    // alternatives at all still offers the other prep's version, which is why a
+    // plain two-prep plan already answers "not this one".
+    const mealPlanItemChoices = (weekNo, slot, planItem) => {
+        const week = mealPlanWeekAt(weekNo);
+        const role = window.MealItem.roleOf(planItem.role);
+        const out = [{ item: planItem, from: 'El plan' }];
+        (planItem.alternatives || []).forEach((a) => out.push({ item: { ...a, role: a.role || role }, from: 'Alternativa' }));
+        (week?.options || []).forEach((o) => {
+            (o.meals || []).filter((m) => m.slot === slot).forEach((m) => {
+                (m.items || []).filter((it) => window.MealItem.roleOf(it.role) === role).forEach((it) => {
+                    out.push({ item: it, from: o.label || `Prep ${o.key}` });
+                    (it.alternatives || []).forEach((a) => out.push({ item: { ...a, role }, from: o.label || `Prep ${o.key}` }));
+                });
+            });
+        });
+        const seen = new Set();
+        return out.filter((c) => c.item?.name && !seen.has(c.item.name) && seen.add(c.item.name));
+    };
+
+    // The legacy whole-plate list, kept for plans written before elements.
+    const mealPlanPlateChoices = (weekNo, slot) => {
         const week = mealPlanWeekAt(weekNo);
         const out = [];
         (week?.options || []).forEach((o) => {
             (o.meals || []).filter((m) => m.slot === slot).forEach((m) => {
-                if (m.text) out.push({ text: m.text, from: o.label || `Prep ${o.key}` });
-                (m.alternatives || []).forEach((a) => out.push({ text: a, from: 'Alternativa' }));
+                if (m.text) out.push({ item: { name: m.text, role: 'free' }, from: o.label || `Prep ${o.key}` });
+                (m.alternatives || []).forEach((a) => out.push({ item: { name: a, role: 'free' }, from: 'Alternativa' }));
             });
         });
-        // Same plate written into two preps should appear once.
         const seen = new Set();
-        return out.filter((c) => (seen.has(c.text) ? false : seen.add(c.text)));
+        return out.filter((c) => !seen.has(c.item.name) && seen.add(c.item.name));
     };
 
-    const openMealPlanSwap = (slot) => {
+    const openMealPlanSwap = (slot, from) => {
         const week = mealPlanWeekAt(clientMealWeek);
         const active = clientMealPlan.option || (week?.options || [])[0]?.key || 'A';
-        const original = (mealPlanOptionOf(week, active)?.meals || []).find((m) => m.slot === slot)?.text || '';
-        clientMealSwapping = { slot, original };
+        const meal = (mealPlanOptionOf(week, active)?.meals || []).find((m) => m.slot === slot);
+        const planItem = from ? (meal?.items || []).find((it) => it.name === from) : null;
 
+        clientMealSwapping = { slot, from: from || '', original: planItem ? planItem.name : (meal?.text || '') };
+        const factors = mealPlanFactors(week);
+        const choices = planItem ? mealPlanItemChoices(clientMealWeek, slot, planItem) : mealPlanPlateChoices(clientMealWeek, slot);
+        const swap = mealPlanSwapFor(clientMealWeek, slot, from || '');
+        const current = swap ? swap.text : clientMealSwapping.original;
+
+        document.getElementById('mealplan-swap-title').innerHTML = `<i class="fas fa-rotate mr-2"></i>${planItem ? 'Cambiar alimento' : 'Cambiar plato'}`;
         document.getElementById('mealplan-swap-sub').textContent = `${slot} · semana ${clientMealWeek}`;
-        const current = mealPlanSwapFor(clientMealWeek, slot) || original;
-        document.getElementById('mealplan-swap-body').innerHTML = mealPlanChoicesFor(clientMealWeek, slot)
-            .map((c) => `
+        document.getElementById('mealplan-swap-body').innerHTML = choices.map((c) => {
+            const amount = window.MealItem.amountLabel(window.MealItem.scaleItem(c.item, factors));
+            const on = c.item.name === current;
+            return `
                 <button class="mealplan-pick w-full text-left rounded-xl border p-3 transition ${
-                    c.text === current ? 'border-[#FFDB89] bg-[#FFDB89]/10' : 'border-[#FFDB89]/15 hover:border-[#FFDB89]/40'
-                }" data-text="${escHtml(c.text)}">
-                    <p class="text-[10px] font-bold uppercase tracking-wider ${c.text === current ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'}">
-                        ${escHtml(c.from)}${c.text === current ? ' · ahora' : ''}
+                    on ? 'border-[#FFDB89] bg-[#FFDB89]/10' : 'border-[#FFDB89]/15 hover:border-[#FFDB89]/40'
+                }" data-name="${escHtml(c.item.name)}" data-amount="${escHtml(String(c.item.amount || 0))}"
+                   data-unit="${escHtml(c.item.unit || '')}" data-role="${escHtml(window.MealItem.roleOf(c.item.role))}">
+                    <p class="text-[10px] font-bold uppercase tracking-wider ${on ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'}">
+                        ${escHtml(c.from)}${on ? ' · ahora' : ''}
                     </p>
-                    <p class="text-[13px] text-[#FFDB89]/85 leading-relaxed mt-1">${escHtml(c.text)}</p>
-                </button>`).join('')
-            || '<p class="text-xs text-[#FFDB89]/30 text-center py-4">Tu entrenador no dejó alternativas para este plato.</p>';
+                    <div class="flex items-baseline gap-2 mt-1">
+                        <p class="flex-1 min-w-0 text-[13px] text-[#FFDB89]/85 leading-relaxed">${escHtml(c.item.name)}</p>
+                        ${amount ? `<p class="text-[11px] font-black text-[#FFDB89]/70 tabular-nums shrink-0">${escHtml(amount)}</p>` : ''}
+                    </div>
+                </button>`;
+        }).join('') || '<p class="text-xs text-[#FFDB89]/30 text-center py-4">Tu entrenador no dejó alternativas para esto.</p>';
 
         const modal = document.getElementById('mealplan-swap-modal');
         modal?.classList.remove('hidden');
@@ -6586,7 +6709,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clientMealSwapping = null;
     };
 
-    // One PUT, one knob. Sending the plan's own text back clears the swap
+    // One PUT, one knob. Sending the plan's own element back clears the swap
     // instead of storing a copy of it, so "back to the original" is just
     // picking the original.
     const saveMealPlanChoice = async (payload) => {
@@ -6608,6 +6731,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const optBtn = t.closest?.('.mealplan-opt');
         if (optBtn) { saveMealPlanChoice({ option: optBtn.dataset.key }); return; }
 
+        if (t.closest?.('#mealplan-adjust')) {
+            clientMealAdjust = !clientMealAdjust;
+            try { localStorage.setItem('mealplan_adjust', clientMealAdjust ? 'on' : 'off'); } catch { /* private window */ }
+            paintClientMealPlan();
+            return;
+        }
+
         if (t.closest?.('#mealplan-week-prev')) { clientMealWeek -= 1; paintClientMealPlan(); return; }
         if (t.closest?.('#mealplan-week-next')) { clientMealWeek += 1; paintClientMealPlan(); return; }
         if (t.closest?.('#mealplan-week-today')) {
@@ -6616,19 +6746,24 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const swapBtn = t.closest?.('.mealplan-swap');
-        if (swapBtn) { openMealPlanSwap(swapBtn.dataset.slot); return; }
+        const itemBtn = t.closest?.('.mealplan-item');
+        if (itemBtn) { openMealPlanSwap(itemBtn.dataset.slot, itemBtn.dataset.from); return; }
         if (t.closest?.('#mealplan-swap-close')) { closeMealPlanSwap(); return; }
         if (t.id === 'mealplan-swap-modal') { closeMealPlanSwap(); return; }
 
         const pick = t.closest?.('.mealplan-pick');
         if (pick && clientMealSwapping) {
-            const chosen = pick.dataset.text;
+            const chosen = pick.dataset.name;
+            const back = chosen === clientMealSwapping.original;
             const ok = await saveMealPlanChoice({
                 swap: {
                     week: clientMealWeek,
                     slot: clientMealSwapping.slot,
-                    text: chosen === clientMealSwapping.original ? '' : chosen,
+                    from: clientMealSwapping.from,
+                    text: back ? '' : chosen,
+                    amount: Number(pick.dataset.amount) || 0,
+                    unit: pick.dataset.unit || '',
+                    role: pick.dataset.role || 'free',
                 },
             });
             if (ok) closeMealPlanSwap();
@@ -7092,14 +7227,64 @@ document.addEventListener('DOMContentLoaded', () => {
     let mealPlanAssigning = null;
 
     const MEAL_PLAN_SLOTS = ['Desayuno', 'Almuerzo', 'Merienda', 'Cena'];
+    const MEAL_ROLE_LETTER = { protein: 'P', carb: 'C', fat: 'G', veg: 'V', free: '·' };
+
+    // A plate starts with one empty element rather than none, so "+ alimento"
+    // is an addition and not the first thing anyone has to find.
+    const blankMealItem = () => ({ name: '', amount: 0, unit: '', role: 'free', alternatives: [] });
 
     const blankMealPlanWeek = (n) => ({
         week: n, objective: '', calories: 0, protein: 0, carbs: 0, fat: 0, deficit: 0,
         options: ['A', 'B'].map((key) => ({
             key, label: `Prep ${key}`,
-            meals: MEAL_PLAN_SLOTS.map((slot) => ({ slot, text: '', alternatives: [] })),
+            meals: MEAL_PLAN_SLOTS.map((slot) => ({ slot, text: '', items: [blankMealItem()], alternatives: [] })),
         })),
     });
+
+    // One element and its alternatives on a single line: "5 oz pollo | 5 oz pavo".
+    const mealItemLine = (it) => [window.MealItem.itemText(it), ...(it.alternatives || []).map(window.MealItem.itemText)]
+        .filter(Boolean).join(' | ');
+
+    // The reverse: a typed line back into an element. The first part is the
+    // plate's own food, the rest are what the client may switch it for, and they
+    // inherit its role — a protein is swapped for a protein.
+    const mealItemFromLine = (line, role) => {
+        const parts = String(line || '').split('|').map((x) => x.trim()).filter(Boolean);
+        if (!parts.length) return null;
+        const parsed = parts.map((x) => ({ ...(window.MealItem.parseLine(x) || { name: x, amount: 0, unit: '' }), role }));
+        return { ...parsed[0], alternatives: parsed.slice(1) };
+    };
+
+    // A plate written before elements existed, broken into editable lines. It is
+    // a head start, not a conversion: nothing is stored until the trainer saves,
+    // and whatever the splitter gets wrong is one line to fix.
+    const mealItemsFromText = (text) => String(text || '')
+        .split(/\s·\s|,|\sy\s|\scon\s|\smás\s/i)
+        .map((x) => x.trim().replace(/[.;]+$/, ''))
+        .filter(Boolean).slice(0, 10)
+        .map((x) => ({ ...(window.MealItem.parseLine(x) || { name: x, amount: 0, unit: '' }), role: 'free', alternatives: [] }));
+
+    // Elements as the editor needs them, whatever the plan happens to carry.
+    const mealItemsOf = (m) => ((m?.items || []).length ? m.items : mealItemsFromText(m?.text));
+
+    // The role badge is a button, not a select: one tap cycles P → C → G → V → ·
+    // and the colour says at a glance which part of the plate moves with a
+    // client's macros.
+    const mealRoleBadgeHtml = (role) => {
+        const r = window.MealItem.roleOf(role);
+        const def = window.MealItem.ROLES[r];
+        return `<button type="button" class="mp-role w-7 h-7 shrink-0 rounded-lg text-[11px] font-black transition hover:brightness-125"
+            data-role="${r}" title="${escHtml(def.label)} — toca para cambiar"
+            style="background:${def.color}1f;color:${def.color};border:1px solid ${def.color}55">${escHtml(MEAL_ROLE_LETTER[r])}</button>`;
+    };
+
+    const mealItemRowHtml = (it) => `
+        <div class="mp-item flex items-center gap-1.5">
+            ${mealRoleBadgeHtml(it.role)}
+            <input class="mp-line flex-1 min-w-0 px-2.5 py-1.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] text-xs outline-none focus:ring-1 focus:ring-[#FFDB89]/40"
+                value="${escHtml(mealItemLine(it))}" placeholder="5 oz pollo | 5 oz pavo" autocomplete="off">
+            <button type="button" class="mp-item-remove w-6 h-7 shrink-0 text-[#FFDB89]/25 hover:text-red-400 transition" title="Quitar"><i class="fas fa-times text-xs"></i></button>
+        </div>`;
 
     window.renderMealPlans = async () => {
         const list = document.getElementById('mealplan-list');
@@ -7163,10 +7348,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="mp-meal rounded-lg border border-[#FFDB89]/10 bg-[#0D0D0D] p-2.5 space-y-1.5">
                         <input class="mp-slot w-full px-2 py-1 bg-transparent text-[10px] font-bold text-[#FFDB89]/60 uppercase tracking-wider outline-none"
                             value="${escHtml(m.slot)}" placeholder="Comida" autocomplete="off">
-                        <textarea class="mp-text w-full p-2 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] text-xs outline-none focus:ring-1 focus:ring-[#FFDB89]/40 resize-none" rows="3"
-                            placeholder="Qué come">${escHtml(m.text)}</textarea>
-                        <textarea class="mp-alts w-full p-2 bg-transparent border border-dashed border-[#FFDB89]/15 rounded-lg text-[#FFDB89]/70 text-[11px] outline-none focus:ring-1 focus:ring-[#FFDB89]/30 resize-none" rows="2"
-                            placeholder="Alternativas — una por línea">${escHtml((m.alternatives || []).join('\n'))}</textarea>
+                        <div class="mp-items space-y-1.5">${mealItemsOf(m).map(mealItemRowHtml).join('')}</div>
+                        <button type="button" class="mp-item-add w-full py-1.5 rounded-lg border border-dashed border-[#FFDB89]/15 hover:border-[#FFDB89]/40 text-[10px] font-bold text-[#FFDB89]/35 hover:text-[#FFDB89] transition">
+                            <i class="fas fa-plus mr-1"></i>Alimento
+                        </button>
                     </div>`).join('')}
             </div>`;
 
@@ -7192,6 +7377,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="number" min="0" class="${cls} w-full p-2 text-center bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] text-sm font-bold outline-none focus:ring-1 focus:ring-[#FFDB89]/40" value="${val || 0}">
                         </div>`).join('')}
                 </div>
+                <p class="text-[10px] text-[#FFDB89]/30 leading-relaxed">
+                    Un alimento por línea, con su cantidad adelante — <span class="text-[#FFDB89]/60">5 oz pechuga de pollo</span>.
+                    Separa las alternativas con <span class="text-[#FFDB89]/60">|</span>. La letra dice qué es:
+                    las proteínas, carbos y grasas se ajustan a los macros de cada cliente; los vegetales y lo libre no se tocan.
+                </p>
                 <div class="flex flex-wrap gap-3">${(w.options || []).map(opt).join('')}</div>
                 <button type="button" class="mp-week-remove text-[11px] text-red-400/60 hover:text-red-400 font-bold transition">
                     <i class="fas fa-trash-alt mr-1"></i>Quitar esta semana
@@ -7225,12 +7415,14 @@ document.addEventListener('DOMContentLoaded', () => {
             options: [...el.querySelectorAll('.mp-option')].map((oe, oi) => ({
                 key:   mealPlanDraft?.weeks?.[i]?.options?.[oi]?.key || String.fromCharCode(65 + oi),
                 label: oe.querySelector('.mp-option-label')?.value || '',
-                meals: [...oe.querySelectorAll('.mp-meal')].map((me) => ({
-                    slot: me.querySelector('.mp-slot')?.value || '',
-                    text: me.querySelector('.mp-text')?.value || '',
-                    alternatives: (me.querySelector('.mp-alts')?.value || '')
-                        .split('\n').map((s) => s.trim()).filter(Boolean),
-                })),
+                meals: [...oe.querySelectorAll('.mp-meal')].map((me) => {
+                    const items = [...me.querySelectorAll('.mp-item')]
+                        .map((ie) => mealItemFromLine(ie.querySelector('.mp-line')?.value, ie.querySelector('.mp-role')?.dataset.role))
+                        .filter(Boolean);
+                    // No `text`: the server writes the plate's sentence from the
+                    // elements, so there is only ever one version of it.
+                    return { slot: me.querySelector('.mp-slot')?.value || '', items, alternatives: [] };
+                }),
             })),
         }));
         return {

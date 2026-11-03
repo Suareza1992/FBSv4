@@ -1030,9 +1030,13 @@ const Recipe = mongoose.model('Recipe', RecipeSchema);
 // and TWO prep options that hit the same numbers, so the week can be cooked in
 // two batches instead of eating the same plate seven nights running.
 //
-// The meals are prose, not ingredient rows. That is deliberate: this is the
-// "do not make me think" half of Nutrición. The client reads a plate and cooks
-// it; the Recetas book is where macros get counted.
+// A plate is a short list of ELEMENTS, each with a role (protein / carb / fat /
+// vegetable / free). The role is what lets a plate be swapped one food at a time
+// and lets the amounts be rewritten for a client whose macros are not the week's.
+//
+// Still no macro numbers on an element: the week's targets and the client's own
+// goals are what scaling reads, and counting what was actually eaten stays in the
+// diary, against the food database.
 const MealPlanSchema = new mongoose.Schema({
     trainerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     name:        { type: String, required: true, trim: true },
@@ -1052,10 +1056,28 @@ const MealPlanSchema = new mongoose.Schema({
             label: { type: String, default: '' },
             meals: [{
                 slot: { type: String, default: '' },
+                // The plate as one sentence. Rebuilt from the elements on every
+                // save, so anything that still reads text keeps working, and it is
+                // all a plan written before elements existed has.
                 text: { type: String, default: '' },
-                // Extra swaps the trainer wrote for THIS plate. The other option's
-                // version of the same slot is always offered too, so a plan with no
-                // alternatives still gives the client something to switch to.
+                items: [{
+                    name:   { type: String, default: '' },
+                    amount: { type: Number, default: 0 },
+                    unit:   { type: String, default: '' },
+                    // protein | carb | fat | veg | free — which weekly target this
+                    // element scales against, or none.
+                    role:   { type: String, default: 'free' },
+                    // Swaps the trainer wrote for THIS element. The other prep's
+                    // element in the same slot and role is always offered too, so a
+                    // plan with no alternatives still answers "not this one".
+                    alternatives: [{
+                        name:   { type: String, default: '' },
+                        amount: { type: Number, default: 0 },
+                        unit:   { type: String, default: '' },
+                        role:   { type: String, default: 'free' },
+                    }],
+                }],
+                // Plate-level alternatives, from before elements. Still offered.
                 alternatives: { type: [String], default: [] },
             }],
         }],
@@ -1076,12 +1098,20 @@ const MealPlanAssignmentSchema = new mongoose.Schema({
     // advances on its own and nobody has to remember to move them along.
     startDate: { type: String, default: '' },
     option:    { type: String, default: 'A' },
-    // Keyed by week + slot and holding the final text, which is why a swap
-    // survives flipping between option A and option B.
+    // Keyed by week + slot + the NAME of the element being replaced, and holding
+    // the replacement outright. Keying on the name rather than a position is what
+    // makes "I don't eat oatmeal" follow the oatmeal: it applies in whichever prep
+    // the oatmeal appears in, and flipping between prep A and prep B does not undo
+    // it. An empty `from` is a whole-plate swap, which is what plans written before
+    // elements existed still use.
     swaps: [{
-        week: { type: Number, default: 1 },
-        slot: { type: String, default: '' },
-        text: { type: String, default: '' },
+        week:   { type: Number, default: 1 },
+        slot:   { type: String, default: '' },
+        from:   { type: String, default: '' },
+        text:   { type: String, default: '' },
+        amount: { type: Number, default: 0 },
+        unit:   { type: String, default: '' },
+        role:   { type: String, default: 'free' },
     }],
 }, { timestamps: true });
 const MealPlanAssignment = mongoose.model('MealPlanAssignment', MealPlanAssignmentSchema);
@@ -3528,6 +3558,37 @@ app.post('/api/recipes/image', authenticateToken, coverUpload.single('photo'), a
 });
 
 // --- Meal Prep -------------------------------------------------------------
+// The five things an element can be. Anything else is stored as 'free', which
+// simply means it never scales.
+const MEAL_ITEM_ROLES = new Set(['protein', 'carb', 'fat', 'veg', 'free']);
+
+// Elements arrive parsed by the browser (public/meal-item.js owns the parsing,
+// so the trainer sees exactly what will be stored). The server's job is only to
+// bound them — these end up rendered straight into a client's day.
+// `withAlts` recurses exactly one level: an element may carry alternatives, an
+// alternative may not. Filtering happens after the recursion, so a nameless
+// element taking its alternatives with it cannot shift anybody else's.
+const cleanMealItems = (list, max, withAlts = false) => (Array.isArray(list) ? list : []).slice(0, max)
+    .map((it) => {
+        const out = {
+            name:   String(it?.name || '').trim().slice(0, 200),
+            amount: Math.max(0, Math.min(10000, Number(it?.amount) || 0)),
+            unit:   String(it?.unit || '').trim().slice(0, 20),
+            role:   MEAL_ITEM_ROLES.has(String(it?.role)) ? String(it.role) : 'free',
+        };
+        if (withAlts) out.alternatives = cleanMealItems(it?.alternatives, 6);
+        return out;
+    })
+    .filter((it) => it.name);
+
+// A plate's sentence, rebuilt from its elements. Deliberately plainer than the
+// browser's version (no fractions, no rounding) — this is the fallback copy, and
+// the client renders from the elements themselves.
+const mealPlateText = (items) => items
+    .map((it) => [it.amount ? `${Math.round(it.amount * 100) / 100}${it.unit ? ` ${it.unit}` : ''}` : '', it.name]
+        .filter(Boolean).join(' '))
+    .join(' · ').slice(0, 600);
+
 // Trim an incoming plan to the stored shape. Everything is bounded, because
 // these strings are rendered straight into a client's day.
 const cleanMealPlanWeeks = (weeks) => (Array.isArray(weeks) ? weeks : [])
@@ -3545,12 +3606,19 @@ const cleanMealPlanWeeks = (weeks) => (Array.isArray(weeks) ? weeks : [])
         options: (Array.isArray(w?.options) ? w.options : []).slice(0, 4).map((o, oi) => ({
             key:   String(o?.key || String.fromCharCode(65 + oi)).trim().slice(0, 2).toUpperCase(),
             label: String(o?.label || '').trim().slice(0, 40),
-            meals: (Array.isArray(o?.meals) ? o.meals : []).slice(0, 8).map((m) => ({
-                slot: String(m?.slot || '').trim().slice(0, 30),
-                text: String(m?.text || '').trim().slice(0, 600),
-                alternatives: (Array.isArray(m?.alternatives) ? m.alternatives : [])
-                    .map((a) => String(a || '').trim().slice(0, 600)).filter(Boolean).slice(0, 6),
-            })).filter((m) => m.slot || m.text),
+            meals: (Array.isArray(o?.meals) ? o.meals : []).slice(0, 8).map((m) => {
+                const items = cleanMealItems(m?.items, 10, true);
+                return {
+                    slot: String(m?.slot || '').trim().slice(0, 30),
+                    // Elements win when there are any: the prose is a rendering of
+                    // them, so storing a stale sentence beside them is a lie waiting
+                    // to be read by whatever still looks at text.
+                    text: items.length ? mealPlateText(items) : String(m?.text || '').trim().slice(0, 600),
+                    items,
+                    alternatives: (Array.isArray(m?.alternatives) ? m.alternatives : [])
+                        .map((a) => String(a || '').trim().slice(0, 600)).filter(Boolean).slice(0, 6),
+                };
+            }).filter((m) => m.slot || m.text || m.items.length),
         })).filter((o) => o.meals.length),
     }))
     .filter((w) => w.options.length);
@@ -3725,12 +3793,24 @@ app.get('/api/my-meal-plan', authenticateToken, async (req, res) => {
         if (!a) return res.json(null);
         const plan = await MealPlan.findOne({ _id: a.planId, isArchived: { $ne: true } }).lean();
         if (!plan) return res.json(null);
+        // The client's own macro goals ride along, because the amounts on the
+        // plate are rewritten against them. They are sent rather than applied
+        // here: the week being looked at is a front-end decision, and every week
+        // has its own targets to scale against.
+        const me = await User.findById(req.user.id).select('macroSettings').lean();
+        const ms = me?.macroSettings || {};
         res.json({
             plan,
             startDate:   a.startDate,
             option:      a.option || 'A',
             swaps:       a.swaps || [],
             currentWeek: mealPlanWeekFor(a.startDate, (plan.weeks || []).length),
+            goals: {
+                calories: Number(ms.targetCal)    || 0,
+                protein:  Number(ms.goalProtein)  || 0,
+                carbs:    Number(ms.goalCarbs)    || 0,
+                fat:      Number(ms.goalFat)      || 0,
+            },
         });
     } catch (e) {
         console.error('Error fetching my meal plan:', e);
@@ -3749,14 +3829,24 @@ app.put('/api/my-meal-plan', authenticateToken, async (req, res) => {
             const key = String(b.option || '').trim().slice(0, 2).toUpperCase();
             if (key) a.option = key;
         }
-        // One swap at a time. An empty text is how a client puts the original back.
+        // One swap at a time, identified by the element it replaces. An empty
+        // text is how a client puts the original back: the row is dropped rather
+        // than storing a copy of what the plan already says.
         if (b.swap) {
             const week = Math.max(1, Math.round(Number(b.swap.week) || 1));
             const slot = String(b.swap.slot || '').trim().slice(0, 30);
+            const from = String(b.swap.from || '').trim().slice(0, 200);
             const text = String(b.swap.text || '').trim().slice(0, 600);
             if (slot) {
-                a.swaps = (a.swaps || []).filter((s) => !(s.week === week && s.slot === slot));
-                if (text) a.swaps.push({ week, slot, text });
+                a.swaps = (a.swaps || []).filter((s) => !(s.week === week && s.slot === slot && (s.from || '') === from));
+                if (text) {
+                    a.swaps.push({
+                        week, slot, from, text,
+                        amount: Math.max(0, Math.min(10000, Number(b.swap.amount) || 0)),
+                        unit:   String(b.swap.unit || '').trim().slice(0, 20),
+                        role:   MEAL_ITEM_ROLES.has(String(b.swap.role)) ? String(b.swap.role) : 'free',
+                    });
+                }
             }
         }
         await a.save();

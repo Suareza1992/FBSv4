@@ -10,22 +10,47 @@
    same plate seven nights running. Protein holds at ~125 g the whole way down;
    the deficit comes out of carbs and fat.
 
+   A plate is a handful of ELEMENTS, not a sentence, because that is the grain
+   the client works at: swap the chicken without losing the rice, and have the
+   chicken — only the chicken — rewritten for their own protein goal. Every
+   element is written as one line:
+
+       ['p', '5 oz pechuga de pollo | 5 oz pechuga de pavo | 5 oz lomillo']
+         │     └ what the plan says    └ what they can switch to instead
+         └ the role: p protein · c carbo · f grasa · v vegetal · - libre
+
+   The role is the whole trick. It decides which of the week's targets the
+   amount scales against, so a client who needs a third more protein gets a
+   third more chicken and exactly the same broccoli. Alternatives inherit their
+   element's role — a protein is swapped for a protein.
+
    This file is data only. It is kept out of app.js because it is prose, not
    logic, and prose this long buried in a 17k-line file is prose nobody finds.
    ══════════════════════════════════════════════════════════════════════════ */
 
 (function () {
-    // Shorthand so a week reads as a table instead of eighty lines of braces:
-    // every meal is [slot, text], and alternatives are added in the editor.
+    const ROLE = { p: 'protein', c: 'carb', f: 'fat', v: 'veg', '-': 'free' };
+
+    // "5 oz pechuga de pollo | 5 oz pavo" → the element plus its alternatives,
+    // parsed by the same code the editor and the client use, so what is written
+    // here is exactly what a trainer would get by typing it.
+    const item = ([code, line]) => {
+        const role = ROLE[code] || 'free';
+        const parts = String(line).split('|').map((s) => s.trim()).filter(Boolean);
+        const parsed = parts.map((s) => Object.assign(window.MealItem.parseLine(s) || { name: s, amount: 0, unit: '' }, { role }));
+        return Object.assign(parsed[0], { alternatives: parsed.slice(1) });
+    };
+
+    // Shorthand so a week reads as a table instead of two hundred lines of braces.
     const prep = (key, label, meals) => ({
         key,
         label,
-        meals: meals.map(([slot, text]) => ({ slot, text, alternatives: [] })),
+        meals: meals.map(([slot, lines]) => ({ slot, items: lines.map(item), alternatives: [] })),
     });
 
     window.MEAL_PLAN_TEMPLATE = {
         name: 'Déficit progresivo — 8 semanas',
-        description: 'Baja de mantenimiento a −500 kcal en ocho semanas. Dos preparaciones por semana con los mismos macros, para alternar sin comer lo mismo todos los días.',
+        description: 'Baja de mantenimiento a −500 kcal en ocho semanas. Dos preparaciones por semana con los mismos macros, para alternar sin comer lo mismo todos los días. Cada alimento se puede cambiar por su cuenta.',
         weeks: [
             {
                 week: 1,
@@ -33,16 +58,51 @@
                 calories: 1700, protein: 125, carbs: 180, fat: 50, deficit: 0,
                 options: [
                     prep('A', 'Prep A', [
-                        ['Desayuno', 'Avena (3/4 taza en seco) cocida en leche de almendras, 1 scoop de whey, 1 cda de chía y 1/2 taza de arándanos.'],
-                        ['Almuerzo', 'Pechuga de pollo a la parrilla (5 oz), 1 taza de quinoa cocida, mezcla de hojas verdes, pepinillo y 1 cda de vinagreta de aceite de oliva.'],
-                        ['Merienda', 'Yogur griego natural sin grasa (1 taza) con un puñito de nueces y canela.'],
-                        ['Cena', 'Salmón al horno (5 oz) con batata asada (5 oz) y espárragos al vapor.'],
+                        ['Desayuno', [
+                            ['c', '3/4 taza avena en seco | 2 rebanadas pan integral | 1/2 taza granola sin azúcar'],
+                            ['p', '1 scoop whey | 1 taza claras de huevo | 3/4 taza yogur griego sin grasa'],
+                            ['f', '1 cda chía | 1 cda linaza | 1 cda mantequilla de almendras'],
+                            ['c', '1/2 taza arándanos | 1/2 taza fresas | 1/2 guineo'],
+                            ['-', '1 taza leche de almendras sin azúcar | 1 taza agua'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '5 oz pechuga de pollo a la parrilla | 5 oz pechuga de pavo | 5 oz lomillo de cerdo magro'],
+                            ['c', '1 taza quinoa cocida | 1 taza arroz integral | 1 taza habichuelas blancas'],
+                            ['v', '2 tazas hojas verdes con pepinillo | 2 tazas ensalada de repollo | 2 tazas espinaca'],
+                            ['f', '1 cda vinagreta de aceite de oliva | 1/4 aguacate | 1 cda aderezo de ajonjolí'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '1 taza yogur griego natural sin grasa | 1 taza queso cottage | 1 scoop whey con agua'],
+                            ['f', '10 nueces | 10 almendras | 1 cda mantequilla de maní natural'],
+                            ['-', 'canela'],
+                        ]],
+                        ['Cena', [
+                            ['p', '5 oz salmón al horno | 5 oz trucha | 5 oz mahi-mahi'],
+                            ['c', '5 oz batata asada | 5 oz papa asada | 2/3 taza arroz integral'],
+                            ['v', '2 tazas espárragos al vapor | 2 tazas brócoli al vapor | 2 tazas habichuelas tiernas'],
+                        ]],
                     ]),
                     prep('B', 'Prep B', [
-                        ['Desayuno', '3 huevos revueltos con espinaca y tomate, 2 rebanadas de pan integral y 1/4 de aguacate.'],
-                        ['Almuerzo', 'Pavo molido magro (5 oz) salteado con pimientos y cebolla sobre 1 taza de arroz integral cocido.'],
-                        ['Merienda', 'Queso cottage (1 taza) con piña o berries en trozos.'],
-                        ['Cena', 'Churrasco magro a la parrilla (5 oz) con papas al horno en gajos (5 oz) y habichuelas tiernas asadas.'],
+                        ['Desayuno', [
+                            ['p', '3 huevos revueltos | 1 taza claras con 1 huevo entero | 4 oz tocineta de pavo'],
+                            ['v', '1 taza espinaca y tomate | 1 taza hongos y pimientos'],
+                            ['c', '2 rebanadas pan integral | 1 wrap integral | 1/2 taza avena en seco'],
+                            ['f', '1/4 aguacate | 1 cdta aceite de oliva | 1 oz queso feta'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '5 oz pavo molido magro | 5 oz pollo molido | 5 oz carne molida 93/7'],
+                            ['v', '1 taza pimientos y cebolla salteados | 1 taza calabacín salteado'],
+                            ['c', '1 taza arroz integral cocido | 1 taza quinoa | 1 taza habichuelas negras'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '1 taza queso cottage | 1 taza yogur griego | 1 scoop whey'],
+                            ['c', '1/2 taza piña en trozos | 1/2 taza berries | 1 manzana pequeña'],
+                        ]],
+                        ['Cena', [
+                            ['p', '5 oz churrasco magro a la parrilla | 5 oz flank steak | 5 oz pechuga de pollo'],
+                            ['c', '5 oz papas al horno en gajos | 5 oz batata asada | 2/3 taza arroz integral'],
+                            ['v', '2 tazas habichuelas tiernas asadas | 2 tazas brócoli | 2 tazas coles de Bruselas'],
+                        ]],
                     ]),
                 ],
             },
@@ -52,16 +112,48 @@
                 calories: 1630, protein: 125, carbs: 170, fat: 47, deficit: 70,
                 options: [
                     prep('A', 'Prep A', [
-                        ['Desayuno', '3 claras + 1 huevo entero revueltos con espinaca y tomate, más 1 rebanada de pan integral.'],
-                        ['Almuerzo', 'Albóndigas de pavo magro (4.5 oz) con calabacín y pimientos asados y 3/4 taza de arroz integral.'],
-                        ['Merienda', 'Manzana en rodajas con 1 cda de mantequilla de maní natural.'],
-                        ['Cena', 'Churrasco magro (4.5 oz) con ensalada verde grande y 1/2 taza de papitas nuevas asadas.'],
+                        ['Desayuno', [
+                            ['p', '3 claras y 1 huevo entero | 1 taza claras de huevo | 1 scoop whey'],
+                            ['v', '1 taza espinaca y tomate | 1 taza hongos salteados'],
+                            ['c', '1 rebanada pan integral | 1/2 taza avena en seco | 1/2 wrap integral'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4.5 oz albóndigas de pavo magro | 4.5 oz pechuga de pollo | 4.5 oz carne molida 93/7'],
+                            ['v', '1 1/2 taza calabacín y pimientos asados | 1 1/2 taza brócoli asado'],
+                            ['c', '3/4 taza arroz integral | 3/4 taza quinoa | 3/4 taza pasta integral'],
+                        ]],
+                        ['Merienda', [
+                            ['c', '1 manzana en rodajas | 1 pera | 1 taza fresas'],
+                            ['f', '1 cda mantequilla de maní natural | 1 cda mantequilla de almendras | 10 almendras'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4.5 oz churrasco magro | 4.5 oz lomillo de cerdo | 4.5 oz pechuga de pollo'],
+                            ['v', '2 tazas ensalada verde grande | 2 tazas espinaca salteada'],
+                            ['c', '1/2 taza papitas nuevas asadas | 1/2 taza batata asada | 1/2 taza arroz integral'],
+                        ]],
                     ]),
                     prep('B', 'Prep B', [
-                        ['Desayuno', 'Batida de proteína (1 scoop de whey, 1/2 guineo, 1/2 taza de avena, leche de almendras y 1 cda de mantequilla de almendras).'],
-                        ['Almuerzo', 'Pechuga de pollo desmenuzada (4.5 oz) cocida en salsa, sobre 3/4 taza de habichuelas negras y 1/2 taza de arroz jazmín.'],
-                        ['Merienda', 'Edamame (1 taza en vaina) con sal marina y un palito de queso.'],
-                        ['Cena', 'Mahi-mahi o pescado blanco al horno (5.5 oz) con un toque de aceite de oliva, 1/2 taza de quinoa y espinaca salteada.'],
+                        ['Desayuno', [
+                            ['p', '1 scoop whey | 3/4 taza yogur griego | 1 taza claras de huevo'],
+                            ['c', '1/2 taza avena en seco | 1/2 guineo | 1 rebanada pan integral'],
+                            ['f', '1 cda mantequilla de almendras | 1 cda chía | 10 nueces'],
+                            ['-', '1 taza leche de almendras sin azúcar'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4.5 oz pechuga de pollo desmenuzada | 4.5 oz pavo desmenuzado | 4.5 oz atún en agua'],
+                            ['c', '3/4 taza habichuelas negras | 3/4 taza habichuelas rojas | 3/4 taza lentejas'],
+                            ['c', '1/2 taza arroz jazmín | 1/2 taza arroz integral | 1/2 taza quinoa'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '1 taza edamame en vaina | 3/4 taza queso cottage | 2 huevos hervidos'],
+                            ['p', '1 palito de queso mozzarella | 1 huevo hervido'],
+                        ]],
+                        ['Cena', [
+                            ['p', '5.5 oz mahi-mahi al horno | 5.5 oz bacalao | 5.5 oz tilapia'],
+                            ['c', '1/2 taza quinoa | 1/2 taza arroz integral | 1/2 taza batata asada'],
+                            ['v', '2 tazas espinaca salteada | 2 tazas brócoli al vapor'],
+                            ['f', '1 cdta aceite de oliva | 1/4 aguacate'],
+                        ]],
                     ]),
                 ],
             },
@@ -71,16 +163,50 @@
                 calories: 1560, protein: 125, carbs: 155, fat: 44, deficit: 140,
                 options: [
                     prep('A', 'Prep A', [
-                        ['Desayuno', 'Batida de proteína (1 scoop de whey, 1 taza de espinaca, 1/2 taza de berries congelados, agua y 1 cda de linaza).'],
-                        ['Almuerzo', 'Pechuga de pollo a la parrilla (4.5 oz) en wrap bajo en carbohidratos con hojas verdes, tomate y aderezo liviano.'],
-                        ['Merienda', 'Queso cottage (3/4 taza) con pepinillo en rodajas y pimienta negra.'],
-                        ['Cena', 'Bacalao o tilapia al horno (5.5 oz) con coliflor asada y 1/2 taza de arroz salvaje.'],
+                        ['Desayuno', [
+                            ['p', '1 scoop whey | 3/4 taza yogur griego sin grasa | 1 taza claras de huevo'],
+                            ['v', '1 taza espinaca | 1 taza kale'],
+                            ['c', '1/2 taza berries congelados | 1/2 taza fresas | 1/2 guineo'],
+                            ['f', '1 cda linaza | 1 cda chía | 1 cdta mantequilla de maní'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4.5 oz pechuga de pollo a la parrilla | 4.5 oz pavo | 4.5 oz camarones'],
+                            ['c', '1 wrap bajo en carbohidratos | 2 hojas grandes de lechuga | 1/2 taza arroz integral'],
+                            ['v', '1 1/2 taza hojas verdes y tomate | 1 1/2 taza repollo rallado'],
+                            ['f', '1 cda aderezo liviano | 1/4 aguacate'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '3/4 taza queso cottage | 3/4 taza yogur griego | 1 scoop whey'],
+                            ['v', '1 taza pepinillo en rodajas | 1 taza tomatitos'],
+                        ]],
+                        ['Cena', [
+                            ['p', '5.5 oz bacalao al horno | 5.5 oz tilapia | 5.5 oz pechuga de pollo'],
+                            ['v', '2 tazas coliflor asada | 2 tazas brócoli asado'],
+                            ['c', '1/2 taza arroz salvaje | 1/2 taza quinoa | 1/2 taza batata asada'],
+                        ]],
                     ]),
                     prep('B', 'Prep B', [
-                        ['Desayuno', 'Muffins de frittata (3 claras + 1 huevo entero, espinaca y tocineta de pavo en cubos) con 1/2 taza de melón.'],
-                        ['Almuerzo', 'Lomillo de cerdo magro (4.5 oz) con coles de Bruselas asadas y 1/2 taza de majado de batata.'],
-                        ['Merienda', '2 huevos hervidos con sazón everything bagel.'],
-                        ['Cena', 'Wraps de lechuga con pollo molido (4.5 oz), glaseado de hoisin y soya, castañas de agua y edamame al lado.'],
+                        ['Desayuno', [
+                            ['p', '3 claras y 1 huevo entero | 1 taza claras de huevo | 2 huevos'],
+                            ['p', '1 oz tocineta de pavo en cubos | 1 oz jamón de pavo'],
+                            ['v', '1 taza espinaca | 1 taza hongos'],
+                            ['c', '1/2 taza melón | 1/2 taza berries | 1/2 guineo'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4.5 oz lomillo de cerdo magro | 4.5 oz pechuga de pollo | 4.5 oz churrasco magro'],
+                            ['v', '1 1/2 taza coles de Bruselas asadas | 1 1/2 taza brócoli asado'],
+                            ['c', '1/2 taza majado de batata | 1/2 taza arroz integral | 1/2 taza quinoa'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '2 huevos hervidos | 3/4 taza queso cottage | 1 scoop whey'],
+                            ['-', 'sazón everything bagel'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4.5 oz pollo molido | 4.5 oz pavo molido | 4.5 oz camarones'],
+                            ['v', '4 hojas grandes de lechuga | 2 tazas repollo rallado'],
+                            ['p', '1/2 taza edamame | 1/4 taza habichuelas negras'],
+                            ['-', '1 cda glaseado de hoisin y soya'],
+                        ]],
                     ]),
                 ],
             },
@@ -90,16 +216,51 @@
                 calories: 1490, protein: 125, carbs: 140, fat: 42, deficit: 210,
                 options: [
                     prep('A', 'Prep A', [
-                        ['Desayuno', '1 taza de claras + 1 huevo entero revueltos con hongos y pimientos, con 1/2 taza de berries.'],
-                        ['Almuerzo', 'Ensalada de lentejas y habichuelas blancas con tomate, cebolla roja y limón, más pechuga de pollo a la parrilla (4 oz).'],
-                        ['Merienda', 'Yogur griego natural sin grasa (3/4 taza) con 1 cda de chía y canela.'],
-                        ['Cena', 'Salteado de pavo molido magro (4.5 oz) con brócoli, guisantes y jengibre sobre 1/3 taza de arroz integral.'],
+                        ['Desayuno', [
+                            ['p', '1 taza claras y 1 huevo entero | 1 taza claras de huevo | 1 scoop whey'],
+                            ['v', '1 taza hongos y pimientos | 1 taza espinaca'],
+                            ['c', '1/2 taza berries | 1/2 taza melón | 1 manzana pequeña'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4 oz pechuga de pollo a la parrilla | 4 oz pavo | 4 oz atún en agua'],
+                            ['c', '3/4 taza lentejas y habichuelas blancas | 3/4 taza garbanzos | 1/2 taza quinoa'],
+                            ['v', '1 1/2 taza tomate y cebolla roja | 1 1/2 taza hojas verdes'],
+                            ['-', 'limón y perejil'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '3/4 taza yogur griego natural sin grasa | 3/4 taza queso cottage | 1 scoop whey'],
+                            ['f', '1 cda chía | 1 cda linaza | 8 almendras'],
+                            ['-', 'canela'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4.5 oz pavo molido magro | 4.5 oz pollo molido | 4.5 oz carne molida 93/7'],
+                            ['v', '2 tazas brócoli y guisantes | 2 tazas vegetales mixtos salteados'],
+                            ['c', '1/3 taza arroz integral | 1/3 taza quinoa | 1/3 taza fideos de arroz'],
+                            ['-', 'jengibre y soya baja en sodio'],
+                        ]],
                     ]),
                     prep('B', 'Prep B', [
-                        ['Desayuno', '1/2 taza de avena cocida en agua con 1 scoop de whey y 1 cda de cocoa, con 1/4 taza de frambuesas.'],
-                        ['Almuerzo', 'Pinchos de camarón a la parrilla (5 oz) sobre ensalada tibia de quinoa (1/3 taza de quinoa, pepinillo, perejil y limón).'],
-                        ['Merienda', 'Pimientos en tiras con 3 cdas de hummus.'],
-                        ['Cena', 'Flank steak a la parrilla (4 oz) con habichuelas tiernas salteadas en ajo y 4 oz de calabaza butternut asada.'],
+                        ['Desayuno', [
+                            ['c', '1/2 taza avena cocida en agua | 1 rebanada pan integral | 1/2 taza quinoa cocida'],
+                            ['p', '1 scoop whey | 3/4 taza yogur griego | 1 taza claras de huevo'],
+                            ['c', '1/4 taza frambuesas | 1/4 taza arándanos | 1/2 guineo pequeño'],
+                            ['-', '1 cda cocoa sin azúcar'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '5 oz camarones a la parrilla | 5 oz pechuga de pollo | 5 oz bacalao'],
+                            ['c', '1/3 taza quinoa cocida | 1/3 taza arroz integral | 1/3 taza cuscús integral'],
+                            ['v', '1 1/2 taza pepinillo y perejil | 1 1/2 taza hojas verdes'],
+                            ['-', 'limón'],
+                        ]],
+                        ['Merienda', [
+                            ['v', '1 1/2 taza pimientos en tiras | 1 1/2 taza zanahoria y apio'],
+                            ['f', '3 cdas hummus | 1 cda mantequilla de maní | 1/4 aguacate'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4 oz flank steak a la parrilla | 4 oz churrasco magro | 4 oz pechuga de pollo'],
+                            ['v', '2 tazas habichuelas tiernas en ajo | 2 tazas espárragos'],
+                            ['c', '4 oz calabaza butternut asada | 4 oz batata asada | 1/3 taza arroz integral'],
+                        ]],
                     ]),
                 ],
             },
@@ -109,16 +270,49 @@
                 calories: 1420, protein: 125, carbs: 130, fat: 38, deficit: 280,
                 options: [
                     prep('A', 'Prep A', [
-                        ['Desayuno', 'Claras revueltas (1 taza) con 1 huevo entero, espinaca y 1/4 de aguacate sobre 1 rebanada de pan integral.'],
-                        ['Almuerzo', 'Pechuga de pollo desmenuzada (4 oz) sobre hojas verdes, tomatitos y pepinillo, con 1/3 taza de quinoa y aderezo de limón y hierbas.'],
-                        ['Merienda', 'Yogur griego sin grasa (3/4 taza) con fresas en rodajas.'],
-                        ['Cena', 'Pechuga de pollo asada con hierbas (4 oz) sobre kale salteado, con calabaza butternut asada (3 oz).'],
+                        ['Desayuno', [
+                            ['p', '1 taza claras y 1 huevo entero | 1 taza claras de huevo | 1 scoop whey'],
+                            ['v', '1 taza espinaca | 1 taza hongos'],
+                            ['f', '1/4 aguacate | 1 cdta aceite de oliva | 8 almendras'],
+                            ['c', '1 rebanada pan integral | 1/2 taza avena en seco | 1/2 guineo'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4 oz pechuga de pollo desmenuzada | 4 oz pavo | 4 oz atún en agua'],
+                            ['v', '2 tazas hojas verdes, tomatitos y pepinillo | 2 tazas espinaca y rábano'],
+                            ['c', '1/3 taza quinoa | 1/3 taza arroz integral | 1/3 taza habichuelas blancas'],
+                            ['f', '1 cda aderezo de limón y hierbas | 1/4 aguacate'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '3/4 taza yogur griego sin grasa | 3/4 taza queso cottage | 1 scoop whey'],
+                            ['c', '1/2 taza fresas en rodajas | 1/2 taza arándanos | 1/2 taza melón'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4 oz pechuga de pollo asada con hierbas | 4 oz pavo | 4 oz bacalao'],
+                            ['v', '2 tazas kale salteado | 2 tazas espinaca salteada'],
+                            ['c', '3 oz calabaza butternut asada | 3 oz batata asada | 1/3 taza arroz integral'],
+                        ]],
                     ]),
                     prep('B', 'Prep B', [
-                        ['Desayuno', 'Pudín de chía con proteína (1 scoop, 2 cdas de chía y leche de almendras sin azúcar, reposado de un día para otro).'],
-                        ['Almuerzo', 'Atún sellado o atún en lata (4.5 oz) sobre espinaca, pepinillo y rábano, con 1/3 taza de arroz integral y aderezo liviano de soya y ajonjolí.'],
-                        ['Merienda', 'Apio con 1.5 cdas de mantequilla de maní natural.'],
-                        ['Cena', 'Chili de carne molida magra (93/7, 4 oz) con tomate triturado, 1/4 taza de habichuelas rojas y calabacín en cubos.'],
+                        ['Desayuno', [
+                            ['p', '1 scoop whey | 3/4 taza yogur griego | 1 taza claras de huevo'],
+                            ['f', '2 cdas chía | 1 cda mantequilla de almendras | 10 nueces'],
+                            ['-', '1 taza leche de almendras sin azúcar'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4.5 oz atún | 4.5 oz salmón en lata | 4.5 oz pechuga de pollo'],
+                            ['v', '2 tazas espinaca, pepinillo y rábano | 2 tazas hojas verdes mixtas'],
+                            ['c', '1/3 taza arroz integral | 1/3 taza quinoa | 1/3 taza edamame'],
+                            ['f', '1 cda aderezo de soya y ajonjolí | 1 cdta aceite de ajonjolí'],
+                        ]],
+                        ['Merienda', [
+                            ['v', '2 tazas apio | 2 tazas pepinillo'],
+                            ['f', '1 1/2 cda mantequilla de maní natural | 1 1/2 cda hummus | 12 almendras'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4 oz carne molida magra 93/7 | 4 oz pavo molido | 4 oz pollo molido'],
+                            ['v', '1 1/2 taza tomate triturado y calabacín | 1 1/2 taza pimientos y cebolla'],
+                            ['c', '1/4 taza habichuelas rojas | 1/4 taza habichuelas negras | 1/4 taza arroz integral'],
+                        ]],
                     ]),
                 ],
             },
@@ -128,16 +322,47 @@
                 calories: 1350, protein: 125, carbs: 115, fat: 35, deficit: 350,
                 options: [
                     prep('A', 'Prep A', [
-                        ['Desayuno', '1/2 taza de avena cocida en agua con 1 scoop de whey y canela.'],
-                        ['Almuerzo', 'Salmón al horno (4 oz) con calabacín asado y 1/2 taza de arroz integral.'],
-                        ['Merienda', 'Batida de proteína (1 scoop con agua y hielo) y pepinillo en rodajas.'],
-                        ['Cena', 'Lomillo de cerdo magro (4 oz) con coles de Bruselas asadas y ensalada grande.'],
+                        ['Desayuno', [
+                            ['c', '1/2 taza avena cocida en agua | 1 rebanada pan integral | 1/2 taza quinoa cocida'],
+                            ['p', '1 scoop whey | 1 taza claras de huevo | 3/4 taza yogur griego'],
+                            ['-', 'canela'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4 oz salmón al horno | 4 oz trucha | 4 oz pechuga de pollo'],
+                            ['v', '2 tazas calabacín asado | 2 tazas brócoli asado'],
+                            ['c', '1/2 taza arroz integral | 1/2 taza quinoa | 3 oz batata asada'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '1 scoop whey con agua y hielo | 3/4 taza queso cottage | 2 huevos hervidos'],
+                            ['v', '1 taza pepinillo en rodajas | 1 taza tomatitos'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4 oz lomillo de cerdo magro | 4 oz pechuga de pollo | 4 oz churrasco magro'],
+                            ['v', '2 tazas coles de Bruselas asadas | 2 tazas brócoli asado'],
+                            ['v', '2 tazas ensalada verde grande | 2 tazas espinaca'],
+                        ]],
                     ]),
                     prep('B', 'Prep B', [
-                        ['Desayuno', 'Tortilla (4 claras + 1 huevo entero) con espinaca, tomate en cubos y 1 oz de queso feta liviano.'],
-                        ['Almuerzo', 'Hamburguesa de pavo a la parrilla (4.5 oz, sin pan) sobre arúgula con cebolla a la parrilla y 3 oz de batata asada.'],
-                        ['Merienda', 'Queso cottage bajo en grasa (1/2 taza) con pimienta negra y tomatitos.'],
-                        ['Cena', 'Pescado blanco al horno (bacalao o lenguado, 5 oz) con limón, brócoli al vapor y majado de coliflor.'],
+                        ['Desayuno', [
+                            ['p', '4 claras y 1 huevo entero | 1 taza claras de huevo | 2 huevos'],
+                            ['v', '1 taza espinaca y tomate en cubos | 1 taza hongos y pimientos'],
+                            ['f', '1 oz queso feta liviano | 1/4 aguacate | 1 cdta aceite de oliva'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4.5 oz hamburguesa de pavo | 4.5 oz pechuga de pollo | 4.5 oz carne molida 93/7'],
+                            ['v', '2 tazas arúgula con cebolla a la parrilla | 2 tazas hojas verdes'],
+                            ['c', '3 oz batata asada | 3 oz papa asada | 1/3 taza arroz integral'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '1/2 taza queso cottage bajo en grasa | 1/2 taza yogur griego | 1 scoop whey'],
+                            ['v', '1 taza tomatitos | 1 taza pepinillo'],
+                        ]],
+                        ['Cena', [
+                            ['p', '5 oz pescado blanco al horno | 5 oz camarones | 5 oz pechuga de pollo'],
+                            ['v', '2 tazas brócoli al vapor | 2 tazas habichuelas tiernas'],
+                            ['v', '1 taza majado de coliflor | 1 taza calabacín asado'],
+                            ['-', 'limón'],
+                        ]],
                     ]),
                 ],
             },
@@ -147,16 +372,48 @@
                 calories: 1280, protein: 125, carbs: 100, fat: 33, deficit: 420,
                 options: [
                     prep('A', 'Prep A', [
-                        ['Desayuno', 'Tortilla de 2 huevos enteros con espinaca y hongos, con media toronja al lado.'],
-                        ['Almuerzo', 'Pechuga de pollo a la parrilla (4 oz) sobre una cama grande de hojas verdes, pepinillo y pimientos, con aderezo de vinagre o limón.'],
-                        ['Merienda', 'Queso cottage (1/2 taza) con tomate en rodajas y pimienta negra.'],
-                        ['Cena', 'Pescado blanco o halibut (4.5 oz) con espárragos al vapor y 1/2 taza de majado de coliflor.'],
+                        ['Desayuno', [
+                            ['p', '2 huevos | 1 taza claras y 1 huevo entero | 1 scoop whey'],
+                            ['v', '1 taza espinaca y hongos | 1 taza pimientos'],
+                            ['c', '1/2 toronja | 1/2 taza berries | 1/2 guineo pequeño'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4 oz pechuga de pollo a la parrilla | 4 oz pavo | 4 oz atún en agua'],
+                            ['v', '3 tazas hojas verdes, pepinillo y pimientos | 3 tazas espinaca y tomate'],
+                            ['f', '1 cda aderezo de vinagre o limón | 1/4 aguacate'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '1/2 taza queso cottage | 1/2 taza yogur griego | 1 huevo hervido'],
+                            ['v', '1 taza tomate en rodajas | 1 taza pepinillo'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4.5 oz pescado blanco o halibut | 4.5 oz bacalao | 4.5 oz camarones'],
+                            ['v', '2 tazas espárragos al vapor | 2 tazas brócoli al vapor'],
+                            ['v', '1/2 taza majado de coliflor | 1 taza brócoli majado'],
+                        ]],
                     ]),
                     prep('B', 'Prep B', [
-                        ['Desayuno', 'Bowl de proteína: yogur griego sin grasa (3/4 taza), 1/2 scoop de whey, 1 cda de linaza y 1/4 taza de arándanos.'],
-                        ['Almuerzo', 'Pechuga de pavo en lascas (4.5 oz) enrolladas con mostaza, con ensalada grande de repollo y pepinillo y 1/3 taza de quinoa cocida.'],
-                        ['Merienda', '1 huevo hervido y 10 almendras.'],
-                        ['Cena', 'Tiernitos de pollo a la parrilla (4.5 oz) con hierbas, calabacín a la parrilla y pimientos asados.'],
+                        ['Desayuno', [
+                            ['p', '3/4 taza yogur griego sin grasa | 3/4 taza queso cottage | 1 taza claras de huevo'],
+                            ['p', '1/2 scoop whey | 1/2 taza claras de huevo'],
+                            ['f', '1 cda linaza | 1 cda chía | 6 almendras'],
+                            ['c', '1/4 taza arándanos | 1/4 taza fresas | 1/2 guineo pequeño'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4.5 oz pechuga de pavo en lascas | 4.5 oz pechuga de pollo | 4.5 oz atún en agua'],
+                            ['v', '2 tazas ensalada de repollo y pepinillo | 2 tazas hojas verdes'],
+                            ['c', '1/3 taza quinoa cocida | 1/3 taza arroz integral | 1/2 taza habichuelas negras'],
+                            ['-', 'mostaza'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '1 huevo hervido | 1/2 taza queso cottage | 1/2 scoop whey'],
+                            ['f', '10 almendras | 8 nueces | 1 cda mantequilla de maní'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4.5 oz tiernitos de pollo a la parrilla | 4.5 oz pechuga de pavo | 4.5 oz camarones'],
+                            ['v', '2 tazas calabacín a la parrilla | 2 tazas espárragos'],
+                            ['v', '1 taza pimientos asados | 1 taza hongos asados'],
+                        ]],
                     ]),
                 ],
             },
@@ -166,16 +423,50 @@
                 calories: 1200, protein: 125, carbs: 85, fat: 30, deficit: 500,
                 options: [
                     prep('A', 'Prep A', [
-                        ['Desayuno', 'Claras revueltas (1 taza) con 1 huevo entero, espinaca y hongos, con 1/4 de aguacate.'],
-                        ['Almuerzo', 'Pechuga de pavo magra (4 oz) con ensalada verde grande (romana, pepinillo y rábano) y aderezo liviano de limón.'],
-                        ['Merienda', 'Yogur griego natural sin grasa (3/4 taza) con canela y 1/4 taza de arándanos.'],
-                        ['Cena', 'Pescado blanco o camarones a la parrilla (5 oz) con brócoli al vapor y fideos de calabacín en buena cantidad.'],
+                        ['Desayuno', [
+                            ['p', '1 taza claras y 1 huevo entero | 1 taza claras de huevo | 1 scoop whey'],
+                            ['v', '1 taza espinaca y hongos | 1 taza pimientos y tomate'],
+                            ['f', '1/4 aguacate | 1 cdta aceite de oliva | 6 almendras'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4 oz pechuga de pavo magra | 4 oz pechuga de pollo | 4 oz atún en agua'],
+                            ['v', '3 tazas romana, pepinillo y rábano | 3 tazas espinaca y tomate'],
+                            ['f', '1 cda aderezo liviano de limón | 1 cdta aceite de oliva'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '3/4 taza yogur griego natural sin grasa | 3/4 taza queso cottage | 1 scoop whey'],
+                            ['c', '1/4 taza arándanos | 1/4 taza fresas | 1/2 manzana'],
+                            ['-', 'canela'],
+                        ]],
+                        ['Cena', [
+                            ['p', '5 oz pescado blanco a la parrilla | 5 oz camarones | 5 oz pechuga de pollo'],
+                            ['v', '2 tazas brócoli al vapor | 2 tazas espárragos'],
+                            ['v', '2 tazas fideos de calabacín | 2 tazas ensalada verde'],
+                        ]],
                     ]),
                     prep('B', 'Prep B', [
-                        ['Desayuno', 'Panqueque de claras (1 taza de claras, 2 cdas de harina de coco, canela y stevia, a fuego bajo) con 1/4 taza de fresas frescas.'],
-                        ['Almuerzo', 'Pechuga de pollo a la parrilla (4 oz) en lascas sobre habichuelas tiernas y hongos salteados con 1/4 taza de habichuelas negras.'],
-                        ['Merienda', 'Batida de whey (1 scoop) con hielo, leche de almendras sin azúcar y espinaca.'],
-                        ['Cena', 'Carne molida extra magra (96/4, 4 oz) con sazón de taco, sobre un bowl grande de lechuga rallada, salsa y pepinillo en cubos.'],
+                        ['Desayuno', [
+                            ['p', '1 taza claras de huevo | 3/4 taza yogur griego | 1 scoop whey'],
+                            ['c', '2 cdas harina de coco | 1/4 taza avena en seco | 1 rebanada pan integral'],
+                            ['c', '1/4 taza fresas frescas | 1/4 taza arándanos | 1/2 guineo pequeño'],
+                            ['-', 'canela y stevia'],
+                        ]],
+                        ['Almuerzo', [
+                            ['p', '4 oz pechuga de pollo a la parrilla | 4 oz pechuga de pavo | 4 oz camarones'],
+                            ['v', '2 tazas habichuelas tiernas y hongos salteados | 2 tazas brócoli salteado'],
+                            ['c', '1/4 taza habichuelas negras | 1/4 taza habichuelas rojas | 1/4 taza arroz integral'],
+                        ]],
+                        ['Merienda', [
+                            ['p', '1 scoop whey | 3/4 taza queso cottage | 2 huevos hervidos'],
+                            ['v', '1 taza espinaca | 1 taza pepinillo'],
+                            ['-', '1 taza leche de almendras sin azúcar y hielo'],
+                        ]],
+                        ['Cena', [
+                            ['p', '4 oz carne molida extra magra 96/4 | 4 oz pavo molido | 4 oz pollo molido'],
+                            ['v', '3 tazas lechuga rallada | 3 tazas repollo rallado'],
+                            ['v', '1/2 taza salsa y pepinillo en cubos | 1/2 taza pico de gallo'],
+                            ['-', 'sazón de taco'],
+                        ]],
                     ]),
                 ],
             },

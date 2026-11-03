@@ -193,15 +193,27 @@ Recetas is a book to browse; **Meal Prep** is the plan to follow. A plan is week
 targets plus **two preparations** that hit the same numbers — so the week can be cooked in two batches
 instead of the same plate seven nights running.
 
-The plates are prose, not ingredient rows, and that is the point: the client reads a plate and cooks
-it. The week's targets are informational — counting happens in the diary, where they log what they
-actually ate.
+A plate is a short list of **elements**, each a food, an amount and a **role** — `protein | carb |
+fat | veg | free`. The role is the mechanism: it decides what an element can be swapped for, and
+which of the week's targets its amount scales against.
 
 ```js
-MealPlan            // trainerId, name, weeks[{ objective, calories, protein, carbs, fat,
-                    //   deficit, options[{ key, label, meals[{ slot, text, alternatives[] }] }] }]
-MealPlanAssignment  // planId, clientId (unique), trainerId, startDate, option, swaps[{ week, slot, text }]
+MealPlan            // trainerId, name, weeks[{ objective, calories, protein, carbs, fat, deficit,
+                    //   options[{ key, label, meals[{ slot, text,
+                    //     items[{ name, amount, unit, role, alternatives[{ name, amount, unit, role }] }] }] }] }]
+MealPlanAssignment  // planId, clientId (unique), trainerId, startDate, option,
+                    //   swaps[{ week, slot, from, text, amount, unit, role }]
 ```
+
+`meals[].text` is derived — the server rebuilds the plate's sentence from the elements on save. A
+plan written before elements existed has only its text and still renders, with one swap for the
+whole plate.
+
+**Elements still carry no macros.** `public/meal-item.js` scales amounts from the week's targets and
+the client's own `macroSettings` goals: protein elements by `goal.protein / week.protein`, carbs and
+fat by theirs, **vegetables and free items never**. Clamped to [0.5, 2], 1 when a goal or a target is
+missing. The four tiles on top switch to the client's goals whenever the amounts are theirs, and a
+pill toggles back to the plan as written (per-device, `localStorage`).
 
 **The plan belongs to the trainer; what a client changed belongs to the assignment.** Two clients on
 one plan can swap different dinners and neither sees the other's. `clientId` is unique, so assigning
@@ -212,20 +224,26 @@ a client takes them off whatever they were on.
 stops advancing in week three. Before the start date the client sees week 1; past the last week they
 hold on the last week instead of falling off into a blank page.
 
-**Swapping** offers the same slot from every other prep that week, plus the trainer's own
-alternatives — so a plan with no alternatives still answers *"not this tonight"*. A swap stores the
-final text keyed by `(week, slot)`, which is why it survives flipping between preps, and sending the
-plan's own text back deletes the row rather than storing a copy of it.
+**Swapping** is per element. The sheet offers the same role in the same slot — the plan's own
+element, its alternatives, then every other prep's element of that role — all at this client's
+amounts. A swap is keyed by `(week, slot, from)`, where `from` is the **name** of the element it
+replaces, so two changes to one plate coexist and a change follows its food through both preps.
+Sending an empty text deletes the row rather than storing a copy of the plan. An empty `from` is a
+whole-plate swap, which is how pre-element plans still work.
 
-`public/meal-plan-template.js` holds a ready 8-week progressive plan that **Usar plantilla** loads
-into the editor; it is a starting point, every line editable before saving. Prose in its own file,
-not buried in `app.js`.
+`public/meal-plan-template.js` holds a ready 8-week progressive plan — 202 elements with 309
+alternatives already written — that **Usar plantilla** loads into the editor; every line is editable
+before saving. Prose in its own file, not buried in `app.js`.
 
 **Gotchas:** ① `$setOnInsert` on the roster is what keeps an existing client's start date and swaps
 when the roster is re-saved to add somebody else. ② Incoming client ids are intersected with the
 trainer's own clients before anything is written. ③ Collapsing or removing a week in the editor must
 read the form into the draft first, or the re-render wipes what was typed into the open week. ④ A
-week with no preps is dropped rather than stored empty.
+week with no preps is dropped rather than stored empty. ⑤ **Anything `amountLabel` prints,
+`parseLine` has to read** — the editor writes an element as one line and parses it back, so a glyph
+that only goes one way turns the amount into part of the food's name on the next save. The glyphs
+are a closed set and `scripts/test-meal-items.mjs` runs the whole template through the round trip.
+⑥ A plate's *"N cambios"* counts only swaps that land on an element in the prep being shown.
 
 Full reasoning in [TECHNICAL.md § 56](../TECHNICAL.md).
 

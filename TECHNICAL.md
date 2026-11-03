@@ -4849,25 +4849,95 @@ A plan is a list of weeks. A week carries its own objective and targets and **tw
 Prep A and Prep B — that hit the same daily numbers. The point of two is batch cooking: three or four
 days of one, three or four of the other, instead of the same plate seven nights running.
 
-### Prose, not ingredient rows
+### A plate is elements, not a sentence
 
-A plate is a sentence: *"Salmón al horno (5 oz) con batata asada (5 oz) y espárragos al vapor."* It is
-not a list of ingredients with macros attached, and that is on purpose.
+The first version made a plate one sentence — *"Salmón al horno (5 oz) con batata asada (5 oz) y
+espárragos al vapor"* — on the theory that a sentence is the least to read. It was the wrong grain,
+and the request that followed said why: a client does not want to replace *dinner*, they want to
+replace *the salmon*. And a plan written for 125 g of protein is the wrong plan for someone eating
+160 g, in a way that a sentence cannot express.
 
-Structuring every plate would buy automatic macro maths and cost the thing the feature exists for.
-The week already states its targets; the plates are written to hit them. Counting happens in the
-diary, where the client logs what they actually ate — which is never exactly what the plan said
-anyway. Giving them a second, parallel, slightly-wrong set of numbers would make the page worse.
+So a plate is a short list of **elements**, each one a food, an amount, and a **role**:
 
-So the targets on a week are **informational only**. Nothing is computed from them.
+```js
+{ name: 'pechuga de pollo', amount: 5, unit: 'oz', role: 'protein',
+  alternatives: [{ name: 'pechuga de pavo', amount: 5, unit: 'oz', role: 'protein' }] }
+```
+
+The role — `protein | carb | fat | veg | free` — is the whole mechanism. It is what makes an element
+swappable for the right kind of thing, and it is what decides whether the amount moves when the
+client's macros are not the week's.
+
+Still **no macro numbers on an element**. That rule has not moved: macros come from the food
+database, and what was actually eaten is counted in the diary. The week's targets and the client's
+own goals are both numbers a human typed, and scaling is arithmetic between them — it never invents
+a calorie.
+
+### The amounts are rewritten for whoever is reading them
+
+`public/meal-item.js` holds the scaling, shared by the editor and the client's page:
+
+```js
+factorsFor(week, goals)   // { protein, carb, fat, veg: 1, free: 1 }
+scaleItem(item, factors)  // the amount this client cooks
+```
+
+Each role follows its own target: protein elements scale by `goal.protein / week.protein`, carbs by
+theirs, fat by theirs. **Vegetables and free items never scale** — doubling the spinach to close a
+protein gap is not what a coach would write. A client whose protein goal is 160 against a week's 125
+gets 5 oz of chicken turned into 5 ¾, and exactly the same two cups of greens.
+
+Three guards, all of them load-bearing:
+
+- **Clamped to [0.5, 2].** A goal typed into the wrong box must never tell somebody to eat eleven
+  eggs.
+- **A missing goal, or a week with no target for that macro, means 1.** No scaling rather than a
+  guess.
+- **The targets shown on top switch too.** When the amounts are the client's, the four tiles show the
+  client's goals, not the week's. Showing 125 g over plates that add to 160 g would be two different
+  plans on one screen.
+
+A pill toggles the whole thing back to the plan as written, and it only appears when there is
+actually a difference to toggle. The preference is per-device, in `localStorage`.
+
+### The round trip is the thing that breaks
+
+The editor writes an element as **one line** — `4 ½ oz pechuga de pollo | 4 ½ oz pavo` — and parses
+whatever the trainer leaves behind. That means anything `amountLabel` can *print*, `parseLine` has to
+be able to *read*, or an amount the app rendered itself silently becomes part of the food's name on
+the next save. That exact bug shipped in the first build of this: `4 ½` printed, `4` parsed, and the
+plate came back reading *"½ oz pechuga de pollo"*.
+
+So the glyphs are a closed set shared by both directions, and `scripts/test-meal-items.mjs` runs the
+whole shipped template through `itemText → parseLine` and asserts every one of its 202 elements and
+309 alternatives comes back unchanged. A property test, because the failure is invisible in any one
+case.
+
+Rounding lands on measures a person owns a tool for:
+
+| unit | lands on |
+|---|---|
+| `g`, `ml` | the nearest 5 above 20, exact below |
+| `oz`, `lb`, `kg`, `l` | the nearest quarter — it comes off a scale |
+| cups, spoons, counted things | ⅛ ¼ ⅓ ½ ⅔ ¾ — the ladder a cook uses |
+
+The third is there on purpose. Snapping ⅓ taza to ¼ taza would be the app quietly rewriting a measure
+the trainer chose.
 
 ### Two schemas, because a swap is not an edit
 
 ```js
-MealPlan            // trainerId, name, weeks[{ objective, calories, protein, carbs, fat,
-                    //   deficit, options[{ key, label, meals[{ slot, text, alternatives[] }] }] }]
-MealPlanAssignment  // planId, clientId (unique), trainerId, startDate, option, swaps[{ week, slot, text }]
+MealPlan            // trainerId, name, weeks[{ objective, calories, protein, carbs, fat, deficit,
+                    //   options[{ key, label, meals[{ slot, text,
+                    //     items[{ name, amount, unit, role, alternatives[{ name, amount, unit, role }] }] }] }] }]
+MealPlanAssignment  // planId, clientId (unique), trainerId, startDate, option,
+                    //   swaps[{ week, slot, from, text, amount, unit, role }]
 ```
+
+`meals[].text` survives as the plate's sentence, but it is **derived**: the server rebuilds it from
+the elements on every save, so there is never a stale copy sitting next to the real thing. A plan
+written before elements existed has only its text, and the client's page still renders it — one
+plate, one swap, exactly the behaviour it shipped with.
 
 The plan belongs to the trainer. What a client changed belongs to the **assignment**. Two clients on
 the same plan can swap different dinners and neither sees the other's, and the trainer's plan stays
@@ -4889,25 +4959,34 @@ week zero — they see week 1. Past the last week they **hold on the last week**
 the end into a blank page, which is what an unclamped index would give them on day 57 of an 8-week
 plan.
 
-### "I don't want this tonight"
+### "Not this one"
 
-Every plate has a **Cambiar** button. What it offers is the same slot from every other prep that week,
-plus whatever extra alternatives the trainer wrote for it.
+Every element is a row you can tap. What the sheet offers is **the same role in the same slot**: the
+plan's own element first, the alternatives the trainer wrote for it, then every other prep's element
+of that role — and all of them shown at this client's amounts, so the choice is made in the numbers
+they will actually cook.
 
-That last part matters: a plan with no alternatives at all **still** offers the other prep, so a
-plain two-option plan already answers the question. Alternatives are a trainer adding more choices,
-not the thing that makes swapping work.
+Role matching is what keeps the sheet honest. Swapping the chicken offers proteins; it does not offer
+the rice. And a plan with no alternatives at all **still** offers the other prep's protein, so a
+plain two-prep plan already answers the question. Alternatives are a trainer adding choices, not the
+thing that makes swapping work.
 
-A swap is keyed by `(week, slot)` and stores the **final text**, not a pointer into the plan. Two
-consequences, both wanted:
+A swap is keyed by `(week, slot, from)` — where `from` is the **name of the element it replaces** —
+and stores the replacement outright, amount and role included, so it scales like anything else.
+Keying on the name rather than a position is the decision worth the words:
 
-- Flipping between Prep A and Prep B does not undo a swap. The client asked for *that dinner*, not
-  for "whatever option B says".
-- Putting the original back is just picking the original. The client sends the plan's own text, the
-  server sees it is unchanged and **deletes the row** rather than storing a copy of it.
+- Two changes to one plate coexist. Replacing the salmon and the rice is two rows, not one
+  overwriting the other.
+- The change follows the food. A client who swapped the oatmeal gets their swap in whichever prep the
+  oatmeal appears in, and flipping between Prep A and Prep B does not undo it. In a prep that has no
+  oatmeal, it simply does not apply — and the plate's *"N cambios"* counts only the changes you can
+  see on the plate in front of you, not the ones stored for the other prep.
+- Putting the original back is just picking the original. The client sends an empty text, and the
+  server **deletes the row** rather than storing a copy of what the plan already says.
+- An empty `from` is a whole-plate swap, which is how plans written before elements still work.
 
-Sending the same `(week, slot)` twice replaces the row. Without that the array grows forever and the
-newest choice stops being the one that shows.
+Sending the same `(week, slot, from)` twice replaces the row. Without that the array grows forever
+and the newest choice stops being the one that shows.
 
 ### Assigning is a roster, not a toggle
 
@@ -4920,12 +4999,29 @@ The incoming ids are intersected with the trainer's own clients before anything 
 crafted id cannot put another trainer's client on this plan. The response says how many were actually
 assigned, which is how the test catches it.
 
+### The editor: one line per element
+
+A role dropdown on every row would have been 128 selects in an open week. Instead a row is a **role
+badge, a line, and an ×**, and the badge is a button: one tap cycles P → C → G → V → ·, recoloured in
+place without re-reading the form. The line carries the element and its alternatives separated by
+`|`, which keeps typing a plan about as fast as typing the sentence used to be:
+
+```
+5 oz pechuga de pollo | 5 oz pechuga de pavo | 5 oz lomillo de cerdo magro
+```
+
+Opening a plan that predates elements splits its sentence on commas, *y*, *con* and *más* into
+editable lines. It is a head start, not a conversion: nothing is stored until the trainer saves, and
+whatever the splitter gets wrong is one line to fix.
+
 ### The template
 
 Building an 8-week plan by hand is 64 plates of typing, and a feature nobody can face starting is a
 feature nobody uses. `public/meal-plan-template.js` holds a full 8-week progressive plan —
 maintenance down to −500 kcal, protein held at ~125 g the whole way, two preps a week — and **Usar
-plantilla** loads it into the editor, where every line is editable before saving.
+plantilla** loads it into the editor, where every line is editable before saving. It ships **202
+elements with 309 alternatives already written**, so the swap sheet has something in it on day one
+rather than after an evening of data entry.
 
 It lives in its own file rather than in `app.js` because it is prose, not logic, and 200 lines of
 prose buried in a 17k-line file is prose nobody finds. It is a starting point: editing a saved plan
@@ -4944,13 +5040,21 @@ never touches the template.
 
 ### Verified
 
-`node scripts/test-meal-plans.mjs` — 31 checks against an isolated server and database. The four that
+`node scripts/test-meal-plans.mjs` — 42 checks against an isolated server and database. The ones that
 matter: another trainer's client is silently refused by the roster (2 assigned, not 3); 15 days in is
-week 3; one client's swap is invisible to another client on the same plan; and a client gets 403 on
-both the plan itself and the roster.
+week 3; one client's swap is invisible to another client on the same plan; a client gets 403 on both
+the plan itself and the roster; an unknown role is stored as `free`; and two elements in one plate
+are two swaps, not one replacing the other.
 
-Driven in a browser as well: the template loaded 8 weeks into the editor and saved, the card showed
-`8 semanas · 1700 → 1200 kcal · 1 cliente`, the client's page opened on **Semana 3 de 8** with week
-3's targets, Prep B swapped the whole day, one breakfast was changed to Prep A's and came back marked
-*cambiado* after a reload, and week 4 showed its own plates with the week-3 swap correctly absent.
-Checked at 375 px with no horizontal overflow.
+`node scripts/test-meal-items.mjs` — 47 pure checks, no server: the parsing, the display ladder, the
+clamp, which role follows which target, and the whole template through the round trip.
+
+Driven in a browser as well, both roles. The template loaded 202 element rows into the editor, the
+role badge cycled and recoloured, **+ Alimento** added a row that saved with the rest. The client's
+page opened on **Semana 3 de 8** against goals of 160 P / 150 C / 55 F over a week written for
+125 / 155 / 44 — 1 scoop of whey came out at **1 ¼**, 4.5 oz of chicken at **5 ¾ oz**, 1 cda of
+linaza at **1 ¼ cda**, and the spinach stayed at **1 taza**. The swap sheet for the cod offered only
+proteins, at this client's amounts. Two swaps in one dinner both held through a reload; Prep B showed
+its own plates with neither applied and no change count. The pill flipped the tiles back to
+1560 / 125 / 155 / 44 and the cod back to 5 ½ oz, and survived a reload. Checked at 375 px, both
+roles, with no horizontal overflow.

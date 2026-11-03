@@ -41,7 +41,12 @@
             </div>
         </div>
 
-        <p id="mealplan-objective" class="text-[13px] text-[#FFDB89]/60 leading-relaxed"></p>
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
+            <p id="mealplan-objective" class="sm:flex-1 min-w-0 text-[13px] text-[#FFDB89]/60 leading-relaxed"></p>
+            <!-- Only shown when this client's macro goals differ from the week's,
+                 i.e. when there is actually something to switch between. -->
+            <button id="mealplan-adjust" class="hidden self-start shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition"></button>
+        </div>
 
         <div id="mealplan-targets" class="grid grid-cols-4 gap-2 text-center"></div>
 
@@ -60,7 +65,7 @@
         <div class="bg-[#0D0D0D] border border-[#FFDB89]/20 w-full max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col" style="max-height:88dvh;max-height:88vh">
             <div class="px-5 py-4 border-b border-[#FFDB89]/15 flex justify-between items-center shrink-0">
                 <div class="min-w-0">
-                    <h3 class="text-lg font-bold text-[#FFDB89]"><i class="fas fa-rotate mr-2"></i>Cambiar plato</h3>
+                    <h3 id="mealplan-swap-title" class="text-lg font-bold text-[#FFDB89]"><i class="fas fa-rotate mr-2"></i>Cambiar alimento</h3>
                     <p id="mealplan-swap-sub" class="text-xs text-[#FFDB89]/40 mt-0.5"></p>
                 </div>
                 <button id="mealplan-swap-close" class="text-[#FFDB89]/40 hover:text-red-400 transition p-2 -mr-2 shrink-0"><i class="fas fa-times text-xl"></i></button>
