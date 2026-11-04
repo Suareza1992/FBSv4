@@ -4721,21 +4721,46 @@ app.delete('/api/progress-photos/:id', authenticateToken, async (req, res) => {
 // Values are per 100g unless noted. Serving size in grams.
 const LOCAL_FOODS = [
     // Proteins
-    { name: 'Huevo entero',          brand: null, serving: 50,  cal100: 155, p100: 13.0, c100: 1.1,  f100: 11.0 },
-    { name: 'Huevo (clara)',         brand: null, serving: 33,  cal100: 52,  p100: 11.0, c100: 0.7,  f100: 0.2  },
-    { name: 'Huevo (yema)',          brand: null, serving: 17,  cal100: 322, p100: 15.9, c100: 3.6,  f100: 26.5 },
-    { name: 'Pechuga de pollo',      brand: null, serving: 100, cal100: 165, p100: 31.0, c100: 0.0,  f100: 3.6  },
-    { name: 'Muslo de pollo',        brand: null, serving: 100, cal100: 209, p100: 26.0, c100: 0.0,  f100: 10.9 },
-    { name: 'Carne molida 80/20',    brand: null, serving: 100, cal100: 254, p100: 17.2, c100: 0.0,  f100: 20.0 },
-    { name: 'Carne molida 90/10',    brand: null, serving: 100, cal100: 176, p100: 20.0, c100: 0.0,  f100: 10.0 },
-    { name: 'Salmón',               brand: null, serving: 100, cal100: 208, p100: 20.0, c100: 0.0,  f100: 13.0 },
-    { name: 'Atún en agua',          brand: null, serving: 85,  cal100: 116, p100: 26.0, c100: 0.0,  f100: 1.0  },
-    { name: 'Camarones',            brand: null, serving: 100, cal100: 99,  p100: 24.0, c100: 0.2,  f100: 0.3  },
-    { name: 'Jamón de pavo',         brand: null, serving: 56,  cal100: 107, p100: 16.0, c100: 2.0,  f100: 3.0  },
-    { name: 'Jamón de cerdo',        brand: null, serving: 56,  cal100: 163, p100: 14.0, c100: 3.0,  f100: 10.0 },
-    { name: 'Tocino / Bacon',        brand: null, serving: 28,  cal100: 541, p100: 37.0, c100: 1.4,  f100: 42.0 },
-    { name: 'Tilapia',              brand: null, serving: 100, cal100: 128, p100: 26.0, c100: 0.0,  f100: 2.7  },
-    { name: 'Pavo molido',           brand: null, serving: 100, cal100: 189, p100: 19.0, c100: 0.0,  f100: 11.8 },
+    // ── Weighed raw, or weighed cooked? ──────────────────────────────────
+    // The same cut is two different foods. A chicken breast sheds about a
+    // quarter of its weight as water on the grill, so 100 g of it is 120 kcal
+    // raw and 165 kcal cooked — log one as the other and a client's biggest
+    // protein is off by a third. Most people weigh cooked; some were taught to
+    // weigh raw. So both rows exist, each says which it is in its own name,
+    // and nobody has to convert anything.
+    //
+    // Every number with an fdc id beside it is that row of USDA FoodData
+    // Central (Foundation / SR Legacy), so the next person can recheck it
+    // instead of trusting it. The three without an id are older curated rows
+    // whose numbers are left exactly as they were.
+    //
+    // `state: 'na'` is for the foods the question does not apply to: a can of
+    // tuna and a slice of deli ham are already what they are.
+    { name: 'Huevo entero',          brand: null, serving: 50,  cal100: 155, p100: 13.0, c100: 1.1,  f100: 11.0, state: 'na' },
+    { name: 'Huevo (clara)',         brand: null, serving: 33,  cal100: 52,  p100: 11.0, c100: 0.7,  f100: 0.2,  state: 'na' },
+    { name: 'Huevo (yema)',          brand: null, serving: 17,  cal100: 322, p100: 15.9, c100: 3.6,  f100: 26.5, state: 'na' },
+    { name: 'Pechuga de pollo (cocida)',   brand: null, serving: 100, cal100: 165, p100: 31.0, c100: 0.0,  f100: 3.6  }, // fdc 171477
+    { name: 'Pechuga de pollo (cruda)',    brand: null, serving: 100, cal100: 120, p100: 22.5, c100: 0.0,  f100: 2.6  }, // fdc 171077
+    { name: 'Muslo de pollo (cocido)',     brand: null, serving: 100, cal100: 209, p100: 26.0, c100: 0.0,  f100: 10.9 },
+    { name: 'Muslo de pollo (crudo)',      brand: null, serving: 100, cal100: 121, p100: 19.7, c100: 0.0,  f100: 4.1  }, // fdc 173627
+    { name: 'Pollo molido (crudo)',        brand: null, serving: 100, cal100: 143, p100: 17.4, c100: 0.0,  f100: 8.1  }, // fdc 171116
+    { name: 'Carne molida 80/20 (cruda)',  brand: null, serving: 100, cal100: 254, p100: 17.2, c100: 0.0,  f100: 20.0 }, // fdc 174036
+    { name: 'Carne molida 80/20 (cocida)', brand: null, serving: 100, cal100: 272, p100: 27.0, c100: 0.0,  f100: 17.4 }, // fdc 171799
+    { name: 'Carne molida 90/10 (cruda)',  brand: null, serving: 100, cal100: 176, p100: 20.0, c100: 0.0,  f100: 10.0 }, // fdc 174030
+    { name: 'Carne molida 90/10 (cocida)', brand: null, serving: 100, cal100: 230, p100: 28.4, c100: 0.0,  f100: 12.0 }, // fdc 171794
+    { name: 'Salmón (crudo)',             brand: null, serving: 100, cal100: 208, p100: 20.4, c100: 0.0,  f100: 13.4 }, // fdc 175167
+    { name: 'Salmón (cocido)',            brand: null, serving: 100, cal100: 206, p100: 22.1, c100: 0.0,  f100: 12.4 }, // fdc 175168
+    { name: 'Atún en agua',          brand: null, serving: 85,  cal100: 116, p100: 26.0, c100: 0.0,  f100: 1.0,  state: 'na' },
+    { name: 'Camarones (cocidos)',         brand: null, serving: 100, cal100: 99,  p100: 24.0, c100: 0.2,  f100: 0.3  }, // fdc 175180
+    { name: 'Camarones (crudos)',          brand: null, serving: 100, cal100: 85,  p100: 20.1, c100: 0.0,  f100: 0.5  }, // fdc 175179
+    { name: 'Jamón de pavo',         brand: null, serving: 56,  cal100: 107, p100: 16.0, c100: 2.0,  f100: 3.0,  state: 'na' },
+    { name: 'Jamón de cerdo',        brand: null, serving: 56,  cal100: 163, p100: 14.0, c100: 3.0,  f100: 10.0, state: 'na' },
+    { name: 'Tocino / Bacon (cocido)',     brand: null, serving: 28,  cal100: 541, p100: 37.0, c100: 1.4,  f100: 42.0 },
+    { name: 'Tocino / Bacon (crudo)',      brand: null, serving: 28,  cal100: 393, p100: 13.7, c100: 0.0,  f100: 37.1 }, // fdc 168277
+    { name: 'Tilapia (cocida)',            brand: null, serving: 100, cal100: 128, p100: 26.0, c100: 0.0,  f100: 2.7  }, // fdc 175177
+    { name: 'Tilapia (cruda)',             brand: null, serving: 100, cal100: 96,  p100: 20.1, c100: 0.0,  f100: 1.7  }, // fdc 175176
+    { name: 'Pavo molido (crudo)',         brand: null, serving: 100, cal100: 189, p100: 19.0, c100: 0.0,  f100: 11.8 },
+    { name: 'Pavo molido (cocido)',        brand: null, serving: 100, cal100: 203, p100: 27.4, c100: 0.0,  f100: 10.4 }, // fdc 171506
     // Dairy
     { name: 'Leche entera',          brand: null, serving: 240, cal100: 61,  p100: 3.2,  c100: 4.8,  f100: 3.3  },
     { name: 'Leche descremada',      brand: null, serving: 240, cal100: 35,  p100: 3.4,  c100: 5.0,  f100: 0.1  },
@@ -4752,8 +4777,8 @@ const LOCAL_FOODS = [
     { name: 'Pan blanco',            brand: null, serving: 28,  cal100: 265, p100: 9.0,  c100: 49.0, f100: 3.2  },
     { name: 'Pan integral',          brand: null, serving: 28,  cal100: 247, p100: 13.0, c100: 41.0, f100: 3.4  },
     { name: 'Pasta (cocida)',        brand: null, serving: 140, cal100: 131, p100: 5.0,  c100: 25.0, f100: 1.1  },
-    { name: 'Papa / Patata',         brand: null, serving: 150, cal100: 77,  p100: 2.0,  c100: 17.0, f100: 0.1  },
-    { name: 'Camote / Batata',       brand: null, serving: 130, cal100: 86,  p100: 1.6,  c100: 20.0, f100: 0.1  },
+    { name: 'Papa / Patata',         brand: null, serving: 150, cal100: 77,  p100: 2.0,  c100: 17.0, f100: 0.1, state: 'seco'  },
+    { name: 'Camote / Batata',       brand: null, serving: 130, cal100: 86,  p100: 1.6,  c100: 20.0, f100: 0.1, state: 'seco'  },
     { name: 'Tortilla de maíz',      brand: null, serving: 28,  cal100: 218, p100: 5.7,  c100: 46.0, f100: 2.5  },
     { name: 'Tortilla de harina',    brand: null, serving: 45,  cal100: 309, p100: 8.0,  c100: 55.0, f100: 7.5  },
     { name: 'Quinoa (cocida)',       brand: null, serving: 185, cal100: 120, p100: 4.4,  c100: 21.3, f100: 1.9  },
@@ -4766,8 +4791,8 @@ const LOCAL_FOODS = [
     { name: 'Nueces',               brand: null, serving: 28,  cal100: 654, p100: 15.0, c100: 14.0, f100: 65.0 },
     { name: 'Aceite de coco',        brand: null, serving: 14,  cal100: 862, p100: 0.0,  c100: 0.0,  f100: 100.0},
     // Vegetables
-    { name: 'Brócoli',              brand: null, serving: 91,  cal100: 34,  p100: 2.8,  c100: 7.0,  f100: 0.4  },
-    { name: 'Espinaca',             brand: null, serving: 30,  cal100: 23,  p100: 2.9,  c100: 3.6,  f100: 0.4  },
+    { name: 'Brócoli',              brand: null, serving: 91,  cal100: 34,  p100: 2.8,  c100: 7.0,  f100: 0.4, state: 'na'  },
+    { name: 'Espinaca',             brand: null, serving: 30,  cal100: 23,  p100: 2.9,  c100: 3.6,  f100: 0.4, state: 'na'  },
     { name: 'Lechuga romana',        brand: null, serving: 85,  cal100: 17,  p100: 1.2,  c100: 3.3,  f100: 0.3  },
     { name: 'Pepino',               brand: null, serving: 120, cal100: 15,  p100: 0.7,  c100: 3.6,  f100: 0.1  },
     { name: 'Tomate',               brand: null, serving: 123, cal100: 18,  p100: 0.9,  c100: 3.9,  f100: 0.2  },
@@ -4779,7 +4804,7 @@ const LOCAL_FOODS = [
     { name: 'Lentejas (cocidas)',    brand: null, serving: 198, cal100: 116, p100: 9.0,  c100: 20.0, f100: 0.4  },
     // Fruits
     { name: 'Manzana',              brand: null, serving: 182, cal100: 52,  p100: 0.3,  c100: 14.0, f100: 0.2  },
-    { name: 'Banana / Plátano',      brand: null, serving: 118, cal100: 89,  p100: 1.1,  c100: 23.0, f100: 0.3  },
+    { name: 'Banana / Plátano',      brand: null, serving: 118, cal100: 89,  p100: 1.1,  c100: 23.0, f100: 0.3, state: 'na'  },
     { name: 'Naranja',              brand: null, serving: 131, cal100: 47,  p100: 0.9,  c100: 12.0, f100: 0.1  },
     { name: 'Mango',                brand: null, serving: 165, cal100: 60,  p100: 0.8,  c100: 15.0, f100: 0.4  },
     { name: 'Fresas / Frutillas',    brand: null, serving: 152, cal100: 32,  p100: 0.7,  c100: 7.7,  f100: 0.3  },
@@ -4807,19 +4832,19 @@ const LOCAL_FOODS = [
     { name: 'Refresco light / Diet', brand: null, serving: 355, cal100: 0,   p100: 0.0,  c100: 0.0,  f100: 0.0  },
     { name: 'Bebida energética',     brand: null, serving: 250, cal100: 45,  p100: 0.0,  c100: 11.3, f100: 0.0  },
     { name: 'Leche de almendra',     brand: null, serving: 240, cal100: 15,  p100: 0.6,  c100: 0.6,  f100: 1.1  },
-    { name: 'Leche de avena',        brand: null, serving: 240, cal100: 40,  p100: 1.0,  c100: 7.0,  f100: 1.5  },
+    { name: 'Leche de avena',        brand: null, serving: 240, cal100: 40,  p100: 1.0,  c100: 7.0,  f100: 1.5, state: 'na'  },
     { name: 'Proteína shake (preparado)',brand:null,serving:330,cal100: 52,  p100: 9.0,  c100: 2.5,  f100: 1.0  },
     // Caribbean / Puerto Rican staples
-    { name: 'Plátano maduro',           brand: null, serving: 100, cal100: 122, p100: 1.3,  c100: 31.9, f100: 0.4  },
-    { name: 'Plátano verde',            brand: null, serving: 100, cal100: 116, p100: 1.3,  c100: 31.2, f100: 0.2  },
+    { name: 'Plátano maduro',           brand: null, serving: 100, cal100: 122, p100: 1.3,  c100: 31.9, f100: 0.4, state: 'seco'  },
+    { name: 'Plátano verde',            brand: null, serving: 100, cal100: 116, p100: 1.3,  c100: 31.2, f100: 0.2, state: 'seco'  },
     { name: 'Yuca cocida',              brand: null, serving: 100, cal100: 112, p100: 0.7,  c100: 26.8, f100: 0.3  },
     { name: 'Yautía cocida',            brand: null, serving: 100, cal100: 98,  p100: 1.4,  c100: 23.0, f100: 0.1  },
     { name: 'Malanga cocida',           brand: null, serving: 100, cal100: 112, p100: 1.5,  c100: 26.5, f100: 0.2  },
     { name: 'Calabaza tropical',        brand: null, serving: 116, cal100: 26,  p100: 1.0,  c100: 6.5,  f100: 0.1  },
     { name: 'Panapén / Pan de fruta',   brand: null, serving: 100, cal100: 103, p100: 1.1,  c100: 27.1, f100: 0.2  },
     { name: 'Gandules cocidos',         brand: null, serving: 164, cal100: 143, p100: 9.0,  c100: 25.0, f100: 1.9  },
-    { name: 'Habichuelas rosadas',      brand: null, serving: 172, cal100: 130, p100: 8.5,  c100: 23.6, f100: 0.5  },
-    { name: 'Habichuelas negras',       brand: null, serving: 172, cal100: 132, p100: 8.9,  c100: 24.0, f100: 0.5  },
+    { name: 'Habichuelas rosadas',      brand: null, serving: 172, cal100: 130, p100: 8.5,  c100: 23.6, f100: 0.5, state: 'cocido'  },
+    { name: 'Habichuelas negras',       brand: null, serving: 172, cal100: 132, p100: 8.9,  c100: 24.0, f100: 0.5, state: 'cocido'  },
     { name: 'Guayaba',                  brand: null, serving: 55,  cal100: 68,  p100: 2.6,  c100: 14.3, f100: 1.0  },
     { name: 'Guanábana / Soursop',      brand: null, serving: 100, cal100: 66,  p100: 1.0,  c100: 16.8, f100: 0.3  },
     { name: 'Mamey sapote',             brand: null, serving: 175, cal100: 83,  p100: 1.1,  c100: 19.9, f100: 0.5  },
@@ -4827,12 +4852,12 @@ const LOCAL_FOODS = [
     // Vegetables (missing from list)
     { name: 'Espárragos',               brand: null, serving: 90,  cal100: 20,  p100: 2.2,  c100: 3.9,  f100: 0.1  },
     { name: 'Coliflor',                 brand: null, serving: 100, cal100: 25,  p100: 1.9,  c100: 5.0,  f100: 0.3  },
-    { name: 'Repollo / Col',            brand: null, serving: 90,  cal100: 25,  p100: 1.3,  c100: 5.8,  f100: 0.1  },
+    { name: 'Repollo / Col',            brand: null, serving: 90,  cal100: 25,  p100: 1.3,  c100: 5.8,  f100: 0.1, state: 'na'  },
     { name: 'Remolacha',                brand: null, serving: 136, cal100: 43,  p100: 1.6,  c100: 9.6,  f100: 0.2  },
     { name: 'Pimientos / Ají dulce',    brand: null, serving: 119, cal100: 20,  p100: 0.9,  c100: 4.6,  f100: 0.2  },
     { name: 'Berenjenas',               brand: null, serving: 82,  cal100: 25,  p100: 1.0,  c100: 5.9,  f100: 0.2  },
-    { name: 'Kale / Col rizada',        brand: null, serving: 67,  cal100: 35,  p100: 2.9,  c100: 4.4,  f100: 1.5  },
-    { name: 'Setas / Hongos',           brand: null, serving: 96,  cal100: 22,  p100: 3.1,  c100: 3.3,  f100: 0.3  },
+    { name: 'Kale / Col rizada',        brand: null, serving: 67,  cal100: 35,  p100: 2.9,  c100: 4.4,  f100: 1.5, state: 'na'  },
+    { name: 'Setas / Hongos',           brand: null, serving: 96,  cal100: 22,  p100: 3.1,  c100: 3.3,  f100: 0.3, state: 'seco'  },
     { name: 'Apio (celery)',            brand: null, serving: 80,  cal100: 16,  p100: 0.7,  c100: 3.0,  f100: 0.2  },
     // Fruits (missing from list)
     { name: 'Melocotón / Durazno',      brand: null, serving: 150, cal100: 39,  p100: 0.9,  c100: 9.5,  f100: 0.3  },
@@ -4843,7 +4868,7 @@ const LOCAL_FOODS = [
     // Seeds & specialty
     { name: 'Semillas de chía',         brand: null, serving: 12,  cal100: 486, p100: 16.5, c100: 42.1, f100: 30.7 },
     { name: 'Semillas de hemp',         brand: null, serving: 30,  cal100: 553, p100: 31.6, c100: 8.7,  f100: 48.8 },
-    { name: 'Edamame',                  brand: null, serving: 155, cal100: 122, p100: 11.9, c100: 8.9,  f100: 5.2  },
+    { name: 'Edamame',                  brand: null, serving: 155, cal100: 122, p100: 11.9, c100: 8.9,  f100: 5.2, state: 'cocido'  },
     // Extra protein sources
     { name: 'Sardinas (enlatadas)',      brand: null, serving: 48,  cal100: 208, p100: 24.6, c100: 0.0,  f100: 11.5 },
     { name: 'Ricotta',                  brand: null, serving: 60,  cal100: 174, p100: 11.3, c100: 3.0,  f100: 13.0 },
@@ -4853,7 +4878,7 @@ const LOCAL_FOODS = [
     { name: 'Kirkland Albacore Tuna (agua)',    brand:'Kirkland Signature', serving: 56,  cal100: 107, p100: 23.2, c100: 0.0,  f100: 1.8  },
     { name: 'Wild Planet Albacore Wild Tuna',   brand:'Wild Planet',        serving: 56,  cal100: 143, p100: 25.0, c100: 0.0,  f100: 4.5  },
     { name: 'Chicken of the Sea Tuna (agua)',   brand:'Chicken of the Sea', serving: 56,  cal100: 98,  p100: 21.4, c100: 0.0,  f100: 0.9  },
-    { name: "Morey's Salmon Silvestre Sazonado",brand:"Morey's",            serving: 112, cal100: 161, p100: 18.8, c100: 2.7,  f100: 8.0  },
+    { name: "Morey's Salmon Silvestre Sazonado",brand:"Morey's",            serving: 112, cal100: 161, p100: 18.8, c100: 2.7,  f100: 8.0, state: 'cocido' },
     { name: 'Kirkland Steak Strips (jerky)',    brand:'Kirkland Signature', serving: 28,  cal100: 286, p100: 35.7, c100: 14.3, f100: 8.9  },
     { name: 'Kirkland Chicken Tenderloins',     brand:'Kirkland Signature', serving: 112, cal100: 120, p100: 26.0, c100: 0.0,  f100: 1.5  },
     // ── Costco E. Bayamón — Dairy / Yogurt ───────────────────────────────────
@@ -4877,7 +4902,7 @@ const LOCAL_FOODS = [
     { name: 'Kirkland Mixed Nuts',              brand:'Kirkland Signature', serving: 28,  cal100: 607, p100: 17.9, c100: 21.4, f100: 50.0 },
     { name: 'Kirkland Super Large Peanuts',     brand:'Kirkland Signature', serving: 28,  cal100: 571, p100: 25.0, c100: 17.9, f100: 46.4 },
     // ── Costco E. Bayamón — Grains & Snacks ──────────────────────────────────
-    { name: 'Seeds of Change Quinoa & Brown Rice',brand:'Seeds of Change',  serving: 160, cal100: 137, p100: 3.1,  c100: 27.5, f100: 1.9  },
+    { name: 'Seeds of Change Quinoa & Brown Rice',brand:'Seeds of Change',  serving: 160, cal100: 137, p100: 3.1,  c100: 27.5, f100: 1.9, state: 'cocido'  },
     { name: 'Kirkland Ancient Grain Granola',   brand:'Kirkland Signature', serving: 55,  cal100: 400, p100: 7.3,  c100: 63.6, f100: 16.4 },
     { name: 'Kirkland Soft Chewy Granola Bar',  brand:'Kirkland Signature', serving: 24,  cal100: 375, p100: 4.2,  c100: 75.0, f100: 8.3  },
     { name: 'Simple Mills Almond Flour Crackers',brand:'Simple Mills',      serving: 28,  cal100: 464, p100: 7.1,  c100: 53.6, f100: 25.0 },
@@ -4889,7 +4914,7 @@ const LOCAL_FOODS = [
     { name: 'Kirkland Organic Strawberries (frozen)',brand:'Kirkland Signature',serving:100,cal100: 33, p100: 0.7,  c100: 7.7,  f100: 0.3  },
     { name: 'Kirkland Organic Blueberries (frozen)',brand:'Kirkland Signature',serving:100,cal100: 57,  p100: 0.7,  c100: 14.5, f100: 0.3  },
     { name: 'Del Monte Green Beans (lata)',     brand:'Del Monte',          serving: 120, cal100: 17,  p100: 0.8,  c100: 3.3,  f100: 0.0  },
-    { name: 'Repollo de Bruselas (orgánico)',   brand: null,                serving: 88,  cal100: 43,  p100: 3.4,  c100: 9.1,  f100: 0.3  },
+    { name: 'Repollo de Bruselas (orgánico)',   brand: null,                serving: 88,  cal100: 43,  p100: 3.4,  c100: 9.1,  f100: 0.3, state: 'seco'  },
     // ── Costco E. Bayamón — Beverages ────────────────────────────────────────
     { name: 'Kirkland Organic Coconut Water',   brand:'Kirkland Signature', serving: 330, cal100: 18,  p100: 0.0,  c100: 4.5,  f100: 0.0  },
     { name: 'Vita Coco Coconut Water',          brand:'Vita Coco',          serving: 330, cal100: 18,  p100: 0.0,  c100: 4.5,  f100: 0.0  },
@@ -4922,11 +4947,19 @@ const LOCAL_FOODS = [
     { name: 'Nutella / Hazelnut spread',brand:null,serving: 15, cal100: 539, p100: 6.3,  c100: 57.5, f100: 30.9 },
 
     // ── Common gaps (proteins) ───────────────────────────────────────────
-    { name: 'Chuleta de cerdo',        brand: null, serving: 120, cal100: 231, p100: 26.0, c100: 0.0,  f100: 14.0 },
-    { name: 'Lomo de cerdo',           brand: null, serving: 120, cal100: 170, p100: 26.0, c100: 0.0,  f100: 7.0  },
-    { name: 'Bistec de res / Carne de res', brand: null, serving: 120, cal100: 206, p100: 28.0, c100: 0.0, f100: 9.0 },
-    { name: 'Pechuga de pavo',         brand: null, serving: 120, cal100: 135, p100: 30.0, c100: 0.0,  f100: 1.0  },
-    { name: 'Bacalao / Cod',           brand: null, serving: 120, cal100: 105, p100: 23.0, c100: 0.0,  f100: 0.9  },
+    // Same rule as the proteins at the top of the list: both ways of weighing,
+    // each its own row. The cooked numbers are the curated ones these rows
+    // always had; the raw ones are USDA, lean-only cuts.
+    { name: 'Chuleta de cerdo (cocida)',   brand: null, serving: 120, cal100: 231, p100: 26.0, c100: 0.0,  f100: 14.0 },
+    { name: 'Chuleta de cerdo (cruda)',    brand: null, serving: 120, cal100: 123, p100: 23.8, c100: 0.0,  f100: 3.1  }, // fdc 168263
+    { name: 'Lomo de cerdo (cocido)',      brand: null, serving: 120, cal100: 170, p100: 26.0, c100: 0.0,  f100: 7.0  },
+    { name: 'Lomo de cerdo (crudo)',       brand: null, serving: 120, cal100: 109, p100: 21.0, c100: 0.0,  f100: 2.2  }, // fdc 168249
+    { name: 'Bistec de res / Carne de res (cocido)', brand: null, serving: 120, cal100: 206, p100: 28.0, c100: 0.0, f100: 9.0 },
+    { name: 'Bistec de res / Carne de res (crudo)',  brand: null, serving: 120, cal100: 131, p100: 22.1, c100: 0.0, f100: 4.1 }, // fdc 174055
+    { name: 'Pechuga de pavo (cocida)',    brand: null, serving: 120, cal100: 135, p100: 30.0, c100: 0.0,  f100: 1.0  },
+    { name: 'Pechuga de pavo (cruda)',     brand: null, serving: 120, cal100: 114, p100: 23.3, c100: 0.0,  f100: 2.3  }, // fdc 174515
+    { name: 'Bacalao / Cod (cocido)',      brand: null, serving: 120, cal100: 105, p100: 23.0, c100: 0.0,  f100: 0.9  },
+    { name: 'Bacalao / Cod (crudo)',       brand: null, serving: 120, cal100: 82,  p100: 17.8, c100: 0.0,  f100: 0.7  }, // fdc 171955
     { name: 'Salchicha / Hot dog',     brand: null, serving: 45,  cal100: 290, p100: 10.0, c100: 4.0,  f100: 26.0 },
     { name: 'Chorizo',                 brand: null, serving: 60,  cal100: 455, p100: 24.0, c100: 2.0,  f100: 38.0 },
     { name: 'Garbanzos (cocidos)',     brand: null, serving: 100, cal100: 164, p100: 8.9,  c100: 27.4, f100: 2.6  },
@@ -4949,13 +4982,13 @@ const LOCAL_FOODS = [
     { name: 'Sandía / Watermelon',     brand: null, serving: 150, cal100: 30,  p100: 0.6,  c100: 7.6,  f100: 0.2  },
     { name: 'Melón / Cantaloupe',      brand: null, serving: 150, cal100: 34,  p100: 0.8,  c100: 8.0,  f100: 0.2  },
     { name: 'Uvas / Grapes',           brand: null, serving: 100, cal100: 69,  p100: 0.7,  c100: 18.0, f100: 0.2  },
-    { name: 'Papaya / Lechosa',        brand: null, serving: 140, cal100: 43,  p100: 0.5,  c100: 11.0, f100: 0.3  },
+    { name: 'Papaya / Lechosa',        brand: null, serving: 140, cal100: 43,  p100: 0.5,  c100: 11.0, f100: 0.3, state: 'na'  },
     { name: 'Pera / Pear',             brand: null, serving: 150, cal100: 57,  p100: 0.4,  c100: 15.0, f100: 0.1  },
     { name: 'Toronja / Grapefruit',    brand: null, serving: 150, cal100: 42,  p100: 0.8,  c100: 11.0, f100: 0.1  },
 
     // ── Common gaps (vegetables) ─────────────────────────────────────────
     { name: 'Calabacín / Zucchini',    brand: null, serving: 100, cal100: 17,  p100: 1.2,  c100: 3.1,  f100: 0.3  },
-    { name: 'Habichuelas tiernas / Green beans', brand: null, serving: 100, cal100: 35, p100: 1.9, c100: 7.9, f100: 0.2 },
+    { name: 'Habichuelas tiernas / Green beans', brand: null, serving: 100, cal100: 35, p100: 1.9, c100: 7.9, f100: 0.2, state: 'na' },
 
     // ══ Comida criolla puertorriqueña — platos compuestos (macros aprox. por 100g) ══
     // ── Plátano y viandas ────────────────────────────────────────────────
@@ -4964,23 +4997,23 @@ const LOCAL_FOODS = [
     { name: 'Amarillos / Plátanos maduros fritos', brand: null, serving: 100, cal100: 230, p100: 1.3, c100: 38.0, f100: 8.0 },
     { name: 'Mofongo',                 brand: null, serving: 150, cal100: 290, p100: 5.0,  c100: 35.0, f100: 15.0 },
     { name: 'Mofongo relleno',         brand: null, serving: 200, cal100: 250, p100: 12.0, c100: 25.0, f100: 12.0 },
-    { name: 'Canoas (plátano relleno)',brand: null, serving: 150, cal100: 210, p100: 7.0,  c100: 24.0, f100: 10.0 },
+    { name: 'Canoas (plátano relleno)',brand: null, serving: 150, cal100: 210, p100: 7.0,  c100: 24.0, f100: 10.0, state: 'cocido' },
     { name: 'Pastelón',                brand: null, serving: 150, cal100: 200, p100: 9.0,  c100: 18.0, f100: 11.0 },
     { name: 'Piononos',                brand: null, serving: 120, cal100: 230, p100: 8.0,  c100: 22.0, f100: 12.0 },
     { name: 'Alcapurrias',             brand: null, serving: 100, cal100: 280, p100: 6.0,  c100: 24.0, f100: 18.0 },
     { name: 'Arañitas',                brand: null, serving: 80,  cal100: 300, p100: 2.0,  c100: 36.0, f100: 17.0 },
-    { name: 'Mariquitas / Plátano chips', brand: null, serving: 30, cal100: 520, p100: 2.0, c100: 64.0, f100: 29.0 },
+    { name: 'Mariquitas / Plátano chips', brand: null, serving: 30, cal100: 520, p100: 2.0, c100: 64.0, f100: 29.0, state: 'cocido' },
     { name: 'Jibarito',                brand: null, serving: 250, cal100: 250, p100: 13.0, c100: 22.0, f100: 13.0 },
     // ── Frituras ─────────────────────────────────────────────────────────
     { name: 'Bacalaítos',              brand: null, serving: 60,  cal100: 290, p100: 8.0,  c100: 30.0, f100: 15.0 },
     { name: 'Sorullitos de maíz',      brand: null, serving: 60,  cal100: 310, p100: 6.0,  c100: 38.0, f100: 15.0 },
     { name: 'Empanadillas / Pastelillos', brand: null, serving: 90, cal100: 300, p100: 9.0, c100: 28.0, f100: 17.0 },
-    { name: 'Rellenos de papa',        brand: null, serving: 120, cal100: 250, p100: 7.0,  c100: 24.0, f100: 14.0 },
+    { name: 'Rellenos de papa',        brand: null, serving: 120, cal100: 250, p100: 7.0,  c100: 24.0, f100: 14.0, state: 'cocido' },
     { name: 'Almojábanas',             brand: null, serving: 60,  cal100: 330, p100: 7.0,  c100: 35.0, f100: 18.0 },
     // ── Arroz, habichuelas y viandas ─────────────────────────────────────
-    { name: 'Arroz con gandules',      brand: null, serving: 150, cal100: 160, p100: 3.5,  c100: 28.0, f100: 4.0  },
-    { name: 'Arroz con pollo',         brand: null, serving: 200, cal100: 165, p100: 9.0,  c100: 20.0, f100: 5.0  },
-    { name: 'Arroz mamposteao',        brand: null, serving: 150, cal100: 180, p100: 5.0,  c100: 28.0, f100: 5.0  },
+    { name: 'Arroz con gandules',      brand: null, serving: 150, cal100: 160, p100: 3.5,  c100: 28.0, f100: 4.0, state: 'cocido'  },
+    { name: 'Arroz con pollo',         brand: null, serving: 200, cal100: 165, p100: 9.0,  c100: 20.0, f100: 5.0, state: 'cocido'  },
+    { name: 'Arroz mamposteao',        brand: null, serving: 150, cal100: 180, p100: 5.0,  c100: 28.0, f100: 5.0, state: 'cocido'  },
     { name: 'Habichuelas guisadas',    brand: null, serving: 130, cal100: 110, p100: 5.0,  c100: 18.0, f100: 2.0  },
     { name: 'Pasteles',                brand: null, serving: 150, cal100: 180, p100: 6.0,  c100: 22.0, f100: 8.0  },
     { name: 'Funche / Polenta',        brand: null, serving: 150, cal100: 90,  p100: 2.0,  c100: 16.0, f100: 2.0  },
@@ -4989,9 +5022,9 @@ const LOCAL_FOODS = [
     { name: 'Pollo guisado',           brand: null, serving: 150, cal100: 150, p100: 16.0, c100: 4.0,  f100: 8.0  },
     { name: 'Carne guisada',           brand: null, serving: 150, cal100: 185, p100: 18.0, c100: 6.0,  f100: 9.0  },
     { name: 'Pollo frito',             brand: null, serving: 120, cal100: 250, p100: 20.0, c100: 9.0,  f100: 15.0 },
-    { name: 'Chuleta can-can',         brand: null, serving: 150, cal100: 350, p100: 22.0, c100: 8.0,  f100: 25.0 },
-    { name: 'Bistec encebollado',      brand: null, serving: 150, cal100: 200, p100: 22.0, c100: 5.0,  f100: 10.0 },
-    { name: 'Costillas BBQ',           brand: null, serving: 150, cal100: 290, p100: 22.0, c100: 8.0,  f100: 19.0 },
+    { name: 'Chuleta can-can',         brand: null, serving: 150, cal100: 350, p100: 22.0, c100: 8.0,  f100: 25.0, state: 'cocido' },
+    { name: 'Bistec encebollado',      brand: null, serving: 150, cal100: 200, p100: 22.0, c100: 5.0,  f100: 10.0, state: 'cocido' },
+    { name: 'Costillas BBQ',           brand: null, serving: 150, cal100: 290, p100: 22.0, c100: 8.0,  f100: 19.0, state: 'cocido' },
     // ── Pan y desayuno ───────────────────────────────────────────────────
     { name: 'Mallorca',                brand: null, serving: 80,  cal100: 350, p100: 7.0,  c100: 50.0, f100: 13.0 },
     { name: 'Pan sobao',               brand: null, serving: 60,  cal100: 280, p100: 8.0,  c100: 50.0, f100: 5.0  },
@@ -5000,46 +5033,46 @@ const LOCAL_FOODS = [
     // ── Sopas y guisos ───────────────────────────────────────────────────
     { name: 'Sancocho',                brand: null, serving: 250, cal100: 100, p100: 7.0,  c100: 10.0, f100: 3.0  },
     { name: 'Mondongo',                brand: null, serving: 250, cal100: 120, p100: 9.0,  c100: 8.0,  f100: 6.0  },
-    { name: 'Asopao de pollo',         brand: null, serving: 250, cal100: 90,  p100: 7.0,  c100: 10.0, f100: 2.0  },
+    { name: 'Asopao de pollo',         brand: null, serving: 250, cal100: 90,  p100: 7.0,  c100: 10.0, f100: 2.0, state: 'cocido'  },
     // ── Postres ──────────────────────────────────────────────────────────
     { name: 'Flan',                    brand: null, serving: 100, cal100: 150, p100: 4.0,  c100: 22.0, f100: 5.0  },
     { name: 'Tembleque',               brand: null, serving: 100, cal100: 150, p100: 1.5,  c100: 22.0, f100: 6.0  },
-    { name: 'Arroz con dulce',         brand: null, serving: 120, cal100: 200, p100: 2.5,  c100: 35.0, f100: 6.0  },
+    { name: 'Arroz con dulce',         brand: null, serving: 120, cal100: 200, p100: 2.5,  c100: 35.0, f100: 6.0, state: 'cocido'  },
     { name: 'Tres leches',             brand: null, serving: 100, cal100: 290, p100: 6.0,  c100: 38.0, f100: 13.0 },
     { name: 'Besito de coco / Dulce de coco', brand: null, serving: 40, cal100: 400, p100: 3.0, c100: 55.0, f100: 19.0 },
     // ── Fast food / restaurante (EE.UU.) ─────────────────────────────────
-    { name: 'Hamburguesa sencilla (con pan)',   brand: null, serving: 100, cal100: 245, p100: 12.2, c100: 30.0, f100: 9.0  },
-    { name: 'Cheeseburger / Hamburguesa con queso', brand: null, serving: 113, cal100: 265, p100: 13.3, c100: 28.0, f100: 11.5 },
-    { name: 'Hamburguesa doble con queso',      brand: null, serving: 219, cal100: 247, p100: 11.5, c100: 20.5, f100: 12.8 },
+    { name: 'Hamburguesa sencilla (con pan)',   brand: null, serving: 100, cal100: 245, p100: 12.2, c100: 30.0, f100: 9.0, state: 'cocido'  },
+    { name: 'Cheeseburger / Hamburguesa con queso', brand: null, serving: 113, cal100: 265, p100: 13.3, c100: 28.0, f100: 11.5, state: 'cocido' },
+    { name: 'Hamburguesa doble con queso',      brand: null, serving: 219, cal100: 247, p100: 11.5, c100: 20.5, f100: 12.8, state: 'cocido' },
     { name: 'Papas fritas',                     brand: null, serving: 117, cal100: 312, p100: 3.4,  c100: 41.0, f100: 15.0 },
-    { name: 'Nuggets de pollo',                 brand: null, serving: 96,  cal100: 297, p100: 15.5, c100: 18.0, f100: 18.8 },
+    { name: 'Nuggets de pollo',                 brand: null, serving: 96,  cal100: 297, p100: 15.5, c100: 18.0, f100: 18.8, state: 'cocido' },
     { name: 'Pizza de queso (slice)',           brand: null, serving: 107, cal100: 266, p100: 11.0, c100: 33.0, f100: 10.0 },
     { name: 'Pizza de pepperoni (slice)',       brand: null, serving: 113, cal100: 298, p100: 13.0, c100: 34.0, f100: 12.0 },
     { name: 'Hot dog completo (con pan)',       brand: null, serving: 100, cal100: 290, p100: 10.4, c100: 24.0, f100: 17.0 },
-    { name: 'Taco de carne (crujiente)',        brand: null, serving: 78,  cal100: 218, p100: 10.3, c100: 16.7, f100: 12.8 },
-    { name: 'Burrito de pollo',                 brand: null, serving: 250, cal100: 180, p100: 10.0, c100: 22.0, f100: 5.5  },
-    { name: 'Quesadilla de pollo',              brand: null, serving: 180, cal100: 260, p100: 14.0, c100: 22.0, f100: 13.0 },
+    { name: 'Taco de carne (crujiente)',        brand: null, serving: 78,  cal100: 218, p100: 10.3, c100: 16.7, f100: 12.8, state: 'cocido' },
+    { name: 'Burrito de pollo',                 brand: null, serving: 250, cal100: 180, p100: 10.0, c100: 22.0, f100: 5.5, state: 'cocido'  },
+    { name: 'Quesadilla de pollo',              brand: null, serving: 180, cal100: 260, p100: 14.0, c100: 22.0, f100: 13.0, state: 'cocido' },
     { name: 'Alitas Buffalo',                   brand: null, serving: 100, cal100: 220, p100: 18.3, c100: 2.9,  f100: 14.7 },
-    { name: 'Chicken tenders / Dedos de pollo', brand: null, serving: 130, cal100: 271, p100: 18.7, c100: 17.6, f100: 14.0 },
-    { name: 'Sandwich de pollo (fast food)',    brand: null, serving: 190, cal100: 250, p100: 13.5, c100: 25.0, f100: 11.0 },
-    { name: 'Wrap de pollo',                    brand: null, serving: 220, cal100: 190, p100: 12.5, c100: 18.5, f100: 7.5  },
-    { name: 'Sub de pavo (6 pulgadas)',         brand: null, serving: 219, cal100: 114, p100: 8.2,  c100: 18.7, f100: 1.6  },
-    { name: 'Ensalada César con pollo',         brand: null, serving: 300, cal100: 127, p100: 10.0, c100: 5.0,  f100: 7.5  },
+    { name: 'Chicken tenders / Dedos de pollo', brand: null, serving: 130, cal100: 271, p100: 18.7, c100: 17.6, f100: 14.0, state: 'cocido' },
+    { name: 'Sandwich de pollo (fast food)',    brand: null, serving: 190, cal100: 250, p100: 13.5, c100: 25.0, f100: 11.0, state: 'cocido' },
+    { name: 'Wrap de pollo',                    brand: null, serving: 220, cal100: 190, p100: 12.5, c100: 18.5, f100: 7.5, state: 'cocido'  },
+    { name: 'Sub de pavo (6 pulgadas)',         brand: null, serving: 219, cal100: 114, p100: 8.2,  c100: 18.7, f100: 1.6, state: 'cocido'  },
+    { name: 'Ensalada César con pollo',         brand: null, serving: 300, cal100: 127, p100: 10.0, c100: 5.0,  f100: 7.5, state: 'cocido'  },
     { name: 'Aros de cebolla',                  brand: null, serving: 85,  cal100: 411, p100: 4.6,  c100: 46.0, f100: 23.0 },
     // ── Comfort americano / casero ───────────────────────────────────────
     { name: 'Mac and cheese',                   brand: null, serving: 200, cal100: 176, p100: 6.6,  c100: 20.1, f100: 7.8  },
-    { name: 'Lasaña de carne',                  brand: null, serving: 250, cal100: 132, p100: 8.0,  c100: 12.4, f100: 5.4  },
-    { name: 'Espagueti con carne',              brand: null, serving: 250, cal100: 129, p100: 6.7,  c100: 15.9, f100: 4.3  },
-    { name: 'Puré de papa',                     brand: null, serving: 210, cal100: 113, p100: 1.9,  c100: 17.0, f100: 4.2  },
-    { name: 'Sopa de pollo con fideos',         brand: null, serving: 245, cal100: 36,  p100: 2.5,  c100: 3.7,  f100: 1.2  },
+    { name: 'Lasaña de carne',                  brand: null, serving: 250, cal100: 132, p100: 8.0,  c100: 12.4, f100: 5.4, state: 'cocido'  },
+    { name: 'Espagueti con carne',              brand: null, serving: 250, cal100: 129, p100: 6.7,  c100: 15.9, f100: 4.3, state: 'cocido'  },
+    { name: 'Puré de papa',                     brand: null, serving: 210, cal100: 113, p100: 1.9,  c100: 17.0, f100: 4.2, state: 'cocido'  },
+    { name: 'Sopa de pollo con fideos',         brand: null, serving: 245, cal100: 36,  p100: 2.5,  c100: 3.7,  f100: 1.2, state: 'cocido'  },
     { name: 'Sopa de vegetales',                brand: null, serving: 245, cal100: 30,  p100: 1.3,  c100: 5.5,  f100: 0.5  },
-    { name: 'Chili con carne',                  brand: null, serving: 250, cal100: 115, p100: 8.0,  c100: 9.0,  f100: 5.4  },
-    { name: 'Meatloaf / Pastel de carne',       brand: null, serving: 150, cal100: 200, p100: 15.0, c100: 8.0,  f100: 12.0 },
-    { name: 'Pollo rostizado (rotisserie)',     brand: null, serving: 140, cal100: 190, p100: 24.0, c100: 0.0,  f100: 10.0 },
+    { name: 'Chili con carne',                  brand: null, serving: 250, cal100: 115, p100: 8.0,  c100: 9.0,  f100: 5.4, state: 'cocido'  },
+    { name: 'Meatloaf / Pastel de carne',       brand: null, serving: 150, cal100: 200, p100: 15.0, c100: 8.0,  f100: 12.0, state: 'cocido' },
+    { name: 'Pollo rostizado (rotisserie)',     brand: null, serving: 140, cal100: 190, p100: 24.0, c100: 0.0,  f100: 10.0, state: 'cocido' },
     { name: 'Grilled cheese / Sandwich de queso', brand: null, serving: 120, cal100: 330, p100: 12.0, c100: 30.0, f100: 18.0 },
     { name: 'Sandwich BLT',                     brand: null, serving: 150, cal100: 240, p100: 10.0, c100: 22.0, f100: 12.5 },
     { name: 'Sandwich PB&J',                    brand: null, serving: 100, cal100: 350, p100: 11.0, c100: 42.0, f100: 16.0 },
-    { name: 'Ensalada de atún (con mayonesa)',  brand: null, serving: 100, cal100: 187, p100: 16.0, c100: 3.5,  f100: 12.0 },
+    { name: 'Ensalada de atún (con mayonesa)',  brand: null, serving: 100, cal100: 187, p100: 16.0, c100: 3.5,  f100: 12.0, state: 'cocido' },
     // ── Desayuno americano ───────────────────────────────────────────────
     { name: 'Pancakes / Panqueques',            brand: null, serving: 114, cal100: 227, p100: 6.4,  c100: 28.0, f100: 9.7  },
     { name: 'Waffles',                          brand: null, serving: 75,  cal100: 291, p100: 7.9,  c100: 33.0, f100: 14.0 },
@@ -5052,7 +5085,7 @@ const LOCAL_FOODS = [
     { name: 'Cereal Cheerios',                  brand: null, serving: 28,  cal100: 376, p100: 12.1, c100: 73.2, f100: 6.7  },
     { name: 'Granola',                          brand: null, serving: 61,  cal100: 471, p100: 10.0, c100: 64.0, f100: 20.0 },
     { name: 'Huevo frito',                      brand: null, serving: 46,  cal100: 196, p100: 13.6, c100: 0.8,  f100: 15.0 },
-    { name: 'Hash browns / Papas doradas',      brand: null, serving: 105, cal100: 265, p100: 3.0,  c100: 28.5, f100: 15.9 },
+    { name: 'Hash browns / Papas doradas',      brand: null, serving: 105, cal100: 265, p100: 3.0,  c100: 28.5, f100: 15.9, state: 'cocido' },
     { name: 'Salchicha de desayuno',            brand: null, serving: 48,  cal100: 325, p100: 13.0, c100: 2.0,  f100: 30.0 },
     // ── Snacks y dulces ──────────────────────────────────────────────────
     { name: 'Papitas / Potato chips',           brand: null, serving: 28,  cal100: 536, p100: 7.0,  c100: 53.0, f100: 34.0 },
@@ -5069,21 +5102,21 @@ const LOCAL_FOODS = [
     { name: 'Helado de chocolate',              brand: null, serving: 66,  cal100: 216, p100: 3.8,  c100: 28.2, f100: 11.0 },
     { name: 'Chocolate con leche (barra)',      brand: null, serving: 43,  cal100: 535, p100: 7.7,  c100: 59.0, f100: 30.0 },
     // ── Puerto Rico: platos y antojos adicionales ────────────────────────
-    { name: 'Arroz blanco con habichuelas',     brand: null, serving: 300, cal100: 128, p100: 4.5,  c100: 24.0, f100: 1.5  },
-    { name: 'Serenata de bacalao',              brand: null, serving: 250, cal100: 120, p100: 8.0,  c100: 10.0, f100: 5.0  },
+    { name: 'Arroz blanco con habichuelas',     brand: null, serving: 300, cal100: 128, p100: 4.5,  c100: 24.0, f100: 1.5, state: 'cocido'  },
+    { name: 'Serenata de bacalao',              brand: null, serving: 250, cal100: 120, p100: 8.0,  c100: 10.0, f100: 5.0, state: 'cocido'  },
     { name: 'Bacalao guisado',                  brand: null, serving: 250, cal100: 105, p100: 12.0, c100: 6.0,  f100: 3.5  },
-    { name: 'Ensalada de coditos',              brand: null, serving: 200, cal100: 202, p100: 3.5,  c100: 22.0, f100: 11.0 },
-    { name: 'Ensalada de papa',                 brand: null, serving: 200, cal100: 143, p100: 2.7,  c100: 11.0, f100: 10.0 },
+    { name: 'Ensalada de coditos',              brand: null, serving: 200, cal100: 202, p100: 3.5,  c100: 22.0, f100: 11.0, state: 'cocido' },
+    { name: 'Ensalada de papa',                 brand: null, serving: 200, cal100: 143, p100: 2.7,  c100: 11.0, f100: 10.0, state: 'cocido' },
     { name: 'Guineítos en escabeche',           brand: null, serving: 150, cal100: 135, p100: 1.0,  c100: 18.0, f100: 7.0  },
-    { name: 'Pinchos de pollo',                 brand: null, serving: 120, cal100: 175, p100: 25.0, c100: 3.0,  f100: 7.0  },
-    { name: 'Pinchos de cerdo',                 brand: null, serving: 120, cal100: 220, p100: 22.0, c100: 3.0,  f100: 13.0 },
-    { name: 'Chicharrón de pollo',              brand: null, serving: 150, cal100: 290, p100: 22.0, c100: 12.0, f100: 17.0 },
-    { name: 'Chicharrón de cerdo',              brand: null, serving: 28,  cal100: 544, p100: 61.0, c100: 0.0,  f100: 31.0 },
+    { name: 'Pinchos de pollo',                 brand: null, serving: 120, cal100: 175, p100: 25.0, c100: 3.0,  f100: 7.0, state: 'cocido'  },
+    { name: 'Pinchos de cerdo',                 brand: null, serving: 120, cal100: 220, p100: 22.0, c100: 3.0,  f100: 13.0, state: 'cocido' },
+    { name: 'Chicharrón de pollo',              brand: null, serving: 150, cal100: 290, p100: 22.0, c100: 12.0, f100: 17.0, state: 'cocido' },
+    { name: 'Chicharrón de cerdo',              brand: null, serving: 28,  cal100: 544, p100: 61.0, c100: 0.0,  f100: 31.0, state: 'cocido' },
     { name: 'Carne frita de cerdo',             brand: null, serving: 150, cal100: 290, p100: 25.0, c100: 3.0,  f100: 19.0 },
-    { name: 'Bistec empanizado',                brand: null, serving: 180, cal100: 250, p100: 18.0, c100: 12.0, f100: 15.0 },
+    { name: 'Bistec empanizado',                brand: null, serving: 180, cal100: 250, p100: 18.0, c100: 12.0, f100: 15.0, state: 'cocido' },
     { name: 'Churrasco (con chimichurri)',      brand: null, serving: 170, cal100: 250, p100: 26.0, c100: 1.0,  f100: 16.0 },
-    { name: 'Camarones al ajillo',              brand: null, serving: 150, cal100: 150, p100: 18.0, c100: 3.0,  f100: 7.0  },
-    { name: 'Arroz con calamares',              brand: null, serving: 250, cal100: 145, p100: 6.0,  c100: 25.0, f100: 2.5  },
+    { name: 'Camarones al ajillo',              brand: null, serving: 150, cal100: 150, p100: 18.0, c100: 3.0,  f100: 7.0, state: 'cocido'  },
+    { name: 'Arroz con calamares',              brand: null, serving: 250, cal100: 145, p100: 6.0,  c100: 25.0, f100: 2.5, state: 'cocido'  },
     { name: 'Arroz chino boricua (frito)',      brand: null, serving: 300, cal100: 163, p100: 6.0,  c100: 21.0, f100: 5.5  },
     { name: 'Salchichas guisadas (de lata)',    brand: null, serving: 150, cal100: 200, p100: 9.0,  c100: 6.0,  f100: 16.0 },
     { name: 'Corned beef guisado',              brand: null, serving: 150, cal100: 180, p100: 12.0, c100: 6.0,  f100: 12.0 },
@@ -5097,7 +5130,7 @@ const LOCAL_FOODS = [
     { name: 'Sandwich de jamón y queso',        brand: null, serving: 150, cal100: 250, p100: 12.5, c100: 25.0, f100: 11.0 },
     { name: 'Sandwich cubano',                  brand: null, serving: 250, cal100: 240, p100: 15.0, c100: 22.0, f100: 10.5 },
     { name: 'Arepas de coco',                   brand: null, serving: 60,  cal100: 380, p100: 6.0,  c100: 50.0, f100: 17.0 },
-    { name: 'Avena caliente (con leche y azúcar)', brand: null, serving: 240, cal100: 95, p100: 3.5, c100: 15.0, f100: 2.3 },
+    { name: 'Avena caliente (con leche y azúcar)', brand: null, serving: 240, cal100: 95, p100: 3.5, c100: 15.0, f100: 2.3, state: 'cocido' },
     { name: 'Farina (crema de trigo)',          brand: null, serving: 240, cal100: 65,  p100: 1.8,  c100: 13.5, f100: 0.3  },
     { name: 'Batida de frutas (con leche)',     brand: null, serving: 350, cal100: 85,  p100: 2.5,  c100: 16.0, f100: 1.5  },
     { name: 'Limber de coco',                   brand: null, serving: 100, cal100: 120, p100: 1.0,  c100: 20.0, f100: 4.0  },
@@ -5108,10 +5141,10 @@ const LOCAL_FOODS = [
     { name: 'Queso americano (slice)',          brand: null, serving: 21,  cal100: 297, p100: 16.4, c100: 8.7,  f100: 22.0 },
     { name: 'Queso suizo',                      brand: null, serving: 28,  cal100: 380, p100: 27.0, c100: 5.0,  f100: 28.0 },
     { name: 'Queso crema / Cream cheese',       brand: null, serving: 30,  cal100: 342, p100: 6.0,  c100: 5.5,  f100: 34.0 },
-    { name: 'Tocineta de pavo / Turkey bacon',  brand: null, serving: 16,  cal100: 382, p100: 29.5, c100: 4.2,  f100: 28.0 },
+    { name: 'Tocineta de pavo / Turkey bacon',  brand: null, serving: 16,  cal100: 382, p100: 29.5, c100: 4.2,  f100: 28.0, state: 'cocido' },
     { name: 'Pepperoni',                        brand: null, serving: 28,  cal100: 504, p100: 19.3, c100: 1.2,  f100: 46.0 },
     { name: 'Salami',                           brand: null, serving: 28,  cal100: 336, p100: 21.8, c100: 2.4,  f100: 26.0 },
-    { name: 'Atún en aceite',                   brand: null, serving: 85,  cal100: 198, p100: 29.0, c100: 0.0,  f100: 8.2  },
+    { name: 'Atún en aceite',                   brand: null, serving: 85,  cal100: 198, p100: 29.0, c100: 0.0,  f100: 8.2, state: 'na'  },
     { name: 'Surimi / Cangrejo imitación',      brand: null, serving: 85,  cal100: 95,  p100: 7.6,  c100: 15.0, f100: 0.4  },
     // ── Bebidas adicionales ──────────────────────────────────────────────
     { name: 'Leche 2%',                         brand: null, serving: 240, cal100: 50,  p100: 3.3,  c100: 4.8,  f100: 2.0  },
@@ -5128,18 +5161,42 @@ const FOOD_ALIASES = {
     'Huevo entero':                  ['egg','eggs','whole egg','boiled egg','hard boiled egg'],
     'Huevo (clara)':                 ['egg white','egg whites','white egg'],
     'Huevo (yema)':                  ['egg yolk','egg yolks','yolk'],
-    'Pechuga de pollo':              ['chicken breast','chicken','grilled chicken','pollo'],
-    'Muslo de pollo':                ['chicken thigh','chicken leg','thigh'],
-    'Carne molida 80/20':            ['ground beef','hamburger','burger meat','beef'],
-    'Carne molida 90/10':            ['lean ground beef','lean beef','90 10 beef'],
-    'Salmon':                        ['salmon','fish','atlantic salmon'],
+    // Animal proteins exist twice, cooked and raw. Both halves answer the
+    // bare word — "pollo" and "chicken" bring up the pair — and each half
+    // also answers its own state, so a client who weighs raw can type
+    // "pollo crudo" or "raw chicken" and land straight on their row.
+    'Pechuga de pollo (cocida)':     ['chicken breast','chicken','grilled chicken','pollo','cooked chicken breast','pechuga cocida'],
+    'Pechuga de pollo (cruda)':      ['chicken breast','chicken','pollo','raw chicken breast','raw chicken','pechuga cruda','pollo crudo'],
+    'Muslo de pollo (cocido)':       ['chicken thigh','chicken leg','thigh','pollo','cooked chicken thigh','muslo cocido'],
+    'Muslo de pollo (crudo)':        ['chicken thigh','chicken leg','thigh','pollo','raw chicken thigh','muslo crudo'],
+    'Pollo molido (crudo)':          ['ground chicken','chicken ground','raw ground chicken','pollo molido'],
+    'Carne molida 80/20 (cruda)':    ['ground beef','hamburger','burger meat','beef','raw ground beef','carne molida'],
+    'Carne molida 80/20 (cocida)':   ['ground beef','hamburger','burger meat','beef','cooked ground beef','carne molida'],
+    'Carne molida 90/10 (cruda)':    ['lean ground beef','lean beef','90 10 beef','raw lean ground beef','carne molida'],
+    'Carne molida 90/10 (cocida)':   ['lean ground beef','lean beef','90 10 beef','cooked lean ground beef','carne molida'],
+    'Salmon (crudo)':                ['salmon','fish','atlantic salmon','raw salmon'],
+    'Salmon (cocido)':               ['salmon','fish','atlantic salmon','cooked salmon','baked salmon'],
     'Atun en agua':                  ['tuna','canned tuna','tuna fish','tuna in water'],
-    'Camarones':                     ['shrimp','prawns','seafood'],
+    'Camarones (cocidos)':           ['shrimp','prawns','seafood','cooked shrimp','camarones'],
+    'Camarones (crudos)':            ['shrimp','prawns','seafood','raw shrimp','camarones'],
     'Jamon de pavo':                 ['turkey ham','deli turkey','turkey'],
     'Jamon de cerdo':                ['ham','pork ham','deli ham'],
-    'Tocino / Bacon':                ['bacon','crispy bacon'],
-    'Tilapia':                       ['tilapia','white fish'],
-    'Pavo molido':                   ['ground turkey','turkey ground'],
+    'Tocino / Bacon (cocido)':       ['bacon','crispy bacon','cooked bacon','tocino'],
+    'Tocino / Bacon (crudo)':        ['bacon','raw bacon','uncooked bacon','tocino'],
+    'Tilapia (cocida)':              ['tilapia','white fish','cooked tilapia'],
+    'Tilapia (cruda)':               ['tilapia','white fish','raw tilapia'],
+    'Pavo molido (crudo)':           ['ground turkey','turkey ground','raw ground turkey','pavo molido'],
+    'Pavo molido (cocido)':          ['ground turkey','turkey ground','cooked ground turkey','pavo molido'],
+    'Chuleta de cerdo (cocida)':     ['pork chop','cooked pork chop','chuleta'],
+    'Chuleta de cerdo (cruda)':      ['pork chop','raw pork chop','chuleta cruda'],
+    'Lomo de cerdo (cocido)':        ['pork tenderloin','pork loin','lomo'],
+    'Lomo de cerdo (crudo)':         ['pork tenderloin','pork loin','raw pork tenderloin','lomo crudo'],
+    'Bistec de res / Carne de res (cocido)': ['steak','beef steak','sirloin','cooked steak','bistec'],
+    'Bistec de res / Carne de res (crudo)':  ['steak','beef steak','sirloin','raw steak','bistec crudo'],
+    'Pechuga de pavo (cocida)':      ['turkey breast','cooked turkey breast','pechuga de pavo'],
+    'Pechuga de pavo (cruda)':       ['turkey breast','raw turkey breast','pavo crudo'],
+    'Bacalao / Cod (cocido)':        ['cod','codfish','cooked cod','bacalao'],
+    'Bacalao / Cod (crudo)':         ['cod','codfish','raw cod','bacalao crudo'],
     'Leche entera':                  ['whole milk','milk','dairy'],
     'Leche descremada':              ['skim milk','fat free milk','low fat milk','nonfat milk'],
     'Yogurt griego (0%)':            ['greek yogurt','nonfat greek yogurt','yogurt','0 percent greek'],
@@ -5423,10 +5480,13 @@ const FOOD_ALIASES = {
 };
 
 // The curated list states it in the name where it matters: "Arroz blanco
-// (cocido)", "Avena (cruda)", "Pasta (cocida)". So the state is READ OFF the
-// name rather than hand-annotated onto 275 rows — nothing is asserted that the
-// row did not already say, and a row that says nothing still says nothing.
-const localFoodWithState = (f) => ({ ...f, state: FoodState.fromName(f.name) });
+// (cocido)", "Avena (cruda)", "Pechuga de pollo (cruda)". So the state is READ
+// OFF the name rather than hand-annotated onto 275 rows — nothing is asserted
+// that the row did not already say, and a row that says nothing still says
+// nothing. The handful of rows carrying an explicit `state` are the ones whose
+// name CANNOT say it: canned tuna and deli ham are 'na', because there is no
+// raw-or-cooked answer to give, and without that they would be asked forever.
+const localFoodWithState = (f) => ({ ...f, state: f.state || FoodState.fromName(f.name) });
 
 function searchLocalFoods(q) {
     const normQ = normalizeStr(q);

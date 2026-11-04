@@ -99,5 +99,54 @@ check(M.itemText(el) === '1 taza arroz integral',
 check(M.parseLine(M.itemText(el)).name === 'arroz integral',
     'so the round trip gives the name back unchanged');
 
+// ── The curated food database ─────────────────────────────────────
+// LOCAL_FOODS is what a client actually searches, so an animal protein in it
+// with no answer is the bug in the one place it costs the most. Read the array
+// straight out of server.js rather than keeping a second copy here — a copy
+// would agree with itself forever while the real list drifted.
+const serverSrc = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const open = serverSrc.indexOf('const LOCAL_FOODS = [');
+const close = serverSrc.indexOf('\n];', open);
+const LOCAL_FOODS = new Function(`return ${serverSrc.slice(open + 'const LOCAL_FOODS = '.length, close + 2)}`)();
+const stateOfRow = (f) => f.state || F.fromName(f.name);
+
+check(LOCAL_FOODS.length > 270, 'the curated database loaded', `${LOCAL_FOODS.length} rows`);
+
+const openQuestions = LOCAL_FOODS.filter((f) => F.shouldAsk(f.name, stateOfRow(f))).map((f) => f.name);
+check(openQuestions.length === 0,
+    'no curated food leaves seco/cocido open where it has an answer',
+    openQuestions.slice(0, 6).join(' | '));
+
+// Each animal protein that can be weighed either way is TWO rows, not one with
+// a guess attached. A client who weighs raw picks the raw row and gets raw
+// macros; nothing is converted, because nothing has to be.
+const pairs = ['pechuga de pollo', 'muslo de pollo', 'carne molida 80/20',
+    'carne molida 90/10', 'salm\u00f3n', 'camarones', 'tilapia', 'pavo molido',
+    'tocino / bacon', 'chuleta de cerdo', 'lomo de cerdo', 'bistec de res',
+    'pechuga de pavo', 'bacalao / cod'];
+const missing = [];
+for (const base of pairs) {
+    const rows = LOCAL_FOODS.filter((f) => f.name.toLowerCase().startsWith(base));
+    const states = new Set(rows.map(stateOfRow));
+    if (!states.has('seco') || !states.has('cocido')) missing.push(`${base} -> ${[...states].join(',') || 'none'}`);
+}
+check(missing.length === 0,
+    'every animal protein can be logged either raw or cooked',
+    missing.join(' | '));
+
+// The two halves must not carry the same macros — that would mean one of them
+// was copied rather than looked up.
+const breastRaw = LOCAL_FOODS.find((f) => f.name === 'Pechuga de pollo (cruda)');
+const breastCooked = LOCAL_FOODS.find((f) => f.name === 'Pechuga de pollo (cocida)');
+check(breastRaw && breastCooked && breastRaw.cal100 < breastCooked.cal100,
+    'raw is the lighter of the pair, because cooking drives off water',
+    `${breastRaw?.cal100} vs ${breastCooked?.cal100}`);
+
+// 'na' is a real answer, not a blank. Canned tuna must never be asked.
+const tuna = LOCAL_FOODS.find((f) => f.name.startsWith('At\u00fan'));
+check(stateOfRow(tuna) === 'na' && !F.shouldAsk(tuna.name, stateOfRow(tuna)),
+    'a can of tuna is told the question does not apply, not left blank',
+    stateOfRow(tuna));
+
 console.log(`\n${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

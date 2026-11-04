@@ -304,6 +304,21 @@ the **Sin seco/cocido** filter in Alimentos.
 and the house rule is that numbers come from the food database. This only removes the guesswork about
 which of two numbers you are reading.
 
+**And it does not have to, because the food comes in both.** Fourteen animal proteins are **two rows**
+in the curated database, raw and cooked, each with its own macros from USDA FoodData Central (the
+`// fdc NNNNNN` beside each number is the row it came from). A client who weighs raw picks
+*Pechuga de pollo (cruda)* — 120 kcal/100 g — and a client who weighs cooked picks *(cocida)* — 165.
+Both halves answer the bare search word, so `pollo` and `chicken` bring up the pair and the client
+chooses; only `pollo crudo` / `raw chicken` narrows it. The paired cuts: chicken breast, thigh and
+ground chicken; ground beef 80/20 and 90/10; sirloin; pork chop and tenderloin; turkey breast and
+ground turkey; salmon, tilapia, cod, shrimp and bacon.
+
+**A row may answer explicitly when its name cannot.** `localFoodWithState` is
+`f.state || FoodState.fromName(f.name)`, so a curated row can carry `state: 'na'` — canned tuna and
+deli ham are neither raw nor cooked, and without it the app would ask about them forever. All **361**
+curated foods now have an answer: prepared dishes are `'cocido'`, raw starches (papa, batata,
+plátano, hongos) are `'seco'`, and produce where the answer does not move the numbers is `'na'`.
+
 **It is asked wherever a food's numbers are entered** — the shared library row (with a blocking
 dialog on save when `shouldAsk`), the diary's Añadir alimento, recipe ingredient rows, and meal-plan
 element lines. `matters(name)` keeps the question off foods that have no answer; it is anchored at a

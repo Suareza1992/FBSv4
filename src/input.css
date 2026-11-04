@@ -148,3 +148,26 @@ input[type="number"].text-center {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* Native <select> popup list
+   -------------------------------------------------------------------------
+   Every select in the app is light text on a dark control — `text-white` or
+   `text-[#FFDB89]`. The <option> children inherit that colour. But the popup
+   list is NOT the control: the browser draws it as its own OS-level surface,
+   and on Android Chrome (and on any desktop whose OS is in light mode) that
+   surface is painted white no matter what `color-scheme: dark` on the select
+   says. Light text landed on a white sheet, so the "Añadir a" meal picker
+   opened as a stack of blank rows — only the highlighted one was readable,
+   because the browser forces contrast on that one.
+
+   An option gets BOTH halves of the pair here, so it can never inherit the
+   text colour of a dark control onto a light sheet again. Safari and iOS
+   ignore these on the native sheet, which is fine: that sheet draws its own
+   matched pair. */
+select { color-scheme: dark; }
+select option,
+select optgroup {
+  background-color: #1C1C1E;
+  color: #FFFFFF;
+}
+select option:disabled { color: rgba(255, 255, 255, 0.4); }

@@ -5372,3 +5372,169 @@ editor showed two badges per row, cycled `? → S → C → · → ?`, and saved
 `scoop whey → "na"`. The client's plate then read *avena en seco* **SECO**, *pechuga de pollo a la
 parrilla* **COCIDO**, *hojas verdes con pepinillo* **SECO**. Checked at 375 px with no horizontal
 overflow.
+
+---
+
+## 58. Both ways of weighing a chicken breast
+
+§57 gave every food a place to say whether its weight is raw or cooked. It did not give a client who
+weighs raw anywhere to go. The curated database had **one** row per animal protein, and which way
+that row had been measured was never written down — so it was decided by whoever typed it, years
+apart, and they did not agree.
+
+That is not a labelling problem. It is a wrong-number problem:
+
+| | raw | cooked |
+|---|---|---|
+| Pechuga de pollo, 100 g | 120 kcal, 22.5 g P | 165 kcal, 31 g P |
+| Carne molida 80/20, 100 g | 254 kcal, 17.2 g P | 272 kcal, 27 g P |
+| Tilapia, 100 g | 96 kcal, 20.1 g P | 128 kcal, 26.2 g P |
+
+Meat sheds roughly a quarter of its weight as water on the grill. 200 g of the same breast is 240
+kcal raw and 330 kcal cooked. Log one as the other and a client's largest protein is a third wrong,
+every day, in the direction nobody checks.
+
+### Two rows, not one row and a conversion
+
+The obvious fix is a yield factor: store one row, multiply by 0.75. It is the wrong fix, for the
+reason §57 already gave — the house rule is that **macros only ever come from the food database**,
+and a yield factor manufactures a number that no database was asked for.
+
+So the same cut is simply two rows. A client who weighs raw picks the raw row and gets raw macros.
+Nothing is converted, because nothing has to be:
+
+```js
+{ name: 'Pechuga de pollo (cocida)', serving: 100, cal100: 165, p100: 31.0, c100: 0.0, f100: 3.6 },  // fdc 171477
+{ name: 'Pechuga de pollo (cruda)',  serving: 100, cal100: 120, p100: 22.5, c100: 0.0, f100: 2.6 },  // fdc 171077
+```
+
+Fourteen cuts are now paired this way: chicken breast, thigh and ground; ground beef 80/20 and
+90/10; sirloin; pork chop and tenderloin; turkey breast and ground turkey; salmon, tilapia, cod,
+shrimp and bacon. Every raw value, and every new cooked value, is a row of **USDA FoodData Central**
+(Foundation / SR Legacy), and the trailing `// fdc NNNNNN` is that row's id — so the next person can
+*recheck* a number instead of trusting it. The three rows with no id are the curated numbers these
+foods always had, left exactly as they were.
+
+Because the name carries the answer, `FoodState.fromName` reads these for free. Nothing was
+hand-annotated.
+
+### `state: 'na'` is for the rows whose name cannot say it
+
+A can of tuna in water is not raw and not cooked — it is what it is. Before this, `matters('Atún en
+agua')` was true (`atun` is in the list) and `fromName` returned blank, so the app would ask a
+question with no answer, forever, every time anyone saved it. Those rows carry the answer explicitly:
+
+```js
+{ name: 'Atún en agua', serving: 85, cal100: 116, ..., state: 'na' },
+```
+
+and `localFoodWithState` prefers it over the name:
+
+```js
+const localFoodWithState = (f) => ({ ...f, state: f.state || FoodState.fromName(f.name) });
+```
+
+### What the test found that the request did not ask for
+
+The new check — *"no curated food leaves seco/cocido open where it has an answer"* — was written for
+the proteins and immediately failed on **65 other rows**. Prepared dishes, mostly: `Arroz con pollo`,
+`Chili con carne`, `Chicharrón de cerdo`, `Puré de papa`. Every one of them would have interrogated a
+client about a plate of rice and chicken.
+
+They are now annotated by the answer they already had, with no macro touched:
+
+- **`cocido`** — anything that only reaches a scale cooked: the whole *comida criolla* and fast-food
+  sections, plus cooked beans and edamame.
+- **`seco`** — rows whose numbers are the uncooked food and where cooking moves the weight: `Papa /
+  Patata`, `Camote / Batata`, `Plátano maduro`, `Plátano verde`, `Setas / Hongos`, Brussels sprouts.
+- **`na`** — where the answer does not move the numbers, or there is no answer: broccoli, spinach,
+  cabbage, kale, green beans, papaya, banana, oat milk, canned tuna.
+
+**361 curated foods, 0 open questions.**
+
+### Gotchas
+
+- **Renaming a food renames its alias key.** `FOOD_ALIASES` is matched by `normalizeStr(key) ===
+  normalizeStr(food.name)`, and `normalizeStr` only lowercases and strips accents — parentheses
+  survive. `'Pechuga de pollo'` → `'Pechuga de pollo (cocida)'` silently loses every English alias
+  unless the key moves with it.
+- **Both halves answer the bare word.** `pollo` and `chicken` are aliases of *both* rows, so the pair
+  comes up together and the client chooses. Only `raw chicken` / `pollo crudo` narrows it.
+- The LLM prompts still tell the model to emit the plain generic name (`"Pechuga de pollo"`). That
+  still finds both rows — `normName.includes(normQ)` scores 4 — so they were left alone.
+- **`matters()` is a prefix list, so a new entry can catch a word it did not mean.** `'res'` once
+  matched *fresas*; `'avena'` matches *Leche de avena*. The fix is not to loosen the list — it is to
+  give the row an explicit `state`.
+
+### Verified
+
+`node scripts/test-food-state.mjs` — 14 → **19 checks**. The five new ones read `LOCAL_FOODS`
+straight out of `server.js` rather than keeping a second copy (a copy would agree with itself forever
+while the real list drifted): the database loads (**361 rows**), no row leaves the question open,
+every one of the fourteen cuts has both a `seco` and a `cocido` row, the raw half of a pair is the
+lighter one, and canned tuna is told the question does not apply rather than left blank.
+
+Unchanged and still green: meal-items **54**, food-scale **49**, macro-week **119**, routine-twins
+**53**, food-admin **31**, recipes **38**, meal-plans **80**. Mobile: `tsc --noEmit` clean, mirrored
+suite **7**. Mobile needed no change — it reads the same search endpoint, so the pairs and their
+badges arrive on the phone for free.
+
+Driven against the live endpoint on an isolated stack. `pollo` returns *Pechuga de pollo (cocida)*
+**COCIDO** 165, *(cruda)* **SECO** 120, *Muslo (cocido)* **COCIDO** 209, *(crudo)* **SECO** 121,
+*Pollo molido (crudo)* **SECO** 143 — curated pairs ranked above the USDA and Open Food Facts
+results, which come back blank-state as they should. `raw chicken`, `pork chop`, `bistec` and
+`camarones` each surface their pair the same way.
+
+---
+
+## 59. The dropdown nobody could read
+
+A client photographed the **Añadir a** meal picker with the list open. Every row was blank except the
+one under their thumb.
+
+The selects are dark controls: `bg-white/10` with `text-white` or `text-[#FFDB89]`. The `<option>`
+children inherit that colour. But **the popup list is not the control** — the browser draws it as its
+own OS-level surface, and on Android Chrome (and on any desktop whose OS is in light mode) that
+surface is white regardless of the `color-scheme: dark` sitting on the select. Measured in a bare
+document, an option computed to:
+
+```
+color:            rgb(255, 255, 255)
+background-color: rgba(0, 0, 0, 0)      ← fully transparent
+```
+
+White text, no background of its own, dropped onto a white sheet. The highlighted row was legible
+only because the browser forces contrast on that one.
+
+The fix gives an option **both halves of the pair**, so it can never again inherit the text colour of
+a dark control onto a light surface:
+
+```css
+select { color-scheme: dark; }
+select option,
+select optgroup {
+  background-color: #1C1C1E;
+  color: #FFFFFF;
+}
+select option:disabled { color: rgba(255, 255, 255, 0.4); }
+```
+
+In `src/input.css`, so it reaches all **30** selects in the app at once — only 8 of them carried the
+inline `style="color-scheme:dark"`, and that attribute was never the thing that was broken.
+
+### Gotchas
+
+- **`color-scheme` does not colour the popup.** It tells the browser which set of built-in widget
+  colours to use; it does not stop an inherited `color` from landing on whatever surface the popup
+  ends up painting. Only an explicit `background-color` on the option does.
+- **Safari and iOS ignore both properties** on the native sheet. That is fine — that sheet draws its
+  own matched pair. The rule is for Chrome, Edge, Firefox and Android.
+- **Never set only one of the two.** A `color` without a `background-color` is exactly the bug; a
+  `background-color` without a `color` is the same bug waiting for someone to change the control's
+  text colour.
+
+### Verified
+
+Measured in the browser against the built stylesheet: an option now computes to `rgb(255,255,255)` on
+`rgb(28,28,30)`. The before/after comparison above is the same measurement taken in an iframe with no
+stylesheet attached, which is what every option in the app computed to previously.
