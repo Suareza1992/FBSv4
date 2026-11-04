@@ -77,8 +77,8 @@ try {
         mealSlot: 'Desayuno',
         servings: 2,
         ingredients: [
-            { name: 'Avena',            amount: 80,  unit: 'g', calories: 300, protein: 10, carbs: 54, fat: 6 },
-            { name: 'Proteína en polvo', amount: 60, unit: 'g', calories: 220, protein: 48, carbs: 4,  fat: 2 },
+            { name: 'Avena',            amount: 80,  unit: 'g', calories: 300, protein: 10, carbs: 54, fat: 6, state: 'seco' },
+            { name: 'Proteína en polvo', amount: 60, unit: 'g', calories: 220, protein: 48, carbs: 4,  fat: 2, state: 'na' },
         ],
     };
     let r = await asA('POST', '/api/recipes', avena);
@@ -89,6 +89,15 @@ try {
     made.push({ recipeId: recipe._id });
 
     check(recipe.description === 'Dulce, rápida y con mucha proteína.', 'the short description is stored', JSON.stringify(recipe.description));
+
+    // 80 g of oats is 300 kcal dry and about 100 g cooked, so the ingredient has
+    // to say which — and "no aplica" has to survive as a real answer, not blank.
+    check(recipe.ingredients?.[0]?.state === 'seco', 'an ingredient keeps how it is weighed', recipe.ingredients?.[0]?.state);
+    check(recipe.ingredients?.[1]?.state === 'na', 'and "no aplica" is kept, not flattened to blank', recipe.ingredients?.[1]?.state);
+    r = await asA('PUT', `/api/recipes/${recipe._id}`, { ingredients: [
+        { ...avena.ingredients[0], state: 'tibio' }, avena.ingredients[1]] });
+    check((await r.json()).ingredients?.[0]?.state === '', 'a value nobody recognises is stored as unknown');
+    await asA('PUT', `/api/recipes/${recipe._id}`, { ingredients: avena.ingredients });
 
     r = await asA('PUT', `/api/recipes/${recipe._id}`, { description: '  Cambiada  ' });
     check((await r.json()).description === 'Cambiada', 'the description can be edited, and is trimmed');

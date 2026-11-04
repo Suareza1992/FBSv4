@@ -1020,6 +1020,9 @@ const RecipeSchema = new mongoose.Schema({
         protein:  { type: Number, default: 0 },
         carbs:    { type: Number, default: 0 },
         fat:      { type: Number, default: 0 },
+        // 'seco' | 'cocido' | 'na' | ''. Inherited from the library food when the
+        // ingredient was picked from it, asked for when it was typed by hand.
+        state:    { type: String, enum: ['seco', 'cocido', 'na', ''], default: '' },
     }],
     // Soft delete: a recipe a client already cooked from should never vanish out
     // of the trainer's history because of one mis-tap.
@@ -1067,6 +1070,9 @@ const MealPlanSchema = new mongoose.Schema({
                     name:   { type: String, default: '' },
                     amount: { type: Number, default: 0 },
                     unit:   { type: String, default: '' },
+                    // 'seco' | 'cocido' | 'na' | ''. "1 taza arroz" is two different
+                    // plates depending on this, so the plate says which.
+                    state:  { type: String, enum: ['seco', 'cocido', 'na', ''], default: '' },
                     // protein | carb | fat | veg | free — which weekly target this
                     // element scales against, or none.
                     role:   { type: String, default: 'free' },
@@ -1078,6 +1084,7 @@ const MealPlanSchema = new mongoose.Schema({
                         amount: { type: Number, default: 0 },
                         unit:   { type: String, default: '' },
                         role:   { type: String, default: 'free' },
+                        state:  { type: String, enum: ['seco', 'cocido', 'na', ''], default: '' },
                     }],
                 }],
                 // Plate-level alternatives, from before elements. Still offered.
@@ -1151,6 +1158,9 @@ const MealPlanAssignmentSchema = new mongoose.Schema({
         amount: { type: Number, default: 0 },
         unit:   { type: String, default: '' },
         role:   { type: String, default: 'free' },
+        // The replacement brings its own, so a client who swaps dry rice for
+        // cooked quinoa is not left reading the state of the food they removed.
+        state:  { type: String, enum: ['seco', 'cocido', 'na', ''], default: '' },
     }],
 }, { timestamps: true });
 const MealPlanAssignment = mongoose.model('MealPlanAssignment', MealPlanAssignmentSchema);
@@ -1263,6 +1273,12 @@ const FoodLibrarySchema = new mongoose.Schema({
     // (every entry saved before this field existed, and any saved by an older app).
     servingAmount: { type: Number, default: 0 },
     servingUnit:   { type: String, default: '' },
+    // How the food was WEIGHED: 'seco' | 'cocido' | 'na' | '' (nobody has said).
+    // A cup of rice is ~205 g dry and ~160 g cooked, and the dry cup carries about
+    // three times the carbohydrate — so macros without this are macros you cannot
+    // act on. '' is not 'na': 'na' is somebody deciding the question is meaningless
+    // for this food, '' is every entry saved before the field existed.
+    state:     { type: String, enum: ['seco', 'cocido', 'na', ''], default: '' },
     timesUsed: { type: Number, default: 1 },       // popularity counter
     updatedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
@@ -1280,6 +1296,8 @@ const PersonalFoodLibrarySchema = new mongoose.Schema({
     fat: { type: Number, default: 0 },
     servingSize: { type: Number, default: 100 },      // grams or units
     servingUnit: { type: String, default: 'g' },      // g, oz, portions, etc.
+    // 'seco' | 'cocido' | 'na' | ''. Same meaning as on FoodLibrary.
+    state:       { type: String, enum: ['seco', 'cocido', 'na', ''], default: '' },
     timesUsed: { type: Number, default: 1 },          // self-learning counter
     submittedToCommunity: { type: Boolean, default: false },
     communityFoodId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodLibrary', default: null },
@@ -3465,6 +3483,21 @@ const recipeScopeFor = async (user) => {
 
 // Trim an incoming ingredient list to the stored shape. Numbers are coerced and
 // floored at zero so a stray "-" or "abc" cannot poison a client's day total.
+// How a food was weighed: 'seco' | 'cocido' | 'na' | ''. Four values and no
+// guessing — anything unrecognised becomes '' (unknown) rather than being
+// rounded to the nearest plausible answer. Defined here because it is the first
+// of several write paths that need it; the browser's copy is public/food-state.js.
+const FOOD_STATES = new Set(['seco', 'cocido', 'na', '']);
+const cleanFoodState = (v) => (FOOD_STATES.has(String(v ?? '')) ? String(v ?? '') : '');
+
+// The same file the browser runs, so the server and the screens cannot disagree
+// about what a name is saying — the pattern food-scale.js already uses below.
+const FoodState = (() => {
+    const sandbox = {};
+    new Function('self', fs.readFileSync(path.join(__dirname, 'public', 'food-state.js'), 'utf8'))(sandbox);
+    return sandbox.FoodState;
+})();
+
 const cleanIngredients = (list) => (Array.isArray(list) ? list : [])
     .map((i) => ({
         name:     String(i?.name || '').trim().slice(0, 120),
@@ -3474,6 +3507,7 @@ const cleanIngredients = (list) => (Array.isArray(list) ? list : [])
         protein:  Math.max(0, Number(i?.protein)  || 0),
         carbs:    Math.max(0, Number(i?.carbs)    || 0),
         fat:      Math.max(0, Number(i?.fat)      || 0),
+        state:    cleanFoodState(i?.state),
     }))
     .filter((i) => i.name)
     .slice(0, 40);
@@ -3614,6 +3648,7 @@ const cleanMealItems = (list, max, withAlts = false) => (Array.isArray(list) ? l
             amount: Math.max(0, Math.min(10000, Number(it?.amount) || 0)),
             unit:   String(it?.unit || '').trim().slice(0, 20),
             role:   MEAL_ITEM_ROLES.has(String(it?.role)) ? String(it.role) : 'free',
+            state:  cleanFoodState(it?.state),
         };
         if (withAlts) out.alternatives = cleanMealItems(it?.alternatives, 6);
         return out;
@@ -3623,8 +3658,13 @@ const cleanMealItems = (list, max, withAlts = false) => (Array.isArray(list) ? l
 // A plate's sentence, rebuilt from its elements. Deliberately plainer than the
 // browser's version (no fractions, no rounding) — this is the fallback copy, and
 // the client renders from the elements themselves.
+const MEAL_STATE_WORD = { seco: 'en seco', cocido: 'cocido' };
 const mealPlateText = (items) => items
-    .map((it) => [it.amount ? `${Math.round(it.amount * 100) / 100}${it.unit ? ` ${it.unit}` : ''}` : '', it.name]
+    .map((it) => [it.amount ? `${Math.round(it.amount * 100) / 100}${it.unit ? ` ${it.unit}` : ''}` : '', it.name,
+        // The fallback sentence says it too — it is all a plate written before
+        // elements existed has to go on. Skipped when the NAME already says it,
+        // or "avena en seco" comes out as "avena en seco (en seco)".
+        (MEAL_STATE_WORD[it.state] && !FoodState.fromName(it.name)) ? `(${MEAL_STATE_WORD[it.state]})` : '']
         .filter(Boolean).join(' '))
     .join(' · ').slice(0, 600);
 
@@ -3927,6 +3967,7 @@ app.put('/api/my-meal-plan', authenticateToken, async (req, res) => {
                         amount: Math.max(0, Math.min(10000, Number(b.swap.amount) || 0)),
                         unit:   String(b.swap.unit || '').trim().slice(0, 20),
                         role:   MEAL_ITEM_ROLES.has(String(b.swap.role)) ? String(b.swap.role) : 'free',
+                        state:  cleanFoodState(b.swap.state),
                     });
                 }
             }
@@ -4254,7 +4295,7 @@ app.get('/api/personal-foods', authenticateToken, async (req, res) => {
 // Body: { name, calories, protein, carbs, fat, servingSize?, servingUnit? }
 app.post('/api/personal-foods', authenticateToken, async (req, res) => {
     try {
-        const { name, calories, protein, carbs, fat, servingSize, servingUnit } = req.body;
+        const { name, calories, protein, carbs, fat, servingSize, servingUnit, state } = req.body;
         if (!name) return res.status(400).json({ message: 'Se requiere el nombre del alimento.' });
 
         const food = await PersonalFoodLibrary.findOneAndUpdate(
@@ -4267,6 +4308,7 @@ app.post('/api/personal-foods', authenticateToken, async (req, res) => {
                     fat: Number(fat) || 0,
                     servingSize: Number(servingSize) || 100,
                     servingUnit: servingUnit || 'g',
+                    state: cleanFoodState(state),
                     updatedAt: new Date()
                 },
                 $inc: { timesUsed: 1 }
@@ -4285,9 +4327,10 @@ app.put('/api/personal-foods/:id', authenticateToken, async (req, res) => {
         if (!food) return res.status(404).json({ message: 'Alimento no encontrado' });
         if (food.clientId.toString() !== req.user.id) return res.status(403).json({ message: 'Forbidden' });
 
-        const { name, calories, protein, carbs, fat, servingSize, servingUnit } = req.body;
+        const { name, calories, protein, carbs, fat, servingSize, servingUnit, state } = req.body;
         const updateFields = {};
         if (name !== undefined) updateFields.name = name;
+        if (state !== undefined) updateFields.state = cleanFoodState(state);
         if (calories !== undefined) updateFields.calories = Number(calories);
         if (protein !== undefined) updateFields.protein = Number(protein);
         if (carbs !== undefined) updateFields.carbs = Number(carbs);
@@ -5379,6 +5422,12 @@ const FOOD_ALIASES = {
     'Chocolate caliente':               ['hot chocolate','chocolate caliente','cocoa','hot cocoa'],
 };
 
+// The curated list states it in the name where it matters: "Arroz blanco
+// (cocido)", "Avena (cruda)", "Pasta (cocida)". So the state is READ OFF the
+// name rather than hand-annotated onto 275 rows — nothing is asserted that the
+// row did not already say, and a row that says nothing still says nothing.
+const localFoodWithState = (f) => ({ ...f, state: FoodState.fromName(f.name) });
+
 function searchLocalFoods(q) {
     const normQ = normalizeStr(q);
     const terms = normQ.split(/\s+/).filter(Boolean);
@@ -5403,7 +5452,7 @@ function searchLocalFoods(q) {
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score);
-    return scored.map(s => s.food).slice(0, 10);
+    return scored.map(s => localFoodWithState(s.food)).slice(0, 10);
 }
 
 // Rerank a list of external food items so that results whose *name* closely
@@ -5538,8 +5587,16 @@ const upsertSharedFood = async (food, isAdmin) => {
     const existing = await FoodLibrary.findOne({ nameNorm });
 
     if (existing && !isAdmin) {
-        await FoodLibrary.updateOne({ _id: existing._id }, { $inc: { timesUsed: 1 } });
-        return { ok: true, created: false, changed: false, counted: true, id: existing._id };
+        // A non-admin cannot change the numbers — but a food nobody has stated a
+        // weighing state for is a hole in the data, and the client logging it is
+        // the one person who knows. So an ANSWER is accepted where there is none;
+        // it can still never overwrite one somebody already gave.
+        const fill = (!existing.state && cleanFoodState(food.state))
+            ? { state: cleanFoodState(food.state) } : {};
+        await FoodLibrary.updateOne({ _id: existing._id },
+            { $inc: { timesUsed: 1 }, ...(Object.keys(fill).length ? { $set: fill } : {}) });
+        return { ok: true, created: false, changed: false, counted: true,
+            filledState: Boolean(fill.state), id: existing._id };
     }
 
     // The serving is ALWAYS written, even when absent: this call replaces the macros, and
@@ -5550,7 +5607,8 @@ const upsertSharedFood = async (food, isAdmin) => {
         { nameNorm },
         {
             $set: { name, nameNorm, calories: +food.calories || 0, protein: +food.protein || 0,
-                    carbs: +food.carbs || 0, fat: +food.fat || 0, ...serving, updatedAt: new Date() },
+                    carbs: +food.carbs || 0, fat: +food.fat || 0, ...serving,
+                    state: cleanFoodState(food.state), updatedAt: new Date() },
             $inc: { timesUsed: 1 },
         },
         { upsert: true, new: true },
@@ -5562,7 +5620,7 @@ app.post('/api/food-library', authenticateToken, async (req, res) => {
     try {
         if (!req.body?.name?.trim()) return res.status(400).json({ error: 'Name required' });
         const r = await upsertSharedFood(req.body, await isSuperadmin(req));
-        res.json({ ok: true, created: r.created, changed: r.changed });
+        res.json({ ok: true, created: r.created, changed: r.changed, filledState: r.filledState });
     } catch (e) {
         console.error('Food library save error:', e.message);
         res.status(500).json({ error: e.message });
@@ -5609,6 +5667,7 @@ app.put('/api/admin/foods/:id', authenticateToken, requireSuperadmin, async (req
         ['calories', 'protein', 'carbs', 'fat'].forEach((k) => {
             if (b[k] !== undefined) food[k] = Math.max(0, Number(b[k]) || 0);
         });
+        if (b.state !== undefined) food.state = cleanFoodState(b.state);
         if (b.servingAmount !== undefined || b.servingUnit !== undefined) {
             const serving = cleanServing(
                 b.servingAmount !== undefined ? b.servingAmount : food.servingAmount,
@@ -5657,6 +5716,7 @@ app.get('/api/food-library', authenticateToken, async (req, res) => {
         res.json(results.map(f => ({
             name: f.name, calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat,
             servingAmount: f.servingAmount || 0, servingUnit: f.servingUnit || '',
+            state: f.state || '',
         })));
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -5680,7 +5740,7 @@ const libraryFoodToSearchResult = (f) => {
     const amt = f.servingAmount || 0;
     const unit = (f.servingUnit || '').trim();
     const gPer = MASS_G[normalizeStr(unit).replace(/\./g, '')];
-    const out = { name: f.name, brand: null, serving: 100, fromLibrary: true,
+    const out = { name: f.name, brand: null, serving: 100, fromLibrary: true, state: f.state || '',
                   calories: f.calories || 0, protein: f.protein || 0, carbs: f.carbs || 0, fat: f.fat || 0 };
     if (amt > 0 && unit) { out.baseAmount = amt; out.baseUnit = unit; }
     if (amt > 0 && gPer) {

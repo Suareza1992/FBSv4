@@ -118,6 +118,36 @@ try {
     r = await asAdmin('PUT', `/api/admin/foods/${id}`, { name: '   ' });
     check(r.status === 400, 'a blank name is refused', String(r.status));
 
+    // ── Seco o cocido ──────────────────────────────────────────────────────
+    // The field is on the same data every client reads, so it follows the same
+    // rule as the macros: anyone may ANSWER where nobody has, nobody may change
+    // an answer that is already there.
+    r = await asAdmin('PUT', `/api/admin/foods/${id}`, { state: 'cocido' });
+    check((await r.json()).state === 'cocido', 'the superadmin can say how a food is weighed');
+
+    r = await asAdmin('PUT', `/api/admin/foods/${id}`, { state: 'al dente' });
+    check((await row()).state === '', 'a value nobody recognises is stored as unknown, not kept');
+
+    await asAdmin('PUT', `/api/admin/foods/${id}`, { state: 'seco' });
+    r = await asClient('POST', '/api/food-library', { name: FOOD, calories: 9999, state: 'cocido' });
+    check(r.ok && (await row()).state === 'seco',
+        "a client logging it cannot flip somebody else's answer", (await row()).state);
+    check((await row()).calories === 0, 'and still cannot touch the macros');
+
+    // …but a blank is a hole, and the client logging the food is the one person
+    // who knows. Filling it is allowed; that is how the library stops being blank.
+    await asAdmin('PUT', `/api/admin/foods/${id}`, { state: '' });
+    r = await asClient('POST', '/api/food-library', { name: FOOD, calories: 1, state: 'cocido' });
+    check((await r.json()).filledState === true, 'a client CAN answer a question nobody has answered');
+    check((await row()).state === 'cocido', 'and the answer sticks', (await row()).state);
+    check((await row()).calories === 0, 'while the macros stay exactly where they were');
+
+    const newFood = `Zz ${tag} quinoa`;
+    r = await asClient('POST', '/api/food-library', { name: newFood, calories: 120, state: 'cocido' });
+    const fresh = await db.collection('foodlibraries').findOne({ name: newFood });
+    check(fresh?.state === 'cocido', 'a food created by a client carries its state from the start');
+    await db.collection('foodlibraries').deleteOne({ name: newFood });
+
     r = await asAdmin('DELETE', `/api/admin/foods/${id}`);
     check(r.ok, 'the superadmin can delete', String(r.status));
     check((await row()) === null, 'and it is really gone — a real delete, not an archive');

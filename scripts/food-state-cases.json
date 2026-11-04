@@ -1,0 +1,64 @@
+{
+  "_comment": "Shared by public/food-state.js (web) and lib/foodState.ts (mobile). Both read THIS file, so the two copies cannot drift apart unnoticed. See TECHNICAL.md § 57.",
+  "stateOf": [
+    { "in": "seco",   "out": "seco" },
+    { "in": "cocido", "out": "cocido" },
+    { "in": "na",     "out": "na" },
+    { "in": "",       "out": "" },
+    { "in": "crudo",  "out": "" },
+    { "in": "COCIDO", "out": "" },
+    { "in": "Cocido", "out": "" },
+    { "in": null,     "out": "" },
+    { "in": 0,        "out": "" }
+  ],
+  "badge": [
+    { "state": "seco",   "badge": "SECO" },
+    { "state": "cocido", "badge": "COCIDO" },
+    { "state": "na",     "badge": "" },
+    { "state": "",       "badge": "" }
+  ],
+  "fromName": [
+    { "name": "avena en seco",                  "out": "seco" },
+    { "name": "Avena (cruda)",                  "out": "seco" },
+    { "name": "pollo crudo",                    "out": "seco" },
+    { "name": "tomates deshidratados",          "out": "seco" },
+    { "name": "arroz integral cocido",          "out": "cocido" },
+    { "name": "Pasta (cocida)",                 "out": "cocido" },
+    { "name": "Lentejas (cocidas)",             "out": "cocido" },
+    { "name": "salmón al horno",                "out": "cocido" },
+    { "name": "pechuga de pollo a la parrilla", "out": "cocido" },
+    { "name": "espárragos al vapor",            "out": "cocido" },
+    { "name": "huevos hervidos",                "out": "cocido" },
+    { "name": "espinaca salteada",              "out": "cocido" },
+    { "name": "arroz integral",                 "out": "" },
+    { "name": "pechuga de pollo",               "out": "" },
+    { "name": "Manzana",                        "out": "" },
+    { "name": "arroz cocido en seco",           "out": "" },
+    { "name": "",                               "out": "" }
+  ],
+  "matters": [
+    { "name": "arroz integral",             "out": true },
+    { "name": "lentejas",                   "out": true },
+    { "name": "garbanzos",                  "out": true },
+    { "name": "pechuga de pollo",           "out": true },
+    { "name": "pasta integral",             "out": true },
+    { "name": "espinaca",                   "out": true },
+    { "name": "batata",                     "out": true },
+    { "name": "carne de res",               "out": true },
+    { "name": "hamburguesa de pavo",        "out": true },
+    { "name": "fresas",                     "out": false },
+    { "name": "fresas frescas",             "out": false },
+    { "name": "aderezo de soya y ajonjolí", "out": false },
+    { "name": "manzana",                    "out": false },
+    { "name": "aceite de oliva",            "out": false },
+    { "name": "canela",                     "out": false },
+    { "name": "scoop whey",                 "out": false },
+    { "name": "leche de almendras",         "out": false }
+  ],
+  "shouldAsk": [
+    { "name": "arroz integral", "state": "",       "out": true },
+    { "name": "arroz integral", "state": "cocido", "out": false },
+    { "name": "arroz integral", "state": "na",     "out": false },
+    { "name": "manzana",        "state": "",       "out": false }
+  ]
+}

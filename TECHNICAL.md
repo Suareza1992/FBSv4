@@ -5203,3 +5203,172 @@ showing 8 oz for the chicken and 6 ½ oz for its alternatives. Dropping her live
 row grew *evaluación nueva del 2026-11-03*. **Usar la evaluación** recomputed every untouched box
 (1.33 → 0.75) and left both hand-typed amounts alone. Checked at 375 px, both roles, no horizontal
 overflow.
+
+---
+
+## 57. Seco o cocido: the question every food has to answer
+
+A cup of rice is about **205 g dry and 160 g cooked**, and the dry cup carries roughly three times the
+carbohydrate. The same gram of chicken breast loses water and concentrates the other way. So "1 taza
+arroz · 216 kcal" is not a number a client can act on until somebody says which one it is.
+
+Until now the only place that fact lived was **inside the food's name**, written by hand and written
+inconsistently. The shipped 8-week template said *"1 taza quinoa cocida"* in one week and *"1 taza
+arroz integral"* in another. Both were written by the same person on the same afternoon; that is how
+easily a naming habit fails.
+
+It is a field now, **asked for wherever a food's numbers are entered** and shown wherever that food
+appears.
+
+### Four values, and the fourth is the interesting one
+
+```js
+'seco' | 'cocido' | 'na' | ''
+```
+
+`''` is not `'na'`. **`'na'` is somebody deciding the question is meaningless for this food**; `''` is
+nobody having said anything. Fold them together and 172 unanswered foods silently become "doesn't
+matter", which is exactly the claim we cannot make. Everything downstream respects the difference:
+`'na'` and `''` both render no chip, but only `''` shows up in the **Sin seco/cocido** filter and only
+`''` gets asked about.
+
+Anything unrecognised — `'crudo'`, `'COCIDO'`, `null` — becomes `''`. Never the nearest plausible
+answer.
+
+### What it does not do
+
+**It never converts.** Showing "⅓ taza en seco ≈ 1 taza cocida" would mean shipping yield ratios per
+food, and we have no source for them — the house rule is that nutrition numbers come from the food
+database and nowhere else. This feature makes sure nobody has to guess which of two numbers they are
+looking at. It does not invent a third.
+
+### Reading a name, without guessing
+
+`fromName()` reports **only what a name already says** — "avena en seco", "Avena (cruda)", "salmón al
+horno", "pechuga de pollo a la parrilla". It is used in three places, all of them pre-selections a
+human is looking at:
+
+- the ingredient picker, when the library has nothing stored;
+- the template, where it saves annotating 42 lines that already say it;
+- `scripts/backfill-food-state.mjs`, which is a **transcription, not an inference** — it fills only
+  what a name states, leaves everything else for a person, and is a dry run until you pass `--write`.
+
+A name that says *both* (`"arroz cocido en seco"`) returns `''`. That is a typo, not a food.
+
+### Who gets asked, and the bug that taught us how
+
+`matters(name)` decides whether to put the question. Too loose and it becomes noise people tap
+through; too tight and the rice goes out unlabelled. The first version matched substrings, so `'res'`
+matched inside **"f*res*as"** and strawberries were being asked whether they had been weighed raw or
+cooked. It is anchored now — `\b(?:…)` — matched as a prefix, so `'lentej'` still catches "lentejas".
+
+The list is grains, pasta and legumes (they absorb two to three times their weight in water), meat and
+fish (they lose it), starchy vegetables, and the leaves that collapse to a fraction of their volume.
+`'soya'` came out because it matched soy sauce.
+
+### Asked, not assumed — but only where it changes a number
+
+Blocking every save behind a three-way control would put a question in front of lettuce, and a
+question asked about everything stops being read. So:
+
+| where | how it is asked |
+|---|---|
+| Alimentos (shared library) | a three-way control in the row, **and** a blocking dialog on save when `shouldAsk` |
+| the diary's Añadir alimento | a three-way control under the amount, shown only when `matters` |
+| recipe ingredients | a tap-cycling badge; inherited outright when picked from the library |
+| meal-plan elements | a tap-cycling badge beside the role badge — `?` → S → C → · |
+
+Cancelling the dialog **abandons the save**. Nothing is assumed from a refusal to answer.
+
+The cycling badge is the same choice the meal-plan role badge made: a dropdown per row would have been
+128 dropdowns in one open week.
+
+### The library learns, but cannot be overwritten
+
+The shared library already had the rule that **creating is open and changing is the superadmin's
+alone**. The state follows it with one deliberate addition:
+
+```js
+const fill = (!existing.state && cleanFoodState(food.state)) ? { state: cleanFoodState(food.state) } : {};
+```
+
+A client logging rice **can answer a question nobody has answered** — that is how the library stops
+being blank — and can never change an answer that is already there. The response says `filledState` so
+the caller can tell the truth about what happened. The client's own diary entry keeps whatever they
+picked either way; one person's plate is not a vote on the library.
+
+### It is a field, not a word in the name
+
+`MealItem.itemText()` / `parseLine()` is what the plan editor writes and reads back on every save. A
+state leaking into that string would turn "arroz (cocido)" into the **food's name** on the next save —
+the same class of bug as the `4 ½` glyph round trip in § 56, and `scripts/test-food-state.mjs` asserts
+against it directly.
+
+The one place the words do appear in prose is `mealPlateText()`, the derived fallback sentence, and
+even there it is skipped when the name already says it — or "avena en seco" comes out as *"avena en
+seco (en seco)"*.
+
+### One rule, two copies, one set of cases
+
+The phone has its own copy (`lib/foodState.ts` in **FitBySuarez-mobile**), the same arrangement
+`food-scale.js` uses. Both read **`scripts/food-state-cases.json`** in this repo, so the two cannot
+drift apart unnoticed: the web suite and `npx tsx scripts/test-food-state.ts` on the phone run the
+identical name-reading and who-gets-asked tables.
+
+The server loads the browser file rather than keeping a third copy:
+
+```js
+const FoodState = (() => {
+    const sandbox = {};
+    new Function('self', fs.readFileSync(path.join(__dirname, 'public', 'food-state.js'), 'utf8'))(sandbox);
+    return sandbox.FoodState;
+})();
+```
+
+### The curated list answers for itself
+
+`LOCAL_FOODS` is 275 hand-entered rows, and the risky ones already name their state — "Arroz blanco
+(cocido)", "Avena (cruda)", "Pasta (cocida)", "Lentejas (cocidas)". So the state is **read off the
+name at search time** rather than hand-annotated onto 275 rows. Nothing is asserted that the row did
+not already say, and a row that says nothing still says nothing.
+
+### Edge cases that are handled
+
+- The diary's preview repaints on **every keystroke** in the amount box. The picker is rebuilt only
+  when the food changes, or typing "250" would throw away the answer just given.
+- A swapped-in meal-plan element carries **its own** state, so a client swapping dry rice for cooked
+  quinoa is not left reading the state of the food they removed.
+- A template line is one slot of one plate, so its alternatives inherit the line's state unless their
+  own name says otherwise — which is why *"1 taza quinoa cocida | 1 taza arroz integral"* makes the
+  rice cooked with no annotation at all.
+- Tapping the chosen option again **clears it**. A mis-tap on a three-way control must not be
+  permanent.
+- `'na'` survives a round trip as `'na'`, not as blank.
+
+### Verified
+
+`node scripts/test-food-state.mjs` — **14 checks**, no server, driven off the shared cases file: every
+value reads back as itself or as unknown; a name is read for what it says and nothing more; the
+question is put only to foods that have an answer ("fresas" is not "res"); no food in the shipped
+template leaves the question open where it has an answer (**289 of 511** elements and alternatives
+state it, 0 gaps); and the editor's round trip gives the name back unchanged.
+
+`npx -y tsx scripts/test-food-state.ts` in **FitBySuarez-mobile** — 7 checks, the same cases file, so
+the phone's copy cannot drift.
+
+`node scripts/test-food-admin.mjs` — 23 → **31**. The ones that matter: a client logging a food cannot
+flip somebody else's answer but *can* fill a blank one (`filledState: true`), and neither touches the
+macros; an unrecognised value is stored as unknown.
+
+`node scripts/test-recipes.mjs` — 35 → **38**; `node scripts/test-meal-plans.mjs` — 75 → **80**,
+including that a swap brings its own state and the fallback sentence carries it.
+
+Driven in a browser, both roles, on an isolated stack. **Alimentos** showed `Sin seco/cocido 2` with
+the apple correctly unflagged; saving a grain with no answer put up *"¿"Zz state avena (cruda)" se
+pesa en seco o cocido?"*, **Cancelar left the field empty** and answering stuck. In the **diary**, a
+library food pre-selected `cocido`, survived changing the amount from 1 to 2 tazas, was overridden to
+`seco` by hand, landed in the day as **SECO** — and the shared library stayed `cocido`. The plan
+editor showed two badges per row, cycled `? → S → C → · → ?`, and saved `avena en seco → "seco"`,
+`scoop whey → "na"`. The client's plate then read *avena en seco* **SECO**, *pechuga de pollo a la
+parrilla* **COCIDO**, *hojas verdes con pepinillo* **SECO**. Checked at 375 px with no horizontal
+overflow.

@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 
 // Both files are plain browser scripts, run the way a browser runs them.
 const sandbox = {};
-for (const f of ['../public/food-scale.js', '../public/meal-item.js'])
+for (const f of ['../public/food-scale.js', '../public/food-state.js', '../public/meal-item.js'])
     new Function('self', readFileSync(new URL(f, import.meta.url), 'utf8'))(sandbox);
 const M = sandbox.MealItem;
 

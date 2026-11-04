@@ -15,14 +15,21 @@
    chicken — only the chicken — rewritten for their own protein goal. Every
    element is written as one line:
 
-       ['p', '5 oz pechuga de pollo | 5 oz pechuga de pavo | 5 oz lomillo']
-         │     └ what the plan says    └ what they can switch to instead
-         └ the role: p protein · c carbo · f grasa · v vegetal · - libre
+       ['p', '5 oz pechuga de pollo | 5 oz pechuga de pavo | 5 oz lomillo', 'cocido']
+         │     └ what the plan says    └ what they can switch to instead    │
+         └ the role: p protein · c carbo · f grasa · v vegetal · - libre    └ how it is weighed
 
    The role is the whole trick. It decides which of the week's targets the
    amount scales against, so a client who needs a third more protein gets a
    third more chicken and exactly the same broccoli. Alternatives inherit their
    element's role — a protein is swapped for a protein.
+
+   The third slot is how the food is WEIGHED: 'seco' (before cooking) or
+   'cocido'. It is only written where the name does not already say it —
+   "avena en seco" and "salmón al horno" say it themselves and are read
+   directly, so the annotation marks exactly the lines that were ambiguous.
+   A cup of rice is about three times the carbohydrate dry that it is cooked,
+   so an unmarked grain is a plate a client can get badly wrong.
 
    This file is data only. It is kept out of app.js because it is prose, not
    logic, and prose this long buried in a 17k-line file is prose nobody finds.
@@ -34,10 +41,18 @@
     // "5 oz pechuga de pollo | 5 oz pavo" → the element plus its alternatives,
     // parsed by the same code the editor and the client use, so what is written
     // here is exactly what a trainer would get by typing it.
-    const item = ([code, line]) => {
+    const item = ([code, line, state]) => {
         const role = ROLE[code] || 'free';
         const parts = String(line).split('|').map((s) => s.trim()).filter(Boolean);
-        const parsed = parts.map((s) => Object.assign(window.MealItem.parseLine(s) || { name: s, amount: 0, unit: '' }, { role }));
+        const bases = parts.map((s) => window.MealItem.parseLine(s) || { name: s, amount: 0, unit: '' });
+        // One line is one slot of one plate, so its options are weighed the same
+        // way unless an option's own name says otherwise. The line's state is the
+        // annotation when there is one, and otherwise whatever the FIRST element's
+        // name already said — which is why "1 taza quinoa cocida | 1 taza arroz
+        // integral" makes the rice cooked too, without a word of annotation.
+        const line_state = window.FoodState.stateOf(state) || window.FoodState.fromName(bases[0].name);
+        const parsed = bases.map((base) => Object.assign(base, { role,
+            state: window.FoodState.fromName(base.name) || line_state }));
         return Object.assign(parsed[0], { alternatives: parsed.slice(1) });
     };
 
@@ -68,7 +83,7 @@
                         ['Almuerzo', [
                             ['p', '5 oz pechuga de pollo a la parrilla | 5 oz pechuga de pavo | 5 oz lomillo de cerdo magro'],
                             ['c', '1 taza quinoa cocida | 1 taza arroz integral | 1 taza habichuelas blancas'],
-                            ['v', '2 tazas hojas verdes con pepinillo | 2 tazas ensalada de repollo | 2 tazas espinaca'],
+                            ['v', '2 tazas hojas verdes con pepinillo | 2 tazas ensalada de repollo | 2 tazas espinaca', 'seco'],
                             ['f', '1 cda vinagreta de aceite de oliva | 1/4 aguacate | 1 cda aderezo de ajonjolí'],
                         ]],
                         ['Merienda', [
@@ -84,13 +99,13 @@
                     ]),
                     prep('B', 'Prep B', [
                         ['Desayuno', [
-                            ['p', '3 huevos revueltos | 1 taza claras con 1 huevo entero | 4 oz tocineta de pavo'],
-                            ['v', '1 taza espinaca y tomate | 1 taza hongos y pimientos'],
+                            ['p', '3 huevos revueltos | 1 taza claras con 1 huevo entero | 4 oz tocineta de pavo', 'cocido'],
+                            ['v', '1 taza espinaca y tomate | 1 taza hongos y pimientos', 'seco'],
                             ['c', '2 rebanadas pan integral | 1 wrap integral | 1/2 taza avena en seco'],
                             ['f', '1/4 aguacate | 1 cdta aceite de oliva | 1 oz queso feta'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '5 oz pavo molido magro | 5 oz pollo molido | 5 oz carne molida 93/7'],
+                            ['p', '5 oz pavo molido magro | 5 oz pollo molido | 5 oz carne molida 93/7', 'cocido'],
                             ['v', '1 taza pimientos y cebolla salteados | 1 taza calabacín salteado'],
                             ['c', '1 taza arroz integral cocido | 1 taza quinoa | 1 taza habichuelas negras'],
                         ]],
@@ -114,20 +129,20 @@
                     prep('A', 'Prep A', [
                         ['Desayuno', [
                             ['p', '3 claras y 1 huevo entero | 1 taza claras de huevo | 1 scoop whey'],
-                            ['v', '1 taza espinaca y tomate | 1 taza hongos salteados'],
+                            ['v', '1 taza espinaca y tomate | 1 taza hongos salteados', 'seco'],
                             ['c', '1 rebanada pan integral | 1/2 taza avena en seco | 1/2 wrap integral'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '4.5 oz albóndigas de pavo magro | 4.5 oz pechuga de pollo | 4.5 oz carne molida 93/7'],
+                            ['p', '4.5 oz albóndigas de pavo magro | 4.5 oz pechuga de pollo | 4.5 oz carne molida 93/7', 'cocido'],
                             ['v', '1 1/2 taza calabacín y pimientos asados | 1 1/2 taza brócoli asado'],
-                            ['c', '3/4 taza arroz integral | 3/4 taza quinoa | 3/4 taza pasta integral'],
+                            ['c', '3/4 taza arroz integral | 3/4 taza quinoa | 3/4 taza pasta integral', 'cocido'],
                         ]],
                         ['Merienda', [
                             ['c', '1 manzana en rodajas | 1 pera | 1 taza fresas'],
                             ['f', '1 cda mantequilla de maní natural | 1 cda mantequilla de almendras | 10 almendras'],
                         ]],
                         ['Cena', [
-                            ['p', '4.5 oz churrasco magro | 4.5 oz lomillo de cerdo | 4.5 oz pechuga de pollo'],
+                            ['p', '4.5 oz churrasco magro | 4.5 oz lomillo de cerdo | 4.5 oz pechuga de pollo', 'cocido'],
                             ['v', '2 tazas ensalada verde grande | 2 tazas espinaca salteada'],
                             ['c', '1/2 taza papitas nuevas asadas | 1/2 taza batata asada | 1/2 taza arroz integral'],
                         ]],
@@ -140,17 +155,17 @@
                             ['-', '1 taza leche de almendras sin azúcar'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '4.5 oz pechuga de pollo desmenuzada | 4.5 oz pavo desmenuzado | 4.5 oz atún en agua'],
-                            ['c', '3/4 taza habichuelas negras | 3/4 taza habichuelas rojas | 3/4 taza lentejas'],
-                            ['c', '1/2 taza arroz jazmín | 1/2 taza arroz integral | 1/2 taza quinoa'],
+                            ['p', '4.5 oz pechuga de pollo desmenuzada | 4.5 oz pavo desmenuzado | 4.5 oz atún en agua', 'cocido'],
+                            ['c', '3/4 taza habichuelas negras | 3/4 taza habichuelas rojas | 3/4 taza lentejas', 'cocido'],
+                            ['c', '1/2 taza arroz jazmín | 1/2 taza arroz integral | 1/2 taza quinoa', 'cocido'],
                         ]],
                         ['Merienda', [
-                            ['p', '1 taza edamame en vaina | 3/4 taza queso cottage | 2 huevos hervidos'],
+                            ['p', '1 taza edamame en vaina | 3/4 taza queso cottage | 2 huevos hervidos', 'cocido'],
                             ['p', '1 palito de queso mozzarella | 1 huevo hervido'],
                         ]],
                         ['Cena', [
                             ['p', '5.5 oz mahi-mahi al horno | 5.5 oz bacalao | 5.5 oz tilapia'],
-                            ['c', '1/2 taza quinoa | 1/2 taza arroz integral | 1/2 taza batata asada'],
+                            ['c', '1/2 taza quinoa | 1/2 taza arroz integral | 1/2 taza batata asada', 'cocido'],
                             ['v', '2 tazas espinaca salteada | 2 tazas brócoli al vapor'],
                             ['f', '1 cdta aceite de oliva | 1/4 aguacate'],
                         ]],
@@ -165,14 +180,14 @@
                     prep('A', 'Prep A', [
                         ['Desayuno', [
                             ['p', '1 scoop whey | 3/4 taza yogur griego sin grasa | 1 taza claras de huevo'],
-                            ['v', '1 taza espinaca | 1 taza kale'],
+                            ['v', '1 taza espinaca | 1 taza kale', 'seco'],
                             ['c', '1/2 taza berries congelados | 1/2 taza fresas | 1/2 guineo'],
                             ['f', '1 cda linaza | 1 cda chía | 1 cdta mantequilla de maní'],
                         ]],
                         ['Almuerzo', [
                             ['p', '4.5 oz pechuga de pollo a la parrilla | 4.5 oz pavo | 4.5 oz camarones'],
-                            ['c', '1 wrap bajo en carbohidratos | 2 hojas grandes de lechuga | 1/2 taza arroz integral'],
-                            ['v', '1 1/2 taza hojas verdes y tomate | 1 1/2 taza repollo rallado'],
+                            ['c', '1 wrap bajo en carbohidratos | 2 hojas grandes de lechuga | 1/2 taza arroz integral cocido'],
+                            ['v', '1 1/2 taza hojas verdes y tomate | 1 1/2 taza repollo rallado', 'seco'],
                             ['f', '1 cda aderezo liviano | 1/4 aguacate'],
                         ]],
                         ['Merienda', [
@@ -182,29 +197,29 @@
                         ['Cena', [
                             ['p', '5.5 oz bacalao al horno | 5.5 oz tilapia | 5.5 oz pechuga de pollo'],
                             ['v', '2 tazas coliflor asada | 2 tazas brócoli asado'],
-                            ['c', '1/2 taza arroz salvaje | 1/2 taza quinoa | 1/2 taza batata asada'],
+                            ['c', '1/2 taza arroz salvaje | 1/2 taza quinoa | 1/2 taza batata asada', 'cocido'],
                         ]],
                     ]),
                     prep('B', 'Prep B', [
                         ['Desayuno', [
                             ['p', '3 claras y 1 huevo entero | 1 taza claras de huevo | 2 huevos'],
-                            ['p', '1 oz tocineta de pavo en cubos | 1 oz jamón de pavo'],
-                            ['v', '1 taza espinaca | 1 taza hongos'],
+                            ['p', '1 oz tocineta de pavo en cubos | 1 oz jamón de pavo', 'cocido'],
+                            ['v', '1 taza espinaca | 1 taza hongos', 'seco'],
                             ['c', '1/2 taza melón | 1/2 taza berries | 1/2 guineo'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '4.5 oz lomillo de cerdo magro | 4.5 oz pechuga de pollo | 4.5 oz churrasco magro'],
+                            ['p', '4.5 oz lomillo de cerdo magro | 4.5 oz pechuga de pollo | 4.5 oz churrasco magro', 'cocido'],
                             ['v', '1 1/2 taza coles de Bruselas asadas | 1 1/2 taza brócoli asado'],
-                            ['c', '1/2 taza majado de batata | 1/2 taza arroz integral | 1/2 taza quinoa'],
+                            ['c', '1/2 taza majado de batata | 1/2 taza arroz integral | 1/2 taza quinoa', 'cocido'],
                         ]],
                         ['Merienda', [
                             ['p', '2 huevos hervidos | 3/4 taza queso cottage | 1 scoop whey'],
                             ['-', 'sazón everything bagel'],
                         ]],
                         ['Cena', [
-                            ['p', '4.5 oz pollo molido | 4.5 oz pavo molido | 4.5 oz camarones'],
-                            ['v', '4 hojas grandes de lechuga | 2 tazas repollo rallado'],
-                            ['p', '1/2 taza edamame | 1/4 taza habichuelas negras'],
+                            ['p', '4.5 oz pollo molido | 4.5 oz pavo molido | 4.5 oz camarones', 'cocido'],
+                            ['v', '4 hojas grandes de lechuga | 2 tazas repollo rallado', 'seco'],
+                            ['p', '1/2 taza edamame | 1/4 taza habichuelas negras', 'cocido'],
                             ['-', '1 cda glaseado de hoisin y soya'],
                         ]],
                     ]),
@@ -218,12 +233,12 @@
                     prep('A', 'Prep A', [
                         ['Desayuno', [
                             ['p', '1 taza claras y 1 huevo entero | 1 taza claras de huevo | 1 scoop whey'],
-                            ['v', '1 taza hongos y pimientos | 1 taza espinaca'],
+                            ['v', '1 taza hongos y pimientos | 1 taza espinaca', 'cocido'],
                             ['c', '1/2 taza berries | 1/2 taza melón | 1 manzana pequeña'],
                         ]],
                         ['Almuerzo', [
                             ['p', '4 oz pechuga de pollo a la parrilla | 4 oz pavo | 4 oz atún en agua'],
-                            ['c', '3/4 taza lentejas y habichuelas blancas | 3/4 taza garbanzos | 1/2 taza quinoa'],
+                            ['c', '3/4 taza lentejas y habichuelas blancas | 3/4 taza garbanzos | 1/2 taza quinoa', 'cocido'],
                             ['v', '1 1/2 taza tomate y cebolla roja | 1 1/2 taza hojas verdes'],
                             ['-', 'limón y perejil'],
                         ]],
@@ -233,9 +248,9 @@
                             ['-', 'canela'],
                         ]],
                         ['Cena', [
-                            ['p', '4.5 oz pavo molido magro | 4.5 oz pollo molido | 4.5 oz carne molida 93/7'],
-                            ['v', '2 tazas brócoli y guisantes | 2 tazas vegetales mixtos salteados'],
-                            ['c', '1/3 taza arroz integral | 1/3 taza quinoa | 1/3 taza fideos de arroz'],
+                            ['p', '4.5 oz pavo molido magro | 4.5 oz pollo molido | 4.5 oz carne molida 93/7', 'cocido'],
+                            ['v', '2 tazas brócoli y guisantes | 2 tazas vegetales mixtos salteados', 'cocido'],
+                            ['c', '1/3 taza arroz integral | 1/3 taza quinoa | 1/3 taza fideos de arroz', 'cocido'],
                             ['-', 'jengibre y soya baja en sodio'],
                         ]],
                     ]),
@@ -258,7 +273,7 @@
                         ]],
                         ['Cena', [
                             ['p', '4 oz flank steak a la parrilla | 4 oz churrasco magro | 4 oz pechuga de pollo'],
-                            ['v', '2 tazas habichuelas tiernas en ajo | 2 tazas espárragos'],
+                            ['v', '2 tazas habichuelas tiernas en ajo | 2 tazas espárragos', 'cocido'],
                             ['c', '4 oz calabaza butternut asada | 4 oz batata asada | 1/3 taza arroz integral'],
                         ]],
                     ]),
@@ -272,14 +287,14 @@
                     prep('A', 'Prep A', [
                         ['Desayuno', [
                             ['p', '1 taza claras y 1 huevo entero | 1 taza claras de huevo | 1 scoop whey'],
-                            ['v', '1 taza espinaca | 1 taza hongos'],
+                            ['v', '1 taza espinaca | 1 taza hongos', 'seco'],
                             ['f', '1/4 aguacate | 1 cdta aceite de oliva | 8 almendras'],
                             ['c', '1 rebanada pan integral | 1/2 taza avena en seco | 1/2 guineo'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '4 oz pechuga de pollo desmenuzada | 4 oz pavo | 4 oz atún en agua'],
-                            ['v', '2 tazas hojas verdes, tomatitos y pepinillo | 2 tazas espinaca y rábano'],
-                            ['c', '1/3 taza quinoa | 1/3 taza arroz integral | 1/3 taza habichuelas blancas'],
+                            ['p', '4 oz pechuga de pollo desmenuzada | 4 oz pavo | 4 oz atún en agua', 'cocido'],
+                            ['v', '2 tazas hojas verdes, tomatitos y pepinillo | 2 tazas espinaca y rábano', 'seco'],
+                            ['c', '1/3 taza quinoa | 1/3 taza arroz integral | 1/3 taza habichuelas blancas', 'cocido'],
                             ['f', '1 cda aderezo de limón y hierbas | 1/4 aguacate'],
                         ]],
                         ['Merienda', [
@@ -299,9 +314,9 @@
                             ['-', '1 taza leche de almendras sin azúcar'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '4.5 oz atún | 4.5 oz salmón en lata | 4.5 oz pechuga de pollo'],
-                            ['v', '2 tazas espinaca, pepinillo y rábano | 2 tazas hojas verdes mixtas'],
-                            ['c', '1/3 taza arroz integral | 1/3 taza quinoa | 1/3 taza edamame'],
+                            ['p', '4.5 oz atún | 4.5 oz salmón en lata | 4.5 oz pechuga de pollo', 'cocido'],
+                            ['v', '2 tazas espinaca, pepinillo y rábano | 2 tazas hojas verdes mixtas', 'seco'],
+                            ['c', '1/3 taza arroz integral | 1/3 taza quinoa | 1/3 taza edamame', 'cocido'],
                             ['f', '1 cda aderezo de soya y ajonjolí | 1 cdta aceite de ajonjolí'],
                         ]],
                         ['Merienda', [
@@ -309,9 +324,9 @@
                             ['f', '1 1/2 cda mantequilla de maní natural | 1 1/2 cda hummus | 12 almendras'],
                         ]],
                         ['Cena', [
-                            ['p', '4 oz carne molida magra 93/7 | 4 oz pavo molido | 4 oz pollo molido'],
+                            ['p', '4 oz carne molida magra 93/7 | 4 oz pavo molido | 4 oz pollo molido', 'cocido'],
                             ['v', '1 1/2 taza tomate triturado y calabacín | 1 1/2 taza pimientos y cebolla'],
-                            ['c', '1/4 taza habichuelas rojas | 1/4 taza habichuelas negras | 1/4 taza arroz integral'],
+                            ['c', '1/4 taza habichuelas rojas | 1/4 taza habichuelas negras | 1/4 taza arroz integral', 'cocido'],
                         ]],
                     ]),
                 ],
@@ -330,26 +345,26 @@
                         ['Almuerzo', [
                             ['p', '4 oz salmón al horno | 4 oz trucha | 4 oz pechuga de pollo'],
                             ['v', '2 tazas calabacín asado | 2 tazas brócoli asado'],
-                            ['c', '1/2 taza arroz integral | 1/2 taza quinoa | 3 oz batata asada'],
+                            ['c', '1/2 taza arroz integral | 1/2 taza quinoa | 3 oz batata asada', 'cocido'],
                         ]],
                         ['Merienda', [
                             ['p', '1 scoop whey con agua y hielo | 3/4 taza queso cottage | 2 huevos hervidos'],
                             ['v', '1 taza pepinillo en rodajas | 1 taza tomatitos'],
                         ]],
                         ['Cena', [
-                            ['p', '4 oz lomillo de cerdo magro | 4 oz pechuga de pollo | 4 oz churrasco magro'],
+                            ['p', '4 oz lomillo de cerdo magro | 4 oz pechuga de pollo | 4 oz churrasco magro', 'cocido'],
                             ['v', '2 tazas coles de Bruselas asadas | 2 tazas brócoli asado'],
-                            ['v', '2 tazas ensalada verde grande | 2 tazas espinaca'],
+                            ['v', '2 tazas ensalada verde grande | 2 tazas espinaca', 'seco'],
                         ]],
                     ]),
                     prep('B', 'Prep B', [
                         ['Desayuno', [
                             ['p', '4 claras y 1 huevo entero | 1 taza claras de huevo | 2 huevos'],
-                            ['v', '1 taza espinaca y tomate en cubos | 1 taza hongos y pimientos'],
+                            ['v', '1 taza espinaca y tomate en cubos | 1 taza hongos y pimientos', 'seco'],
                             ['f', '1 oz queso feta liviano | 1/4 aguacate | 1 cdta aceite de oliva'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '4.5 oz hamburguesa de pavo | 4.5 oz pechuga de pollo | 4.5 oz carne molida 93/7'],
+                            ['p', '4.5 oz hamburguesa de pavo | 4.5 oz pechuga de pollo | 4.5 oz carne molida 93/7', 'cocido'],
                             ['v', '2 tazas arúgula con cebolla a la parrilla | 2 tazas hojas verdes'],
                             ['c', '3 oz batata asada | 3 oz papa asada | 1/3 taza arroz integral'],
                         ]],
@@ -374,12 +389,12 @@
                     prep('A', 'Prep A', [
                         ['Desayuno', [
                             ['p', '2 huevos | 1 taza claras y 1 huevo entero | 1 scoop whey'],
-                            ['v', '1 taza espinaca y hongos | 1 taza pimientos'],
+                            ['v', '1 taza espinaca y hongos | 1 taza pimientos', 'seco'],
                             ['c', '1/2 toronja | 1/2 taza berries | 1/2 guineo pequeño'],
                         ]],
                         ['Almuerzo', [
                             ['p', '4 oz pechuga de pollo a la parrilla | 4 oz pavo | 4 oz atún en agua'],
-                            ['v', '3 tazas hojas verdes, pepinillo y pimientos | 3 tazas espinaca y tomate'],
+                            ['v', '3 tazas hojas verdes, pepinillo y pimientos | 3 tazas espinaca y tomate', 'seco'],
                             ['f', '1 cda aderezo de vinagre o limón | 1/4 aguacate'],
                         ]],
                         ['Merienda', [
@@ -387,9 +402,9 @@
                             ['v', '1 taza tomate en rodajas | 1 taza pepinillo'],
                         ]],
                         ['Cena', [
-                            ['p', '4.5 oz pescado blanco o halibut | 4.5 oz bacalao | 4.5 oz camarones'],
+                            ['p', '4.5 oz pescado blanco o halibut | 4.5 oz bacalao | 4.5 oz camarones', 'cocido'],
                             ['v', '2 tazas espárragos al vapor | 2 tazas brócoli al vapor'],
-                            ['v', '1/2 taza majado de coliflor | 1 taza brócoli majado'],
+                            ['v', '1/2 taza majado de coliflor | 1 taza brócoli majado', 'cocido'],
                         ]],
                     ]),
                     prep('B', 'Prep B', [
@@ -400,8 +415,8 @@
                             ['c', '1/4 taza arándanos | 1/4 taza fresas | 1/2 guineo pequeño'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '4.5 oz pechuga de pavo en lascas | 4.5 oz pechuga de pollo | 4.5 oz atún en agua'],
-                            ['v', '2 tazas ensalada de repollo y pepinillo | 2 tazas hojas verdes'],
+                            ['p', '4.5 oz pechuga de pavo en lascas | 4.5 oz pechuga de pollo | 4.5 oz atún en agua', 'cocido'],
+                            ['v', '2 tazas ensalada de repollo y pepinillo | 2 tazas hojas verdes', 'seco'],
                             ['c', '1/3 taza quinoa cocida | 1/3 taza arroz integral | 1/2 taza habichuelas negras'],
                             ['-', 'mostaza'],
                         ]],
@@ -425,12 +440,12 @@
                     prep('A', 'Prep A', [
                         ['Desayuno', [
                             ['p', '1 taza claras y 1 huevo entero | 1 taza claras de huevo | 1 scoop whey'],
-                            ['v', '1 taza espinaca y hongos | 1 taza pimientos y tomate'],
+                            ['v', '1 taza espinaca y hongos | 1 taza pimientos y tomate', 'seco'],
                             ['f', '1/4 aguacate | 1 cdta aceite de oliva | 6 almendras'],
                         ]],
                         ['Almuerzo', [
-                            ['p', '4 oz pechuga de pavo magra | 4 oz pechuga de pollo | 4 oz atún en agua'],
-                            ['v', '3 tazas romana, pepinillo y rábano | 3 tazas espinaca y tomate'],
+                            ['p', '4 oz pechuga de pavo magra | 4 oz pechuga de pollo | 4 oz atún en agua', 'cocido'],
+                            ['v', '3 tazas romana, pepinillo y rábano | 3 tazas espinaca y tomate', 'seco'],
                             ['f', '1 cda aderezo liviano de limón | 1 cdta aceite de oliva'],
                         ]],
                         ['Merienda', [
@@ -441,7 +456,7 @@
                         ['Cena', [
                             ['p', '5 oz pescado blanco a la parrilla | 5 oz camarones | 5 oz pechuga de pollo'],
                             ['v', '2 tazas brócoli al vapor | 2 tazas espárragos'],
-                            ['v', '2 tazas fideos de calabacín | 2 tazas ensalada verde'],
+                            ['v', '2 tazas fideos de calabacín | 2 tazas ensalada verde', 'cocido'],
                         ]],
                     ]),
                     prep('B', 'Prep B', [
@@ -454,16 +469,16 @@
                         ['Almuerzo', [
                             ['p', '4 oz pechuga de pollo a la parrilla | 4 oz pechuga de pavo | 4 oz camarones'],
                             ['v', '2 tazas habichuelas tiernas y hongos salteados | 2 tazas brócoli salteado'],
-                            ['c', '1/4 taza habichuelas negras | 1/4 taza habichuelas rojas | 1/4 taza arroz integral'],
+                            ['c', '1/4 taza habichuelas negras | 1/4 taza habichuelas rojas | 1/4 taza arroz integral', 'cocido'],
                         ]],
                         ['Merienda', [
                             ['p', '1 scoop whey | 3/4 taza queso cottage | 2 huevos hervidos'],
-                            ['v', '1 taza espinaca | 1 taza pepinillo'],
+                            ['v', '1 taza espinaca | 1 taza pepinillo', 'seco'],
                             ['-', '1 taza leche de almendras sin azúcar y hielo'],
                         ]],
                         ['Cena', [
-                            ['p', '4 oz carne molida extra magra 96/4 | 4 oz pavo molido | 4 oz pollo molido'],
-                            ['v', '3 tazas lechuga rallada | 3 tazas repollo rallado'],
+                            ['p', '4 oz carne molida extra magra 96/4 | 4 oz pavo molido | 4 oz pollo molido', 'cocido'],
+                            ['v', '3 tazas lechuga rallada | 3 tazas repollo rallado', 'seco'],
                             ['v', '1/2 taza salsa y pepinillo en cubos | 1/2 taza pico de gallo'],
                             ['-', 'sazón de taco'],
                         ]],

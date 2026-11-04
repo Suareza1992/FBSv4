@@ -286,6 +286,46 @@ therefore not counted as a client on any plan.
 
 Full reasoning in [TECHNICAL.md § 56](../TECHNICAL.md).
 
+---
+
+### Seco o cocido — how a food was weighed
+
+A cup of rice is ~205 g dry and ~160 g cooked, and the dry cup carries about **three times** the
+carbohydrate. So every food carries a state: `'seco' | 'cocido' | 'na' | ''`, on `FoodLibrary`,
+`PersonalFoodLibrary`, `Recipe.ingredients[]`, meal-plan `items[]` and their `alternatives[]`, and
+meal-plan `swaps[]`. The vocabulary is `public/food-state.js`, mirrored on the phone as
+`lib/foodState.ts`; both read `scripts/food-state-cases.json`, so they cannot drift.
+
+**`''` is not `'na'`.** `'na'` is somebody saying the question is meaningless for this food; `''` is
+nobody having answered. Both render no chip, but only `''` is asked about and only `''` appears in
+the **Sin seco/cocido** filter in Alimentos.
+
+**The app never converts.** Dry↔cooked yield ratios would be nutrition data we have no source for,
+and the house rule is that numbers come from the food database. This only removes the guesswork about
+which of two numbers you are reading.
+
+**It is asked wherever a food's numbers are entered** — the shared library row (with a blocking
+dialog on save when `shouldAsk`), the diary's Añadir alimento, recipe ingredient rows, and meal-plan
+element lines. `matters(name)` keeps the question off foods that have no answer; it is anchored at a
+word boundary because the first version matched `'res'` inside "f**res**as". Cancelling the dialog
+**abandons the save** — nothing is assumed from a refusal to answer.
+
+**The state travels with the food.** Picked from the library it is inherited and never asked again;
+read off the name (`fromName`) only as a pre-selection a human is looking at.
+
+**The shared library learns but cannot be overwritten:** a client logging a food may fill a state
+nobody has given (the response says `filledState`), and can never change one that is there — the same
+rule its macros already follow.
+
+**Gotchas:** ① The state must never enter `itemText`/`parseLine` — the plan editor writes an element
+as one line and reads it back, so "arroz (cocido)" would become the food's *name* on the next save.
+② The diary preview repaints on every keystroke in the amount box, so the picker is rebuilt only when
+the food changes. ③ A template line's alternatives inherit its state unless their own name says
+otherwise. ④ A swapped-in element carries its own state, not the one it replaced. ⑤ Tapping the
+chosen option again clears it.
+
+Full reasoning in [TECHNICAL.md § 57](../TECHNICAL.md).
+
 ## 18. Progress photos
 
 ```js

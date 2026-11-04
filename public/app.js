@@ -19,6 +19,104 @@ document.addEventListener('DOMContentLoaded', () => {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
+    // ── Seco o cocido: one look, three ways to show it ───────────────────────
+    //
+    // Three renderings of the same field, because the question turns up in three
+    // kinds of place: beside a food that is only being read, on a dense row where
+    // a tap is cheaper than a dropdown, and in a form where the answer is being
+    // asked for outright. All of them read their vocabulary from food-state.js so
+    // the words cannot drift apart.
+
+    /** The chip beside a food's name. Nothing at all for 'na' or for unknown. */
+    const foodStateBadge = (state, extra = '') => {
+        const FS = window.FoodState;
+        const badge = FS ? FS.badgeOf(state) : '';
+        if (!badge) return '';
+        const color = FS.colorOf(state);
+        return `<span class="shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${extra}"
+            style="background:${color}1f;color:${color};border:1px solid ${color}44"
+            title="${escHtml(FS.STATES[FS.stateOf(state)].help)}">${escHtml(badge)}</span>`;
+    };
+
+    /**
+     * A tap cycles '' → seco → cocido → na → ''. For rows where a dropdown per
+     * line would be 128 dropdowns on one screen — the same choice the meal-plan
+     * role badge made.
+     */
+    const FOOD_STATE_CYCLE = ['', 'seco', 'cocido', 'na'];
+    const foodStateNext = (state) =>
+        FOOD_STATE_CYCLE[(FOOD_STATE_CYCLE.indexOf(window.FoodState.stateOf(state)) + 1) % FOOD_STATE_CYCLE.length];
+
+    const foodStateCycleHtml = (state, cls = 'food-state-cycle') => {
+        const FS = window.FoodState;
+        const k = FS.stateOf(state);
+        const color = FS.colorOf(k);
+        // '?' rather than a blank: an unanswered question should look unanswered.
+        const face = k === 'seco' ? 'S' : k === 'cocido' ? 'C' : k === 'na' ? '·' : '?';
+        const dim  = k ? '' : 'opacity-60';
+        return `<button type="button" class="${cls} w-7 h-7 shrink-0 rounded-lg text-[11px] font-black transition hover:brightness-125 ${dim}"
+            data-state="${k}" title="${escHtml(k ? FS.STATES[k].long + ' — ' + FS.STATES[k].help : 'Sin especificar — toca para decir si se pesa en seco o cocido')}"
+            style="background:${color}1f;color:${color};border:1px solid ${color}55">${face}</button>`;
+    };
+
+    /**
+     * The outright question, for a form with room for it. The wrapper carries the
+     * answer in `data-state`, so reading it back is one `dataset` lookup wherever
+     * the form happens to live, and one delegated handler below repaints it.
+     */
+    const foodStatePickerHtml = (state) => {
+        const FS = window.FoodState;
+        const k = FS.stateOf(state);
+        return `<div class="food-state-picker flex gap-1" data-state="${k}">${FS.choices().map((c) => `
+            <button type="button" class="food-state-pick flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold border transition"
+                data-state="${c.key}" title="${escHtml(c.help)}"
+                style="${c.key === k
+                    ? `background:${c.color}26;color:${c.color};border-color:${c.color}88`
+                    : 'background:transparent;color:#FFDB8966;border-color:#FFDB8926'}">${escHtml(c.label)}</button>`).join('')}</div>`;
+    };
+
+    /** What a picker currently says. '' when nobody has answered. */
+    const foodStateOf = (host) => window.FoodState.stateOf(
+        host?.querySelector('.food-state-picker')?.dataset.state ?? host?.dataset.state ?? '');
+
+    // One handler for every picker on every screen. Repaints in place rather than
+    // re-rendering whatever form it is sitting in, which would wipe half-typed macros.
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest?.('.food-state-pick');
+        if (!btn) return;
+        const wrap = btn.closest('.food-state-picker');
+        if (!wrap) return;
+        const FS = window.FoodState;
+        // Tapping the chosen one again clears it — the answer has to be retractable,
+        // or a mis-tap on a 3-way control is permanent.
+        const next = wrap.dataset.state === btn.dataset.state ? '' : btn.dataset.state;
+        wrap.dataset.state = next;
+        wrap.querySelectorAll('.food-state-pick').forEach((b) => {
+            const c = FS.STATES[b.dataset.state];
+            b.style.cssText = b.dataset.state === next
+                ? `background:${c.color}26;color:${c.color};border-color:${c.color}88`
+                : 'background:transparent;color:#FFDB8966;border-color:#FFDB8926';
+        });
+        wrap.dispatchEvent(new CustomEvent('food-state-change', { bubbles: true, detail: { state: next } }));
+    });
+
+    // And one for every cycling badge.
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest?.('.food-state-cycle');
+        if (!btn) return;
+        const FS = window.FoodState;
+        const next = foodStateNext(btn.dataset.state);
+        const color = FS.colorOf(next);
+        btn.dataset.state = next;
+        btn.textContent = next === 'seco' ? 'S' : next === 'cocido' ? 'C' : next === 'na' ? '·' : '?';
+        btn.title = next
+            ? `${FS.STATES[next].long} — ${FS.STATES[next].help}`
+            : 'Sin especificar — toca para decir si se pesa en seco o cocido';
+        btn.style.cssText = `background:${color}1f;color:${color};border:1px solid ${color}55`;
+        btn.classList.toggle('opacity-60', !next);
+        btn.dispatchEvent(new CustomEvent('food-state-change', { bubbles: true, detail: { state: next } }));
+    });
+
     // Format a Date as YYYY-MM-DD in the user's LOCAL timezone (never UTC).
     // Using toISOString() shifted the calendar day for west-of-UTC users — e.g. at
     // 8pm in Puerto Rico (UTC-4) the UTC date is already tomorrow, so "today" rolled
@@ -6080,7 +6178,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <input type="number" step="any" min="0" class="ri-carb w-full p-2.5 text-center bg-yellow-400/10 border border-yellow-400/25 rounded-lg text-yellow-400 text-xs outline-none" value="${ing.carbs ?? ''}" placeholder="C" title="Carbos (g)">
                 <input type="number" step="any" min="0" class="ri-fat  w-full p-2.5 text-center bg-orange-400/10 border border-orange-400/25 rounded-lg text-orange-400 text-xs outline-none" value="${ing.fat ?? ''}" placeholder="G" title="Grasas (g)">
             </div>
-            <div class="col-span-1 flex justify-end">
+            <div class="col-span-1 flex justify-end gap-1">
+                ${foodStateCycleHtml(ing.state, 'food-state-cycle ri-state')}
                 <button class="ri-del w-9 h-9 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition" title="Quitar"><i class="fas fa-times"></i></button>
             </div>
         </div>`;
@@ -6094,6 +6193,7 @@ document.addEventListener('DOMContentLoaded', () => {
             protein:  parseFloat(row.querySelector('.ri-pro')?.value)  || 0,
             carbs:    parseFloat(row.querySelector('.ri-carb')?.value) || 0,
             fat:      parseFloat(row.querySelector('.ri-fat')?.value)  || 0,
+            state:    row.querySelector('.ri-state')?.dataset.state || '',
         })).filter((i) => i.name);
         return {
             name:        document.getElementById('recipe-name')?.value.trim() || '',
@@ -6389,6 +6489,11 @@ document.addEventListener('DOMContentLoaded', () => {
             row.querySelector('.ri-pro').value    = Math.round((f.p100 || 0) * k * 10) / 10;
             row.querySelector('.ri-carb').value   = Math.round((f.c100 || 0) * k * 10) / 10;
             row.querySelector('.ri-fat').value    = Math.round((f.f100 || 0) * k * 10) / 10;
+            // The state travels with the food: picked from the library, it is
+            // already answered and nobody is asked again. Read off the name when
+            // the library has nothing, since "Avena (cruda)" plainly says it.
+            setFoodStateCycle(row.querySelector('.ri-state'),
+                window.FoodState.stateOf(f.state) || window.FoodState.fromName(f.name));
             row.querySelector('.ri-drop').classList.add('hidden');
             refreshRecipeTotals();
             return;
@@ -6421,8 +6526,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!hits.length) { drop.classList.add('hidden'); return; }
                 drop.innerHTML = hits.slice(0, 8).map((f) => `
                     <button class="ri-hit w-full text-left px-3 py-2 hover:bg-[#FFDB89]/10 transition border-b border-[#FFDB89]/5 last:border-0"
-                        data-food='${escHtml(JSON.stringify({ name: f.name, cal100: f.cal100, p100: f.p100, c100: f.c100, f100: f.f100 }))}'>
-                        <span class="block text-sm text-[#FFDB89] truncate">${escHtml(f.name)}</span>
+                        data-food='${escHtml(JSON.stringify({ name: f.name, cal100: f.cal100, p100: f.p100, c100: f.c100, f100: f.f100, state: f.state || '' }))}'>
+                        <span class="block text-sm text-[#FFDB89] truncate flex items-center gap-1.5">
+                            <span class="truncate">${escHtml(f.name)}</span>${foodStateBadge(f.state)}
+                        </span>
                         <span class="block text-[10px] text-[#FFDB89]/40">${Math.round(f.cal100 || 0)} kcal · P ${f.p100 || 0} · C ${f.c100 || 0} · G ${f.f100 || 0} <span class="opacity-60">por 100 g</span></span>
                     </button>`).join('');
                 drop.classList.remove('hidden');
@@ -6622,7 +6729,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // cooks. Tapping anywhere on the row opens its alternatives.
     const mealPlanItemHtml = (slot, planItem, factors, option) => {
         const swap = mealPlanSwapFor(clientMealWeek, slot, planItem.name);
-        const shown = swap ? { name: swap.text, amount: swap.amount, unit: swap.unit, role: swap.role } : planItem;
+        const shown = swap
+            ? { name: swap.text, amount: swap.amount, unit: swap.unit, role: swap.role, state: swap.state }
+            : planItem;
         const def = window.MealItem.ROLES[window.MealItem.roleOf(shown.role)];
         // An amount the trainer wrote for this client replaces the arithmetic
         // outright — and is shown as typed, not rounded. It is filed under the
@@ -6637,7 +6746,7 @@ document.addEventListener('DOMContentLoaded', () => {
             data-slot="${escHtml(slot)}" data-from="${escHtml(planItem.name)}">
             <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:${def.color}"></span>
             <span class="flex-1 min-w-0 text-[13px] leading-snug ${swap ? 'text-[#FFDB89]' : 'text-[#FFDB89]/85'}">
-                ${escHtml(shown.name)}${swap ? ' <span class="text-[9px] font-bold uppercase tracking-wider text-[#FFDB89]/45">cambiado</span>' : ''}
+                ${escHtml(shown.name)}${foodStateBadge(shown.state, 'ml-1 align-middle')}${swap ? ' <span class="text-[9px] font-bold uppercase tracking-wider text-[#FFDB89]/45">cambiado</span>' : ''}
             </span>
             ${amount ? `<span class="text-[11px] font-black text-[#FFDB89]/70 tabular-nums shrink-0">${escHtml(amount)}</span>` : ''}
             <i class="fas fa-rotate text-[10px] text-[#FFDB89]/25 shrink-0"></i>
@@ -6735,12 +6844,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="mealplan-pick w-full text-left rounded-xl border p-3 transition ${
                     on ? 'border-[#FFDB89] bg-[#FFDB89]/10' : 'border-[#FFDB89]/15 hover:border-[#FFDB89]/40'
                 }" data-name="${escHtml(c.item.name)}" data-amount="${escHtml(String(c.item.amount || 0))}"
-                   data-unit="${escHtml(c.item.unit || '')}" data-role="${escHtml(window.MealItem.roleOf(c.item.role))}">
+                   data-unit="${escHtml(c.item.unit || '')}" data-role="${escHtml(window.MealItem.roleOf(c.item.role))}"
+                   data-state="${escHtml(window.FoodState.stateOf(c.item.state))}">
                     <p class="text-[10px] font-bold uppercase tracking-wider ${on ? 'text-[#FFDB89]' : 'text-[#FFDB89]/40'}">
                         ${escHtml(c.from)}${on ? ' · ahora' : ''}
                     </p>
                     <div class="flex items-baseline gap-2 mt-1">
-                        <p class="flex-1 min-w-0 text-[13px] text-[#FFDB89]/85 leading-relaxed">${escHtml(c.item.name)}</p>
+                        <p class="flex-1 min-w-0 text-[13px] text-[#FFDB89]/85 leading-relaxed">${escHtml(c.item.name)}${foodStateBadge(c.item.state, 'ml-1 align-middle')}</p>
                         ${amount ? `<p class="text-[11px] font-black text-[#FFDB89]/70 tabular-nums shrink-0">${escHtml(amount)}</p>` : ''}
                     </div>
                 </button>`;
@@ -6810,6 +6920,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     amount: Number(pick.dataset.amount) || 0,
                     unit: pick.dataset.unit || '',
                     role: pick.dataset.role || 'free',
+                    state: pick.dataset.state || '',
                 },
             });
             if (ok) closeMealPlanSwap();
@@ -6903,7 +7014,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="rounded-xl border border-[#FFDB89]/10 divide-y divide-[#FFDB89]/8 overflow-hidden">
                         ${(recipe.ingredients || []).map((i) => `
                         <div class="flex items-center justify-between gap-3 px-3 py-2.5">
-                            <span class="text-sm text-[#FFDB89]/85">${escHtml(i.name)}</span>
+                            <span class="text-sm text-[#FFDB89]/85 flex items-center gap-1.5 min-w-0">
+                                <span class="truncate">${escHtml(i.name)}</span>${foodStateBadge(i.state)}
+                            </span>
                             <span class="text-xs text-[#FFDB89]/40 shrink-0">${window.FoodScale ? window.FoodScale.fmtAmount(i.amount) : i.amount} ${escHtml(i.unit || 'g')}</span>
                         </div>`).join('')}
                     </div>
@@ -6966,6 +7079,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     fat:           one.fat,
                     servingAmount: one.amount,
                     servingUnit:   i.unit || 'g',
+                    state:         i.state || '',
                 };
             }).filter((f) => f.name);
             if (!foods.length) { showToast('Esta receta no tiene ingredientes.', 'error'); return; }
@@ -7000,7 +7114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let foodAdminCache = [];
     let foodAdminEditing = null;   // _id of the row open for editing
     const NEW_FOOD_ID = '__new__'; // the unsaved row, which has no _id yet
-    let foodAdminFilter = 'all';   // 'all' | 'noserving'
+    let foodAdminFilter = 'all';   // 'all' | 'noserving' | 'nostate'
 
     // A food with no amount recorded is read back as if its numbers were PER 100 G
     // (§ 43). "Huevos revueltos · 745 kcal" is plainly a multi-egg plate, but a
@@ -7008,6 +7122,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // they are rows nobody has told the app the portion for, and only the person
     // who weighed it can. Hence a filter rather than a guess.
     const foodHasServing = (f) => f.servingAmount > 0 && !!f.servingUnit;
+
+    // Same shape of hole, one field over. "Arroz blanco · 365 kcal / 100 g" is a
+    // DRY number and "Arroz blanco · 130 kcal / 100 g" is a cooked one, and until
+    // somebody says which, a client weighing out 100 g is guessing between two
+    // answers that differ by a factor of three. Only flagged for foods where the
+    // question has an answer — nobody needs to classify a banana.
+    const foodNeedsState = (f) => window.FoodState.shouldAsk(f.name, f.state);
 
     // The tab is in the markup but hidden: an ordinary trainer never sees it.
     const renderAlimentosTabVisibility = () => {
@@ -7038,6 +7159,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="fa-save w-9 h-9 rounded-lg bg-[#FFDB89] text-[#030303] font-black transition hover:bg-[#FFDB89]/80" title="Guardar"><i class="fas fa-check text-xs"></i></button>
                         <button class="fa-cancel w-9 h-9 rounded-lg border border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] transition" title="Cancelar"><i class="fas fa-times text-xs"></i></button>
                     </div>
+                    <div class="col-span-12 flex items-center gap-2 flex-wrap">
+                        <span class="text-[10px] font-bold text-[#FFDB89]/50 uppercase tracking-wider shrink-0">¿Seco o cocido?</span>
+                        <div class="flex-1 min-w-[12rem]">${foodStatePickerHtml(f.state)}</div>
+                    </div>
                 </div>
                 <p class="text-[10px] text-[#FFDB89]/30 mt-2">Los macros son <strong>para esa cantidad</strong>, no por 100 g.</p>
             </div>`;
@@ -7045,8 +7170,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return `
         <div class="food-admin-row group flex items-center gap-3 px-3 py-2.5 border-b border-[#FFDB89]/8 hover:bg-[#FFDB89]/5 transition" data-id="${escHtml(f._id)}">
             <div class="flex-grow min-w-0">
-                <p class="text-sm text-[#FFDB89] truncate">${escHtml(f.name)}</p>
-                <p class="text-[10px] text-[#FFDB89]/35">${serving} · usado ${f.timesUsed || 0}×</p>
+                <p class="text-sm text-[#FFDB89] truncate flex items-center gap-1.5">
+                    <span class="truncate">${escHtml(f.name)}</span>${foodStateBadge(f.state)}
+                </p>
+                <p class="text-[10px] text-[#FFDB89]/35">${serving} · usado ${f.timesUsed || 0}×${
+                    foodNeedsState(f) ? ' · <span class="text-sky-400/70 font-bold">falta seco/cocido</span>' : ''}</p>
             </div>
             <div class="flex gap-3 text-[11px] font-bold shrink-0">
                 <span class="text-[#FFDB89]/70 w-14 text-right">${Math.round(f.calories || 0)} kcal</span>
@@ -7070,8 +7198,11 @@ document.addEventListener('DOMContentLoaded', () => {
             foodAdminCache = res.ok ? await res.json() : [];
         } catch { foodAdminCache = []; }
 
-        const missing = foodAdminCache.filter((f) => !foodHasServing(f));
-        const shown = foodAdminFilter === 'noserving' ? missing : foodAdminCache;
+        const missing   = foodAdminCache.filter((f) => !foodHasServing(f));
+        const unstated  = foodAdminCache.filter(foodNeedsState);
+        const shown = foodAdminFilter === 'noserving' ? missing
+            : foodAdminFilter === 'nostate' ? unstated
+            : foodAdminCache;
 
         // Sorted by use already, so the first rows here are the ones whose missing
         // portion is costing the most — the twenty worth fixing first.
@@ -7084,24 +7215,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         : 'border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:border-[#FFDB89]/40'}"
                     data-filter="${key}">${label} <span class="opacity-60">${n}</span></button>`;
             filters.innerHTML = chip('all', 'Todos', foodAdminCache.length)
-                              + chip('noserving', 'Sin porción', missing.length);
+                              + chip('noserving', 'Sin porción', missing.length)
+                              + chip('nostate', 'Sin seco/cocido', unstated.length);
         }
 
         const countEl = document.getElementById('food-admin-count');
         if (countEl) {
             countEl.textContent = foodAdminFilter === 'noserving'
                 ? `${shown.length} sin porción — se leen como "por 100 g" hasta que les pongas una`
-                : `${shown.length} alimento${shown.length === 1 ? '' : 's'}${q ? ' encontrados' : ' en la librería'}`;
+                : foodAdminFilter === 'nostate'
+                    ? `${shown.length} sin decir si se pesan en seco o cocidos — y para estos la diferencia cambia los números`
+                    : `${shown.length} alimento${shown.length === 1 ? '' : 's'}${q ? ' encontrados' : ' en la librería'}`;
         }
 
         const blank = foodAdminEditing === NEW_FOOD_ID
-            ? foodAdminRow({ _id: NEW_FOOD_ID, name: '', calories: '', protein: '', carbs: '', fat: '', servingAmount: 100, servingUnit: 'g' })
+            ? foodAdminRow({ _id: NEW_FOOD_ID, name: '', calories: '', protein: '', carbs: '', fat: '', servingAmount: 100, servingUnit: 'g', state: '' })
             : '';
         list.innerHTML = (blank + (shown.length
             ? shown.map(foodAdminRow).join('')
             : (blank ? '' : `<div class="p-8 text-center text-[#FFDB89]/30">
                    <i class="fas fa-apple-whole text-3xl mb-2 block"></i>
                    <p class="font-bold">${foodAdminFilter === 'noserving' ? 'Todos tienen porción. 🎉'
+                        : foodAdminFilter === 'nostate' ? 'Todos dicen si se pesan en seco o cocidos. 🎉'
                         : q ? 'Ningún alimento coincide.' : 'La librería está vacía.'}</p>
                </div>`)));
     };
@@ -7115,8 +7250,12 @@ document.addEventListener('DOMContentLoaded', () => {
             carbs:         num('.fa-carb'), fat:     num('.fa-fat'),
             servingAmount: num('.fa-amt'),
             servingUnit:   row.querySelector('.fa-unit')?.value.trim() || '',
+            state:         foodStateOf(row),
         };
         if (!body.name) { showToast('El alimento necesita un nombre.', 'error'); return; }
+        const asked = await confirmFoodState(body.name, body.state, row);
+        if (asked === null) return;
+        body.state = asked;
         try {
             const res = await apiFetch(`/api/admin/foods/${id}`, { method: 'PUT', body: JSON.stringify(body) });
             const data = await res.json().catch(() => ({}));
@@ -7180,6 +7319,43 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector(`[data-id="${NEW_FOOD_ID}"] .fa-name`)?.focus();
     };
 
+    /**
+     * Asked, not assumed — but only where the answer changes a number.
+     *
+     * Blocking every save behind a three-way control would put a question in
+     * front of lettuce, and a question asked about everything stops being read.
+     * So a food the distinction matters for gets stopped once; anything else
+     * saves straight through. Saying "no aplica" is one tap and never asked again.
+     */
+    const confirmFoodState = async (name, state, host) => {
+        if (!window.FoodState.shouldAsk(name, state)) return window.FoodState.stateOf(state);
+        const pick = await window.showChoice({
+            title: `¿"${name}" se pesa en seco o cocido?`,
+            body: 'Los macros cambian mucho entre los dos, así que el alimento tiene que decirlo.',
+            options: window.FoodState.choices().map((c) => ({ value: c.key, label: c.long, hint: c.help })),
+        });
+        if (!pick) return null;   // cancelled: the save is abandoned, nothing is assumed
+        setFoodStatePicker(host, pick);
+        return pick;
+    };
+
+    /** Move a rendered cycling badge to a value, repainting it the same way a tap would. */
+    const setFoodStateCycle = (btn, state) => {
+        if (!btn) return;
+        const want = window.FoodState.stateOf(state);
+        // Cycle to it rather than duplicating the paint logic — at most four taps,
+        // and there is then exactly one place that knows what a badge looks like.
+        for (let i = 0; i < FOOD_STATE_CYCLE.length && btn.dataset.state !== want; i += 1) btn.click();
+    };
+
+    /** Move a rendered picker to a value without a re-render of the form around it. */
+    const setFoodStatePicker = (host, state) => {
+        const wrap = host?.querySelector?.('.food-state-picker');
+        if (!wrap || wrap.dataset.state === state) return;
+        wrap.dataset.state = '';                                   // so the toggle lands ON
+        wrap.querySelector(`.food-state-pick[data-state="${state}"]`)?.click();
+    };
+
     const createFoodAdminRow = async (row) => {
         const num = (sel) => { const v = parseFloat(row.querySelector(sel)?.value); return Number.isFinite(v) ? v : 0; };
         const name = row.querySelector('.fa-name')?.value.trim() || '';
@@ -7188,7 +7364,11 @@ document.addEventListener('DOMContentLoaded', () => {
             name,
             calories: num('.fa-cal'), protein: num('.fa-pro'), carbs: num('.fa-carb'), fat: num('.fa-fat'),
             servingAmount: num('.fa-amt'), servingUnit: row.querySelector('.fa-unit')?.value.trim() || '',
+            state: foodStateOf(row),
         };
+        const asked = await confirmFoodState(body.name, body.state, row);
+        if (asked === null) return;
+        body.state = asked;
         try {
             const res = await apiFetch('/api/food-library', { method: 'POST', body: JSON.stringify(body) });
             const data = await res.json().catch(() => ({}));
@@ -7277,7 +7457,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // A plate starts with one empty element rather than none, so "+ alimento"
     // is an addition and not the first thing anyone has to find.
-    const blankMealItem = () => ({ name: '', amount: 0, unit: '', role: 'free', alternatives: [] });
+    const blankMealItem = () => ({ name: '', amount: 0, unit: '', role: 'free', state: '', alternatives: [] });
 
     const blankMealPlanWeek = (n) => ({
         week: n, objective: '', calories: 0, protein: 0, carbs: 0, fat: 0, deficit: 0,
@@ -7294,11 +7474,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // The reverse: a typed line back into an element. The first part is the
     // plate's own food, the rest are what the client may switch it for, and they
     // inherit its role — a protein is swapped for a protein.
-    const mealItemFromLine = (line, role) => {
+    const mealItemFromLine = (line, role, state) => {
         const parts = String(line || '').split('|').map((x) => x.trim()).filter(Boolean);
         if (!parts.length) return null;
-        const parsed = parts.map((x) => ({ ...(window.MealItem.parseLine(x) || { name: x, amount: 0, unit: '' }), role }));
-        return { ...parsed[0], alternatives: parsed.slice(1) };
+        // The alternatives inherit the element's state as well as its role: a
+        // protein swapped for a protein is also a cooked weight swapped for a
+        // cooked weight, unless the alternative's own name says otherwise.
+        const parsed = parts.map((x) => {
+            const base = window.MealItem.parseLine(x) || { name: x, amount: 0, unit: '' };
+            return { ...base, role, state: window.FoodState.fromName(base.name) || window.FoodState.stateOf(state) };
+        });
+        return { ...parsed[0], state: window.FoodState.stateOf(state) || parsed[0].state, alternatives: parsed.slice(1) };
     };
 
     // A plate written before elements existed, broken into editable lines. It is
@@ -7308,7 +7494,10 @@ document.addEventListener('DOMContentLoaded', () => {
         .split(/\s·\s|,|\sy\s|\scon\s|\smás\s/i)
         .map((x) => x.trim().replace(/[.;]+$/, ''))
         .filter(Boolean).slice(0, 10)
-        .map((x) => ({ ...(window.MealItem.parseLine(x) || { name: x, amount: 0, unit: '' }), role: 'free', alternatives: [] }));
+        .map((x) => {
+            const base = window.MealItem.parseLine(x) || { name: x, amount: 0, unit: '' };
+            return { ...base, role: 'free', state: window.FoodState.fromName(base.name), alternatives: [] };
+        });
 
     // Elements as the editor needs them, whatever the plan happens to carry.
     const mealItemsOf = (m) => ((m?.items || []).length ? m.items : mealItemsFromText(m?.text));
@@ -7327,6 +7516,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const mealItemRowHtml = (it) => `
         <div class="mp-item flex items-center gap-1.5">
             ${mealRoleBadgeHtml(it.role)}
+            ${foodStateCycleHtml(it.state, 'food-state-cycle mp-state')}
             <input class="mp-line flex-1 min-w-0 px-2.5 py-1.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 rounded-lg text-[#FFDB89] text-xs outline-none focus:ring-1 focus:ring-[#FFDB89]/40"
                 value="${escHtml(mealItemLine(it))}" placeholder="5 oz pollo | 5 oz pavo" autocomplete="off">
             <button type="button" class="mp-item-remove w-6 h-7 shrink-0 text-[#FFDB89]/25 hover:text-red-400 transition" title="Quitar"><i class="fas fa-times text-xs"></i></button>
@@ -7506,6 +7696,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <div class="flex items-center gap-2 py-0.5">
                                         <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:${role.color}"></span>
                                         <span class="flex-1 min-w-0 text-[12px] text-[#FFDB89]/80 truncate" title="${escHtml(it.name)}">${escHtml(it.name)}</span>
+                                        ${foodStateBadge(it.state)}
                                         ${over ? '<span class="hidden sm:inline text-[9px] font-bold uppercase tracking-wider text-[#FFDB89]/60 shrink-0" title="Cantidad escrita a mano">a mano</span>' : ''}
                                         <input type="number" min="0" step="0.25" class="prep-amt w-20 shrink-0 px-2 py-1 bg-[#FFDB89]/5 border rounded-lg text-[#FFDB89] text-xs font-bold text-right tabular-nums outline-none focus:ring-1 focus:ring-[#FFDB89]/40 ${
                                             over ? 'border-[#FFDB89]/50' : 'border-[#FFDB89]/15'}"
@@ -7826,7 +8017,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 label: oe.querySelector('.mp-option-label')?.value || '',
                 meals: [...oe.querySelectorAll('.mp-meal')].map((me) => {
                     const items = [...me.querySelectorAll('.mp-item')]
-                        .map((ie) => mealItemFromLine(ie.querySelector('.mp-line')?.value, ie.querySelector('.mp-role')?.dataset.role))
+                        .map((ie) => mealItemFromLine(ie.querySelector('.mp-line')?.value,
+                            ie.querySelector('.mp-role')?.dataset.role,
+                            ie.querySelector('.mp-state')?.dataset.state))
                         .filter(Boolean);
                     // No `text`: the server writes the plate's sentence from the
                     // elements, so there is only ever one version of it.
@@ -15667,7 +15860,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             return `
                             <div class="py-2.5 border-b border-[#FFDB89]/8 last:border-0 group/foodrow${missingMacros && food.name ? ' opacity-60' : ''}">
                                 <div class="flex items-start justify-between gap-2 mb-1">
-                                    <p class="text-sm font-semibold text-white leading-snug flex-1 min-w-0">${(food.name||'Sin nombre').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+                                    <p class="text-sm font-semibold text-white leading-snug flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+                                        <span>${(food.name||'Sin nombre').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>${foodStateBadge(food.state)}
+                                    </p>
                                     <div class="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/foodrow:opacity-100 transition">
                                         <button class="text-[#FFDB89]/50 hover:text-[#FFDB89] p-1.5 rounded-lg hover:bg-[#FFDB89]/10 transition" onclick="window._editFoodEntry(${mi},${fi})" title="Editar"><i class="fas fa-pencil-alt text-xs"></i></button>
                                         <button class="text-red-400/40 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-400/10 transition" onclick="window._nutriRemoveFood(${mi},${fi})" title="Eliminar"><i class="fas fa-times text-xs"></i></button>
@@ -16022,6 +16217,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <input type="text" id="serving-unit-input" list="serving-units" placeholder="unidad" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" class="hidden flex-1 min-w-[5rem] p-1.5 bg-white/10 border border-[#FFDB89]/30 rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-[#FFDB89]">
                                 <p id="serving-hint" class="hidden basis-full text-[11px] text-yellow-300/80 leading-snug"></p>
                             </div>
+                            <!-- Dry or cooked. Shown only for foods where the two give
+                                 different numbers — a banana weighs what it weighs. -->
+                            <div id="food-state-row" class="hidden mt-3">
+                                <p class="text-[11px] text-[#FFDB89]/60 mb-1.5">¿Lo pesaste <strong>en seco</strong> o <strong>cocido</strong>?</p>
+                                <div id="food-state-host"></div>
+                            </div>
                         </div>
                         <button id="confirm-add-food" disabled
                             class="w-full py-3 rounded-xl bg-[#FFDB89] text-[#030303] font-bold text-sm hover:bg-[#f5cb6e] transition disabled:opacity-40 disabled:cursor-not-allowed">
@@ -16030,6 +16231,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>`;
             document.body.appendChild(modal);
+
+            // Show the question only where it has an answer, and pre-fill it from
+            // whatever the food already knows: the library's stored state, or the
+            // name itself when somebody has typed "avena en seco". Never saved on
+            // the strength of the name alone — it is a pre-selection the person
+            // is looking at and can change.
+            let stateRowFor = null;   // the food the picker currently belongs to
+            const syncFoodStateRow = (name, state) => {
+                const row  = document.getElementById('food-state-row');
+                const host = document.getElementById('food-state-host');
+                if (!row || !host) return;
+                const FS = window.FoodState;
+                const show = FS.matters(name || '');
+                row.classList.toggle('hidden', !show);
+                if (!show) { host.innerHTML = ''; stateRowFor = null; return; }
+                // Re-rendered only when the FOOD changes. The preview repaints on
+                // every keystroke in the amount box, and rebuilding the picker there
+                // would throw away the answer the person just gave.
+                if (stateRowFor === name) return;
+                stateRowFor = name;
+                host.innerHTML = foodStatePickerHtml(FS.stateOf(state) || FS.fromName(name || ''));
+            };
 
             // ---- Preview helper ----
             const syncServingDisplay = () => {
@@ -16064,13 +16287,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (hint) hint.classList.add('hidden');
                 const m = window.FoodScale.scaleMacros(ctx.base, f.factor);
-                setPreview({ name: ctx.name, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat }, true);
+                setPreview({ name: ctx.name, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat,
+                    state: ctx.state }, true);
             };
             const startCtx = (food) => {
                 const b = window.FoodScale.baseOf(food);
                 baseNutrients = null; servingG = 100;
                 ctx = {
                     name: b.name || food.name,
+                    // What this food already says about itself, so picking it again
+                    // does not ask a question it has already answered.
+                    state: window.FoodState.stateOf(food.state),
                     base: { amount: b.amount, unit: b.unit,
                             calories: parseFloat(food.calories) || 0, protein: parseFloat(food.protein) || 0,
                             carbs: parseFloat(food.carbs) || 0, fat: parseFloat(food.fat) || 0 },
@@ -16087,6 +16314,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!food) {
                     pending = { name: '', calories: '', protein: '', carbs: '', fat: '' };
                     ctx = null; pendingServing = null;
+                    document.getElementById('food-state-row')?.classList.add('hidden');
+                    stateRowFor = null;
                     if (pv) pv.classList.add('hidden');
                     if (btn) btn.disabled = true;
                     document.getElementById('serving-row')?.classList.add('hidden');
@@ -16095,6 +16324,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 pending = { ...food };
                 if (!pv) return;
                 pv.classList.remove('hidden');
+                syncFoodStateRow(food.name, food.state);
                 document.getElementById('preview-name').textContent  = food.name || '—';
                 document.getElementById('preview-cal').textContent   = Math.round(food.calories || 0);
                 document.getElementById('preview-pro').textContent   = Math.round(food.protein  || 0) + 'g';
@@ -16120,7 +16350,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         calories: Math.round(baseNutrients.calories_100g * scale),
                         protein:  Math.round(baseNutrients.protein_100g  * scale),
                         carbs:    Math.round(baseNutrients.carbs_100g    * scale),
-                        fat:      Math.round(baseNutrients.fat_100g      * scale)
+                        fat:      Math.round(baseNutrients.fat_100g      * scale),
+                        state:    baseNutrients.state || '',
                     }, true);
                 }
             });
@@ -16300,7 +16531,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const renderSuggestions = (localMatches, libMatches) => {
                     const renderRow = (f) => `
                         <button class="food-suggest-item w-full text-left px-4 py-2.5 hover:bg-[#FFDB89]/10 transition border-b border-[#FFDB89]/10 last:border-0"
-                            data-name="${f.name.replace(/"/g,'&quot;')}" data-cal="${f.calories}" data-pro="${f.protein}" data-carb="${f.carbs}" data-fat="${f.fat}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}">
+                            data-name="${f.name.replace(/"/g,'&quot;')}" data-cal="${f.calories}" data-pro="${f.protein}" data-carb="${f.carbs}" data-fat="${f.fat}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}" data-state="${f.state||''}">
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 <span class="text-sm text-white font-medium">${escHtml(f.name)}</span>
                                 ${f.fromLibrary ? '<span class="text-[8px] font-bold text-[#FFDB89]/30 uppercase tracking-wider border border-[#FFDB89]/20 rounded px-1">comunidad</span>' : ''}
@@ -16393,7 +16624,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="text-[10px] text-[#FFDB89]/30 uppercase tracking-wider font-bold px-1 pb-1">Lo que más comes</p>
                         ${recent.map(f => `
                         <button class="history-food-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition"
-                            data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}">
+                            data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}" data-state="${f.state||''}">
                             <div class="flex justify-between items-center gap-2">
                                 <p class="text-sm font-semibold text-white leading-tight truncate">${(f.name||'').replace(/</g,'&lt;')}</p>
                                 <span class="text-sm font-black text-[#FFDB89] shrink-0">${f.calories||0} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
@@ -16420,6 +16651,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 calories: btn.dataset.cal, protein: btn.dataset.pro,
                                 carbs: btn.dataset.carb, fat: btn.dataset.fat,
                                 servingAmount: btn.dataset.sa, servingUnit: btn.dataset.su,
+                                state: btn.dataset.state,
                             });
                         });
                     });
@@ -16433,7 +16665,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (popular.length) {
                                 loadingEl.outerHTML = popular.map(f => `
                                 <button class="pop-food-item w-full text-left p-2.5 bg-[#FFDB89]/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-[#FFDB89]/10 rounded-xl transition flex items-center gap-2"
-                                    data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}">
+                                    data-name="${(f.name||'').replace(/"/g,'&quot;')}" data-cal="${f.calories||0}" data-pro="${f.protein||0}" data-carb="${f.carbs||0}" data-fat="${f.fat||0}" data-sa="${f.servingAmount||0}" data-su="${(f.servingUnit||'').replace(/"/g,'&quot;')}" data-state="${f.state||''}">
                                     <i class="fas fa-fire-alt text-[#FFDB89]/30 text-[10px] shrink-0"></i>
                                     <div class="flex-1 min-w-0">
                                         <p class="text-xs font-semibold text-white/80 leading-tight truncate">${(f.name||'').replace(/</g,'&lt;')}</p>
@@ -16449,6 +16681,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                             calories: btn.dataset.cal, protein: btn.dataset.pro,
                                             carbs: btn.dataset.carb, fat: btn.dataset.fat,
                                             servingAmount: btn.dataset.sa, servingUnit: btn.dataset.su,
+                                            state: btn.dataset.state,
                                         });
                                     });
                                 });
@@ -16504,7 +16737,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             // logged with — never "per 100 g" — so it starts from THAT amount.
                             if (p.fromLibrary) {
                                 startCtx({ name: p.name, calories: p.calories, protein: p.protein, carbs: p.carbs, fat: p.fat,
-                                           servingAmount: p.baseAmount, servingUnit: p.baseUnit });
+                                           servingAmount: p.baseAmount, servingUnit: p.baseUnit, state: p.state });
                                 return;
                             }
                             ctx = null;
@@ -16672,6 +16905,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     baseNutrients = {
                         name:          p.name,
+                        state:         p.state || '',
                         calories_100g: parseFloat(p.cal100),
                         protein_100g:  parseFloat(p.p100),
                         carbs_100g:    parseFloat(p.c100),
@@ -17241,7 +17475,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const foodsList = document.getElementById('library-foods-list');
                     foodsList.innerHTML = personalFoods.map(pf => `
                         <button class="library-food-item w-full text-left p-3 bg-white/5 border border-[#FFDB89]/15 hover:border-[#FFDB89]/40 hover:bg-white/8 rounded-xl transition"
-                            data-name="${(pf.name||'').replace(/"/g,'&quot;')}" data-cal="${pf.calories||0}" data-pro="${pf.protein||0}" data-carb="${pf.carbs||0}" data-fat="${pf.fat||0}" data-sa="${pfServing(pf).amount}" data-su="${pfServing(pf).unit.replace(/"/g,'&quot;')}">
+                            data-name="${(pf.name||'').replace(/"/g,'&quot;')}" data-cal="${pf.calories||0}" data-pro="${pf.protein||0}" data-carb="${pf.carbs||0}" data-fat="${pf.fat||0}" data-sa="${pfServing(pf).amount}" data-su="${pfServing(pf).unit.replace(/"/g,'&quot;')}" data-state="${pf.state||''}">
                             <div class="flex justify-between items-center gap-2">
                                 <p class="text-sm font-semibold text-white leading-tight truncate">${(pf.name||'').replace(/</g,'&lt;')}</p>
                                 <span class="text-sm font-black text-[#FFDB89] shrink-0">${pf.calories||0} <span class="text-[10px] font-normal text-[#FFDB89]/40">cal</span></span>
@@ -17256,6 +17490,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 calories: btn.dataset.cal, protein: btn.dataset.pro,
                                 carbs: btn.dataset.carb, fat: btn.dataset.fat,
                                 servingAmount: btn.dataset.sa, servingUnit: btn.dataset.su,
+                                state: btn.dataset.state,
                             });
                         });
                     });
@@ -17439,7 +17674,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     calories: Math.round(baseNutrients.calories_100g * scale),
                     protein:  Math.round(baseNutrients.protein_100g  * scale),
                     carbs:    Math.round(baseNutrients.carbs_100g    * scale),
-                    fat:      Math.round(baseNutrients.fat_100g      * scale)
+                    fat:      Math.round(baseNutrients.fat_100g      * scale),
+                    state:    baseNutrients.state || '',
                 }, true);
             });
 
@@ -17487,6 +17723,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (amt) serving = { amount: amt, unit: modalUnit };
                 } else if (pendingServing) serving = pendingServing;                  // Manual tab
 
+                // Dry or cooked, as answered in the preview. '' when the question
+                // was never shown, which is most foods.
+                const foodState = foodStateOf(document.getElementById('food-state-host'));
+
                 const pendingItem = {
                     name:          pending.name,
                     calories:      pending.calories || '',
@@ -17494,12 +17734,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     carbs:         pending.carbs    || '',
                     fat:           pending.fat      || '',
                     servingAmount: serving ? serving.amount : null,
-                    servingUnit:   serving ? serving.unit   : null
+                    servingUnit:   serving ? serving.unit   : null,
+                    state:         foodState,
                 };
                 // Add to live foodHistory so it appears next time without refresh
                 const key = pending.name.toLowerCase().trim();
                 const histEntry = { name: pending.name, calories: pending.calories || 0, protein: pending.protein || 0, carbs: pending.carbs || 0, fat: pending.fat || 0,
-                                    servingAmount: serving ? serving.amount : 0, servingUnit: serving ? serving.unit : '' };
+                                    servingAmount: serving ? serving.amount : 0, servingUnit: serving ? serving.unit : '', state: foodState };
                 const histIdx = foodHistory.findIndex(f => f.name.toLowerCase().trim() === key);
                 if (histIdx === -1) foodHistory.push(histEntry);
                 else foodHistory[histIdx] = histEntry;   // newest amount + numbers win, as in the library
@@ -17514,7 +17755,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         carbs:    pending.carbs    || 0,
                         fat:      pending.fat      || 0,
                         servingAmount: serving ? serving.amount : 0,
-                        servingUnit:   serving ? serving.unit   : ''
+                        servingUnit:   serving ? serving.unit   : '',
+                        // The server accepts this to FILL a blank, never to overwrite an
+                        // answer somebody already gave — so a client logging rice teaches
+                        // the shared library without being able to change it.
+                        state:         foodState,
                     })
                 }).catch(() => {}); // non-blocking — never fails the user's log
                 stopScanner();

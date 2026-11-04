@@ -65,9 +65,9 @@ const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().split('
 const plate = (slot, food, suffix) => ({
     slot,
     items: [
-        { name: `${food} ${suffix}`, amount: 5, unit: 'oz', role: 'protein',
-            alternatives: [{ name: `${food} alt`, amount: 4, unit: 'oz', role: 'protein' }] },
-        { name: `Ensalada ${suffix}`, amount: 2, unit: 'tazas', role: 'veg', alternatives: [] },
+        { name: `${food} ${suffix}`, amount: 5, unit: 'oz', role: 'protein', state: 'cocido',
+            alternatives: [{ name: `${food} alt`, amount: 4, unit: 'oz', role: 'protein', state: 'cocido' }] },
+        { name: `Ensalada ${suffix}`, amount: 2, unit: 'tazas', role: 'veg', state: 'seco', alternatives: [] },
     ],
 });
 const week = (n, kcal, meals) => ({
@@ -129,16 +129,25 @@ try {
         'each element keeps the role that decides whether it scales');
     check(m0?.items?.[0]?.amount === 5 && m0?.items?.[0]?.unit === 'oz', 'amount and unit survive the round trip');
     check(m0?.items?.[0]?.alternatives?.length === 1, 'per-element alternatives survive the round trip');
+    // "1 taza arroz" is two different plates depending on this, so it is stored
+    // per element rather than written into the food's name.
+    check(m0?.items?.[0]?.state === 'cocido' && m0?.items?.[1]?.state === 'seco',
+        'each element keeps how it is weighed');
+    check(m0?.items?.[0]?.alternatives?.[0]?.state === 'cocido',
+        'and so does each alternative, so a swap does not lose it');
+    check(/\(cocido\)/.test(m0?.text || ''),
+        'the fallback sentence says it too, for anything still reading text', m0?.text);
     check(m0?.text === 'Avena A · Ensalada A' || /Avena A/.test(m0?.text || ''),
         'the plate sentence is rebuilt from the elements, not stored twice', m0?.text);
 
     // A role nobody recognises must not become a scaling rule by accident.
     r = await asA('PUT', `/api/meal-plans/${plan._id}`, {
         weeks: [{ ...payload.weeks[0], options: [{ key: 'A', label: 'Prep A', meals: [
-            { slot: 'Desayuno', items: [{ name: 'Algo', amount: 1, unit: 'taza', role: 'esteroides' }] }] }] }],
+            { slot: 'Desayuno', items: [{ name: 'Algo', amount: 1, unit: 'taza', role: 'esteroides', state: 'tibio' }] }] }] }],
     });
-    check((await r.json())?.weeks?.[0]?.options?.[0]?.meals?.[0]?.items?.[0]?.role === 'free',
-        'an unknown role is stored as free, so it simply never scales');
+    const junk = (await r.json())?.weeks?.[0]?.options?.[0]?.meals?.[0]?.items?.[0];
+    check(junk?.role === 'free', 'an unknown role is stored as free, so it simply never scales');
+    check(junk?.state === '', 'and an unknown weighing state is stored as unknown, not guessed', junk?.state);
     await asA('PUT', `/api/meal-plans/${plan._id}`, payload);  // put the real plan back
 
     r = await asC1('POST', '/api/meal-plans', payload);
@@ -201,8 +210,10 @@ try {
 
     const swapIn = (body) => asC1('PUT', '/api/my-meal-plan', { swap: { week: 3, slot: 'Cena', ...body } });
 
-    r = await swapIn({ from: 'Salmón A', text: 'Salmón alt', amount: 4, unit: 'oz', role: 'protein' });
+    r = await swapIn({ from: 'Salmón A', text: 'Salmón alt', amount: 4, unit: 'oz', role: 'protein', state: 'cocido' });
     let state = await r.json();
+    check(state.swaps?.[0]?.state === 'cocido',
+        'a swapped-in food brings how IT is weighed, not the state of the one it replaced');
     check(state.swaps?.length === 1, 'a swap is stored', `${state.swaps?.length}`);
     check(state.swaps?.[0]?.text === 'Salmón alt', 'the swap holds the chosen element');
     check(state.swaps?.[0]?.from === 'Salmón A', 'and names the element it replaces');
