@@ -36,7 +36,11 @@ const P = [
     // "huevos" is not a unit FoodScale knows, so it stays part of the food —
     // which is what the client reads anyway.
     ['3 huevos revueltos con espinaca', 3, '', 'huevos revueltos con espinaca'],
-    ['1 scoop whey',                 1, '',   'scoop whey'],
+    // A scoop IS one, though. The manufacturer defined it and printed the
+    // macros for it, so the food here is "whey" measured in scoops — not a
+    // food called "scoop whey" with no unit at all.
+    ['1 scoop whey',                 1, 'scoop', 'whey'],
+    ['2 medidas de proteína',        2, 'medidas', 'proteína'],
     ['1/4 aguacate',              0.25, '',   'aguacate'],
     // The glyphs this file PRINTS have to parse back, or the editor turns an
     // amount it rendered itself into part of the food's name.
@@ -162,6 +166,59 @@ check(M.amountLabel({ amount: 5.3, unit: 'oz' }, true) === '5.3 oz',
     'an amount the trainer typed is shown as typed', M.amountLabel({ amount: 5.3, unit: 'oz' }, true));
 check(M.amountLabel({ amount: 1.5, unit: 'taza' }, true) === '1 ½ taza',
     'and still reads as a fraction when it is one', M.amountLabel({ amount: 1.5, unit: 'taza' }, true));
+
+// ── The cases the phone is held to as well ────────────────────────────
+// lib/mealItem.ts in FitBySuarez-mobile reads THIS file too, so the amount a
+// client reads on the phone is the amount they read on the laptop. A rule
+// changed in one copy and not the other fails on one side or the other.
+const C = JSON.parse(readFileSync(new URL('./meal-item-cases.json', import.meta.url), 'utf8'));
+const report = (bad, label, n) => check(bad.length === 0, label, bad.length ? bad.slice(0, 3).join(' | ') : `${n} cases`);
+
+report(C.parseLine.filter((c) => {
+    const got = M.parseLine(c.in);
+    return !got || got.name !== c.out.name || !close(got.amount, c.out.amount) || got.unit !== c.out.unit;
+}).map((c) => `${c.in} → ${JSON.stringify(M.parseLine(c.in))}`),
+'every shared parseLine case reads back the same on both platforms', C.parseLine.length);
+
+report(C.toNumber.filter((c) => !close(M.toNumber(c.in), c.out)).map((c) => `${c.in}→${M.toNumber(c.in)}`),
+    'every shared toNumber case', C.toNumber.length);
+
+report(C.amountLabel.filter((c) => M.amountLabel(c.item) !== c.out)
+    .map((c) => `${JSON.stringify(c.item)}→${M.amountLabel(c.item)}`),
+'every shared amountLabel case', C.amountLabel.length);
+
+report(C.amountLabelExact.filter((c) => M.amountLabel(c.item, true) !== c.out)
+    .map((c) => `${JSON.stringify(c.item)}→${M.amountLabel(c.item, true)}`),
+'every shared amountLabel(exact) case', C.amountLabelExact.length);
+
+report(C.itemText.filter((c) => M.itemText(c.item) !== c.out)
+    .map((c) => `${JSON.stringify(c.item)}→${M.itemText(c.item)}`),
+'every shared itemText case — and none of them carries a state', C.itemText.length);
+
+report(C.roleOf.filter((c) => M.roleOf(c.in) !== c.out).map((c) => `${c.in}→${M.roleOf(c.in)}`),
+    'every shared roleOf case', C.roleOf.length);
+
+report(C.factorsFor.filter((c) => {
+    const got = M.factorsFor(c.week, c.goals);
+    return Object.keys(c.out).some((k) => !close(got[k], c.out[k]));
+}).map((c) => `${c.why}: ${JSON.stringify(M.factorsFor(c.week, c.goals))}`),
+'every shared factorsFor case, clamp included', C.factorsFor.length);
+
+report(C.isAdjusted.filter((c) => M.isAdjusted(c.factors) !== c.out).map((c) => JSON.stringify(c.factors)),
+    'every shared isAdjusted case', C.isAdjusted.length);
+
+report(C.scaleItem.filter((c) => !close(M.scaleItem(c.item, c.factors).amount || 0, c.outAmount))
+    .map((c) => `${c.item.name}→${M.scaleItem(c.item, c.factors).amount}`),
+'every shared scaleItem case — the protein grows, the broccoli does not', C.scaleItem.length);
+
+report(C.overrideKey.filter((c) => M.overrideKey(...c.in) !== c.out).map((c) => M.overrideKey(...c.in)),
+    'every shared overrideKey case', C.overrideKey.length);
+
+report(C.overrideIndex.filter((c) => {
+    const map = M.overrideIndex(c.list);
+    return map.size !== c.size || c.lookup.some((l) => map.get(l.key) !== l.out);
+}).map((c) => `size ${M.overrideIndex(c.list).size}`),
+'every shared overrideIndex case', C.overrideIndex.length);
 
 console.log(`\n${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

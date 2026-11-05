@@ -5545,3 +5545,142 @@ inline `style="color-scheme:dark"`, and that attribute was never the thing that 
 Measured in the browser against the built stylesheet: an option now computes to `rgb(255,255,255)` on
 `rgb(28,28,30)`. The before/after comparison above is the same measurement taken in an iframe with no
 stylesheet attached, which is what every option in the app computed to previously.
+
+---
+
+## 60. The meal plan reaches the phone
+
+The client's half of the meal plan is now a screen in the mobile app
+(`app/(app)/meal-prep.tsx` in **FitBySuarez-mobile**). Until this, Meal Prep was web-only — not
+stale, *absent* — which mattered because the request button is the thing clients were told about.
+
+Nothing was added to this repo's API. The phone calls the same three routes the web does:
+`GET /api/my-meal-plan`, `PUT /api/my-meal-plan` (prep choice and swaps), and
+`POST /api/my-meal-plan/request`. The gate in §56 does the work for both: a plan the trainer has not
+authorised is not *sent*, so there is nothing on the phone to leak it.
+
+### What did get added here: one cases file
+
+`public/meal-item.js` now has a typed twin, `lib/mealItem.ts` on the phone. Two hand-written copies
+of "¾ taza" rounding and a half-to-double clamp **will** drift, and the way that drift surfaces is a
+client reading 200 g on the laptop and 225 g on the phone for the same plate.
+
+So `scripts/meal-item-cases.json` is read by **both** suites — `scripts/test-meal-items.mjs` here,
+`scripts/test-meal-item.ts` there — exactly as `food-scale-cases.json` and `food-state-cases.json`
+already are. 50 cases over `parseLine`, `toNumber`, `amountLabel` (rounded and exact), `itemText`,
+`roleOf`, `factorsFor` (clamp included), `isAdjusted`, `scaleItem`, `overrideKey` and
+`overrideIndex`. A rule changed in one copy and not the other fails on one side or the other.
+
+Writing those cases caught a real bug, which § 61 fixes: `2 scoops whey` used to parse as amount 2,
+**no unit**, name `"scoops whey"` — because `scoops` was not a unit FoodScale recognised.
+
+### Gotchas
+
+- **The phone needs both repos checked out side by side.** `scripts/test-meal-item.ts` resolves
+  `../FitBySuarez-navbar-dashboard/scripts/meal-item-cases.json`, the same arrangement the other
+  mirrored suites use. Renaming this repo's folder breaks the mobile tests, not this one's.
+- **`EXPO_PUBLIC_API_BASE_URL`** now overrides the mobile app's hardcoded production URL. It is read
+  at build time, so a store build still has the real URL baked in — but it is what lets a dev build
+  (or Expo web) talk to `localhost:3030`. Run the server with `CORS_ORIGIN=http://localhost:8081` to
+  verify the phone's screens against a local backend.
+- A state the schema does not know is stored as `''`, not rejected. Seeding a plate with
+  `state: 'crudo'` (instead of `'seco'`) silently produces a food with no badge — which is correct
+  behaviour, and a useful reminder that `cleanFoodState` is the only vocabulary the DB accepts.
+
+### Verified
+
+`node scripts/test-meal-items.mjs` — 54 → **65 checks** (the 11 new ones are the shared cases).
+Everything else here unchanged and green: food-state **19**, food-scale **49**, macro-week **119**,
+routine-twins **53**.
+
+On the phone, driven end to end in Expo web against a local backend as a real client — a three-week,
+two-prep plan for someone whose goals (160 g protein) are not the week's (120 g). The targets showed
+**her** numbers; `claras de huevo` 200 g came out **265 g** and `salmón` 140 g came out **185 g**,
+while `brócoli` and `arroz blanco` did not move; the trainer's typed **185 g** for `pechuga de pollo`
+overrode the arithmetic's 200 g. Swapping wrote one swap and the plate read **tilapia · CAMBIADO ·
+COCIDO · 225 g**, with week 2 unaffected. A client with no plan saw the request button, and tapping
+it put exactly one `meal_plan_requested` notification in the trainer's bell. Full detail in the
+mobile repo's README.
+
+---
+
+## 61. A scoop is a unit, because the manufacturer said so
+
+A protein tub and a pre-workout print their macros **per scoop**, and ship the scoop in the tub. That
+is not an approximation the app invented — it is the amount the numbers on the label are *for*, as
+authoritative as "per 100 g" on a bag of oats. And two scoops is exactly twice it.
+
+FoodScale did not know the word. Half of this already worked by accident and half of it was broken:
+
+| | before | after |
+|---|---|---|
+| `parseUnit('scoops')` | `count:scoop` ✓ | unchanged |
+| `factor(1 scoop → 2 scoops)` | `2` ✓ | unchanged |
+| `isRecognisedUnit('scoop')` | **false** | `true` |
+| `parseLine('2 scoops whey')` | `{2, '', "scoops whey"}` | `{2, 'scoops', 'whey'}` |
+| `parseLeadingAmount('1 scoop Whey Gold')` | `null` → "1 porción" | `{1, 'scoop', 'Whey Gold'}` |
+| `factor(1 scoop → 2 medidas)` | **not convertible** | `2` |
+
+The conversion worked because `parseUnit` falls through to `count:<word>` for *any* word it does not
+know. What failed was everywhere the app has to **read** the unit out of text, all of which is gated
+on `isRecognisedUnit`, which is the strict alias table. So the measure survived once it was stored,
+but could never be typed — and the food ended up named "scoops whey".
+
+```js
+scoop:   ['scoop', 'scoops', 'medida', 'medidas', 'medidor', 'medidores',
+          'cucharada medidora', 'cucharadas medidoras'],
+capsule: ['capsula', 'capsulas', 'capsule', 'capsules', 'softgel', 'softgels',
+          'pastilla', 'pastillas'],
+```
+
+Capsules are there for the same reason: a pre-established dose a manufacturer defined, and fish oil
+genuinely carries fat.
+
+### The one-line change that makes the aliases real
+
+Adding aliases alone would have been decorative. `parseUnit` special-cased exactly one non-mass,
+non-volume key:
+
+```js
+-   if (k === 'serving') return { family: 'count:serving', f: 1, key: 'serving' };
++   if (k) return { family: 'count:' + k, f: 1, key: k };
+```
+
+Without it `medida` resolves through the fall-through to `count:medida`, which would never convert
+with `count:scoop` — the Spanish word for the thing would be a different unit from the thing. The
+replacement is strictly more general and leaves `serving` behaving exactly as before, because it was
+the only key that reached that line.
+
+### Gotchas
+
+- **A scoop does not convert to grams, and must not.** Nothing tells the app what a scoop of *this*
+  powder weighs — 30 g of whey and 8 g of pre-workout are both "1 scoop". `factor` returns
+  `ok: false, reason: 'units'` and the caller asks, which is the same rule `oz → ml` already follows.
+  If a client wants grams, the label's gram figure goes in as the serving.
+- **Nor to `porción`.** The generic unit is a different counted family on purpose: "1 porción" is the
+  app not knowing, "1 scoop" is the label saying.
+- **This changes how some existing foods read.** A personal food with no stored serving but a name
+  like "1 scoop Whey" now resolves to a *known* base of 1 scoop instead of the generic "1 porción".
+  That is the point, and it only affects foods that had no explicit `servingAmount`/`servingUnit` —
+  `baseOf` still prefers a stored serving over anything in the name.
+- **The server needed no change.** It loads `public/food-scale.js` through `new Function`, so the
+  vocabulary is shared by construction rather than by remembering.
+- **Unrelated, found while reading `roundAmount`:** its `unitKey.startsWith('count:')` branch is
+  dead. `parseUnit` returns `key` *unprefixed* (`'huevo'`, not `'count:huevo'`) — the prefix is only
+  on `family`. So counted units get quarter-rounding, not the cook's ladder the comment promises.
+  Left alone deliberately: fixing it would move displayed amounts on existing plans (`2 ¾ rebanadas`
+  → `2 ⅔ rebanadas`), which is a call for Angel, not a drive-by.
+
+### Verified
+
+`node scripts/test-food-scale.mjs` — 49 → **60 checks**; the 11 new shared cases cover scoop↔scoops,
+half a scoop, scoop↔medida, medida↔medidor, capsule↔capsules, and the two that must **refuse**
+(scoop→g, scoop→porción). `scripts/test-meal-items.mjs` — 65 → **66**; the stale assertion that
+pinned `'1 scoop whey'` as a food called "scoop whey" now pins the opposite.
+
+The phone picked all of it up from the same cases file with no new test written:
+`test-food-scale.ts` **66 → 77**. Everything else green on both sides.
+
+End to end against a live server: a personal food saved as *Whey Gold Standard*, **120 kcal / 24 P /
+3 C / 1 F for 1 scoop**, came back with `baseOf → { amount: 1, unit: 'scoop', known: true }` — not
+the generic porción — and two scoops scaled to exactly **240 / 48 / 6 / 2**.

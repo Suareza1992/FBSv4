@@ -49,6 +49,15 @@
         tsp: ['tsp', 'cdta', 'cucharadita', 'cucharaditas'],
         // "one of the thing" — the generic unit foods get when nothing better is known.
         serving: ['porcion', 'porciones', 'serving', 'servings', 'racion', 'raciones', 'unidad', 'unidades', 'und', 'unit', 'units'],
+        // A measure the MANUFACTURER defined, not the app. A protein tub or a
+        // pre-workout prints its macros per scoop, so the scoop is the amount
+        // those numbers are FOR — and two scoops is exactly twice it. Without
+        // this the word was not a unit, so "2 scoops whey" came out as a food
+        // called "scoops whey" and the label's own measure was lost.
+        scoop: ['scoop', 'scoops', 'medida', 'medidas', 'medidor', 'medidores', 'cucharada medidora', 'cucharadas medidoras'],
+        // The other pre-established dose a supplement comes in. Fish oil and
+        // the like do carry macros, so these scale the same way.
+        capsule: ['capsula', 'capsulas', 'capsule', 'capsules', 'softgel', 'softgels', 'pastilla', 'pastillas'],
     };
     const LOOKUP = {};
     for (const [key, list] of Object.entries(ALIASES)) for (const a of list) LOOKUP[strip(a)] = key;
@@ -63,7 +72,7 @@
         const k = LOOKUP[s];
         if (k && MASS[k]) return { family: 'mass', f: MASS[k], key: k };
         if (k && VOLUME[k]) return { family: 'volume', f: VOLUME[k], key: k };
-        if (k === 'serving') return { family: 'count:serving', f: 1, key: 'serving' };
+        if (k) return { family: 'count:' + k, f: 1, key: k };
         const w = singular(s);
         return { family: 'count:' + w, f: 1, key: w };
     }

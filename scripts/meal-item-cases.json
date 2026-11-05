@@ -1,0 +1,144 @@
+{
+  "_comment": "Shared by public/meal-item.js (web) and lib/mealItem.ts (mobile). Both read THIS file, so the two copies cannot drift apart unnoticed — the amount a client reads on the phone is the amount they read on the laptop. See TECHNICAL.md § 60.",
+
+  "_parseLine": "One typed line -> one element. A word is only a unit when FoodScale knows it, so '3 huevos revueltos' keeps the phrase as the name — but a scoop IS a unit, because the manufacturer defined it and printed the macros for it.",
+  "parseLine": [
+    { "in": "3/4 taza de avena en seco", "out": { "amount": 0.75, "unit": "taza", "name": "avena en seco" } },
+    { "in": "1 ½ taza arroz",            "out": { "amount": 1.5,  "unit": "taza", "name": "arroz" } },
+    { "in": "150 g pechuga de pollo",    "out": { "amount": 150,  "unit": "g",    "name": "pechuga de pollo" } },
+    { "in": "5 oz salmón",               "out": { "amount": 5,    "unit": "oz",   "name": "salmón" } },
+    { "in": "¾ taza de yogurt",          "out": { "amount": 0.75, "unit": "taza", "name": "yogurt" } },
+    { "in": "0,5 taza avena",            "out": { "amount": 0.5,  "unit": "taza", "name": "avena" } },
+    { "in": "café negro",                "out": { "amount": 0,    "unit": "",     "name": "café negro" } },
+    { "in": "2 scoops whey",             "out": { "amount": 2,    "unit": "scoops", "name": "whey" } },
+    { "in": "1 scoop de proteína",       "out": { "amount": 1,    "unit": "scoop", "name": "proteína" } },
+    { "in": "2 medidas de pre-workout",  "out": { "amount": 2,    "unit": "medidas", "name": "pre-workout" } },
+    { "in": "3 huevos revueltos",        "out": { "amount": 3,    "unit": "",     "name": "huevos revueltos" } },
+    { "in": "2 tazas de arroz",          "out": { "amount": 2,    "unit": "tazas", "name": "arroz" } },
+    { "in": "2 cucharadas aceite",       "out": { "amount": 2,    "unit": "cucharadas", "name": "aceite" } }
+  ],
+
+  "_toNumber": "Fractions matter: nobody writes '0.75 taza de avena' on a meal plan.",
+  "toNumber": [
+    { "in": "1 1/2", "out": 1.5 },
+    { "in": "1 ½",   "out": 1.5 },
+    { "in": "¾",     "out": 0.75 },
+    { "in": "⅓",     "out": 0.3333333333333333 },
+    { "in": "0,75",  "out": 0.75 },
+    { "in": "2",     "out": 2 }
+  ],
+
+  "_amountLabel": "What the client reads. Grams to the nearest 5, ounces to the quarter, cups on the ladder a cook actually uses — which has a third on it.",
+  "amountLabel": [
+    { "item": { "amount": 0.75, "unit": "taza" },  "out": "¾ taza" },
+    { "item": { "amount": 1.5,  "unit": "taza" },  "out": "1 ½ taza" },
+    { "item": { "amount": 0.66, "unit": "taza" },  "out": "⅔ taza" },
+    { "item": { "amount": 0.3,  "unit": "taza" },  "out": "⅓ taza" },
+    { "item": { "amount": 152,  "unit": "g" },     "out": "150 g" },
+    { "item": { "amount": 18,   "unit": "g" },     "out": "18 g" },
+    { "item": { "amount": 5.3,  "unit": "oz" },    "out": "5 ¼ oz" },
+    { "item": { "amount": 3,    "unit": "" },      "out": "3" },
+    { "item": { "amount": 0,    "unit": "taza" },  "out": "" }
+  ],
+
+  "_amountLabelExact": "An amount a trainer TYPED for one client is already measurable; rounding it would overrule the person who wrote the plan.",
+  "amountLabelExact": [
+    { "item": { "amount": 5.3, "unit": "oz" }, "out": "5.3 oz" },
+    { "item": { "amount": 152, "unit": "g" },  "out": "152 g" }
+  ],
+
+  "_itemText": "The round trip a swap stores. The state is NEVER part of it — see TECHNICAL.md § 57.",
+  "itemText": [
+    { "item": { "amount": 1, "unit": "taza", "name": "arroz integral", "state": "cocido" }, "out": "1 taza arroz integral" },
+    { "item": { "amount": 0, "unit": "", "name": "café negro" },                            "out": "café negro" }
+  ],
+
+  "_roleOf": "Anything unrecognised is 'free', which never scales.",
+  "roleOf": [
+    { "in": "protein", "out": "protein" },
+    { "in": "carb",    "out": "carb" },
+    { "in": "veg",     "out": "veg" },
+    { "in": "",        "out": "free" },
+    { "in": "bogus",   "out": "free" },
+    { "in": null,      "out": "free" }
+  ],
+
+  "_factorsFor": "Clamped to half and double: a goal typed into the wrong box must never tell somebody to eat eleven eggs. A missing goal or target means 1 — no scaling rather than a guess.",
+  "factorsFor": [
+    {
+      "why": "a third more protein, same carbs",
+      "week":  { "protein": 120, "carbs": 200, "fat": 60 },
+      "goals": { "protein": 160, "carbs": 200, "fat": 60 },
+      "out": { "protein": 1.33, "carb": 1, "fat": 1, "veg": 1, "free": 1 }
+    },
+    {
+      "why": "no goals at all means nothing moves",
+      "week":  { "protein": 120, "carbs": 200, "fat": 60 },
+      "goals": {},
+      "out": { "protein": 1, "carb": 1, "fat": 1, "veg": 1, "free": 1 }
+    },
+    {
+      "why": "a goal ten times the target is clamped to double",
+      "week":  { "protein": 120, "carbs": 200, "fat": 60 },
+      "goals": { "protein": 1200, "carbs": 200, "fat": 60 },
+      "out": { "protein": 2, "carb": 1, "fat": 1, "veg": 1, "free": 1 }
+    },
+    {
+      "why": "and a tiny goal is clamped to half",
+      "week":  { "protein": 120, "carbs": 200, "fat": 60 },
+      "goals": { "protein": 10, "carbs": 200, "fat": 60 },
+      "out": { "protein": 0.5, "carb": 1, "fat": 1, "veg": 1, "free": 1 }
+    },
+    {
+      "why": "a week with no target for a macro cannot be scaled against",
+      "week":  { "protein": 0, "carbs": 200, "fat": 60 },
+      "goals": { "protein": 160, "carbs": 200, "fat": 60 },
+      "out": { "protein": 1, "carb": 1, "fat": 1, "veg": 1, "free": 1 }
+    }
+  ],
+
+  "_isAdjusted": "Whether the UI should say the plate was rewritten.",
+  "isAdjusted": [
+    { "factors": { "protein": 1, "carb": 1, "fat": 1, "veg": 1, "free": 1 },    "out": false },
+    { "factors": { "protein": 1.33, "carb": 1, "fat": 1, "veg": 1, "free": 1 }, "out": true }
+  ],
+
+  "_scaleItem": "The protein grows, the broccoli does not. A client who needs a third more protein gets a third more chicken and exactly the same vegetables, which is how a coach would rewrite it by hand.",
+  "scaleItem": [
+    {
+      "item": { "name": "pechuga de pollo", "amount": 150, "unit": "g", "role": "protein" },
+      "factors": { "protein": 1.33, "carb": 1, "fat": 1, "veg": 1, "free": 1 },
+      "outAmount": 199.5
+    },
+    {
+      "item": { "name": "brócoli", "amount": 100, "unit": "g", "role": "veg" },
+      "factors": { "protein": 1.33, "carb": 1, "fat": 1, "veg": 1, "free": 1 },
+      "outAmount": 100
+    },
+    {
+      "item": { "name": "café negro", "amount": 0, "unit": "", "role": "free" },
+      "factors": { "protein": 1.33, "carb": 1, "fat": 1, "veg": 1, "free": 1 },
+      "outAmount": 0
+    }
+  ],
+
+  "_overrideKey": "The address a trainer's per-client amount is filed under. Lower-cased and trimmed, because 'Pechuga de pollo ' and 'pechuga de pollo' are the mistake a typed plan actually makes.",
+  "overrideKey": [
+    { "in": [1, "A", "Almuerzo", "Pechuga de pollo "], "out": "1|a|almuerzo|pechuga de pollo" },
+    { "in": [2, "B", "Cena", "Salmón"],                "out": "2|b|cena|salmón" },
+    { "in": [1, "", "", null],                         "out": "1|||" }
+  ],
+
+  "_overrideIndex": "A list of per-client amounts as a lookup. Anything unnamed, or with no amount, addresses nothing.",
+  "overrideIndex": [
+    {
+      "list": [
+        { "week": 1, "option": "A", "slot": "Almuerzo", "name": "Pechuga de pollo", "amount": 170 },
+        { "week": 1, "option": "A", "slot": "Cena",     "name": "",                 "amount": 200 },
+        { "week": 1, "option": "A", "slot": "Cena",     "name": "Salmón",           "amount": 0 }
+      ],
+      "size": 1,
+      "lookup": [{ "key": "1|a|almuerzo|pechuga de pollo", "out": 170 }]
+    }
+  ]
+}
