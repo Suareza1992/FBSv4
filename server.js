@@ -4741,7 +4741,7 @@ const LOCAL_FOODS = [
     { name: 'Huevo (yema)',          brand: null, serving: 17,  cal100: 322, p100: 15.9, c100: 3.6,  f100: 26.5, state: 'na' },
     { name: 'Pechuga de pollo (cocida)',   brand: null, serving: 100, cal100: 165, p100: 31.0, c100: 0.0,  f100: 3.6  }, // fdc 171477
     { name: 'Pechuga de pollo (cruda)',    brand: null, serving: 100, cal100: 120, p100: 22.5, c100: 0.0,  f100: 2.6  }, // fdc 171077
-    { name: 'Muslo de pollo (cocido)',     brand: null, serving: 100, cal100: 209, p100: 26.0, c100: 0.0,  f100: 10.9 },
+    { name: 'Muslo de pollo (cocido)',     brand: null, serving: 100, cal100: 179, p100: 24.8, c100: 0.0,  f100: 8.2  }, // fdc 172388
     { name: 'Muslo de pollo (crudo)',      brand: null, serving: 100, cal100: 121, p100: 19.7, c100: 0.0,  f100: 4.1  }, // fdc 173627
     { name: 'Pollo molido (crudo)',        brand: null, serving: 100, cal100: 143, p100: 17.4, c100: 0.0,  f100: 8.1  }, // fdc 171116
     { name: 'Carne molida 80/20 (cruda)',  brand: null, serving: 100, cal100: 254, p100: 17.2, c100: 0.0,  f100: 20.0 }, // fdc 174036

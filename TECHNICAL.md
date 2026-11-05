@@ -5412,8 +5412,15 @@ Fourteen cuts are now paired this way: chicken breast, thigh and ground; ground 
 90/10; sirloin; pork chop and tenderloin; turkey breast and ground turkey; salmon, tilapia, cod,
 shrimp and bacon. Every raw value, and every new cooked value, is a row of **USDA FoodData Central**
 (Foundation / SR Legacy), and the trailing `// fdc NNNNNN` is that row's id — so the next person can
-*recheck* a number instead of trusting it. The three rows with no id are the curated numbers these
-foods always had, left exactly as they were.
+*recheck* a number instead of trusting it. **Seven** of the cooked halves carry no id: those are the
+curated numbers these foods always had, left exactly as they were, and they are the rows to check
+first if a client's protein total ever looks wrong.
+
+One of them did look wrong and was corrected on the trainer's call: `Muslo de pollo (cocido)` was
+**209 kcal / 26 g P / 10.9 g F**, which is thigh *with the skin on*. Against the row the rest of the
+pair comes from — thigh, meat only, roasted — it is now **179 / 24.8 / 8.2** (`fdc 172388`), a 17%
+overstatement removed. Nutrition log entries store their macros at write time, so nothing already
+logged moved.
 
 Because the name carries the answer, `FoodState.fromName` reads these for free. Nothing was
 hand-annotated.
