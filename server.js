@@ -451,7 +451,6 @@ async function seedAdmin() {
                 location: '',
                 timezone: 'America/Puerto_Rico',
                 unitSystem: 'imperial',
-                hideFromDashboard: false,
                 height: { feet: 0, inches: 0 },
                 weight: 0,
                 birthday: '',
@@ -526,6 +525,13 @@ const UserSchema = new mongoose.Schema({
     timezone: { type: String, default: "America/Puerto_Rico" },
     unitSystem: { type: String, default: "imperial" },
     servingUnit: { type: String, default: "g" }, // 'g' or 'oz' — client's preferred food serving unit
+    // UNUSED. There was an "Ocultar del dashboard — no mostrar resultados ni
+    // notificaciones" switch in the client modal that saved this and nothing else: no
+    // query filtered on it and no notification consulted it, so flipping it did nothing.
+    // The control was removed rather than implemented — muting a client would mean
+    // auditing every dashboard count and the notification funnel, and in the app's whole
+    // life not one of the 23 accounts had ever been switched on. The FIELD stays so the
+    // existing documents need no migration; it is written by nothing.
     hideFromDashboard: { type: Boolean, default: false },
     height: { feet: { type: Number, default: 0 }, inches: { type: Number, default: 0 } },
     weight: { type: Number, default: 0 },
@@ -2425,7 +2431,7 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
         // C-2: Explicit allowlist — prevents role escalation and token overwrites
         const ALLOWED = ['name','lastName','email','program','group','type','dueDate','isActive',
                          'location','timezone','unitSystem','phone','height','weight','birthday',
-                         'gender','thr','mahr','restingHr','emailPreferences','hideFromDashboard',
+                         'gender','thr','mahr','restingHr','emailPreferences',
                          'profilePicture','equipment','equipmentCheckOn','macroSettings','waterGoal','injuredMuscles','dietaryPreferences',
                          'nickname','goals','activityLevel','onboardedAt'];
         const updates = {};

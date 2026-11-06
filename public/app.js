@@ -5349,9 +5349,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // These indices are DOM ORDER of `.toggle-switch` inside the client modal, not ids.
+        // Add a toggle ABOVE either of these and both reads move. (`send-invite-toggle`
+        // is addressed by id, so it is not part of this counting.)
         setToggle(0, client.emailPreferences?.dailyRoutine);
         setToggle(1, client.emailPreferences?.incompleteRoutine);
-        setToggle(2, client.hideFromDashboard);
 
         // The footer invite control reflects the account: a client who has never logged in can be
         // re-invited; one who has is already active, so there is nothing to send. (Before this the
@@ -5576,7 +5578,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const toggles = document.querySelectorAll('.toggle-switch');
         const sendDaily = toggles[0] ? getToggleState(toggles[0]) : false;
         const sendIncomplete = toggles[1] ? getToggleState(toggles[1]) : false;
-        const hideDash = toggles[2] ? getToggleState(toggles[2]) : false;
 
         if(!firstName || !email) { showToast("Nombre y Email son requeridos", 'error'); return; }
 
@@ -5591,7 +5592,6 @@ document.addEventListener('DOMContentLoaded', () => {
             weight: weight,
             birthday, gender, phone,
             restingHr, thr, mahr,
-            hideFromDashboard: hideDash,
             emailPreferences: { dailyRoutine: sendDaily, incompleteRoutine: sendIncomplete },
             dueDate: document.getElementById('opt-due-date')?.value || localDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
         };
