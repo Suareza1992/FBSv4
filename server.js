@@ -1721,7 +1721,11 @@ app.get('/api/auth/invite-info', async (req, res) => {
 
         if (!user) return res.status(400).json({ message: 'Invitación inválida o expirada' });
 
-        res.json({ name: user.name, email: user.email });
+        // `role` so the activation page can greet a trainer correctly — a trainer has no
+        // trainer of their own, and "tu entrenador te ha dado acceso" reads as nonsense to
+        // them. Safe to return unauthenticated: the caller holds this user's own
+        // single-use invite token, so it tells them nothing they do not already know.
+        res.json({ name: user.name, email: user.email, role: user.role });
     } catch (error) {
         console.error('Invite info error:', error);
         res.status(500).json({ message: 'Error al verificar invitación' });

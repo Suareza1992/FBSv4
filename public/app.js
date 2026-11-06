@@ -2776,7 +2776,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const greetingText = document.getElementById('invite-greeting-text');
                 const emailDisplay = document.getElementById('invite-email-display');
                 if (greetingEl) greetingEl.classList.remove('hidden');
-                if (greetingText) greetingText.textContent = `¡Hola, ${data.name}! Tu entrenador te ha dado acceso.`;
+                // Only the superadmin can create a trainer (see POST /api/clients), and that
+                // is Ángel — so a trainer was given access BY him, not by "tu entrenador".
+                // Anything that is not a client is staff, which covers 'admin' too.
+                const invitedBy = data.role && data.role !== 'client'
+                    ? 'Ángel te ha dado acceso.'
+                    : 'Tu entrenador te ha dado acceso.';
+                if (greetingText) greetingText.textContent = `¡Hola, ${data.name}! ${invitedBy}`;
                 if (emailDisplay) emailDisplay.value = data.email;
             } else {
                 showMessage('invite-message', 'Este enlace es inválido o ya expiró. Si ya activaste tu cuenta, inicia sesión.', 'error');
