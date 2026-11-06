@@ -38,9 +38,10 @@
     </div>
 
     <!-- ══════════════════════════════════════════
-         TAB: ALIMENTOS — the shared food library every client's autocomplete reads.
-         Superadmin only. This is the half that was missing: anyone could add a food,
-         nobody could correct or remove one.
+         TAB: ALIMENTOS — EVERY food in the platform, whoever entered it.
+         Superadmin only. Two collections feed it: the shared library every
+         client's autocomplete reads, and each client's own private shelf.
+         A wrong number on either reaches a real person's diary.
     ══════════════════════════════════════════ -->
     <div id="alimentos-panel" class="hidden space-y-4">
         <div class="flex flex-wrap gap-3 items-center">
@@ -50,13 +51,27 @@
                     placeholder="Buscar alimento...">
                 <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-[#FFDB89]/30 text-sm"></i>
             </div>
-            <div id="food-admin-filters" class="flex gap-1.5"></div>
+            <!-- Where to resume. "Sin revisar hace más tiempo" is the one that
+                 answers "where did I leave off": oldest untouched row first, so
+                 everything you have already edited sinks out of the way. -->
+            <select id="food-admin-sort" style="color-scheme:dark"
+                class="py-2.5 px-3 bg-[#0D0D0D] border border-[#FFDB89]/20 rounded-xl text-[#FFDB89] text-sm outline-none focus:ring-2 focus:ring-[#FFDB89]/40 transition">
+                <option value="used">Más usados</option>
+                <option value="stale">Sin revisar hace más tiempo</option>
+                <option value="updated">Editados recientemente</option>
+                <option value="created">Añadidos recientemente</option>
+                <option value="name">Nombre (A–Z)</option>
+            </select>
             <p id="food-admin-count" class="text-xs text-[#FFDB89]/35"></p>
         </div>
+        <div id="food-admin-scopes" class="flex flex-wrap gap-1.5"></div>
+        <div id="food-admin-filters" class="flex flex-wrap gap-1.5"></div>
         <p class="text-[11px] text-[#FFDB89]/30 flex items-start gap-1.5">
             <i class="fas fa-circle-info mt-0.5"></i>
-            <span>Esta lista es la que ven todos tus clientes al buscar un alimento. Tus clientes pueden
-            <strong>añadir</strong> alimentos nuevos, pero solo tú puedes <strong>corregir o eliminar</strong> los que ya existen.</span>
+            <span><strong>Compartidos</strong> es la lista que ven todos tus clientes al buscar un alimento:
+            ellos pueden <strong>añadir</strong>, solo tú puedes <strong>corregir o eliminar</strong>.
+            <strong>Personales</strong> son los que cada cliente guardó solo para sí — nadie más los ve,
+            y corregir uno aquí <strong>no</strong> lo publica a los demás.</span>
         </p>
         <div id="food-admin-list" class="bg-[#111113] border border-[#FFDB89]/10 rounded-xl overflow-hidden min-h-[200px]">
             <div class="p-8 text-center text-[#FFDB89]/30">Cargando alimentos...</div>

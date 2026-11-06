@@ -55,5 +55,15 @@ for (const a of [3, 17, 4.5, 10, 22, 10]) {
 }
 check(drift === 0, 'property: returning to the base amount returns the base numbers exactly', `drift ${drift}`);
 
+// A manually entered food must be complete: a blank is not a zero.
+for (const c of cases.missingMacros) {
+    const got = FoodScale.missingMacros(c.in);
+    check(JSON.stringify(got) === JSON.stringify(c.missing), `missingMacros: ${c.label}`, JSON.stringify(got));
+}
+check(FoodScale.macrosMissingMessage({ calories: '1', protein: '1', carbs: '1', fat: '1' }) === '',
+    'a complete entry has nothing to say');
+check(/Falta Prote\u00edna/.test(FoodScale.macrosMissingMessage({ calories: '1', protein: '', carbs: '1', fat: '1' })),
+    'and an incomplete one names the box, and says to type 0');
+
 console.log(`\n${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

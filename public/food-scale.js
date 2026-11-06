@@ -95,20 +95,79 @@
         return { ok: true, factor: (wa * wu.f) / (ba * bu.f) };
     }
 
-    /** Scale a { calories, protein, carbs, fat } by f. Calories whole, the rest to 0.1 g. */
+    /**
+     * Binary floating point, not the person's number.
+     *
+     * 0.1 + 0.2 is 0.30000000000000004, and 24 * 1.33 is 31.919999999999998. Those
+     * digits are an artefact of how the machine stores the number — they are not
+     * something anybody typed and not a precision anybody asked for. Cutting them
+     * is the ONLY number-changing this file does, and it changes the value by less
+     * than a part in a billion.
+     *
+     * It is not rounding. Nothing here snaps a value to a nicer one.
+     */
+    const clean = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 0;
+        const r = Math.round(n * 1e9) / 1e9;
+        return Object.is(r, -0) ? 0 : r;
+    };
+
+    /**
+     * Scale a { calories, protein, carbs, fat } by f — and keep every digit.
+     *
+     * This used to round calories to a whole number and the macros to 0.1 g, which
+     * meant the form rewrote what a client had typed the moment they touched the
+     * amount box: enter 24.56 g of protein, change the quantity, get 24.6 back. The
+     * app does not get to decide how precise somebody's food label is.
+     */
     function scaleMacros(m, f) {
-        const one = (v) => { const n = num(v); return Number.isFinite(n) ? n : 0; };
-        const r1 = (v) => Math.round(v * 10) / 10;
         return {
-            calories: Math.round(one(m.calories) * f),
-            protein: r1(one(m.protein) * f),
-            carbs: r1(one(m.carbs) * f),
-            fat: r1(one(m.fat) * f),
+            calories: clean(num(m && m.calories) * f),
+            protein:  clean(num(m && m.protein)  * f),
+            carbs:    clean(num(m && m.carbs)    * f),
+            fat:      clean(num(m && m.fat)      * f),
         };
     }
 
-    /** Tidy an amount for display / storage: up to 2 decimals, no trailing zeros. */
-    const fmtAmount = (n) => { const v = num(n); return Number.isFinite(v) ? String(Math.round(v * 100) / 100) : ''; };
+    // ── A manually entered food has to be complete ───────────────────────
+    //
+    // Every manual form used to read its macros as `Number(input.value) || 0`,
+    // which turns "I have not filled this in yet" into "this food has no
+    // protein" — silently, and permanently, because the food is then saved and
+    // reused. A blank is not a zero. A zero is an answer somebody gave.
+    //
+    // So the four macros are required, and a person who means zero types zero.
+    const MACRO_FIELDS = [
+        ['calories', 'Calorías'],
+        ['protein',  'Proteína'],
+        ['carbs',    'Carbohidratos'],
+        ['fat',      'Grasas'],
+    ];
+
+    /** Which of the four nobody has given a number for. [] when the entry is complete. */
+    function missingMacros(src) {
+        return MACRO_FIELDS.filter(([key]) => {
+            const raw = src ? src[key] : undefined;
+            if (raw === null || raw === undefined) return true;
+            const t = String(raw).trim();
+            if (!t) return true;
+            const n = Number(t.replace(',', '.'));
+            return !Number.isFinite(n) || n < 0;
+        }).map(([, label]) => label);
+    }
+
+    /** What to tell the person, or '' when there is nothing to tell them. */
+    function macrosMissingMessage(src) {
+        const m = missingMacros(src);
+        if (!m.length) return '';
+        if (m.length === 1) return `Falta ${m[0]}. Escribe 0 si el alimento no tiene.`;
+        const last = m[m.length - 1];
+        return `Faltan ${m.slice(0, -1).join(', ')} y ${last}. Escribe 0 donde el alimento no tenga.`;
+    }
+
+    /** An amount as text, with every digit the person gave it. */
+    const fmtAmount = (n) => { const v = num(n); return Number.isFinite(v) ? String(clean(v)) : ''; };
 
     /**
      * Pull a leading "10 oz" / "1 porción" off a legacy name ("10 oz Medalla Light").
@@ -134,5 +193,6 @@
         return { amount: 1, unit: 'porción', known: false };
     }
 
-    return { factor, scaleMacros, fmtAmount, parseLeadingAmount, parseUnit, isRecognisedUnit, baseOf, strip, MASS, VOLUME };
+    return { factor, scaleMacros, fmtAmount, clean, parseLeadingAmount, parseUnit, isRecognisedUnit,
+        baseOf, missingMacros, macrosMissingMessage, MACRO_FIELDS, strip, MASS, VOLUME };
 });

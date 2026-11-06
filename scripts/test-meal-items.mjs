@@ -64,17 +64,18 @@ const A = [
     [{ amount: 2,    unit: 'oz' },   '2 oz'],
     [{ amount: 0.25, unit: '' },     '¼'],
     [{ amount: 3,    unit: '' },     '3'],
-    // Grams land on 5 once 1 g stops meaning anything, and stay exact below 20.
-    [{ amount: 153,  unit: 'g' },    '155 g'],
-    [{ amount: 12.4, unit: 'g' },    '12 g'],
     [{ amount: 0,    unit: 'taza' }, ''],
-    // A third of a cup is a measure a cook owns a spoon for. Snapping it to a
-    // quarter would be the app rewriting what the trainer chose.
+    // A third of a cup is written as one, because ⅓ IS a third of a cup. But
+    // 0.4 is not, and is written as 0.4 — the app no longer decides that what
+    // somebody meant was the nearest measure it likes.
     [{ amount: 1 / 3, unit: 'taza' }, '⅓ taza'],
-    [{ amount: 0.4,   unit: 'taza' }, '⅓ taza'],
-    [{ amount: 1.7,   unit: 'taza' }, '1 ⅔ taza'],
-    // Ounces come off a scale, not a measuring cup, so they stay on quarters.
-    [{ amount: 6.4,   unit: 'oz' },   '6 ½ oz'],
+    [{ amount: 0.4,   unit: 'taza' }, '0.4 taza'],
+    [{ amount: 1.7,   unit: 'taza' }, '1.7 taza'],
+    // Grams, ounces and the rest of the scale units are written as decimals,
+    // because that is how a scale reads them.
+    [{ amount: 6.4,   unit: 'oz' },   '6.4 oz'],
+    [{ amount: 153,   unit: 'g' },    '153 g'],
+    [{ amount: 12.4,  unit: 'g' },    '12.4 g'],
 ];
 for (const [it, want] of A) check(M.amountLabel(it) === want, `amount: ${JSON.stringify(it)}`, M.amountLabel(it));
 
@@ -105,7 +106,7 @@ f = M.factorsFor(week, { protein: 160, carbs: 90, fat: 50 });
 const chicken = { name: 'pechuga de pollo', amount: 5, unit: 'oz', role: 'protein' };
 const rice    = { name: 'arroz integral',   amount: 1, unit: 'taza', role: 'carb' };
 const greens  = { name: 'espinaca',         amount: 2, unit: 'tazas', role: 'veg' };
-check(M.amountLabel(M.scaleItem(chicken, f)) === '6 ½ oz', 'more protein means more chicken',
+check(M.amountLabel(M.scaleItem(chicken, f)) === '6.4 oz', 'more protein means more chicken',
     M.amountLabel(M.scaleItem(chicken, f)));
 check(M.amountLabel(M.scaleItem(rice, f)) === '½ taza', 'fewer carbs means less rice',
     M.amountLabel(M.scaleItem(rice, f)));
@@ -158,14 +159,19 @@ const idx = M.overrideIndex([
 check(idx.size === 1 && idx.get(M.overrideKey(2, 'A', 'Cena', 'salmón')) === 9,
     'an entry with no name or no amount addresses nothing', `${idx.size}`);
 
-// Rounding turns arithmetic into something measurable. An amount a person chose
-// is already measurable, so `exact` leaves it alone.
-check(M.amountLabel({ amount: 5.3, unit: 'oz' }) === '5 ¼ oz',
-    'a computed amount lands on something you can measure', M.amountLabel({ amount: 5.3, unit: 'oz' }));
-check(M.amountLabel({ amount: 5.3, unit: 'oz' }, true) === '5.3 oz',
-    'an amount the trainer typed is shown as typed', M.amountLabel({ amount: 5.3, unit: 'oz' }, true));
-check(M.amountLabel({ amount: 1.5, unit: 'taza' }, true) === '1 ½ taza',
-    'and still reads as a fraction when it is one', M.amountLabel({ amount: 1.5, unit: 'taza' }, true));
+// NOTHING is rounded. A client could not enter their macros because the platform
+// kept rewriting them, so the app no longer decides that somebody's 5.3 is 5.25.
+check(M.amountLabel({ amount: 5.3, unit: 'oz' }) === '5.3 oz',
+    'a computed amount is shown as it came out', M.amountLabel({ amount: 5.3, unit: 'oz' }));
+check(M.amountLabel({ amount: 199.5, unit: 'g' }) === '199.5 g',
+    'and a half gram stays a half gram', M.amountLabel({ amount: 199.5, unit: 'g' }));
+check(M.amountLabel({ amount: 1.5, unit: 'taza' }) === '1 ½ taza',
+    'a fraction is a SPELLING of the same number, so cups may still use one',
+    M.amountLabel({ amount: 1.5, unit: 'taza' }));
+check(M.amountLabel({ amount: 0.74, unit: 'taza' }) === '0.74 taza',
+    'but only when it is exact — 0.74 is not three quarters',
+    M.amountLabel({ amount: 0.74, unit: 'taza' }));
+check(M.roundAmount === undefined, 'roundAmount is gone, not merely unused');
 
 // ── The cases the phone is held to as well ────────────────────────────
 // lib/mealItem.ts in FitBySuarez-mobile reads THIS file too, so the amount a
@@ -187,9 +193,9 @@ report(C.amountLabel.filter((c) => M.amountLabel(c.item) !== c.out)
     .map((c) => `${JSON.stringify(c.item)}→${M.amountLabel(c.item)}`),
 'every shared amountLabel case', C.amountLabel.length);
 
-report(C.amountLabelExact.filter((c) => M.amountLabel(c.item, true) !== c.out)
-    .map((c) => `${JSON.stringify(c.item)}→${M.amountLabel(c.item, true)}`),
-'every shared amountLabel(exact) case', C.amountLabelExact.length);
+report(C.amountLabelNeverRounds.filter((c) => M.amountLabel(c.item) !== c.out)
+    .map((c) => `${JSON.stringify(c.item)}→${M.amountLabel(c.item)}`),
+'every shared case proving nothing is rounded', C.amountLabelNeverRounds.length);
 
 report(C.itemText.filter((c) => M.itemText(c.item) !== c.out)
     .map((c) => `${JSON.stringify(c.item)}→${M.itemText(c.item)}`),

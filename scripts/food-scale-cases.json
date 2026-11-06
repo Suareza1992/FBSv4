@@ -416,7 +416,7 @@
       }
     },
     {
-      "label": "half",
+      "label": "half - and 49.5 stays 49.5, it is not bumped to 50",
       "macros": {
         "calories": 99,
         "protein": 1,
@@ -425,7 +425,7 @@
       },
       "factor": 0.5,
       "expect": {
-        "calories": 50,
+        "calories": 49.5,
         "protein": 0.5,
         "carbs": 3,
         "fat": 0
@@ -458,7 +458,7 @@
       "factor": 1.5,
       "expect": {
         "calories": 300,
-        "protein": 18.8,
+        "protein": 18.75,
         "carbs": 0,
         "fat": 10.5
       }
@@ -474,6 +474,54 @@
         "protein": 0,
         "carbs": 0,
         "fat": 0
+      }
+    },
+    {
+      "label": "calories keep their decimals (this used to be Math.round)",
+      "macros": {
+        "calories": 99,
+        "protein": 1,
+        "carbs": 6,
+        "fat": 0
+      },
+      "factor": 0.335,
+      "expect": {
+        "calories": 33.165,
+        "protein": 0.335,
+        "carbs": 2.01,
+        "fat": 0
+      }
+    },
+    {
+      "label": "a label's 24.56 g of protein doubles to 49.12, not 49.1",
+      "macros": {
+        "calories": 120,
+        "protein": 24.56,
+        "carbs": 3.4,
+        "fat": 1.2
+      },
+      "factor": 2,
+      "expect": {
+        "calories": 240,
+        "protein": 49.12,
+        "carbs": 6.8,
+        "fat": 2.4
+      }
+    },
+    {
+      "label": "binary noise IS cut: 24 * 1.33 is 31.92, never 31.919999999999998",
+      "macros": {
+        "calories": 120,
+        "protein": 24,
+        "carbs": 3,
+        "fat": 1
+      },
+      "factor": 1.33,
+      "expect": {
+        "calories": 159.6,
+        "protein": 31.92,
+        "carbs": 3.99,
+        "fat": 1.33
       }
     }
   ],
@@ -637,6 +685,133 @@
         "unit": "scoop",
         "known": true
       }
+    }
+  ],
+  "_missingMacros": "A manually entered food has to be complete. A blank is NOT a zero: `Number('') || 0` used to turn 'I have not filled this in' into 'this food has no protein', and then saved it. A typed 0 IS an answer and passes.",
+  "missingMacros": [
+    {
+      "label": "all four given",
+      "in": {
+        "calories": "120",
+        "protein": "24",
+        "carbs": "3",
+        "fat": "1"
+      },
+      "missing": []
+    },
+    {
+      "label": "a typed zero is an answer",
+      "in": {
+        "calories": "120",
+        "protein": "0",
+        "carbs": "0",
+        "fat": "0"
+      },
+      "missing": []
+    },
+    {
+      "label": "numbers, not only strings",
+      "in": {
+        "calories": 120,
+        "protein": 24,
+        "carbs": 3,
+        "fat": 1
+      },
+      "missing": []
+    },
+    {
+      "label": "a decimal comma is how half of the world types",
+      "in": {
+        "calories": "120",
+        "protein": "24,5",
+        "carbs": "3",
+        "fat": "1"
+      },
+      "missing": []
+    },
+    {
+      "label": "one blank",
+      "in": {
+        "calories": "120",
+        "protein": "",
+        "carbs": "3",
+        "fat": "1"
+      },
+      "missing": [
+        "Proteína"
+      ]
+    },
+    {
+      "label": "whitespace is still blank",
+      "in": {
+        "calories": "120",
+        "protein": "   ",
+        "carbs": "3",
+        "fat": "1"
+      },
+      "missing": [
+        "Proteína"
+      ]
+    },
+    {
+      "label": "three blanks",
+      "in": {
+        "calories": "",
+        "protein": "",
+        "carbs": "3",
+        "fat": ""
+      },
+      "missing": [
+        "Calorías",
+        "Proteína",
+        "Grasas"
+      ]
+    },
+    {
+      "label": "nothing at all",
+      "in": {},
+      "missing": [
+        "Calorías",
+        "Proteína",
+        "Carbohidratos",
+        "Grasas"
+      ]
+    },
+    {
+      "label": "not a number",
+      "in": {
+        "calories": "120",
+        "protein": "abc",
+        "carbs": "3",
+        "fat": "1"
+      },
+      "missing": [
+        "Proteína"
+      ]
+    },
+    {
+      "label": "negative macros are not a thing",
+      "in": {
+        "calories": "120",
+        "protein": "-2",
+        "carbs": "3",
+        "fat": "1"
+      },
+      "missing": [
+        "Proteína"
+      ]
+    },
+    {
+      "label": "null and undefined count as unanswered",
+      "in": {
+        "calories": null,
+        "protein": "24",
+        "carbs": "3",
+        "fat": "1"
+      },
+      "missing": [
+        "Calorías"
+      ]
     }
   ]
 }

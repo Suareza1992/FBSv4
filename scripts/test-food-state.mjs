@@ -134,6 +134,35 @@ check(missing.length === 0,
     'every animal protein can be logged either raw or cooked',
     missing.join(' | '));
 
+// Starches and vegetables where boiling moves the numbers get the same
+// treatment. Note the direction is NOT always "raw is lighter": a boiled potato
+// is 86 kcal against 77 raw, because the starch gelatinises while water goes;
+// a boiled camote is 76 against 86. That is exactly why each half is its own
+// looked-up row instead of one row and a yield factor.
+const starches = ['papa / patata', 'camote / batata', 'pl\u00e1tano maduro', 'pl\u00e1tano verde',
+    'setas / hongos', 'repollo de bruselas', 'pollo molido'];
+const noTwin = [];
+for (const base of starches) {
+    const rows = LOCAL_FOODS.filter((f) => f.name.toLowerCase().startsWith(base));
+    const states = new Set(rows.map(stateOfRow));
+    if (!states.has('seco') || !states.has('cocido')) noTwin.push(`${base} -> ${[...states].join(',') || 'none'}`);
+}
+check(noTwin.length === 0,
+    'every starch that changes when you boil it can be logged either way',
+    noTwin.join(' | '));
+
+// Each pair is two looked-up rows, never one number copied onto the other.
+const sameNumbers = [];
+for (const base of [...pairs, ...starches]) {
+    const rows = LOCAL_FOODS.filter((f) => f.name.toLowerCase().startsWith(base));
+    const raw = rows.find((f) => stateOfRow(f) === 'seco');
+    const cooked = rows.find((f) => stateOfRow(f) === 'cocido');
+    if (raw && cooked && raw.cal100 === cooked.cal100) sameNumbers.push(base);
+}
+check(sameNumbers.length === 0,
+    'and no pair shares a calorie count, which would mean one half was copied',
+    sameNumbers.join(' | '));
+
 // The two halves must not carry the same macros — that would mean one of them
 // was copied rather than looked up.
 const breastRaw = LOCAL_FOODS.find((f) => f.name === 'Pechuga de pollo (cruda)');

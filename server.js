@@ -1169,25 +1169,38 @@ const MealPlanAssignment = mongoose.model('MealPlanAssignment', MealPlanAssignme
 // through this, which is the only way the number a client is promised and the
 // number that lands in their day can be the same.
 //
-// Calories are rounded to a whole number HERE, per ingredient, on purpose.
-// Dividing by servings produces halves constantly, and the day's totals are
-// summed by MongoDB's $round — which is banker's rounding, so 194.5 becomes 194
-// while the browser's Math.round makes it 195. A recipe card promising one more
-// calorie than the diary records is exactly the kind of small lie that stops a
-// client trusting the numbers. No half ever reaches $round now.
+// Nothing rounds any more, so no half has to be engineered away: the card, the
+// diary entry and the day's total are all the same arithmetic carried through.
+// (This used to round calories per ingredient, specifically so that no .5 ever
+// reached MongoDB's $round — which is banker's rounding and turned 194.5 into
+// 194 while the browser's Math.round made it 195. With neither rounding, the
+// problem it was dodging does not exist.)
+
 // Anything that is not the string 'portrait' is a landscape frame — an unknown
 // value must never reach the enum and fail the save.
 const cleanAspect = (v) => (String(v || '').trim() === 'portrait' ? 'portrait' : 'landscape');
 
+// Units, scaling and the "a blank is not a zero" rule, loaded from the very file
+// the browser runs — so the server and the screens cannot disagree. Defined up
+// here because recipeServingOf below needs it.
+const FoodScale = (() => {
+    const sandbox = {};
+    new Function('self', fs.readFileSync(path.join(__dirname, 'public', 'food-scale.js'), 'utf8'))(sandbox);
+    return sandbox.FoodScale;
+})();
+
 const recipeServingOf = (ing, servings) => {
     const per = Math.max(1, Number(servings) || 1);
-    const one = (v) => Math.round(((Number(v) || 0) / per) * 10) / 10;
+    // Divided, not rounded. A recipe for 4 whose chicken is 650 g gives 162.5 g
+    // a serving, and 162.5 is the answer — the app does not get to call it 163.
+    // `clean` only removes binary floating-point noise. Mirrored in public/app.js.
+    const one = (v) => FoodScale.clean((Number(v) || 0) / per);
     return {
-        calories: Math.round((Number(ing?.calories) || 0) / per),
+        calories: one(ing?.calories),
         protein:  one(ing?.protein),
         carbs:    one(ing?.carbs),
         fat:      one(ing?.fat),
-        amount:   Math.round(((Number(ing?.amount) || 0) / per) * 100) / 100,
+        amount:   one(ing?.amount),
     };
 };
 
@@ -1201,11 +1214,13 @@ const recipeTotals = (recipe) => {
         t.carbs    += one.carbs;
         t.fat      += one.fat;
     });
+    // Summed, not rounded — these are what a recipe card shows and what a client
+    // adds to their diary, so they have to be the sum of the ingredients.
     return {
-        calories: t.calories,                 // already whole numbers
-        protein:  Math.round(t.protein),
-        carbs:    Math.round(t.carbs),
-        fat:      Math.round(t.fat),
+        calories: FoodScale.clean(t.calories),
+        protein:  FoodScale.clean(t.protein),
+        carbs:    FoodScale.clean(t.carbs),
+        fat:      FoodScale.clean(t.fat),
     };
 };
 
@@ -3236,7 +3251,12 @@ const sumMacro = (field) => ({
         ] },
         as: 'f',
         in: { $convert: { input: `$$f.${field}`, to: 'double', onError: 0, onNull: 0 } },
-    } } }, 0],
+    // 6 decimals, not 0. A day's total is the SUM of what the client logged, and
+    // rounding it to whole numbers made the total disagree with its own entries
+    // — worse here than anywhere, because $round is banker's rounding, so 194.5
+    // became 194 while the recipe card said 195. Six decimals cuts binary noise
+    // and nothing else. Same rule as FoodScale.clean.
+    } } }, 6],
 });
 
 /** Atomic: recompute every macro total from the document's own current state. */
@@ -3258,7 +3278,7 @@ const recomputeExercise = (clientId, date) => NutritionLog.findOneAndUpdate(
             input: { $cond: [{ $isArray: '$exercise' }, '$exercise', []] },
             as: 'e',
             in: { $convert: { input: '$$e.calories', to: 'double', onError: 0, onNull: 0 } },
-        } } }, 0] },
+        } } }, 6] },
         rev: { $add: [{ $ifNull: ['$rev', 0] }, 1] },
     } }],
     { new: true }
@@ -4744,6 +4764,7 @@ const LOCAL_FOODS = [
     { name: 'Muslo de pollo (cocido)',     brand: null, serving: 100, cal100: 179, p100: 24.8, c100: 0.0,  f100: 8.2  }, // fdc 172388
     { name: 'Muslo de pollo (crudo)',      brand: null, serving: 100, cal100: 121, p100: 19.7, c100: 0.0,  f100: 4.1  }, // fdc 173627
     { name: 'Pollo molido (crudo)',        brand: null, serving: 100, cal100: 143, p100: 17.4, c100: 0.0,  f100: 8.1  }, // fdc 171116
+    { name: 'Pollo molido (cocido)',       brand: null, serving: 100, cal100: 189, p100: 23.3, c100: 0.0,  f100: 10.9 }, // fdc 171117
     { name: 'Carne molida 80/20 (cruda)',  brand: null, serving: 100, cal100: 254, p100: 17.2, c100: 0.0,  f100: 20.0 }, // fdc 174036
     { name: 'Carne molida 80/20 (cocida)', brand: null, serving: 100, cal100: 272, p100: 27.0, c100: 0.0,  f100: 17.4 }, // fdc 171799
     { name: 'Carne molida 90/10 (cruda)',  brand: null, serving: 100, cal100: 176, p100: 20.0, c100: 0.0,  f100: 10.0 }, // fdc 174030
@@ -4778,7 +4799,9 @@ const LOCAL_FOODS = [
     { name: 'Pan integral',          brand: null, serving: 28,  cal100: 247, p100: 13.0, c100: 41.0, f100: 3.4  },
     { name: 'Pasta (cocida)',        brand: null, serving: 140, cal100: 131, p100: 5.0,  c100: 25.0, f100: 1.1  },
     { name: 'Papa / Patata',         brand: null, serving: 150, cal100: 77,  p100: 2.0,  c100: 17.0, f100: 0.1, state: 'seco'  },
+    { name: 'Papa / Patata (hervida)', brand: null, serving: 150, cal100: 86,  p100: 1.7,  c100: 20.0, f100: 0.1 }, // fdc 170440
     { name: 'Camote / Batata',       brand: null, serving: 130, cal100: 86,  p100: 1.6,  c100: 20.0, f100: 0.1, state: 'seco'  },
+    { name: 'Camote / Batata (hervido)', brand: null, serving: 130, cal100: 76, p100: 1.4,  c100: 17.7, f100: 0.1 }, // fdc 168484
     { name: 'Tortilla de maíz',      brand: null, serving: 28,  cal100: 218, p100: 5.7,  c100: 46.0, f100: 2.5  },
     { name: 'Tortilla de harina',    brand: null, serving: 45,  cal100: 309, p100: 8.0,  c100: 55.0, f100: 7.5  },
     { name: 'Quinoa (cocida)',       brand: null, serving: 185, cal100: 120, p100: 4.4,  c100: 21.3, f100: 1.9  },
@@ -4836,7 +4859,9 @@ const LOCAL_FOODS = [
     { name: 'Proteína shake (preparado)',brand:null,serving:330,cal100: 52,  p100: 9.0,  c100: 2.5,  f100: 1.0  },
     // Caribbean / Puerto Rican staples
     { name: 'Plátano maduro',           brand: null, serving: 100, cal100: 122, p100: 1.3,  c100: 31.9, f100: 0.4, state: 'seco'  },
+    { name: 'Plátano maduro (al horno)', brand: null, serving: 100, cal100: 155, p100: 1.5,  c100: 41.4, f100: 0.2 }, // fdc 169131
     { name: 'Plátano verde',            brand: null, serving: 100, cal100: 116, p100: 1.3,  c100: 31.2, f100: 0.2, state: 'seco'  },
+    { name: 'Plátano verde (hervido)',  brand: null, serving: 100, cal100: 121, p100: 1.1,  c100: 29.2, f100: 0.1 }, // fdc 168216
     { name: 'Yuca cocida',              brand: null, serving: 100, cal100: 112, p100: 0.7,  c100: 26.8, f100: 0.3  },
     { name: 'Yautía cocida',            brand: null, serving: 100, cal100: 98,  p100: 1.4,  c100: 23.0, f100: 0.1  },
     { name: 'Malanga cocida',           brand: null, serving: 100, cal100: 112, p100: 1.5,  c100: 26.5, f100: 0.2  },
@@ -4858,6 +4883,7 @@ const LOCAL_FOODS = [
     { name: 'Berenjenas',               brand: null, serving: 82,  cal100: 25,  p100: 1.0,  c100: 5.9,  f100: 0.2  },
     { name: 'Kale / Col rizada',        brand: null, serving: 67,  cal100: 35,  p100: 2.9,  c100: 4.4,  f100: 1.5, state: 'na'  },
     { name: 'Setas / Hongos',           brand: null, serving: 96,  cal100: 22,  p100: 3.1,  c100: 3.3,  f100: 0.3, state: 'seco'  },
+    { name: 'Setas / Hongos (cocidos)', brand: null, serving: 96,  cal100: 28,  p100: 2.2,  c100: 5.3,  f100: 0.5 }, // fdc 169252
     { name: 'Apio (celery)',            brand: null, serving: 80,  cal100: 16,  p100: 0.7,  c100: 3.0,  f100: 0.2  },
     // Fruits (missing from list)
     { name: 'Melocotón / Durazno',      brand: null, serving: 150, cal100: 39,  p100: 0.9,  c100: 9.5,  f100: 0.3  },
@@ -4915,6 +4941,7 @@ const LOCAL_FOODS = [
     { name: 'Kirkland Organic Blueberries (frozen)',brand:'Kirkland Signature',serving:100,cal100: 57,  p100: 0.7,  c100: 14.5, f100: 0.3  },
     { name: 'Del Monte Green Beans (lata)',     brand:'Del Monte',          serving: 120, cal100: 17,  p100: 0.8,  c100: 3.3,  f100: 0.0  },
     { name: 'Repollo de Bruselas (orgánico)',   brand: null,                serving: 88,  cal100: 43,  p100: 3.4,  c100: 9.1,  f100: 0.3, state: 'seco'  },
+    { name: 'Repollo de Bruselas (hervido)',    brand: null,                serving: 88,  cal100: 36,  p100: 2.6,  c100: 7.1,  f100: 0.5 }, // fdc 169971
     // ── Costco E. Bayamón — Beverages ────────────────────────────────────────
     { name: 'Kirkland Organic Coconut Water',   brand:'Kirkland Signature', serving: 330, cal100: 18,  p100: 0.0,  c100: 4.5,  f100: 0.0  },
     { name: 'Vita Coco Coconut Water',          brand:'Vita Coco',          serving: 330, cal100: 18,  p100: 0.0,  c100: 4.5,  f100: 0.0  },
@@ -5170,6 +5197,7 @@ const FOOD_ALIASES = {
     'Muslo de pollo (cocido)':       ['chicken thigh','chicken leg','thigh','pollo','cooked chicken thigh','muslo cocido'],
     'Muslo de pollo (crudo)':        ['chicken thigh','chicken leg','thigh','pollo','raw chicken thigh','muslo crudo'],
     'Pollo molido (crudo)':          ['ground chicken','chicken ground','raw ground chicken','pollo molido'],
+    'Pollo molido (cocido)':         ['ground chicken','chicken ground','cooked ground chicken','pollo molido'],
     'Carne molida 80/20 (cruda)':    ['ground beef','hamburger','burger meat','beef','raw ground beef','carne molida'],
     'Carne molida 80/20 (cocida)':   ['ground beef','hamburger','burger meat','beef','cooked ground beef','carne molida'],
     'Carne molida 90/10 (cruda)':    ['lean ground beef','lean beef','90 10 beef','raw lean ground beef','carne molida'],
@@ -5212,7 +5240,9 @@ const FOOD_ALIASES = {
     'Pan integral':                  ['whole wheat bread','whole grain bread','brown bread'],
     'Pasta (cocida)':                ['pasta','cooked pasta','noodles','spaghetti','penne'],
     'Papa / Patata':                 ['potato','potatoes','russet potato','baked potato'],
+    'Papa / Patata (hervida)':       ['potato','potatoes','boiled potato','papa hervida','papa cocida'],
     'Camote / Batata':               ['sweet potato','yam','sweet potatoes'],
+    'Camote / Batata (hervido)':     ['sweet potato','yam','boiled sweet potato','batata hervida'],
     'Tortilla de maiz':              ['corn tortilla','tortilla','taco shell'],
     'Tortilla de harina':            ['flour tortilla','wrap','flour tortilla'],
     'Quinoa (cocida)':               ['quinoa','cooked quinoa'],
@@ -5246,7 +5276,9 @@ const FOOD_ALIASES = {
     'Huevos revueltos':              ['scrambled eggs','scrambled'],
     // Caribbean / Puerto Rican
     'Platano maduro':                ['platano','platano maduro','ripe plantain','plantain','maduros','tajadas'],
+    'Platano maduro (al horno)':     ['platano','platano maduro','ripe plantain','plantain','maduros','amarillos al horno'],
     'Platano verde':                 ['platano verde','green plantain','verde'],
+    'Platano verde (hervido)':       ['platano verde','green plantain','boiled plantain','verde hervido','guineo verde'],
     'Tostones':                      ['tostones','toston','patacones'],
     'Yuca cocida':                   ['yuca','cassava','cooked cassava','mandioca','tapioca root'],
     'Yautia cocida':                 ['yautia','taro','dasheen','taro root','malanga amarilla'],
@@ -5269,6 +5301,9 @@ const FOOD_ALIASES = {
     'Berenjenas':                    ['berenjenas','eggplant','aubergine','berenjena'],
     'Kale / Col rizada':             ['kale','col rizada','rúcula','collard greens','lacinato kale'],
     'Setas / Hongos':                ['setas','hongos','mushrooms','champiñones','portobello','button mushrooms'],
+    'Setas / Hongos (cocidos)':      ['setas','hongos','mushrooms','champiñones','cooked mushrooms','hongos salteados'],
+    'Repollo de Bruselas (organico)': ['brussels sprouts','repollitos','coles de bruselas'],
+    'Repollo de Bruselas (hervido)':  ['brussels sprouts','repollitos','coles de bruselas','boiled brussels sprouts'],
     'Apio (celery)':                 ['apio','celery','apio españa','celery stalk'],
     // Fruits
     'Melocoton / Durazno':           ['melocoton','durazno','peach','peaches','melocotón'],
@@ -5619,7 +5654,7 @@ const cleanServing = (amount, unit) => {
     const a = Number(amount);
     const u = typeof unit === 'string' ? unit.trim().slice(0, 30) : '';
     return (Number.isFinite(a) && a > 0 && a <= 100000 && u)
-        ? { servingAmount: Math.round(a * 100) / 100, servingUnit: u }
+        ? { servingAmount: FoodScale.clean(a), servingUnit: u }   // not rounded — § 62
         : { servingAmount: 0, servingUnit: '' };
 };
 
@@ -5691,18 +5726,80 @@ app.post('/api/food-library', authenticateToken, async (req, res) => {
 // Until now nothing in the app could correct or remove a shared food. These three
 // routes are that missing half. Superadmin only: this data is read by every client.
 
+// Every food in the platform, whoever entered it.
+//
+// Two collections hold user-entered foods and they were never visible in one
+// place: FoodLibrary, which every client searches, and PersonalFoodLibrary,
+// which is one client's private shelf. A wrong number on either reaches a real
+// person's diary, so the superadmin sees both here, in one list, with who
+// entered it and when — `scope` narrows it, `sort` decides where to resume.
+//
+// The two schemas disagree on one field name (servingAmount vs servingSize);
+// that is flattened here so the screen does not have to care, and unflattened
+// again on save.
+const ADMIN_FOOD_SORTS = {
+    used:    (a, b) => (b.timesUsed || 0) - (a.timesUsed || 0) || a.name.localeCompare(b.name),
+    updated: (a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0),
+    stale:   (a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0),
+    created: (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0),
+    name:    (a, b) => a.name.localeCompare(b.name),
+};
+const ADMIN_FOOD_LIMIT = 1500;
+
 app.get('/api/admin/foods', authenticateToken, requireSuperadmin, async (req, res) => {
     try {
         const q = String(req.query.q || '').trim();
+        const scope = ['all', 'shared', 'personal'].includes(String(req.query.scope))
+            ? String(req.query.scope) : 'all';
+        const sort = ADMIN_FOOD_SORTS[String(req.query.sort)] ? String(req.query.sort) : 'used';
+
         // Escape before it reaches RegExp: a search for "100% whey (vainilla)" is a
         // perfectly ordinary thing to type and must not be read as a pattern.
         const esc = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const filter = q ? { nameNorm: new RegExp(esc(normalizeStr(q))) } : {};
-        const foods = await FoodLibrary.find(filter)
-            .sort({ timesUsed: -1, name: 1 }).limit(500).lean();
-        res.json(foods);
+        const rx = q ? new RegExp(esc(normalizeStr(q))) : null;
+
+        const out = [];
+        if (scope !== 'personal') {
+            const shared = await FoodLibrary.find(rx ? { nameNorm: rx } : {}).limit(ADMIN_FOOD_LIMIT).lean();
+            shared.forEach((f) => out.push({ ...f, kind: 'shared', owner: null }));
+        }
+        if (scope !== 'shared') {
+            // PersonalFoodLibrary has no nameNorm, so the same accent-insensitive
+            // match is done in memory rather than making clients' rows searchable
+            // only when they happen to be typed with the right accents.
+            const personal = await PersonalFoodLibrary.find({}).limit(ADMIN_FOOD_LIMIT)
+                .populate('clientId', 'name lastName email').lean();
+            personal
+                .filter((f) => !rx || rx.test(normalizeStr(f.name || '')))
+                .forEach((f) => {
+                    const u = f.clientId && typeof f.clientId === 'object' ? f.clientId : null;
+                    out.push({
+                        ...f,
+                        kind: 'personal',
+                        // Flattened to the shared library's field name.
+                        servingAmount: f.servingSize,
+                        owner: u ? {
+                            _id: String(u._id),
+                            name: `${u.name || ''} ${u.lastName || ''}`.trim() || u.email || 'Cliente',
+                            email: u.email || '',
+                        } : null,
+                    });
+                });
+        }
+
+        out.sort(ADMIN_FOOD_SORTS[sort]);
+        res.json({
+            foods: out.slice(0, ADMIN_FOOD_LIMIT),
+            total: out.length,
+            counts: {
+                all:      out.length,
+                shared:   out.filter((f) => f.kind === 'shared').length,
+                personal: out.filter((f) => f.kind === 'personal').length,
+            },
+            truncated: out.length > ADMIN_FOOD_LIMIT,
+        });
     } catch (e) {
-        console.error('Error listing shared foods:', e);
+        console.error('Error listing foods:', e);
         res.status(500).json({ message: 'Error cargando los alimentos.' });
     }
 });
@@ -5741,6 +5838,70 @@ app.put('/api/admin/foods/:id', authenticateToken, requireSuperadmin, async (req
     } catch (e) {
         console.error('Error updating shared food:', e);
         res.status(500).json({ message: 'Error guardando el alimento.' });
+    }
+});
+
+// ── The same two powers over a client's PRIVATE shelf ────────────────────
+// A personal food is one client's, and ordinarily only they may touch it (see
+// /api/personal-foods/:id, which scopes by req.user.id). The superadmin needs
+// the correction power here too: a client who saved "Avena 1,200 kcal" is
+// quietly eating wrong numbers every day and cannot be expected to spot it.
+//
+// Deliberately NOT merged into the shared library — fixing somebody's private
+// entry must not publish it to everyone.
+app.put('/api/admin/personal-foods/:id', authenticateToken, requireSuperadmin, async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(String(req.params.id || '')))
+            return res.status(404).json({ message: 'Alimento no encontrado.' });
+        const food = await PersonalFoodLibrary.findById(req.params.id);
+        if (!food) return res.status(404).json({ message: 'Alimento no encontrado.' });
+        const b = req.body || {};
+        if (b.name !== undefined) {
+            const name = String(b.name).trim();
+            if (!name) return res.status(400).json({ message: 'El alimento necesita un nombre.' });
+            // { clientId, name } is uniquely indexed, so renaming onto another of
+            // this client's foods would throw a duplicate key rather than save.
+            if (name !== food.name && await PersonalFoodLibrary.exists({ clientId: food.clientId, name })) {
+                return res.status(409).json({ message: `Ese cliente ya tiene un alimento llamado "${name}".` });
+            }
+            food.name = name;
+        }
+        ['calories', 'protein', 'carbs', 'fat'].forEach((k) => {
+            if (b[k] !== undefined) food[k] = Math.max(0, FoodScale.clean(b[k]));
+        });
+        if (b.state !== undefined) food.state = cleanFoodState(b.state);
+        // The screen speaks the shared library's field name; this shelf calls it
+        // servingSize. Accept either so the one editor can drive both.
+        const amount = b.servingAmount !== undefined ? b.servingAmount
+            : (b.servingSize !== undefined ? b.servingSize : undefined);
+        if (amount !== undefined || b.servingUnit !== undefined) {
+            const serving = cleanServing(
+                amount !== undefined ? amount : food.servingSize,
+                b.servingUnit !== undefined ? b.servingUnit : food.servingUnit);
+            // 0 / '' means "not known"; this shelf's default has always been 100 g.
+            food.servingSize = serving.servingAmount || 100;
+            food.servingUnit = serving.servingUnit || 'g';
+        }
+        food.updatedAt = new Date();
+        await food.save();
+        const out = food.toObject();
+        res.json({ ...out, kind: 'personal', servingAmount: out.servingSize });
+    } catch (e) {
+        console.error('Error updating personal food:', e);
+        res.status(500).json({ message: 'Error guardando el alimento.' });
+    }
+});
+
+app.delete('/api/admin/personal-foods/:id', authenticateToken, requireSuperadmin, async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(String(req.params.id || '')))
+            return res.status(404).json({ message: 'Alimento no encontrado.' });
+        const food = await PersonalFoodLibrary.findByIdAndDelete(req.params.id);
+        if (!food) return res.status(404).json({ message: 'Alimento no encontrado.' });
+        res.json({ message: 'Eliminado', name: food.name });
+    } catch (e) {
+        console.error('Error deleting personal food:', e);
+        res.status(500).json({ message: 'Error eliminando el alimento.' });
     }
 });
 
@@ -6031,12 +6192,6 @@ app.get('/api/food-search', authenticateToken, async (req, res) => {
 //               matches "Papa John's"); best name match first
 //   amount:     mass -> exact · volume -> millilitres ≈ grams (approximate, said so) ·
 //               counted unit -> the food's own known unit weight, else the AI's gram estimate
-const FoodScale = (() => {
-    const sandbox = {};
-    // The same file the browser runs, so the server and the screens cannot disagree on units.
-    new Function('self', fs.readFileSync(path.join(__dirname, 'public', 'food-scale.js'), 'utf8'))(sandbox);
-    return sandbox.FoodScale;
-})();
 
 const FOOD_LOOKUP_ENABLED = process.env.FOOD_LOOKUP_ENABLED !== 'false';
 // Cheap lookups (database arithmetic) are only rate-limited; the AI weight estimate has its own

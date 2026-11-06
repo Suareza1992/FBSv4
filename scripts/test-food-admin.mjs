@@ -13,7 +13,7 @@
 //
 // See TECHNICAL.md § 55.
 
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import bcrypt from 'bcryptjs';
 
 const BASE = process.env.BASE || 'http://localhost:3030';
@@ -90,8 +90,15 @@ try {
     const anon = await fetch(`${BASE}/api/admin/foods`);
     check(anon.status === 401, 'signed out cannot list it', String(anon.status));
 
-    const list = await (await asAdmin('GET', `/api/admin/foods?q=${encodeURIComponent(tag)}`)).json();
+    // The listing answers { foods, counts, truncated } — it covers two
+    // collections now, so a bare array could not say how many of each.
+    const page = await (await asAdmin('GET', `/api/admin/foods?q=${encodeURIComponent(tag)}`)).json();
+    const list = page.foods;
     check(Array.isArray(list) && list.length === 1 && list[0].name === FOOD, 'the superadmin can search it', `${list.length} hit(s)`);
+    check(list[0].kind === 'shared' && list[0].owner === null, 'a shared food says which collection it is from', list[0].kind);
+    check(!!list[0].createdAt && !!list[0].updatedAt, 'and carries both dates, so you can tell where you left off');
+    check(typeof page.counts?.shared === 'number' && typeof page.counts?.personal === 'number',
+        'the counts cover both collections', JSON.stringify(page.counts));
     const id = list[0]._id;
 
     // A search term full of regex metacharacters must be text, not a pattern.
@@ -109,7 +116,7 @@ try {
     check(r.ok && edited.calories === 128 && edited.protein === 2.4, 'the superadmin can correct the macros', `${edited.calories} kcal`);
 
     r = await asAdmin('PUT', `/api/admin/foods/${id}`, { calories: -50 });
-    check((await (await asAdmin('GET', `/api/admin/foods?q=${encodeURIComponent(tag)}`)).json())[0].calories === 0, 'a negative is floored at zero, not stored');
+    check((await (await asAdmin('GET', `/api/admin/foods?q=${encodeURIComponent(tag)}`)).json()).foods[0].calories === 0, 'a negative is floored at zero, not stored');
 
     // Renaming onto a name that already exists must be refused, not a 500.
     await asAdmin('POST', '/api/food-library', { name: `Zz ${tag} otro`, calories: 50 });
@@ -153,7 +160,54 @@ try {
     check((await row()) === null, 'and it is really gone — a real delete, not an archive');
     r = await asAdmin('DELETE', `/api/admin/foods/${id}`);
     check(r.status === 404, 'deleting it twice says not found rather than erroring', String(r.status));
+
+    // ── A client's PRIVATE shelf, seen and corrected by the superadmin ─────
+    // A personal food is one client's. Ordinarily only they may touch it; the
+    // superadmin needs the correction power because a client quietly eating
+    // "Avena 1,200 kcal" every day cannot be expected to spot it.
+    const PF = `Zz ${tag} personal`;
+    let pr = await asClient('POST', '/api/personal-foods', { name: PF, calories: 1200, protein: 5, carbs: 200, fat: 3 });
+    check(pr.ok, "a client saves a food on their own shelf", String(pr.status));
+    const pfId = (await pr.json())._id;
+
+    const all = await (await asAdmin('GET', `/api/admin/foods?scope=all&q=${encodeURIComponent(tag)}`)).json();
+    const mine = all.foods.find((f) => f._id === pfId);
+    check(!!mine, "the superadmin's list includes a client's private food");
+    check(mine?.kind === 'personal', 'marked as personal, not shared', mine?.kind);
+    check(mine?.owner?.email?.includes(tag), 'and says whose it is', mine?.owner?.email || '(none)');
+    check(mine?.servingAmount !== undefined, "the shelf's servingSize is flattened to servingAmount");
+
+    const onlyShared = await (await asAdmin('GET', `/api/admin/foods?scope=shared&q=${encodeURIComponent(tag)}`)).json();
+    check(!onlyShared.foods.some((f) => f.kind === 'personal'), 'scope=shared leaves the private ones out');
+    const onlyPersonal = await (await asAdmin('GET', `/api/admin/foods?scope=personal&q=${encodeURIComponent(tag)}`)).json();
+    check(onlyPersonal.foods.every((f) => f.kind === 'personal'), 'and scope=personal leaves the shared ones out');
+
+    // Sorting is what "where did I leave off" rests on.
+    const stale = await (await asAdmin('GET', '/api/admin/foods?sort=stale')).json();
+    const ordered = stale.foods.every((f, i, a) => i === 0 || new Date(a[i - 1].updatedAt) <= new Date(f.updatedAt));
+    check(ordered, 'sort=stale really is oldest-edited first');
+
+    for (const [who, call] of [['a client', asClient], ['an ordinary trainer', asTrainer]]) {
+        const g = await call('PUT', `/api/admin/personal-foods/${pfId}`, { calories: 1 });
+        check(g.status === 403, `${who} cannot edit somebody's private food`, String(g.status));
+    }
+
+    r = await asAdmin('PUT', `/api/admin/personal-foods/${pfId}`, { name: `${PF} corregida`, calories: 120 });
+    const fixed = await r.json();
+    check(r.ok && fixed.calories === 120 && fixed.name === `${PF} corregida`,
+        "the superadmin can correct a client's private food", `${fixed.calories} kcal`);
+
+    // Correcting a private food must NOT publish it to everyone.
+    const leaked = await db.collection('foodlibraries').findOne({ name: `${PF} corregida` });
+    check(!leaked, 'and correcting it does not publish it to the shared library');
+
+    r = await asAdmin('DELETE', `/api/admin/personal-foods/${pfId}`);
+    check(r.ok, "the superadmin can remove it from that client's shelf", String(r.status));
+    check(await db.collection('personalfoodlibraries').findOne({ _id: new ObjectId(String(pfId)) }) === null,
+        'and it is really gone');
+
 } finally {
+    await db.collection('personalfoodlibraries').deleteMany({ name: new RegExp(`^Zz ${tag}`) });
     await db.collection('foodlibraries').deleteMany({ name: new RegExp(`^Zz ${tag}`) });
     await db.collection('users').deleteMany({ email: new RegExp(`^${tag}-`) });
     await mongo.close();

@@ -155,16 +155,16 @@ try {
     made.push({ recipeId: junk._id });
 
     // ── The promise on the card must equal what lands in the diary ─────────
-    // Dividing by servings makes halves constantly, and the day's totals are
-    // summed by MongoDB's $round — banker's rounding, so 194.5 becomes 194 while
-    // a browser's Math.round makes it 195. Rounding calories PER INGREDIENT keeps
-    // the two the same.
+    // Dividing by servings makes halves constantly. Nothing rounds them away any
+    // more — not the card, not the diary entry, not the day's total — so the
+    // half has to survive all three and they have to agree.
     r = await asA('POST', '/api/recipes', {
         name: `${tag} Media caloría`, servings: 2,
         ingredients: [{ name: 'Avena', amount: 100, unit: 'g', calories: 389, protein: 16.9, carbs: 66, fat: 6.9 }],
     });
     const halved = await r.json();
-    check(halved.macros.calories === 195, 'a half-calorie serving rounds up once, on the card', `${halved.macros.calories}`);
+    check(halved.macros.calories === 194.5,
+        'half of 389 kcal is 194.5 on the card, not 195', `${halved.macros.calories}`);
     made.push({ recipeId: halved._id });
 
     const dayDate = new Date().toISOString().slice(0, 10);
@@ -172,15 +172,17 @@ try {
         clientId: String(clientA._id), date: dayDate, mealName: 'Snack',
         foods: halved.ingredients.map((i) => ({
             name: i.name,
-            calories: Math.round(i.calories / halved.servings),       // what the UI sends
-            protein: Math.round((i.protein / halved.servings) * 10) / 10,
-            carbs: Math.round((i.carbs / halved.servings) * 10) / 10,
-            fat: Math.round((i.fat / halved.servings) * 10) / 10,
+            // What the UI sends: divided, not rounded.
+            calories: i.calories / halved.servings,
+            protein:  i.protein  / halved.servings,
+            carbs:    i.carbs    / halved.servings,
+            fat:      i.fat      / halved.servings,
         })),
     });
     const halfDay = await r.json();
     check(halfDay.calories === halved.macros.calories,
-        'the diary records exactly what the card promised', `diary ${halfDay.calories} vs card ${halved.macros.calories}`);
+        'and the diary records exactly what the card promised — half included',
+        `diary ${halfDay.calories} vs card ${halved.macros.calories}`);
     await db.collection('nutritionlogs').deleteMany({ clientId: clientA._id });
 
     // ── Reading: the scope rule ────────────────────────────────────────────

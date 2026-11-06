@@ -6059,13 +6059,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Mirrors recipeServingOf() in server.js.
     const recipeServingOf = (ing, servings) => {
         const per = Math.max(1, Number(servings) || 1);
-        const one = (v) => Math.round(((Number(v) || 0) / per) * 10) / 10;
+        // Divided, not rounded. A recipe for 4 whose chicken is 650 g gives
+        // 162.5 g a serving, and 162.5 is the answer. Mirrors server.js.
+        const one = (v) => window.FoodScale.clean((Number(v) || 0) / per);
         return {
-            calories: Math.round((Number(ing?.calories) || 0) / per),
+            calories: one(ing?.calories),
             protein:  one(ing?.protein),
             carbs:    one(ing?.carbs),
             fat:      one(ing?.fat),
-            amount:   Math.round(((Number(ing?.amount) || 0) / per) * 100) / 100,
+            amount:   one(ing?.amount),
         };
     };
 
@@ -6078,8 +6080,8 @@ document.addEventListener('DOMContentLoaded', () => {
             t.carbs    += one.carbs;
             t.fat      += one.fat;
         });
-        return { calories: t.calories, protein: Math.round(t.protein),
-                 carbs: Math.round(t.carbs), fat: Math.round(t.fat) };
+        return { calories: window.FoodScale.clean(t.calories), protein: window.FoodScale.clean(t.protein),
+                 carbs: window.FoodScale.clean(t.carbs), fat: window.FoodScale.clean(t.fat) };
     };
 
     // Portrait or landscape. Anything we don't recognise is landscape, so an older
@@ -6485,10 +6487,13 @@ document.addEventListener('DOMContentLoaded', () => {
             row.querySelector('.ri-name').value   = f.name;
             row.querySelector('.ri-amount').value = amt;
             row.querySelector('.ri-unit').value   = 'g';
-            row.querySelector('.ri-cal').value    = Math.round((f.cal100 || 0) * k);
-            row.querySelector('.ri-pro').value    = Math.round((f.p100 || 0) * k * 10) / 10;
-            row.querySelector('.ri-carb').value   = Math.round((f.c100 || 0) * k * 10) / 10;
-            row.querySelector('.ri-fat').value    = Math.round((f.f100 || 0) * k * 10) / 10;
+            // Straight from the database, scaled and not rounded. These land in
+            // boxes a person then edits and saves, so a number the app tidied on
+            // the way in becomes their recipe's number for good.
+            row.querySelector('.ri-cal').value    = window.FoodScale.clean((f.cal100 || 0) * k);
+            row.querySelector('.ri-pro').value    = window.FoodScale.clean((f.p100  || 0) * k);
+            row.querySelector('.ri-carb').value   = window.FoodScale.clean((f.c100  || 0) * k);
+            row.querySelector('.ri-fat').value    = window.FoodScale.clean((f.f100  || 0) * k);
             // The state travels with the food: picked from the library, it is
             // already answered and nobody is asked again. Read off the name when
             // the library has nothing, since "Avena (cruda)" plainly says it.
@@ -6739,7 +6744,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // chosen for salmon says nothing about the tilapia that replaced it.
         const tuned = swap ? null : mealPlanAmountFor(option, slot, planItem.name);
         const amount = tuned !== null
-            ? window.MealItem.amountLabel({ ...shown, amount: tuned }, true)
+            ? window.MealItem.amountLabel({ ...shown, amount: tuned })
             : window.MealItem.amountLabel(window.MealItem.scaleItem(shown, factors));
         return `
         <button class="mealplan-item w-full flex items-center gap-2.5 py-1.5 text-left rounded-lg hover:bg-[#FFDB89]/5 px-1.5 -mx-1.5 transition"
@@ -6837,7 +6842,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tunedHere = planItem ? mealPlanAmountFor(active, slot, planItem.name) : null;
         document.getElementById('mealplan-swap-body').innerHTML = choices.map((c) => {
             const amount = (c.item === planItem && tunedHere !== null)
-                ? window.MealItem.amountLabel({ ...c.item, amount: tunedHere }, true)
+                ? window.MealItem.amountLabel({ ...c.item, amount: tunedHere })
                 : window.MealItem.amountLabel(window.MealItem.scaleItem(c.item, factors));
             const on = c.item.name === current;
             return `
@@ -7115,6 +7120,29 @@ document.addEventListener('DOMContentLoaded', () => {
     let foodAdminEditing = null;   // _id of the row open for editing
     const NEW_FOOD_ID = '__new__'; // the unsaved row, which has no _id yet
     let foodAdminFilter = 'all';   // 'all' | 'noserving' | 'nostate'
+    let foodAdminScope  = 'all';   // 'all' | 'shared' | 'personal'
+    let foodAdminSort   = 'used';  // see ADMIN_FOOD_SORTS in server.js
+    let foodAdminCounts = { all: 0, shared: 0, personal: 0 };
+
+    // A row is one of two collections. The shared library is every client's
+    // autocomplete; a personal food is one client's private shelf. They need
+    // different endpoints, and a personal one must never be edited in a way
+    // that publishes it — so the kind travels with the row.
+    const foodAdminIsPersonal = (f) => f?.kind === 'personal';
+    const foodAdminBase = (f) => (foodAdminIsPersonal(f) ? '/api/admin/personal-foods' : '/api/admin/foods');
+
+    // Short, and only as precise as it needs to be: this is for "did I already
+    // look at this one", not for an audit trail.
+    const foodAdminDate = (v) => {
+        if (!v) return '—';
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) return '—';
+        const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+        if (days <= 0) return 'hoy';
+        if (days === 1) return 'ayer';
+        if (days < 30) return `hace ${days} d`;
+        return d.toLocaleDateString('es-PR', { day: 'numeric', month: 'short', year: '2-digit' });
+    };
 
     // A food with no amount recorded is read back as if its numbers were PER 100 G
     // (§ 43). "Huevos revueltos · 745 kcal" is plainly a multi-egg plate, but a
@@ -7172,9 +7200,21 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="flex-grow min-w-0">
                 <p class="text-sm text-[#FFDB89] truncate flex items-center gap-1.5">
                     <span class="truncate">${escHtml(f.name)}</span>${foodStateBadge(f.state)}
+                    ${foodAdminIsPersonal(f)
+                        ? `<span class="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider bg-[#92A9E1]/15 border border-[#92A9E1]/35 text-[#92A9E1]"
+                                 title="Alimento privado de ${escHtml(f.owner?.email || 'un cliente')} — nadie más lo ve">
+                             ${escHtml(f.owner?.name || 'CLIENTE')}
+                           </span>`
+                        : ''}
                 </p>
-                <p class="text-[10px] text-[#FFDB89]/35">${serving} · usado ${f.timesUsed || 0}×${
-                    foodNeedsState(f) ? ' · <span class="text-sky-400/70 font-bold">falta seco/cocido</span>' : ''}</p>
+                <p class="text-[10px] text-[#FFDB89]/35 flex flex-wrap items-center gap-x-1.5">
+                    <span>${serving} · usado ${f.timesUsed || 0}×</span>
+                    <span class="text-[#FFDB89]/25">·</span>
+                    <span title="Añadido ${escHtml(new Date(f.createdAt || 0).toLocaleString('es-PR'))}">añadido ${foodAdminDate(f.createdAt)}</span>
+                    <span class="text-[#FFDB89]/25">·</span>
+                    <span title="Última edición ${escHtml(new Date(f.updatedAt || 0).toLocaleString('es-PR'))}">editado ${foodAdminDate(f.updatedAt)}</span>
+                    ${foodNeedsState(f) ? '<span class="text-sky-400/70 font-bold">· falta seco/cocido</span>' : ''}
+                </p>
             </div>
             <div class="flex gap-3 text-[11px] font-bold shrink-0">
                 <span class="text-[#FFDB89]/70 w-14 text-right">${Math.round(f.calories || 0)} kcal</span>
@@ -7193,10 +7233,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const list = document.getElementById('food-admin-list');
         if (!list) return;
         const q = (document.getElementById('food-admin-search')?.value || '').trim();
+        const params = new URLSearchParams({ scope: foodAdminScope, sort: foodAdminSort });
+        if (q) params.set('q', q);
+        let truncated = false;
         try {
-            const res = await apiFetch(`/api/admin/foods${q ? `?q=${encodeURIComponent(q)}` : ''}`);
-            foodAdminCache = res.ok ? await res.json() : [];
-        } catch { foodAdminCache = []; }
+            const res = await apiFetch(`/api/admin/foods?${params}`);
+            const body = res.ok ? await res.json() : null;
+            // The route used to answer with a bare array; it now answers with
+            // counts and a truncation flag beside the rows.
+            foodAdminCache  = Array.isArray(body) ? body : (body?.foods || []);
+            foodAdminCounts = body?.counts || { all: foodAdminCache.length, shared: 0, personal: 0 };
+            truncated = Boolean(body?.truncated);
+        } catch { foodAdminCache = []; foodAdminCounts = { all: 0, shared: 0, personal: 0 }; }
 
         const missing   = foodAdminCache.filter((f) => !foodHasServing(f));
         const unstated  = foodAdminCache.filter(foodNeedsState);
@@ -7204,8 +7252,21 @@ document.addEventListener('DOMContentLoaded', () => {
             : foodAdminFilter === 'nostate' ? unstated
             : foodAdminCache;
 
-        // Sorted by use already, so the first rows here are the ones whose missing
-        // portion is costing the most — the twenty worth fixing first.
+        // Which collection. The counts come from the server so they describe the
+        // whole platform, not the page being looked at.
+        const scopes = document.getElementById('food-admin-scopes');
+        if (scopes) {
+            const chip = (key, label, n, cls) => `
+                <button class="food-admin-scope px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
+                    foodAdminScope === key ? cls : 'border-[#FFDB89]/20 text-[#FFDB89]/50 hover:text-[#FFDB89] hover:border-[#FFDB89]/40'}"
+                    data-scope="${key}">${label} <span class="opacity-60">${n}</span></button>`;
+            scopes.innerHTML = chip('all', 'Todos', foodAdminCounts.all, 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]')
+                             + chip('shared', 'Compartidos', foodAdminCounts.shared, 'bg-[#FFDB89] text-[#030303] border-[#FFDB89]')
+                             + chip('personal', 'Personales', foodAdminCounts.personal, 'bg-[#92A9E1] text-[#030303] border-[#92A9E1]');
+        }
+        const sortEl = document.getElementById('food-admin-sort');
+        if (sortEl && sortEl.value !== foodAdminSort) sortEl.value = foodAdminSort;
+
         const filters = document.getElementById('food-admin-filters');
         if (filters) {
             const chip = (key, label, n) => `
@@ -7225,7 +7286,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `${shown.length} sin porción — se leen como "por 100 g" hasta que les pongas una`
                 : foodAdminFilter === 'nostate'
                     ? `${shown.length} sin decir si se pesan en seco o cocidos — y para estos la diferencia cambia los números`
-                    : `${shown.length} alimento${shown.length === 1 ? '' : 's'}${q ? ' encontrados' : ' en la librería'}`;
+                    : `${shown.length} alimento${shown.length === 1 ? '' : 's'}${q ? ' encontrados' : ''}${
+                        truncated ? ' — mostrando los primeros; afina la búsqueda' : ''}`;
         }
 
         const blank = foodAdminEditing === NEW_FOOD_ID
@@ -7244,6 +7306,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveFoodAdminRow = async (row) => {
         const id = row.dataset.id;
         const num = (sel) => { const v = parseFloat(row.querySelector(sel)?.value); return Number.isFinite(v) ? v : 0; };
+        const raw = (sel) => row.querySelector(sel)?.value;
         const body = {
             name:          row.querySelector('.fa-name')?.value.trim() || '',
             calories:      num('.fa-cal'),  protein: num('.fa-pro'),
@@ -7253,16 +7316,27 @@ document.addEventListener('DOMContentLoaded', () => {
             state:         foodStateOf(row),
         };
         if (!body.name) { showToast('El alimento necesita un nombre.', 'error'); return; }
+        // A blank macro is not a zero — see FoodScale.missingMacros.
+        const gapEdit = window.FoodScale.macrosMissingMessage({
+            calories: raw('.fa-cal'), protein: raw('.fa-pro'), carbs: raw('.fa-carb'), fat: raw('.fa-fat'),
+        });
+        if (gapEdit) { showToast(gapEdit, 'error'); return; }
         const asked = await confirmFoodState(body.name, body.state, row);
         if (asked === null) return;
         body.state = asked;
+        // A personal food belongs to one client and goes to its own endpoint;
+        // correcting it must not publish it to everybody.
+        const known = foodAdminCache.find((f) => String(f._id) === String(id));
+        const personal = foodAdminIsPersonal(known);
         try {
-            const res = await apiFetch(`/api/admin/foods/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+            const res = await apiFetch(`${foodAdminBase(known)}/${id}`, { method: 'PUT', body: JSON.stringify(body) });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) { showToast(data.message || 'Error guardando el alimento.', 'error'); return; }
             foodAdminEditing = null;
             await window.renderFoodAdmin();
-            showToast('✓ Alimento actualizado — tus clientes ya lo ven corregido', 'success');
+            showToast(personal
+                ? `✓ Corregido en los alimentos de ${known?.owner?.name || 'ese cliente'}`
+                : '✓ Alimento actualizado — tus clientes ya lo ven corregido', 'success');
         } catch { showToast('Error de conexión.', 'error'); }
     };
 
@@ -7277,6 +7351,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const filterBtn = e.target.closest?.('.food-admin-filter');
         if (filterBtn) { foodAdminFilter = filterBtn.dataset.filter; foodAdminEditing = null; window.renderFoodAdmin(); return; }
+        const scopeBtn = e.target.closest?.('.food-admin-scope');
+        if (scopeBtn) { foodAdminScope = scopeBtn.dataset.scope; foodAdminEditing = null; window.renderFoodAdmin(); return; }
         if (e.target.closest?.('.fa-cancel')) { foodAdminEditing = null; window.renderFoodAdmin(); return; }
         if (e.target.closest?.('.fa-save') && row) {
             if (row.dataset.id === NEW_FOOD_ID) createFoodAdminRow(row); else saveFoodAdminRow(row);
@@ -7287,10 +7363,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const food = foodAdminCache.find((f) => String(f._id) === row.dataset.id);
             if (!food) return;
             const yes = await showConfirm(
-                `¿Eliminar "${escHtml(food.name)}" de la librería? Dejará de aparecer cuando tus clientes busquen alimentos. Lo que ya está registrado en sus días no cambia.`,
+                foodAdminIsPersonal(food)
+                    ? `¿Eliminar "${escHtml(food.name)}" de los alimentos de ${escHtml(food.owner?.name || 'ese cliente')}? Es un alimento privado suyo. Lo que ya está registrado en sus días no cambia.`
+                    : `¿Eliminar "${escHtml(food.name)}" de la librería? Dejará de aparecer cuando tus clientes busquen alimentos. Lo que ya está registrado en sus días no cambia.`,
                 { confirmLabel: 'Eliminar', danger: true });
             if (!yes) return;
-            const res = await apiFetch(`/api/admin/foods/${food._id}`, { method: 'DELETE' });
+            const res = await apiFetch(`${foodAdminBase(food)}/${food._id}`, { method: 'DELETE' });
             if (res.ok) { await window.renderFoodAdmin(); showToast('Alimento eliminado.', 'info'); }
             else showToast('Error eliminando el alimento.', 'error');
         }
@@ -7298,6 +7376,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('input', (e) => {
         if (e.target.id === 'food-admin-search') window.renderFoodAdmin();
+    });
+    document.addEventListener('change', (e) => {
+        if (e.target.id !== 'food-admin-sort') return;
+        foodAdminSort = e.target.value;
+        foodAdminEditing = null;
+        window.renderFoodAdmin();
     });
     // Enter saves the row being edited; Escape abandons it.
     document.addEventListener('keydown', (e) => {
@@ -7358,8 +7442,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const createFoodAdminRow = async (row) => {
         const num = (sel) => { const v = parseFloat(row.querySelector(sel)?.value); return Number.isFinite(v) ? v : 0; };
+        const raw = (sel) => row.querySelector(sel)?.value;
         const name = row.querySelector('.fa-name')?.value.trim() || '';
         if (!name) { showToast('El alimento necesita un nombre.', 'error'); return; }
+        const gapNew = window.FoodScale.macrosMissingMessage({
+            calories: raw('.fa-cal'), protein: raw('.fa-pro'), carbs: raw('.fa-carb'), fat: raw('.fa-fat'),
+        });
+        if (gapNew) { showToast(gapNew, 'error'); return; }
         const body = {
             name,
             calories: num('.fa-cal'), protein: num('.fa-pro'), carbs: num('.fa-carb'), fat: num('.fa-fat'),
@@ -7374,6 +7463,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) { showToast('Error creando el alimento.', 'error'); return; }
             foodAdminEditing = null;
+            // A food created here goes to the SHARED library — there is no sense in
+            // the superadmin adding something to one client's private shelf. So if
+            // the list was filtered to Personales, widen it, or the row just saved
+            // would not be anywhere on screen.
+            if (foodAdminScope === 'personal') foodAdminScope = 'all';
             await window.renderFoodAdmin();
             // `created: false` means a food with this name was already there and the
             // numbers were applied to it — say so rather than implying a new entry.
@@ -7658,12 +7752,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const mealPrepPlan = () => mealPlansCache.find((p) => String(p._id) === document.getElementById('prep-plan')?.value) || null;
 
     // The number this element would land on with nobody interfering: the same
-    // arithmetic, and the same rounding, the client's own page does.
+    // arithmetic the client's own page does, and nothing else. Nothing rounds it
+    // on the way — the trainer sees the figure the client will see.
     const mealPrepDefault = (item, factors) => {
-        const scaled = window.MealItem.scaleItem(item, factors);
-        const amount = Number(scaled.amount) || 0;
-        if (!(amount > 0)) return 0;
-        return window.MealItem.roundAmount(amount, window.MealItem.unitKeyOf(item.unit));
+        const amount = Number(window.MealItem.scaleItem(item, factors).amount) || 0;
+        return amount > 0 ? window.FoodScale.clean(amount) : 0;
     };
 
     const mealPrepWeekHtml = (week, open) => {
@@ -7918,8 +8011,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // to follow the box rather than wait for a re-render.
             const label = amt.nextElementSibling;
             if (label) {
-                const text = window.MealItem.amountLabel({ amount: typed, unit: d.unit || '' }, true)
-                    || window.MealItem.amountLabel({ amount: Number(d.default), unit: d.unit || '' }, true);
+                const text = window.MealItem.amountLabel({ amount: typed, unit: d.unit || '' })
+                    || window.MealItem.amountLabel({ amount: Number(d.default), unit: d.unit || '' });
                 label.textContent = text;
                 label.title = text;
             }
@@ -16267,7 +16360,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 ub?.classList.remove('hidden'); ui?.classList.add('hidden');
-                if (si) si.value = modalUnit === 'oz' ? gToOz(servingG) : Math.round(servingG);
+                if (si) si.value = modalUnit === 'oz' ? gToOz(servingG) : window.FoodScale.clean(servingG);
                 if (ub) ub.textContent = modalUnit;
             };
 
@@ -18114,6 +18207,13 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.querySelector('#epf-save').onclick = async () => {
                 const name = (modal.querySelector('#epf-name').value || '').trim();
                 if (!name) { showToast('El alimento necesita un nombre.', 'info'); return; }
+                const gapPf = window.FoodScale.macrosMissingMessage({
+                    calories: modal.querySelector('#epf-cal').value,
+                    protein:  modal.querySelector('#epf-pro').value,
+                    carbs:    modal.querySelector('#epf-carb').value,
+                    fat:      modal.querySelector('#epf-fat').value,
+                });
+                if (gapPf) { showToast(gapPf, 'error'); return; }
                 const btn = modal.querySelector('#epf-save');
                 btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                 try {
@@ -18327,6 +18427,13 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.querySelector('#edit-add-btn').onclick = () => {
                 const name = (modal.querySelector('#edit-add-name').value || '').trim();
                 if (!name) { showToast('Escribe un nombre para el alimento.', 'info'); return; }
+                const gapAdd = window.FoodScale.macrosMissingMessage({
+                    calories: modal.querySelector('#edit-add-cal').value,
+                    protein:  modal.querySelector('#edit-add-pro').value,
+                    carbs:    modal.querySelector('#edit-add-carb').value,
+                    fat:      modal.querySelector('#edit-add-fat').value,
+                });
+                if (gapAdd) { showToast(gapAdd, 'error'); return; }
                 items.push({
                     name,
                     calories: Number(modal.querySelector('#edit-add-cal').value) || 0,

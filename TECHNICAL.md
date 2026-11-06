@@ -5412,7 +5412,9 @@ Fourteen cuts are now paired this way: chicken breast, thigh and ground; ground 
 90/10; sirloin; pork chop and tenderloin; turkey breast and ground turkey; salmon, tilapia, cod,
 shrimp and bacon. Every raw value, and every new cooked value, is a row of **USDA FoodData Central**
 (Foundation / SR Legacy), and the trailing `// fdc NNNNNN` is that row's id — so the next person can
-*recheck* a number instead of trusting it. **Seven** of the cooked halves carry no id: those are the
+*recheck* a number instead of trusting it. The id is a convenience, not a requirement: most of this
+list is curated and carries none. USDA happens to cover plain cuts of meat well, which is why these
+particular rows could cite it. **Seven** of the cooked halves carry no id: those are the
 curated numbers these foods always had, left exactly as they were, and they are the rows to check
 first if a client's protein total ever looks wrong.
 
@@ -5454,6 +5456,7 @@ They are now annotated by the answer they already had, with no macro touched:
   sections, plus cooked beans and edamame.
 - **`seco`** — rows whose numbers are the uncooked food and where cooking moves the weight: `Papa /
   Patata`, `Camote / Batata`, `Plátano maduro`, `Plátano verde`, `Setas / Hongos`, Brussels sprouts.
+  All seven of these now have a cooked twin as well — see § 64.
 - **`na`** — where the answer does not move the numbers, or there is no answer: broccoli, spinach,
   cabbage, kale, green beans, papaya, banana, oat milk, canned tuna.
 
@@ -5684,3 +5687,288 @@ The phone picked all of it up from the same cases file with no new test written:
 End to end against a live server: a personal food saved as *Whey Gold Standard*, **120 kcal / 24 P /
 3 C / 1 F for 1 scoop**, came back with `baseOf → { amount: 1, unit: 'scoop', known: true }` — not
 the generic porción — and two scoops scaled to exactly **240 / 48 / 6 / 2**.
+
+---
+
+## 62. Nothing about a food is rounded any more
+
+A client could not enter their macros, because the platform kept rewriting what they typed. That is
+the whole brief, and it turned out to be five separate roundings, in four files, on both sides of
+the wire.
+
+**The rule now:** the app never changes a number a person gave it, and never presents a derived
+number as a nicer one. The single exception is binary floating-point noise, which nobody typed.
+
+```js
+// FoodScale.clean — the ONLY number-changing left in the food path.
+const clean = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    const r = Math.round(n * 1e9) / 1e9;
+    return Object.is(r, -0) ? 0 : r;
+};
+```
+
+`0.1 + 0.2` is `0.30000000000000004` and `24 * 1.33` is `31.919999999999998`. Those digits are an
+artefact of how the machine stores a number, not a precision anybody asked for. Cutting them moves
+the value by less than a part in a billion. Everything else was deleted.
+
+### What was rounding, and what it did
+
+| Where | Was | Now |
+|---|---|---|
+| `scaleMacros` | calories to a whole number, macros to 0.1 g | exact |
+| `fmtAmount` | 2 decimals | exact |
+| `meal-item` `roundAmount` | g to the nearest 5, oz to the quarter, cups snapped to a ladder | **deleted** |
+| `app.js` recipe search → `.ri-*` boxes | `Math.round(cal)`, macros to 0.1 g | exact |
+| `recipeServingOf` (app.js **and** server.js) | calories whole, macros to 0.1 g | exact |
+| `recipeTotals` / `recipeMacros` | macros to whole numbers | exact |
+| Mongo `sumMacro` / `recomputeExercise` | `$round: [..., 0]` | `$round: [..., 6]` |
+
+The form one is the complaint. `stepQty` scales from the stored base on every keystroke of the
+amount box, so a client who typed **24.56 g** of protein and then touched the quantity got **24.6**
+back, from their own form, with no warning. The recipe-search one is the same class and worse: it
+writes rounded numbers *into boxes the person then saves*, so the app's tidying becomes their
+recipe's data permanently.
+
+### The ladder is gone, the fractions are not
+
+`amountLabel` used to snap a computed amount to "something you can measure" — 5.3 oz was shown as
+**5 ¼ oz**. It no longer does. But a glyph is a *spelling* of a value, not a different value, so
+they stayed, under two rules:
+
+- **Only when exact.** `¾` appears for 0.75 and nothing else; 0.74 is written `0.74`.
+- **Only where a cook would.** Grams, ml, oz, lb, kg and l are written as decimals, because that is
+  how a scale reads. Cups, spoons, scoops and counted things may use a fraction.
+
+So `199.5 g` is `199.5 g`, `5.3 oz` is `5.3 oz`, and `0.75 taza` is still `¾ taza`.
+
+### The one that was hiding a bug
+
+`recipeServingOf` rounded calories **per ingredient, on purpose** — there was a comment explaining
+why. A day's totals are summed by MongoDB's `$round`, which is *banker's* rounding: `194.5` became
+`194`, while the browser's `Math.round` made the recipe card say `195`. Rounding each ingredient
+meant no half ever reached the aggregation, so the two could not disagree.
+
+With neither end rounding, the problem it was dodging does not exist. Half of a 389 kcal serving is
+**194.5** on the card, **194.5** in the diary entry, and **194.5** in the day's total. The test that
+used to assert "a half-calorie serving rounds up once" now asserts they all agree.
+
+`$round` is still there at **6 decimals** rather than 0, because a Mongo pipeline has no other way
+to cut float noise out of a `$sum`.
+
+### Gotchas
+
+- **Day totals are no longer whole numbers.** A diary can read `1847.3 kcal`. That is the sum of
+  what the client logged; the old whole number was not.
+- **`FoodScale` had to move in `server.js`.** `recipeServingOf` (line ~1191) now calls
+  `FoodScale.clean`, and the loader sat at line ~6037. It worked only because nothing calls
+  `recipeServingOf` during module evaluation — a `const` in its own temporal dead zone. It is now
+  defined above its first use.
+- **`roundAmount` is deleted, not deprecated**, and the `exact` parameter of `amountLabel` went with
+  it: once nothing rounds, "show this one unrounded" has nothing to mean. Four call sites in
+  `app.js` and one in the phone's meal-prep screen dropped the flag.
+- **Aggregate *goal* displays still round** — the macro calculator's targets (`mc-total-cal` and
+  friends) are a different thing: a target the app computed for you, not a number you entered or a
+  food you logged. Left alone deliberately.
+
+---
+
+## 63. A manually entered food has to be complete
+
+Every manual form read its macros as `Number(input.value) || 0`. That turns *"I have not filled this
+in yet"* into *"this food has no protein"* — silently, and permanently, because the food is then
+saved, reused, and taught to the shared library.
+
+**A blank is not a zero. A zero is an answer somebody gave.** So the four macros are required, and a
+person who means zero types zero:
+
+```js
+missingMacros({ calories: '120', protein: '', carbs: '3', fat: '' })
+// → ['Proteína', 'Grasas']
+macrosMissingMessage(...)
+// → 'Faltan Proteína y Grasas. Escribe 0 donde el alimento no tenga.'
+```
+
+Blank, whitespace, non-numeric and negative all count as unanswered; `'0'`, `0` and `'24,5'` (the
+decimal comma half the world types) all count as given.
+
+Wired into every place a human types a food's macros: the shared library's **new** and **edit** rows
+in Alimentos, a client editing one of **Mis alimentos**, adding a food straight into a **saved
+combination**, and the phone's manual add-food form. The sentence names the boxes and tells the
+person to type 0 — it never guesses on their behalf.
+
+### Gotchas
+
+- **The message is per-field, not "fill everything in".** A client who left one box empty should not
+  have to hunt for which.
+- **It validates the raw input value, not the parsed number.** Reading `num('.fa-cal')` first would
+  have turned the blank into `0` before the check ever saw it — which is the original bug.
+- The guard lives in `FoodScale` rather than in each form, so the web and the phone cannot disagree
+  about what "complete" means; 11 shared cases hold both to it.
+
+### Verified
+
+`node scripts/test-food-scale.mjs` — 60 → **76 checks**; mobile's mirror **81 → 94**, from the same
+cases file. `test-meal-items` **68**, `test-recipes` **38** (including the half-calorie chain above),
+`test-food-admin` **31**, `test-meal-plans` **80**. All green, both repos, plus `tsc` and `eslint`.
+
+Driven in the browser against a live server, in the real Alimentos form. Saving *Prueba Redondeo*
+with **Proteína and Grasas left blank** was refused with *"Faltan Proteína y Grasas. Escribe 0 donde
+el alimento no tenga."*, and nothing was written. Filling in `24.56` and a typed `0` saved, and came
+back from the API as **`p: 24.56, f: 0, unit: "scoop"`** — the decimal intact, the zero recorded as
+an answer. Half of 99 kcal measured through the page's own `FoodScale` is **49.5**, not 50.
+
+---
+
+## 64. The starches get their cooked half
+
+§58 paired fourteen animal proteins raw and cooked. It left seven foods marked `seco` with nowhere
+to go if a client weighed them after cooking — the starches and vegetables where boiling genuinely
+moves the numbers. They are now pairs too, on the same rule: **two looked-up rows, never one row and
+a yield factor.**
+
+| raw row | kcal | cooked twin | kcal | fdc |
+|---|---|---|---|---|
+| Papa / Patata | 77 | **(hervida)** | 86 | 170440 |
+| Camote / Batata | 86 | **(hervido)** | 76 | 168484 |
+| Plátano verde | 116 | **(hervido)** | 121 | 168216 |
+| Plátano maduro | 122 | **(al horno)** | 155 | 169131 |
+| Setas / Hongos | 22 | **(cocidos)** | 28 | 169252 |
+| Repollo de Bruselas | 43 | **(hervido)** | 36 | 169971 |
+| Pollo molido (crudo) | 143 | **(cocido)** | 189 | 171117 |
+
+### The direction is not always the same, which is the point
+
+A boiled potato is **86** kcal/100 g against **77** raw — it goes *up*, because the starch
+gelatinises and the flesh gets denser while water leaves. A boiled camote goes the other way, 86 →
+**76**. Mushrooms nearly double in density, 22 → **28**, because they are mostly water and most of
+it goes.
+
+There is no single "cooking concentrates food" factor that would have produced those three numbers.
+That is exactly why each half is its own USDA row rather than an arithmetic guess, and the test now
+asserts it: no pair may share a calorie count, because that would mean one half was copied onto the
+other instead of looked up.
+
+### Two that are not what you would assume
+
+- **`Plátano maduro (al horno)`, not boiled.** USDA Foundation / SR Legacy has no boiled *ripe*
+  plantain — only `green, boiled`. Baked yellow (155 kcal, fdc 169131) is the nearest preparation
+  that is actually sourced, and it is named for what it is. Frying is already covered separately by
+  `Mariquitas / Plátano chips` and `Papas fritas`.
+
+  A USDA gap is **not** a reason to leave a food out. USDA measures how the United States cooks, and
+  most of this app's clients are in Puerto Rico — *amarillos hervidos*, mofongo and pasteles were
+  never going to be in it. **339 of this library's 368 rows carry no `fdc` id at all**; they are
+  curated, and that has always been fine. Missing here means only that nobody has supplied a number
+  for boiled maduros yet, not that one is unavailable in principle.
+- **`Pollo molido (cocido)` is not a starch.** It was a gap of my own making — §58 added raw ground
+  chicken and never gave it a partner, leaving it the only one of the fifteen cuts without one.
+
+### Gotchas
+
+- **The raw rows were NOT renamed.** Unlike the protein pairs, `Papa / Patata` keeps its plain name
+  and carries `state: 'seco'` explicitly; only the twin says so in its name. Renaming would have
+  produced `Repollo de Bruselas (orgánico, crudo)`, and the badge already tells the client which is
+  which. So in this list a plain name plus an explicit state is as complete as a stated name.
+- **Both halves answer the bare search word.** `papa`, `platano`, `hongos` and `brussels sprouts`
+  each bring up the pair; only `papa hervida` / `boiled potato` narrows it.
+- `Repollo de Bruselas` had no alias row at all before this — both halves have one now.
+
+### Verified
+
+`node scripts/test-food-state.mjs` — 19 → **21 checks**. The two new ones: every starch that changes
+when you boil it can be logged either way, and no pair anywhere shares a calorie count. Curated
+database still at **0** open seco/cocido questions, now across 368 rows.
+
+Against a live server, the search returns each pair together and correctly stated: `papa` → *Papa /
+Patata* **SECO** 77 and *(hervida)* **COCIDO** 86; `platano` → all four plantain rows; `pollo molido`
+→ **SECO** 143 and **COCIDO** 189. External results come back blank-state, as they should.
+
+---
+
+## 65. Every food in the platform, in one editable list
+
+Two collections hold user-entered foods, and until now they were never visible in one place:
+
+- **`FoodLibrary`** — the shared library every client's autocomplete reads. The superadmin already
+  had full CRUD on it (§ 50).
+- **`PersonalFoodLibrary`** — one client's private shelf. **Nobody but that client could see it**,
+  and a client who saved *"Mi batido de la noche · 1,200 kcal"* is quietly eating a wrong number
+  every day and cannot be expected to spot it.
+
+`GET /api/admin/foods` now returns both, with who entered it and when.
+
+### The shape
+
+```js
+{ foods: [...], total, counts: { all, shared, personal }, truncated }
+```
+
+It used to answer a bare array. It can't any more: covering two collections means the screen needs
+to know how many of each exist in the platform, not just how many are on the page. The client reads
+`body.foods || body` so an old cached bundle does not break.
+
+Each row carries `kind: 'shared' | 'personal'`, `createdAt`, `updatedAt`, and `owner` (`null` for
+shared, otherwise `{_id, name, email}`).
+
+**The two schemas disagree on one field name** — `FoodLibrary.servingAmount` vs
+`PersonalFoodLibrary.servingSize`. That is flattened to `servingAmount` on the way out and
+unflattened on save, so one editor drives both and the screen never has to care.
+
+### `?scope=` and `?sort=`
+
+`scope` is `all` (default) / `shared` / `personal`. `sort` is where the feature earns its keep:
+
+| `sort` | what it answers |
+|---|---|
+| `used` (default) | which wrong numbers are costing the most |
+| **`stale`** | **"where did I leave off"** — oldest-edited first, so everything already reviewed sinks |
+| `updated` | what I just touched |
+| `created` | what clients have been adding |
+| `name` | finding one specific thing |
+
+`stale` is the one the dates exist for. Sorting by *most* recently edited shows your own work;
+sorting by *least* shows the work left.
+
+### Correcting a private food does not publish it
+
+`PUT` / `DELETE /api/admin/personal-foods/:id`, superadmin only, deliberately separate from the
+shared routes. Fixing somebody's private entry must never push it into every other client's
+autocomplete — there is a test that asserts exactly that, because it is the kind of thing a
+well-meaning refactor would "simplify" into one route.
+
+A new food created from this screen still goes to the **shared** library (`POST /api/food-library`)
+— there is no sense in the superadmin adding something to one client's private shelf. If the list
+was filtered to *Personales* at the time, the scope widens to *Todos* on success, or the row just
+saved would be nowhere on screen.
+
+### Gotchas
+
+- **Personal foods have no `nameNorm`.** The shared library has an accent-stripped indexed field for
+  search; the private shelf does not. The same accent-insensitive match is therefore done **in
+  memory** for personal rows — otherwise a client's "plátano" would only be findable by someone who
+  typed the accent. Fine at this size; it is the reason for `ADMIN_FOOD_LIMIT`.
+- **`{ clientId, name }` is uniquely indexed on the shelf.** Renaming one of a client's foods onto
+  another of *their* foods is a 409 with a sentence, not a duplicate-key 500.
+- **An id from the wrong collection 404s.** Passing a shared food's id to
+  `/api/admin/personal-foods/:id` finds nothing and says so, rather than doing something surprising.
+- **`cleanServing` was rounding to 2 dp.** It is a typed serving amount, so it now goes through
+  `FoodScale.clean` like everything else (§ 62).
+- Deleting is still a **real delete**. Nothing already logged changes — a day's foods are copies,
+  not references.
+
+### Verified
+
+`node scripts/test-food-admin.mjs` — 31 → **48 checks**. The new ones: a client's private food
+appears in the superadmin's list marked `personal` with its owner; `scope=shared` and
+`scope=personal` each exclude the other; `sort=stale` really is oldest-edited first; a client and an
+ordinary trainer both get 403 on the personal admin routes; the superadmin can correct one; and
+**correcting it does not publish it to the shared library**.
+
+Driven in the browser as a superadmin against a live server, with two shared foods and two clients'
+private ones. The list showed **Todos 4 · Compartidos 2 · Personales 2**, owner badges reading
+*Ana P* and *Luis P*, and both dates per row (*"añadido 8 jul 26 · editado hace 3 d"*). Switching to
+*Sin revisar hace más tiempo* reordered to oldest-edited first. Editing Ana's 1,200 kcal shake to
+**310 kcal / 28.4 g** saved against her shelf, said *"✓ Corregido en los alimentos de Ana P"*, kept
+the decimal, and left the shared library at 2 rows. No horizontal overflow at 375 px.

@@ -85,52 +85,42 @@
         return { amount, unit: '', name: rest || raw };
     }
 
-    // An amount a person would actually measure.
-    //
-    //   • grams and millilitres → the nearest 5, once 1 g stops meaning anything
-    //   • ounces, pounds, litres → the nearest quarter, the way a scale reads
-    //   • cups, spoons and counted things → the ladder a cook actually uses,
-    //     which has a third on it. Snapping ⅓ taza to ¼ taza would be the app
-    //     quietly rewriting a measure the trainer chose.
-    const SPOON = new Set(['cup', 'tbsp', 'tsp', 'serving', '']);
-    const LADDER = [0, 0.125, 0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1];
-    const snap = (frac) => LADDER.reduce((a, b) => (Math.abs(b - frac) < Math.abs(a - frac) ? b : a));
+    /**
+     * The number as text, keeping every digit it has.
+     *
+     * A glyph is a SPELLING of the value, never a different value: ¾ appears only
+     * when the amount is exactly 0.75, and 0.74 is written "0.74". So this can
+     * show a number more prettily, but it can never show a different one.
+     *
+     * There used to be rounding here — grams to the nearest 5, ounces to the
+     * quarter, cups snapped to a cook's ladder — so a computed 5.3 oz was
+     * displayed as "5 ¼ oz". The app does not get to decide that somebody's 5.3
+     * is really 5.25.
+     */
+    // Where a fraction is the natural notation and where a decimal is. A scale
+    // reads "199.5 g", never "199 ½ g"; a cook measures "¾ taza", never
+    // "0.75 taza". This picks the SPELLING only — both say the same number.
+    const DECIMAL = new Set(['g', 'ml', 'oz', 'lb', 'kg', 'l', 'floz']);
 
-    const roundAmount = (n, unitKey) => {
-        if (!(n > 0)) return 0;
-        if (unitKey === 'g' || unitKey === 'ml') return n >= 20 ? Math.round(n / 5) * 5 : Math.round(n);
-        if (!SPOON.has(unitKey) && !unitKey.startsWith('count:')) return Math.round(n * 4) / 4;
-        const whole = Math.floor(n);
-        const f = snap(n - whole);
-        return f === 1 ? whole + 1 : whole + f;
-    };
-
-    // The reverse of GLYPHS, matched with a tolerance because a third is not a
-    // number that comes back exactly.
     const numberLabel = (n, unitKey) => {
-        if (unitKey === 'g' || unitKey === 'ml') return String(Math.round(n));
-        const whole = Math.floor(n + 1e-9);
-        const rest = n - whole;
-        const glyph = Object.keys(GLYPHS).find((g) => Math.abs(GLYPHS[g] - rest) < 1e-6);
-        if (!glyph) return String(Math.round(n * 100) / 100);
-        return whole ? `${whole} ${glyph}` : glyph;
+        if (!DECIMAL.has(unitKey)) {
+            const whole = Math.floor(n + 1e-9);
+            const rest = n - whole;
+            const glyph = Object.keys(GLYPHS).find((g) => Math.abs(GLYPHS[g] - rest) < 1e-9);
+            if (glyph) return whole ? `${whole} ${glyph}` : glyph;
+        }
+        return String(FS.clean(n));
     };
 
     /**
-     * The chip that sits beside the name: "¾ taza", "150 g", "3". '' when there
-     * is no amount.
-     *
-     * `exact` skips the rounding, and is for an amount a trainer TYPED for one
-     * client. Rounding exists to turn arithmetic into something measurable; an
-     * amount somebody chose is already measurable, and quietly moving 5.3 oz to
-     * 5 ¼ would be the app overruling the person who wrote the plan.
+     * The chip that sits beside the name: "¾ taza", "150 g", "199.5 g". '' when
+     * there is no amount. Whatever the arithmetic produced is what it says.
      */
-    function amountLabel(item, exact) {
+    function amountLabel(item) {
         const a = Number(item && item.amount) || 0;
         if (!(a > 0)) return '';
         const unit = String((item && item.unit) || '').trim();
-        const key = unitKeyOf(unit);
-        const label = numberLabel(exact ? a : roundAmount(a, key), key);
+        const label = numberLabel(a, unitKeyOf(unit));
         return unit ? `${label} ${unit}` : label;
     }
 
@@ -196,5 +186,5 @@
     }
 
     return { ROLES, ROLE_KEYS, roleOf, toNumber, parseLine, amountLabel, itemText, plateText,
-        factorsFor, isAdjusted, scaleItem, roundAmount, unitKeyOf, overrideKey, overrideIndex };
+        factorsFor, isAdjusted, scaleItem, unitKeyOf, overrideKey, overrideIndex };
 });

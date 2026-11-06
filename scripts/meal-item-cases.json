@@ -28,23 +28,29 @@
     { "in": "2",     "out": 2 }
   ],
 
-  "_amountLabel": "What the client reads. Grams to the nearest 5, ounces to the quarter, cups on the ladder a cook actually uses — which has a third on it.",
+  "_amountLabel": "What the client reads — the number there IS, never a nicer one. A glyph is a spelling, not a different value: ¾ appears only for exactly 0.75. Grams, ml, oz, lb, kg and l are written as decimals because that is how a scale reads; cups, spoons and counted things may use a fraction because that is how a cook measures.",
   "amountLabel": [
     { "item": { "amount": 0.75, "unit": "taza" },  "out": "¾ taza" },
     { "item": { "amount": 1.5,  "unit": "taza" },  "out": "1 ½ taza" },
-    { "item": { "amount": 0.66, "unit": "taza" },  "out": "⅔ taza" },
-    { "item": { "amount": 0.3,  "unit": "taza" },  "out": "⅓ taza" },
-    { "item": { "amount": 152,  "unit": "g" },     "out": "150 g" },
+    { "item": { "amount": 0.66, "unit": "taza" },  "out": "0.66 taza" },
+    { "item": { "amount": 0.3,  "unit": "taza" },  "out": "0.3 taza" },
+    { "item": { "amount": 152,  "unit": "g" },     "out": "152 g" },
     { "item": { "amount": 18,   "unit": "g" },     "out": "18 g" },
-    { "item": { "amount": 5.3,  "unit": "oz" },    "out": "5 ¼ oz" },
+    { "item": { "amount": 5.3,  "unit": "oz" },    "out": "5.3 oz" },
+    { "item": { "amount": 1.5,  "unit": "scoops" },"out": "1 ½ scoops" },
     { "item": { "amount": 3,    "unit": "" },      "out": "3" },
     { "item": { "amount": 0,    "unit": "taza" },  "out": "" }
   ],
 
-  "_amountLabelExact": "An amount a trainer TYPED for one client is already measurable; rounding it would overrule the person who wrote the plan.",
-  "amountLabelExact": [
-    { "item": { "amount": 5.3, "unit": "oz" }, "out": "5.3 oz" },
-    { "item": { "amount": 152, "unit": "g" },  "out": "152 g" }
+  "_amountLabelNeverRounds": "The whole point. A client once could not enter their macros because the platform kept rewriting them, so nothing here snaps to a measurable number any more. 199.5 g is 199.5 g. The only digits removed are binary floating-point artefacts, which nobody typed.",
+  "amountLabelNeverRounds": [
+    { "item": { "amount": 5.3,   "unit": "oz" },  "out": "5.3 oz" },
+    { "item": { "amount": 199.5, "unit": "g" },   "out": "199.5 g" },
+    { "item": { "amount": 152.4, "unit": "g" },   "out": "152.4 g" },
+    { "item": { "amount": 18.2,  "unit": "g" },   "out": "18.2 g" },
+    { "item": { "amount": 0.74,  "unit": "taza" },"out": "0.74 taza" },
+    { "item": { "amount": 2.33,  "unit": "oz" },  "out": "2.33 oz" },
+    { "item": { "amount": 31.919999999999998, "unit": "g" }, "out": "31.92 g" }
   ],
 
   "_itemText": "The round trip a swap stores. The state is NEVER part of it — see TECHNICAL.md § 57.",
