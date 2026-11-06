@@ -5972,3 +5972,63 @@ private ones. The list showed **Todos 4 · Compartidos 2 · Personales 2**, owne
 *Sin revisar hace más tiempo* reordered to oldest-edited first. Editing Ana's 1,200 kcal shake to
 **310 kcal / 28.4 g** saved against her shelf, said *"✓ Corregido en los alimentos de Ana P"*, kept
 the decimal, and left the shared library at 2 rows. No horizontal overflow at 375 px.
+
+---
+
+## 66. An email is stored the way it is read
+
+A client created through *Clientes → Añadir cliente* as `Alex@Gmail.com` could never
+sign in. Not "had trouble" — could not, ever, and had no way to find out why.
+
+Every route that **looks up** a user normalises first:
+
+| Where | Lookup |
+|---|---|
+| `POST /api/auth/login` | `User.findOne({ email: email.toLowerCase().trim() })` |
+| `POST /api/auth/forgot-password` | `User.findOne({ email: email.toLowerCase() })` |
+| `POST /api/auth/update-password` | `.toLowerCase().trim()` |
+
+`POST /api/clients` **wrote** `req.body.email` verbatim, and the form behind it read the
+field with a bare `.value` — while the trainer form two lines away already did
+`.value.trim().toLowerCase()`. So the stored string kept its capitals, and every lookup
+searched for a string that was not there.
+
+What made it nasty rather than merely wrong:
+
+- **Login fails with "credenciales inválidas"**, which reads as a wrong password.
+- **Password reset fails silently.** `forgot-password` answers *"Si existe una cuenta con
+  ese email, recibirás un enlace"* whether or not the account exists — deliberately, so it
+  cannot be used to enumerate addresses. Here that privacy property hides the bug: the
+  client is told a mail is coming, and none ever arrives.
+- **The duplicate guard missed too**, because it compared raw strings. Creating the same
+  person a second time "to fix it" produced a *second* account instead of an error.
+- Self-serve signup was never affected — it had normalised inline as `cleanEmail` from the
+  start (`/api/signup/checkout`, `/api/signup/athmovil`, `/api/signup/paypal/create`).
+
+### The fix
+
+One helper next to `validatePassword`, used at every write:
+
+```js
+const normEmail = (e) => String(e ?? '').toLowerCase().trim();
+```
+
+Applied in three places: `POST /api/clients` **before the duplicate check** (so case
+variants collide instead of multiplying), `PUT /api/clients/:id` after the `ALLOWED`
+copy (`email` is in that allowlist, so an edit carried the same hazard), and
+`public/app.js`'s client form, to match the trainer form.
+
+The server fix is the one that matters; the form fix only stops the bad value being sent.
+
+### Was anyone affected?
+
+Checked against production on 2026-11-06: **23 accounts, 0 unreachable, 0 duplicates.**
+Nobody had typed a capital. The bug was real and live, but never fired.
+
+### Test
+
+`node scripts/test-email-normalisation.mjs` — 9 checks, needs an isolated server and
+database (the header has the command). Verified by reverting the fix: 5 of the 9 fail,
+including *"and that client CAN SIGN IN"*, and the duplicate POST returns 200 with a
+second account written.
+

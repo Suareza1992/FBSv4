@@ -5545,7 +5545,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveClientCore = async () => {
         const firstName = document.getElementById('new-client-name')?.value;
         const lastName = document.getElementById('new-client-lastname')?.value;
-        const email = document.getElementById('new-client-email')?.value;
+        const email = document.getElementById('new-client-email')?.value.trim().toLowerCase();
         const typeBtn = document.querySelector('.client-type-btn.ring-2');
         const type = typeBtn ? typeBtn.dataset.type : "Remoto";
         const program = document.getElementById('new-client-program')?.value || "Sin asignar";

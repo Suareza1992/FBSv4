@@ -1499,6 +1499,15 @@ const validatePassword = (pw) => {
     return null; // null = valid
 };
 
+// --- Helper: the one spelling of an email address ---
+// Every place that LOOKS UP a user lowercases and trims first — login, forgot-password,
+// update-password — so every place that WRITES one has to as well. When it didn't, a
+// client created as "Alex@Gmail.com" was stored with the capitals and then could never
+// be found again: login queries the lowercase form and misses, and forgot-password
+// misses too but answers "si existe una cuenta..." by design, so the account looked
+// fine and simply never worked. Self-serve signup already did this inline (cleanEmail).
+const normEmail = (e) => String(e ?? '').toLowerCase().trim();
+
 // --- Helper: Generate random password ---
 const generateTempPassword = () => {
     return crypto.randomBytes(4).toString('hex'); // 8-char random string like "a3f1b9c2"
@@ -2229,6 +2238,9 @@ app.get('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', 's
 app.post('/api/clients', authenticateToken, authorizeRoles('trainer', 'admin', 'superadmin'), async (req, res) => {
     try {
         const { sendInvite, role: requestedRole, trainerId: specifiedTrainerId, ...accountData } = req.body;
+        // Before the duplicate check, so "Alex@Gmail.com" and "alex@gmail.com" are the
+        // same account rather than two, and so the stored value is the one login reads.
+        accountData.email = normEmail(accountData.email);
 
         const existing = await User.findOne({ email: accountData.email });
         if (existing) return res.status(400).json({ message: 'El email ya existe' });
@@ -2420,6 +2432,9 @@ app.put('/api/clients/:id', authenticateToken, authorizeRoles('trainer', 'admin'
         for (const key of ALLOWED) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
         }
+        // `email` is in ALLOWED, so an edit can lock a client out exactly the way a
+        // bad create could. Same normalisation, same reason.
+        if (updates.email !== undefined) updates.email = normEmail(updates.email);
         const updatedClient = await User.findByIdAndUpdate(id, updates, { new: true })
             .select(CLIENT_SAFE_SELECT);
         // The auth gate caches a client's active flag for a few seconds; (de)activating
